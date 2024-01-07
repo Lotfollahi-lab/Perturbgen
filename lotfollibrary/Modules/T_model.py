@@ -285,4 +285,5 @@ if __name__ == "__main__":
     # Generate random sample data
     # src_data = torch.randint(1, src_vocab_size, (64, max_seq_length))  # (batch_size, seq_length)
     tgt_data = torch.rand(10, n_toekns, d_model)  # (batch_size, seq_length)
+    print(tgt_data)
     print(decoder(tgt_data))
