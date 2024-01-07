@@ -25,12 +25,12 @@ jobs:
 
     - name: Run Flake8
       run: |
-        flake8 --max-line-length=88 --extend-ignore=E203 --exclude="*_nb.py" lotfollibrary
+        flake8 --max-line-length=88 --extend-ignore=E203 --exclude="*_nb.py" T_perturb
     - name: Run MyPy
       if: ${{ always() }}
       run: |
-        mypy --ignore-missing-imports --scripts-are-modules --follow-imports=skip --exclude=_nb\.py lotfollibrary
+        mypy --ignore-missing-imports --scripts-are-modules --follow-imports=skip --exclude=_nb\.py T_perturb
     - name: Run Pydocstyle
       if: ${{ always() }}
       run: |
-        pydocstyle --ignore-decorators=property --match='((?!_nb).)*\.py' lotfollibrary
+        pydocstyle --ignore-decorators=property --match='((?!_nb).)*\.py' T_perturb

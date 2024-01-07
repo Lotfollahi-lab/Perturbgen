@@ -1,4 +1,4 @@
-"""A setuptools-based script for installing the lotfollibrary package."""
+"""A setuptools-based script for installing the T_perturb package."""
 
 from setuptools import find_packages, setup
 
@@ -6,7 +6,7 @@ with open('README.md') as f:
     long_description = f.read()
 
 setup(
-    name='lotfollibrary',
+    name='T_perturb',
     packages=find_packages(),
     version='0.1.0',
     description='',
