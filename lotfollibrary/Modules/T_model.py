@@ -279,9 +279,9 @@ if __name__ == "__main__":
     max_seq_length = 100
     dropout = 0.1
     n_toekns = 200
-    decoder = DecoderLayer(dim = d_model, n_heads=num_heads, hidden_size = d_ff,dropout=dropout,d_head=64,context_dim=None)
+    decoder = DecoderLayer(dim = d_model, n_heads=num_heads, hidden_size = d_ff,dropout=dropout,d_head=64,context_dim=d_model)
 
     # Generate random sample data
-    # src_data = torch.randint(1, src_vocab_size, (64, max_seq_length))  # (batch_size, seq_length)
+    src_data = torch.rand(10, n_toekns, d_model)
     tgt_data = torch.rand(10, n_toekns, d_model)  # (batch_size, seq_length)
     print(decoder(tgt_data))
