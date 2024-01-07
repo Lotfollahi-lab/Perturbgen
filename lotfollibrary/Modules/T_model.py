@@ -8,7 +8,6 @@ from einops import rearrange, repeat
 import torch
 import torch.nn as nn
 
-from utils import trunc_normal_
 
 
 
