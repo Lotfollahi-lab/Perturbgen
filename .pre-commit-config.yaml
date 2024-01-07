@@ -1,0 +1,60 @@
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      -   id: check-added-large-files
+          args:
+            - --maxkb=10000
+      -   id: check-ast
+      -   id: check-yaml
+      -   id: detect-private-key
+      -   id: double-quote-string-fixer
+      -   id: end-of-file-fixer
+      -   id: forbid-new-submodules
+      -   id: requirements-txt-fixer
+      -   id: trailing-whitespace
+
+-   repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.0.0
+    hooks:
+    -   id: mypy
+        args:
+          - --ignore-missing-imports
+        exclude: '_nb\.py'
+
+-   repo: https://github.com/PyCQA/isort
+    rev: 5.12.0
+    hooks:
+    -   id: isort
+        args:
+          - --line-length=88
+          - --multi-line=3
+          - --ensure-newline-before-comments
+          - --fgw=3
+          - --tc
+          - --up
+
+-   repo: https://github.com/psf/black
+    rev: 23.1.0
+    hooks:
+    -   id: black
+        args:
+          - --line-length=88
+          - --skip-string-normalization
+
+-   repo: https://github.com/pycqa/flake8
+    rev: 6.0.0
+    hooks:
+    -   id: flake8
+        args:
+          - --max-line-length=88
+          - --extend-ignore=E203
+        exclude: '_nb\.py'
+
+-   repo: https://github.com/PyCQA/pydocstyle
+    rev: 6.3.0
+    hooks:
+    -   id: pydocstyle
+        args:
+          - --ignore-decorators=property
+          - --match='((?!_nb).)*\.py'
