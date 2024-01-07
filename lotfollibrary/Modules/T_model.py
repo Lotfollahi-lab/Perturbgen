@@ -163,10 +163,13 @@ class DecoderLayer(nn.Module):
 
     def forward(self, x, src_mask = None, tgt_mask= None, enc_output=None):
         attn_output = self.self_attn(x, mask=tgt_mask)
+        print(attn_output.shape)
         x = self.norm1(x + self.dropout(attn_output))
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
+        print(attn_output.shape)
         x = self.norm2(x + self.dropout(attn_output))
         ff_output = self.feed_forward(x)
+        print(ff_output.shape)
         x = self.norm3(x + self.dropout(ff_output))
         return x
 
@@ -278,10 +281,10 @@ if __name__ == "__main__":
     d_ff = 2048
     max_seq_length = 100
     dropout = 0.1
-    n_toekns = 200
+    n_tokens = 200
     decoder = DecoderLayer(dim = d_model, n_heads=num_heads, hidden_size = d_ff,dropout=dropout,d_head=64,context_dim=d_model)
 
     # Generate random sample data
-    src_data = torch.rand(10, n_toekns, d_model)
-    tgt_data = torch.rand(10, n_toekns, d_model)  # (batch_size, seq_length)
-    print(decoder(tgt_data))
+    src_data = torch.rand(10, 500, d_model)
+    tgt_data = torch.rand(10, n_tokens, d_model)  # (batch_size, seq_length)
+    print(decoder(tgt_data).shape)
