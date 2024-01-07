@@ -162,6 +162,7 @@ class DecoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, src_mask = None, tgt_mask= None, enc_output=None):
+        print(x)
         attn_output = self.self_attn(x, mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
@@ -284,4 +285,4 @@ if __name__ == "__main__":
     # Generate random sample data
     # src_data = torch.randint(1, src_vocab_size, (64, max_seq_length))  # (batch_size, seq_length)
     tgt_data = torch.rand(10, n_toekns, d_model)  # (batch_size, seq_length)
-    print(decoder(x=tgt_data))
+    print(decoder(tgt_data))
