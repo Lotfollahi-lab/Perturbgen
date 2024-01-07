@@ -275,16 +275,16 @@ class TTransformer(nn.Module):
 if __name__ == "__main__":
     src_vocab_size = 5000
     tgt_vocab_size = 5000
-    d_model = 512
+    d_model = 256
     num_heads = 8
     num_layers = 6
     d_ff = 2048
     max_seq_length = 100
     dropout = 0.1
     n_tokens = 200
-    decoder = DecoderLayer(dim = d_model, n_heads=num_heads, hidden_size = d_ff,dropout=dropout,d_head=64,context_dim=d_model)
+    decoder = DecoderLayer(dim = d_model, n_heads=num_heads, hidden_size = d_ff,dropout=dropout,d_head=64,context_dim=320)
 
     # Generate random sample data
-    src_data = torch.rand(10, 500, d_model)
+    src_data = torch.rand(10, 200, d_model)
     tgt_data = torch.rand(10, n_tokens, d_model)  # (batch_size, seq_length)
     print(decoder(tgt_data).shape)
