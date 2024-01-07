@@ -1,0 +1,36 @@
+name: Python package
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    - run: pip install -U pip setuptools wheel
+    - run: pip install -r requirements.txt
+    - run: pip install -e .
+    - run: pip install flake8 mypy pydocstyle
+
+    - name: Run Flake8
+      run: |
+        flake8 --max-line-length=88 --extend-ignore=E203 --exclude="*_nb.py" lotfollibrary
+    - name: Run MyPy
+      if: ${{ always() }}
+      run: |
+        mypy --ignore-missing-imports --scripts-are-modules --follow-imports=skip --exclude=_nb\.py lotfollibrary
+    - name: Run Pydocstyle
+      if: ${{ always() }}
+      run: |
+        pydocstyle --ignore-decorators=property --match='((?!_nb).)*\.py' lotfollibrary
