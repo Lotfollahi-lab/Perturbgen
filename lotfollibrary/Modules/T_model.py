@@ -249,6 +249,6 @@ if __name__ == "__main__":
     # transformer = TTransformer(src_vocab_size, tgt_vocab_size, d_model, num_heads, num_layers, d_ff, max_seq_length,
     #                           dropout)
     # Generate random sample data
-    src_data = torch.rand(10, 200, d_model)
+    src_data = torch.rand(10, 500, d_model)
     tgt_data = torch.rand(10, n_tokens, d_model)  # (batch_size, seq_length)
     print(decoder(tgt_data, enc_output=src_data).shape)
