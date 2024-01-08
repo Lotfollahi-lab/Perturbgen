@@ -230,14 +230,14 @@ class TTransformer(nn.Module):
         src_mask = torch.tensor((src != 0),dtype=bool)
         tgt_pad = torch.tensor((tgt != 0),dtype=bool)
         tgt_pad = torch.cat((self.cls_label.expand(tgt_pad.shape[0], 1), tgt_pad), dim=1)
-        # seq_length = tgt.size(1)
+
         probability_matrix = torch.full(tgt_pad.shape, self.mlm_probability)
         probability_matrix.masked_fill(~tgt_pad, 0)
         tgt_mask = torch.bernoulli(probability_matrix).bool()
-
+        # seq_length = tgt.size(1)
         # nopeak_mask = (1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)).bool()
         # tgt_mask = tgt_mask & nopeak_mask
-
+        print(tgt_mask.shape)
         labels[~tgt_mask] = -100
         # labels = torch.cat((self.cls_label.expand(labels.shape[0],1), labels), dim=1)
 
