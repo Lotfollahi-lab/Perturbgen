@@ -113,9 +113,7 @@ class CrossAttention(nn.Module):
 
         sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
         if mask is not None:
-            print(mask.shape)
             mask = rearrange(mask, 'b ... -> b (...)')
-            print(mask.shape)
             max_neg_value = -torch.finfo(sim.dtype).max
             mask = repeat(mask, 'b j -> (b h) () j', h=h)
             print(mask.shape)
@@ -165,8 +163,6 @@ class DecoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None):
-        print(tgt_mask.shape)
-
         attn_output = self.self_attn(x, mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
@@ -218,7 +214,7 @@ class TTransformer(nn.Module):
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
-        self.cls_label = nn.Parameter(torch.tensor(-100.0))
+        self.cls_label = nn.Parameter(torch.tensor(False))
         self.decoder_embedding = nn.Embedding(tgt_vocab_size, d_model)
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
 
@@ -233,15 +229,18 @@ class TTransformer(nn.Module):
         labels = tgt.clone()
         src_mask = (src != 0)
         tgt_pad = (tgt != 0)
+        tgt_pad = torch.cat((self.cls_label.expand(tgt_pad.shape[0], 1), tgt_pad), dim=1)
         # seq_length = tgt.size(1)
         probability_matrix = torch.full(tgt_pad.shape, self.mlm_probability)
-        probability_matrix.masked_fill(tgt_pad, 0)
+        probability_matrix.masked_fill(~tgt_pad, 0)
         tgt_mask = torch.bernoulli(probability_matrix).bool()
 
         # nopeak_mask = (1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)).bool()
         # tgt_mask = tgt_mask & nopeak_mask
 
         labels[~tgt_mask] = -100
+        # labels = torch.cat((self.cls_label.expand(labels.shape[0],1), labels), dim=1)
+
         return src_mask, tgt_mask, labels
 
     def prepare_tokens(self, x):
@@ -262,7 +261,6 @@ class TTransformer(nn.Module):
         # src_embedded = self.encoder_layers(src)
         src_embedded = src
         tgt_embedded = self.prepare_tokens(self.decoder_embedding(tgt))
-        labels = torch.cat((self.cls_label.expand(labels.shape[0],1), labels), dim=1)
         enc_output = src_embedded
         dec_output = tgt_embedded
         for dec_layer in self.decoder_layers:
