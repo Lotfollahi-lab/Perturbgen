@@ -111,12 +111,11 @@ class CrossAttention(nn.Module):
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
 
         sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
-        print(sim.shape)
         if mask is not None:
             mask = rearrange(mask, 'b ... -> b (...)')
             max_neg_value = -torch.finfo(sim.dtype).max
             mask = repeat(mask, 'b j -> (b h) () j', h=h)
-            sim.masked_fill_(~mask, max_neg_value)
+            sim.masked_fill_(mask, max_neg_value)
 
         # attention, what we cannot get enough of
         attn = sim.softmax(dim=-1)
@@ -160,10 +159,10 @@ class DecoderLayer(nn.Module):
         self.norm3 = nn.LayerNorm(dim)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, tgt_mask= None, enc_output=None):
+    def forward(self, x, src_mask= None, tgt_mask= None, enc_output=None):
         attn_output = self.self_attn(x, mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
-        attn_output = self.cross_attn(x, context=enc_output, mask=tgt_mask)
+        attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
         x = self.norm2(x + self.dropout(attn_output))
         ff_output = self.feed_forward(x)
         x = self.norm3(x + self.dropout(ff_output))
@@ -205,9 +204,11 @@ class Geneformerwrapper(nn.Module):
         return embs
 
 class TTransformer(nn.Module):
-    def __init__(self, tgt_vocab_size, d_model, num_heads, num_layers, d_ff, max_seq_length, dropout):
+    def __init__(self, tgt_vocab_size, d_model, num_heads, num_layers, d_ff,
+                 max_seq_length, dropout,mlm_probability = 0.15):
         super(TTransformer, self).__init__()
         self.num_features = self.embed_dim = d_model
+        self.mlm_probability = mlm_probability
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
         self.decoder_embedding = nn.Embedding(tgt_vocab_size, d_model)
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
@@ -219,12 +220,19 @@ class TTransformer(nn.Module):
         self.fc = nn.Linear(d_model, tgt_vocab_size)
         self.dropout = nn.Dropout(dropout)
 
-    def generate_mask(self, tgt):
-        tgt_mask = (tgt != 0).unsqueeze(1).unsqueeze(3)
-        seq_length = tgt.size(1)
-        nopeak_mask = (1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)).bool()
-        tgt_mask = tgt_mask & nopeak_mask
-        return tgt_mask
+    def generate_mask(self, src, tgt):
+        labels = tgt.clone()
+        src_mask = (src != 0).unsqueeze(1).unsqueeze(2)
+        tgt_pad = (tgt != 0).unsqueeze(1).unsqueeze(3)
+        # seq_length = tgt.size(1)
+        probability_matrix = torch.full(tgt_pad.shape, self.mlm_probability)
+        probability_matrix.mask_fill(tgt_pad, 0)
+        tgt_mask = torch.bernoulli(probability_matrix).bool()
+
+        # nopeak_mask = (1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)).bool()
+        # tgt_mask = tgt_mask & nopeak_mask
+        labels[~tgt_mask] = -100
+        return src_mask, tgt_mask, labels
 
     def prepare_tokens(self, x):
         B, nc, d = x.shape
@@ -239,14 +247,14 @@ class TTransformer(nn.Module):
         return self.pos_drop(x)
 
     def forward(self, src, tgt):
-        tgt_mask = self.generate_mask(tgt)
+        src_mask, tgt_mask = self.generate_mask(src, tgt)
         src_embedded = self.encoder_layers(src)
         tgt_embedded = self.prepare_tokens(self.decoder_embedding(tgt))
 
         enc_output = src_embedded
         dec_output = tgt_embedded
         for dec_layer in self.decoder_layers:
-            dec_output = dec_layer(dec_output, enc_output, tgt_mask)
+            dec_output = dec_layer(dec_output, enc_output, src_mask, tgt_mask)
 
         output = self.fc(dec_output)
         return output
