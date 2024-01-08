@@ -254,8 +254,6 @@ class TTransformer(nn.Module):
         src_mask, tgt_mask, labels = self.generate_mask(src, tgt)
         # src_embedded = self.encoder_layers(src)
         src_embedded = src
-        print(tgt.shape)
-        print(self.decoder_embedding(tgt).shape)
         tgt_embedded = self.prepare_tokens(self.decoder_embedding(tgt))
         labels = torch.cat((self.cls_label.expand(labels.shape[0]), labels), dim=1)
         enc_output = src_embedded
@@ -288,4 +286,4 @@ if __name__ == "__main__":
     position = PositionalEncoding(d_model, max_seq_length)
     # print(position(tgt_data).shape)
     # print(decoder(tgt_data, enc_output=src_data).shape)
-    print(transformer(tgt_data, src_data).shape)
+    print(transformer(src_data, tgt_data).shape)
