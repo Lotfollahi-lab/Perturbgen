@@ -210,6 +210,7 @@ class TTransformer(nn.Module):
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
+        self.cls_label = nn.Parameter(torch.tensor(-100,dtype=torch.long))
         self.decoder_embedding = nn.Embedding(tgt_vocab_size, d_model)
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
 
@@ -247,17 +248,18 @@ class TTransformer(nn.Module):
         return self.pos_drop(x)
 
     def forward(self, src, tgt):
-        src_mask, tgt_mask = self.generate_mask(src, tgt)
-        src_embedded = self.encoder_layers(src)
+        src_mask, tgt_mask, labels = self.generate_mask(src, tgt)
+        # src_embedded = self.encoder_layers(src)
+        src_embedded = src
         tgt_embedded = self.prepare_tokens(self.decoder_embedding(tgt))
-
+        labels = torch.cat((self.cls_label.expand(labels.shape[0]), labels), dim=1)
         enc_output = src_embedded
         dec_output = tgt_embedded
         for dec_layer in self.decoder_layers:
             dec_output = dec_layer(dec_output, enc_output, src_mask, tgt_mask)
 
         output = self.fc(dec_output)
-        return output
+        return output, labels
 
 
 if __name__ == "__main__":
