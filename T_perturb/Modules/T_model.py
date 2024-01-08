@@ -113,9 +113,13 @@ class CrossAttention(nn.Module):
 
         sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
         if mask is not None:
+            print(mask.shape)
             mask = rearrange(mask, 'b ... -> b (...)')
+            print(mask.shape)
             max_neg_value = -torch.finfo(sim.dtype).max
             mask = repeat(mask, 'b j -> (b h) () j', h=h)
+            print(mask.shape)
+            print(sim.shape)
             sim.masked_fill_(mask, max_neg_value)
 
         # attention, what we cannot get enough of
@@ -255,7 +259,6 @@ class TTransformer(nn.Module):
         # src_embedded = self.encoder_layers(src)
         src_embedded = src
         tgt_embedded = self.prepare_tokens(self.decoder_embedding(tgt))
-        print(self.cls_label.expand(labels.shape[0]).shape)
         labels = torch.cat((self.cls_label.expand(labels.shape[0],1), labels), dim=1)
         enc_output = src_embedded
         dec_output = tgt_embedded
