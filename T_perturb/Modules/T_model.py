@@ -239,6 +239,7 @@ class TTransformer(nn.Module):
         return src_mask, tgt_mask, labels
 
     def prepare_tokens(self, x):
+        print(x.shape)
         B, nc, d = x.shape
         # add the [CLS] token to the embed patch tokens
         cls_tokens = self.cls_token.expand(B, -1, -1)
