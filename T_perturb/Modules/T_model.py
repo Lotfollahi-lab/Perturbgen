@@ -279,8 +279,10 @@ if __name__ == "__main__":
                            context_dim=d_model)
     transformer = TTransformer()
     # Generate random sample data
-    src_data = torch.rand(10, 500, d_model)
-    tgt_data = torch.rand(10, n_tokens, d_model)  # (batch_size, seq_length)
+
+    src_data = torch.randint(20000,(10, 500, d_model))
+    tgt_data = torch.randint(20000,(10, n_tokens, d_model))
+    # (batch_size, seq_length)
     position = PositionalEncoding(d_model, max_seq_length)
     # print(position(tgt_data).shape)
     # print(decoder(tgt_data, enc_output=src_data).shape)
