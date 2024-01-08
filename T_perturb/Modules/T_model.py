@@ -229,7 +229,7 @@ class TTransformer(nn.Module):
         tgt_pad = (tgt != 0).unsqueeze(1).unsqueeze(3)
         # seq_length = tgt.size(1)
         probability_matrix = torch.full(tgt_pad.shape, self.mlm_probability)
-        probability_matrix.mask_fill(tgt_pad, 0)
+        probability_matrix.masked_fill(tgt_pad, 0)
         tgt_mask = torch.bernoulli(probability_matrix).bool()
 
         # nopeak_mask = (1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)).bool()
