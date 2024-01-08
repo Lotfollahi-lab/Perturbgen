@@ -266,7 +266,7 @@ class TTransformer(nn.Module):
         enc_output = src_embedded
         dec_output = tgt_embedded
         for dec_layer in self.decoder_layers:
-            dec_output = dec_layer(dec_output, enc_output, src_mask, tgt_mask)
+            dec_output = dec_layer(dec_output, src_mask, tgt_mask, enc_output)
 
         output = self.fc(dec_output)
         return output, labels
