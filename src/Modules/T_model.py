@@ -242,7 +242,7 @@ if __name__ == "__main__":
     num_heads = 8
     num_layers = 6
     d_ff = 2048
-    max_seq_length = 100
+    max_seq_length = 400
     dropout = 0.1
     n_tokens = 200
     decoder = DecoderLayer(dim = d_model, n_heads=num_heads, hidden_size = d_ff,dropout=dropout,d_head=64,context_dim=d_model)
