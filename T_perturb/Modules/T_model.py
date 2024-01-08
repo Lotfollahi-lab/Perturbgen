@@ -239,7 +239,6 @@ class TTransformer(nn.Module):
         return src_mask, tgt_mask, labels
 
     def prepare_tokens(self, x):
-        print(x.shape)
         B, nc, d = x.shape
         # add the [CLS] token to the embed patch tokens
         cls_tokens = self.cls_token.expand(B, -1, -1)
@@ -282,7 +281,7 @@ if __name__ == "__main__":
     # Generate random sample data
 
     src_data = torch.randint(20000,(10, 500, d_model))
-    tgt_data = torch.randint(20000,(10, n_tokens, d_model))
+    tgt_data = torch.randint(20000,(10, n_tokens))
     # (batch_size, seq_length)
     position = PositionalEncoding(d_model, max_seq_length)
     # print(position(tgt_data).shape)
