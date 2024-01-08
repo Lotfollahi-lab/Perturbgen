@@ -225,8 +225,8 @@ class TTransformer(nn.Module):
 
     def generate_mask(self, src, tgt):
         labels = tgt.clone()
-        src_mask = (src != 0).unsqueeze(1).unsqueeze(2)
-        tgt_pad = (tgt != 0).unsqueeze(1).unsqueeze(3)
+        src_mask = (src != 0)
+        tgt_pad = (tgt != 0)
         # seq_length = tgt.size(1)
         probability_matrix = torch.full(tgt_pad.shape, self.mlm_probability)
         probability_matrix.masked_fill(tgt_pad, 0)
@@ -234,8 +234,7 @@ class TTransformer(nn.Module):
 
         # nopeak_mask = (1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)).bool()
         # tgt_mask = tgt_mask & nopeak_mask
-        print(tgt_mask.shape)
-        print(labels.shape)
+
         labels[~tgt_mask] = -100
         return src_mask, tgt_mask, labels
 
@@ -283,6 +282,6 @@ if __name__ == "__main__":
     src_data = torch.rand(10, 500, d_model)
     tgt_data = torch.rand(10, n_tokens, d_model)  # (batch_size, seq_length)
     position = PositionalEncoding(d_model, max_seq_length)
-    print(position(tgt_data).shape)
-    print(decoder(tgt_data, enc_output=src_data).shape)
+    # print(position(tgt_data).shape)
+    # print(decoder(tgt_data, enc_output=src_data).shape)
     print(transformer(tgt_data, src_data).shape)
