@@ -241,8 +241,7 @@ class TTransformer(nn.Module):
         labels = torch.cat((torch.tensor(0).expand(labels.shape[0], 1), labels), dim=1)
         labels[~tgt_mask] = -100
         src_mask = torch.randint(20000, size=(src.shape[0], src.shape[1])).bool()
-        print(type(tgt_mask))
-        print(type(src_mask))
+
         # labels = torch.cat((self.cls_label.expand(labels.shape[0],1), labels), dim=1)
         return src_mask, tgt_mask, labels
 
@@ -287,8 +286,8 @@ if __name__ == "__main__":
                            context_dim=d_model)
     transformer = TTransformer()
     # Generate random sample data
-
-    src_data = torch.randint(20000,(10, 500, d_model))
+    src_data = torch.rand(10, 500, d_model)
+    # src_data = torch.randint(20000,(10, 500, d_model))
     tgt_data = torch.randint(20000,(10, n_tokens))
     # (batch_size, seq_length)
     position = PositionalEncoding(d_model, max_seq_length)
