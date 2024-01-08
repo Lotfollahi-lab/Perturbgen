@@ -240,7 +240,9 @@ class TTransformer(nn.Module):
         # tgt_mask = tgt_mask & nopeak_mask
         labels = torch.cat((torch.tensor(0).expand(labels.shape[0], 1), labels), dim=1)
         labels[~tgt_mask] = -100
-        src_mask = torch.randint(20000, size=(src.shape[0], src.shape[1])).bool().to(tgt_mask.type())
+        src_mask = torch.randint(20000, size=(src.shape[0], src.shape[1])).bool()
+        print(type(tgt_mask))
+        print(type(src_mask))
         # labels = torch.cat((self.cls_label.expand(labels.shape[0],1), labels), dim=1)
         return src_mask, tgt_mask, labels
 
