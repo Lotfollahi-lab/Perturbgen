@@ -257,6 +257,7 @@ class TTransformer(nn.Module):
     def forward(self, src, tgt):
         src_mask, tgt_mask, labels = self.generate_mask(src, tgt)
         print(tgt_mask.shape)
+
         # src_embedded = self.encoder_layers(src)
         src_embedded = src
         tgt_embedded = self.prepare_tokens(self.decoder_embedding(tgt))
