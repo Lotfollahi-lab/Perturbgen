@@ -229,6 +229,7 @@ class TTransformer(nn.Module):
         labels = tgt.clone()
         src_mask = (src != 0)
         tgt_pad = (tgt != 0)
+        print(tgt_pad)
         tgt_pad = torch.cat((self.cls_label.expand(tgt_pad.shape[0], 1), tgt_pad), dim=1)
         # seq_length = tgt.size(1)
         probability_matrix = torch.full(tgt_pad.shape, self.mlm_probability)
