@@ -10,6 +10,7 @@ import torch.nn as nn
 import math
 from transformers import BertForMaskedLM
 
+
 def drop_path(x, drop_prob: float = 0., training: bool = False):
     if drop_prob == 0. or not training:
         return x
@@ -159,7 +160,7 @@ class DecoderLayer(nn.Module):
         self.norm3 = nn.LayerNorm(dim)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, src_mask= None, tgt_mask= None, enc_output=None):
+    def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None):
         attn_output = self.self_attn(x, mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
@@ -191,7 +192,7 @@ class Geneformerwrapper(nn.Module):
                  , output_attentions=False, output_hidden_states=True):
         super(Geneformerwrapper, self).__init__()
         self.model = BertForMaskedLM.from_pretrained(model_path, output_attentions=output_attentions,
-                                                output_hidden_states=output_hidden_states).to("cuda")
+                                                     output_hidden_states=output_hidden_states).to("cuda")
 
     def forward(self, x):
         with torch.no_grad():
@@ -203,14 +204,15 @@ class Geneformerwrapper(nn.Module):
 
         return embs
 
+
 class TTransformer(nn.Module):
-    def __init__(self, tgt_vocab_size, d_model, num_heads, num_layers, d_ff,
-                 max_seq_length, dropout,mlm_probability = 0.15):
+    def __init__(self, tgt_vocab_size=25000, d_model=256, num_heads=8, num_layers=1, d_ff=2048,
+                 max_seq_length=2048, dropout=0.0, mlm_probability=0.15):
         super(TTransformer, self).__init__()
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
-        self.cls_label = nn.Parameter(torch.tensor(-100,dtype=torch.long))
+        self.cls_label = nn.Parameter(torch.tensor(-100, dtype=torch.long))
         self.decoder_embedding = nn.Embedding(tgt_vocab_size, d_model)
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
 
@@ -272,12 +274,13 @@ if __name__ == "__main__":
     max_seq_length = 400
     dropout = 0.1
     n_tokens = 200
-    decoder = DecoderLayer(dim = d_model, n_heads=num_heads, hidden_size = d_ff,dropout=dropout,d_head=64,context_dim=d_model)
+    decoder = DecoderLayer(dim=d_model, n_heads=num_heads, hidden_size=d_ff, dropout=dropout, d_head=64,
+                           context_dim=d_model)
     # transformer = TTransformer(src_vocab_size, tgt_vocab_size, d_model, num_heads, num_layers, d_ff, max_seq_length,
     #                           dropout)
     # Generate random sample data
     src_data = torch.rand(10, 500, d_model)
     tgt_data = torch.rand(10, n_tokens, d_model)  # (batch_size, seq_length)
-    position = PositionalEncoding(d_model,max_seq_length)
+    position = PositionalEncoding(d_model, max_seq_length)
     print(position(tgt_data).shape)
     print(decoder(tgt_data, enc_output=src_data).shape)
