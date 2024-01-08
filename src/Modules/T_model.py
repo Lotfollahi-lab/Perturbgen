@@ -8,7 +8,7 @@ from einops import rearrange, repeat
 import torch
 import torch.nn as nn
 import math
-
+from transformers import BertForMaskedLM
 
 def drop_path(x, drop_prob: float = 0., training: bool = False):
     if drop_prob == 0. or not training:
@@ -187,6 +187,23 @@ class PositionalEncoding(nn.Module):
         return x + self.pe[:, :x.size(1)]
 
 
+class Geneformerwrapper(nn.Module):
+    def __init__(self, model_path="/lustre/scratch126/cellgen/team205/ml19/Arian/Geneformer/geneformer-6L-30M/"
+                 , output_attentions=False, output_hidden_states=True):
+        super(Geneformerwrapper, self).__init__()
+        self.model = BertForMaskedLM.from_pretrained(model_path, output_attentions=output_attentions,
+                                                output_hidden_states=output_hidden_states).to("cuda")
+
+    def forward(self, x):
+        with torch.no_grad():
+            outputs = self.model.forward(
+                input_ids=x["input_ids"].to("cuda"),
+                attention_mask=x["attention_mask"].to("cuda")
+            )
+            embs = outputs.hidden_states[-1]
+
+        return embs
+
 class TTransformer(nn.Module):
     def __init__(self, tgt_vocab_size, d_model, num_heads, num_layers, d_ff, max_seq_length, dropout):
         super(TTransformer, self).__init__()
@@ -195,7 +212,7 @@ class TTransformer(nn.Module):
         self.decoder_embedding = nn.Embedding(tgt_vocab_size, d_model)
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
 
-        self.encoder_layers = geneformer()
+        self.encoder_layers = Geneformerwrapper()
         self.decoder_layers = nn.ModuleList(
             [DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
 
