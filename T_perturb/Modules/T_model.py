@@ -248,7 +248,7 @@ class TTransformer(nn.Module):
         # add positional encoding to each token
         x = x + self.positional_encoding(x)
 
-        return self.pos_drop(x)
+        return x
 
     def forward(self, src, tgt):
         src_mask, tgt_mask, labels = self.generate_mask(src, tgt)
