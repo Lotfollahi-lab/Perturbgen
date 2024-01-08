@@ -212,7 +212,7 @@ class TTransformer(nn.Module):
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
-        self.cls_label = nn.Parameter(torch.tensor(-100))
+        self.cls_label = nn.Parameter(torch.tensor(-100.0))
         self.decoder_embedding = nn.Embedding(tgt_vocab_size, d_model)
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
 
