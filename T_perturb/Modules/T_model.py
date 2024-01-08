@@ -214,7 +214,7 @@ class TTransformer(nn.Module):
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
-        self.cls_label = nn.Parameter(torch.tensor(False, dtype=torch.float32))
+        self.cls_label = nn.Parameter(torch.tensor(False))
         self.decoder_embedding = nn.Embedding(tgt_vocab_size, d_model)
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
 
@@ -227,9 +227,8 @@ class TTransformer(nn.Module):
 
     def generate_mask(self, src, tgt):
         labels = tgt.clone()
-        src_mask = (src != 0)
-        tgt_pad = (tgt != 0)
-        print(tgt_pad)
+        src_mask = torch.tensor((src != 0),dtype=bool)
+        tgt_pad = torch.tensor((tgt != 0),dtype=bool)
         tgt_pad = torch.cat((self.cls_label.expand(tgt_pad.shape[0], 1), tgt_pad), dim=1)
         # seq_length = tgt.size(1)
         probability_matrix = torch.full(tgt_pad.shape, self.mlm_probability)
