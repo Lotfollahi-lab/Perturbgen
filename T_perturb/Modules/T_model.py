@@ -255,7 +255,7 @@ class TTransformer(nn.Module):
         # src_embedded = self.encoder_layers(src)
         src_embedded = src
         tgt_embedded = self.prepare_tokens(self.decoder_embedding(tgt))
-        print(labels.shape)
+        print(self.cls_label.expand(labels.shape[0]).shape)
         labels = torch.cat((self.cls_label.expand(labels.shape[0]), labels), dim=1)
         enc_output = src_embedded
         dec_output = tgt_embedded
