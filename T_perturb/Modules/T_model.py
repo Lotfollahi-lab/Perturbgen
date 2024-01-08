@@ -283,4 +283,4 @@ if __name__ == "__main__":
     position = PositionalEncoding(d_model, max_seq_length)
     print(position(tgt_data).shape)
     print(decoder(tgt_data, enc_output=src_data).shape)
-    print(transformer(tgt_data, enc_output=src_data).shape)
+    print(transformer(tgt_data, src_data).shape)
