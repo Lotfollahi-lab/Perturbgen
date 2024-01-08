@@ -227,6 +227,7 @@ class TTransformer(nn.Module):
 
     def generate_mask(self, src, tgt):
         labels = tgt.clone()
+
         src_mask = torch.tensor((src != 0),dtype=bool)
         tgt_pad = torch.tensor((tgt != 0),dtype=bool)
         tgt_pad = torch.cat((self.cls_label.expand(tgt_pad.shape[0], 1), tgt_pad), dim=1)
@@ -239,8 +240,8 @@ class TTransformer(nn.Module):
         # tgt_mask = tgt_mask & nopeak_mask
         labels = torch.cat((torch.tensor(0).expand(labels.shape[0], 1), labels), dim=1)
         labels[~tgt_mask] = -100
+        src_mask= torch.randint(20000, size=(src.shape(0), src.shape(1)), dtype=torch.int).bool()
         # labels = torch.cat((self.cls_label.expand(labels.shape[0],1), labels), dim=1)
-
         return src_mask, tgt_mask, labels
 
     def prepare_tokens(self, x):
