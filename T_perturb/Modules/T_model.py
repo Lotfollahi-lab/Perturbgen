@@ -234,6 +234,8 @@ class TTransformer(nn.Module):
 
         # nopeak_mask = (1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)).bool()
         # tgt_mask = tgt_mask & nopeak_mask
+        print(tgt_mask.shape)
+        print(labels.shape)
         labels[~tgt_mask] = -100
         return src_mask, tgt_mask, labels
 
