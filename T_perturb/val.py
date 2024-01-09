@@ -2,17 +2,19 @@
 
 import argparse
 import os
-
-
 from datetime import datetime
-from utils import load_model
+
 import pytorch_lightning as pl
 import torch
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint,TQDMProgressBar
-from pytorch_lightning.loggers import WandbLogger
-from data_module import GeneseqDataModule
-from clipgen_trainer import Clipgenetrainer
 import wandb
+from clipgen_trainer import Clipgenetrainer
+from data_module import GeneseqDataModule
+from pytorch_lightning.callbacks import (  # EarlyStopping,
+    ModelCheckpoint,
+    TQDMProgressBar,
+)
+from pytorch_lightning.loggers import WandbLogger
+from utils import load_model
 
 RANDOM_SEED = 42
 
@@ -50,13 +52,15 @@ def main() -> None:
 
     # Initialize model module
     # ----------------------------------------------------------------------------------
-    gene_encoder = load_model('Pretrained', 0,
-                              "/lustre/scratch126/cellgen/team205/ml19/Arian/Geneformer/geneformer-6L-30M/")
+    gene_encoder = load_model(
+        'Pretrained',
+        0,
+        '/lustre/scratch126/cellgen/team205/ml19/Arian/Geneformer/geneformer-6L-30M/',
+    )
     model_module = Clipgenetrainer(
         gene_encoder=gene_encoder,
         weight_decay=args.wd,
     )
-
 
     # Initialize data module
     # ----------------------------------------------------------------------------------
@@ -72,13 +76,13 @@ def main() -> None:
     # ----------------------------------------------------------------------------------
     run_id = datetime.now().strftime('clip_geneseq_%Y_%m_%d_%H_%M')
     log_path = os.path.join(args.log_dir, run_id)
-    os.makedirs(os.path.join(os.getcwd(),log_path) , exist_ok=True)
+    os.makedirs(os.path.join(os.getcwd(), log_path), exist_ok=True)
 
     # Define Callbacks
     # This callback always keeps a checkpoint of the best model according to
     # validation accuracy.
     checkpoint_callback = ModelCheckpoint(
-        dirpath="/lustre/scratch126/cellgen/team205/av13/clipgeneseq/model",
+        dirpath='/lustre/scratch126/cellgen/team205/av13/clipgeneseq/model',
         filename='checkpoint',
         save_top_k=1,
         verbose=True,
@@ -87,7 +91,7 @@ def main() -> None:
     )
     # Early stopping interrupts training, if there was no improvement in validation
     # loss for a certain training period.
-    early_stopping_callback = EarlyStopping(monitor='val/loss', patience=5)
+    # early_stopping_callback = EarlyStopping(monitor='val/loss', patience=5)
 
     # The tensorboard logger allows for monitoring the progress of training
     if torch.cuda.device_count() > 1:
@@ -96,20 +100,18 @@ def main() -> None:
             entity='amirh-vahidi',
             project='clip_gene_seq',
             # id=unique_id,  # specify id to log to same run
-            group=log_path ,  # all runs are saved in one group for multi gpu training
-            dir="/lustre/scratch126/cellgen/team205/av13/clipgeneseq"
+            group=log_path,  # all runs are saved in one group for multi gpu training
+            dir='/lustre/scratch126/cellgen/team205/av13/clipgeneseq',
         )
     else:
         wandb.init(
             entity='amirh-vahidi',
             project='clip_gene_seq',
-            id=run_id ,
-            dir="/lustre/scratch126/cellgen/team205/av13/clipgeneseq",
+            id=run_id,
+            dir='/lustre/scratch126/cellgen/team205/av13/clipgeneseq',
         )
 
-    wandb_logger = WandbLogger(
-        log_model="all"
-    )
+    wandb_logger = WandbLogger(log_model='all')
 
     # In this simple example we just check if a GPU is available.
     # For training larger models in a distributed settings, this needs more care.
@@ -124,15 +126,18 @@ def main() -> None:
     # precision training, etc. using the trainer class.
     trainer = pl.Trainer(
         logger=wandb_logger,
-        callbacks=[TQDMProgressBar(refresh_rate=10),checkpoint_callback],
+        callbacks=[TQDMProgressBar(refresh_rate=10), checkpoint_callback],
         max_epochs=args.epochs,
         accelerator=accelerator,
     )
 
     # Finally, kick of the training process.
-    trainer.test(model_module, data_module,ckpt_path = "/lustre/scratch126/cellgen/team205/av13/clipgeneseq/model/checkpoint.ckpt")
-
-
+    trainer.test(
+        model_module,
+        data_module,
+        ckpt_path='/lustre/scratch126/cellgen/team205/av13'
+        '/clipgeneseq/model/checkpoint.ckpt',
+    )
 
 
 if __name__ == '__main__':
