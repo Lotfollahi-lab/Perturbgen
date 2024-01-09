@@ -43,7 +43,6 @@ class Mlp(nn.Module):
         self.act = act_layer()
         self.fc2 = nn.Linear(hidden_features, out_features)
         self.drop = nn.Dropout(drop)
-
     def forward(self, x):
         x = self.fc1(x)
         x = self.act(x)
@@ -88,29 +87,21 @@ class CrossAttention(nn.Module):
             context_dim = query_dim
         self.scale = dim_head ** -0.5
         self.heads = heads
-
         self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
         self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
         self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
-
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim, query_dim),
             nn.Dropout(dropout)
         )
-
     def forward(self, x, context=None, mask=None):
         h = self.heads
-
         q = self.to_q(x)
-
         if context is None:
             context = x
-
         k = self.to_k(context)
         v = self.to_v(context)
-
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
-
         sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
         if mask is not None:
             mask = rearrange(mask, 'b ... -> b (...)')
@@ -119,10 +110,8 @@ class CrossAttention(nn.Module):
             print(mask.shape)
             print(sim.shape)
             sim.masked_fill_(mask, max_neg_value)
-
         # attention, what we cannot get enough of
         attn = sim.softmax(dim=-1)
-
         out = einsum('b i j, b j d -> b i d', attn, v)
         out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
         return self.to_out(out)
@@ -152,7 +141,6 @@ class Block(nn.Module):
 class DecoderLayer(nn.Module):
     def __init__(self, dim, n_heads, d_head, hidden_size, dropout=0., context_dim=None):
         super().__init__()
-
         self.self_attn = CrossAttention(query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout)
         self.cross_attn = CrossAttention(query_dim=dim, context_dim=context_dim,
                                          heads=n_heads, dim_head=d_head, dropout=dropout)
@@ -161,8 +149,7 @@ class DecoderLayer(nn.Module):
         self.norm2 = nn.LayerNorm(dim)
         self.norm3 = nn.LayerNorm(dim)
         self.dropout = nn.Dropout(dropout)
-
-    def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None):
+    def forward(self, x, src_mask= None, tgt_mask= None, enc_output=None):
         attn_output = self.self_attn(x, mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
