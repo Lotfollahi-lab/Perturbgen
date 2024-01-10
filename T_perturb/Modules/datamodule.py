@@ -28,7 +28,6 @@ class GeneformerDataset(Dataset):
         else:
             raise ValueError("var_to_keep must be provided")
 
-        self.tokenizer = TranscriptomeTokenizer(self.var_to_keep, nproc=16)
         self.shuffle = shuffle
         self.adata = load_from_disk(folder)
         # with open(token_dictionary_file, "rb") as f:
@@ -42,28 +41,22 @@ class GeneformerDataset(Dataset):
         # Success
         return self.adata[ind]
 
-    def tokenize(self, adata, file = 'data/preprocess.h5ad'):
-        adata.write_h5ad(file)
-        self.tokenizer.tokenize_data("./data",
-                                "./data",
-                                "tokenized",
-                                file_format="h5ad")
-
     def pad_tensor(self,tensor, max_len=2048):
-        max_len = get_model_input_size('GeneClassifier')
         tensor = torch.nn.functional.pad(tensor, 
                                          pad=(0,max_len - tensor.numel()),
                                          mode='constant',
                                          value=self.pad_token_id)
         return tensor
 
+#two dataloader vs one dataloader
 class GeneformerDataModule(LightningDataModule):
     def __init__(self,
                  folder= "./data/tokenized.dataset",
                  batch_size=3,
                  num_workers=0,
                  shuffle=False,
-                 tokenizer=None
+                 tokenizer=None,
+                 max_len=2048,
                  ):
         """Create a text image datamodule from directories with congruent text and image names.
 
@@ -85,7 +78,7 @@ class GeneformerDataModule(LightningDataModule):
         with open(token_dictionary_file, "rb") as f:
             self.gene_token_dict = pickle.load(f)
         self.pad_token_id = self.gene_token_dict.get("<pad>")
-        self.max_len = 2048
+        self.max_len = max_len
 
     def prepare_data(self):
         assert self.h5ad_path.exists(), ".h5ad file does not exist"
@@ -97,20 +90,21 @@ class GeneformerDataModule(LightningDataModule):
         return DataLoader(self.dataset, collate_fn= self.custom_collate, batch_size=self.batch_size
                           , shuffle=self.shuffle, num_workers=self.num_workers)
 
-    def custom_collate(self,batch):
-        model_input_size = 2048
+    def src_collate(self,batch):
+        model_input_size = self.max_len
         input_batch_id = [torch.tensor(d["input_ids"]) for d in batch]
         length = torch.stack([torch.tensor(d["length"]) for d in batch])
         cell = [d["cell_type"] for d in batch]
         input_batch_id = pad_tensor_list(
             input_batch_id,
-            2048,
+            self.max_len,
             self.pad_token_id,
             model_input_size)
-        return {"input_id": input_batch_id.clone().detach()
-                , "length" : length.clone().detach()
-                , "cell_type" : cell
-                , "attention_mask" : self.gen_attention_mask(length)
+        return {"src_input_id": input_batch_id.clone().detach()
+                , "src_length" : length.clone().detach()
+                , "src_cell_type" : cell
+                , "src_attention_mask" : self.gen_attention_mask(length), #no attention mask needed for tgt
+
                 }
 
     def gen_attention_mask(self, length):
