@@ -6,8 +6,8 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from pytorch_lightning import LightningDataModule
 from geneformer import TranscriptomeTokenizer
-from datasets import Dataset, load_from_disk
-from geneformer.in_silico_perturber import pad_tensor_list
+from datasets import load_from_disk
+from geneformer.perturber_utils import pad_tensor_list
 from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 
 
@@ -15,38 +15,34 @@ class GeneformerDataset(Dataset):
     def __init__(self,
                  folder = "./data/tokenized.dataset",
                  shuffle=False,
-                 var_to_keep: list = None,
                  ):
+        super().__init__()
         """
         Description:
         ------------
-        This class load adata object from disk and tokenize it using geneformer tokenizer.
-
+        This class load tokenised data from disk and extract the following information:
+        - input_ids: tokenised gene expression data, padded to the same length
+        - length: length of each cell
         """
-        if var_to_keep: 
-            self.var_to_keep = {v : v for v in var_to_keep}
-        else:
-            raise ValueError("var_to_keep must be provided")
-
         self.shuffle = shuffle
-        self.adata = load_from_disk(folder)
+        self.dataset = load_from_disk(folder)
         # with open(token_dictionary_file, "rb") as f:
         #     self.gene_token_dict = pickle.load(f)
         # self.pad_token_id = self.gene_token_dict.get("<pad>")
 
     def __len__(self):
-        return len(self.adata)
+        return len(self.dataset)
 
     def __getitem__(self, ind):
         # Success
-        return self.adata[ind]
+        return self.dataset[ind]
 
-    def pad_tensor(self,tensor, max_len=2048):
-        tensor = torch.nn.functional.pad(tensor, 
-                                         pad=(0,max_len - tensor.numel()),
-                                         mode='constant',
-                                         value=self.pad_token_id)
-        return tensor
+    # def pad_tensor(self,tensor, max_len=2048):
+    #     tensor = torch.nn.functional.pad(tensor, 
+    #                                      pad=(0,max_len - tensor.numel()),
+    #                                      mode='constant',
+    #                                      value=self.pad_token_id)
+    #     return tensor
 
 #two dataloader vs one dataloader
 class GeneformerDataModule(LightningDataModule):
@@ -55,19 +51,12 @@ class GeneformerDataModule(LightningDataModule):
                  batch_size=3,
                  num_workers=0,
                  shuffle=False,
-                 tokenizer=None,
                  max_len=2048,
                  ):
-        """Create a text image datamodule from directories with congruent text and image names.
-
-        Args:
-            folder (str): Folder containing images and text files matched by their paths' respective "stem"
-            batch_size (int): The batch size of each dataloader.
-            num_workers (int, optional): The number of workers in the DataLoader. Defaults to 0.
-            image_size (int, optional): The size of outputted images. Defaults to 224.
-            resize_ratio (float, optional): Minimum percentage of image contained by resize. Defaults to 0.75.
-            shuffle (bool, optional): Whether or not to have shuffling behavior during sampling. Defaults to False.
-            custom_tokenizer (transformers.AutoTokenizer, optional): The tokenizer to use on the text. Defaults to None.
+        """
+        Description:
+        ------------
+        Custom datamodule for Geneformer tokenised data.
         """
         super().__init__()
         self.folder = folder
@@ -79,32 +68,33 @@ class GeneformerDataModule(LightningDataModule):
             self.gene_token_dict = pickle.load(f)
         self.pad_token_id = self.gene_token_dict.get("<pad>")
         self.max_len = max_len
-
-    def prepare_data(self):
-        assert self.h5ad_path.exists(), ".h5ad file does not exist"
+        self.dataset = None
 
     def setup(self, stage=None):
         self.dataset = GeneformerDataset(self.folder, shuffle=self.shuffle)
 
     def train_dataloader(self):
-        return DataLoader(self.dataset, collate_fn= self.custom_collate, batch_size=self.batch_size
+        return DataLoader(self.dataset, collate_fn= self.src_collate, batch_size=self.batch_size
                           , shuffle=self.shuffle, num_workers=self.num_workers)
 
     def src_collate(self,batch):
         model_input_size = self.max_len
         input_batch_id = [torch.tensor(d["input_ids"]) for d in batch]
         length = torch.stack([torch.tensor(d["length"]) for d in batch])
-        cell = [d["cell_type"] for d in batch]
+        cell_type = [d["Cell_type"] for d in batch]
+        time_point = [d["Time_point"] for d in batch],
+        Donor = [d["Donor"] for d in batch],
         input_batch_id = pad_tensor_list(
             input_batch_id,
             self.max_len,
             self.pad_token_id,
             model_input_size)
-        return {"src_input_id": input_batch_id.clone().detach()
-                , "src_length" : length.clone().detach()
-                , "src_cell_type" : cell
-                , "src_attention_mask" : self.gen_attention_mask(length), #no attention mask needed for tgt
-
+        return {"src_input_id": input_batch_id.clone().detach(), 
+                "src_length" : length.clone().detach(), 
+                "src_cell_type" : cell_type,
+                "src_time_point" : time_point,
+                "src_Donor" : Donor,
+                "src_attention_mask" : self.gen_attention_mask(length), #no attention mask needed for tgt
                 }
 
     def gen_attention_mask(self, length):
@@ -115,3 +105,13 @@ class GeneformerDataModule(LightningDataModule):
                           for original_len in length]
 
         return torch.tensor(attention_mask)
+    
+if __name__ ==  "__main__":
+    #test dataloader
+    data_module=GeneformerDataModule("./res/dataset/cytoimmgen_tokenised_degs.dataset", max_len=334) 
+    data_module.setup()
+    dataloader = data_module.train_dataloader()
+    #iterate through batches
+    train_iterator = iter(dataloader)
+    batch = next(train_iterator)
+    print(batch)
