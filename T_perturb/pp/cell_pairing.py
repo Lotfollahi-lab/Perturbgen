@@ -19,9 +19,7 @@ metadata_df = pd.DataFrame({
 #drop Donor if they do not have Cell_type, Donor in all the Time_points
 metadata_df_ = metadata_df[metadata_df.groupby(["Donor","Cell_type"])["Time_point"].transform("nunique") == 4]
 print(f"dropped {metadata_df['Donor'].nunique() - metadata_df_['Donor'].nunique()} donors")
-#choose 0h cells as resting
 resting_cells = metadata_df_.loc[metadata_df_["Time_point"] == "0h",:]
-#create dictionnary to store all cell pairings
 cell_pairings = {
     '0h': [],
     '16h': [],
@@ -30,13 +28,12 @@ cell_pairings = {
 }
 grouped = metadata_df_.groupby(['Donor', 'Cell_type'])
 for idx, resting in tqdm.tqdm(resting_cells.iterrows(), total=resting_cells.shape[0]):
-    #choose a 16h cell and select that index
+    # get the indices of the other time points for the same cell type and donor
     group = grouped.get_group((resting["Donor"], resting["Cell_type"]))
-    # Get the indices for the 16h, 40h, and 5d cells from the filtered DataFrame
     indices_16h = group[group["Time_point"] == "16h"].index
     indices_40h = group[group["Time_point"] == "40h"].index
     indices_5d = group[group["Time_point"] == "5d"].index
-    # append the chosen index to the dictionary
+
     cell_pairings["0h"].append(idx)
     cell_pairings["16h"].append(np.random.choice(indices_16h))
     cell_pairings["40h"].append(np.random.choice(indices_40h))
