@@ -280,6 +280,7 @@ class TTransformer(nn.Module):
         self.mlm_probability = mlm_probability
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
         self.cls_label = torch.tensor(False)
+        self.cls_label = torch.tensor(False)
         self.decoder_embedding = nn.Embedding(tgt_vocab_size, d_model)
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
 
@@ -301,12 +302,14 @@ class TTransformer(nn.Module):
         )
         probability_matrix = torch.full(tgt_pad.shape, self.mlm_probability)
         probability_matrix = probability_matrix.masked_fill(~tgt_pad, 0)
+        probability_matrix = probability_matrix.masked_fill(~tgt_pad, 0)
         tgt_mask = torch.bernoulli(probability_matrix).bool()
         # seq_length = tgt.size(1)
         # nopeak_mask = (
         #     1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)
         #     ).bool()
         # tgt_mask = tgt_mask & nopeak_mask
+        labels = torch.cat((torch.tensor(0).expand(labels.shape[0], 1), labels), dim=1)
         labels = torch.cat((torch.tensor(0).expand(labels.shape[0], 1), labels), dim=1)
         labels[~tgt_mask] = -100
         # labels = torch.cat((self.cls_label.expand(labels.shape[0],1), labels), dim=1)
@@ -321,6 +324,7 @@ class TTransformer(nn.Module):
         x = x + self.positional_encoding(x)
 
         return x
+        return x
 
     def forward(self, src_input_id, src_attention_mask, tgt_input_id):
         src_mask, tgt_mask, labels = self.generate_mask(src_input_id, tgt_input_id)
@@ -330,6 +334,7 @@ class TTransformer(nn.Module):
         enc_output = src_embedded
         dec_output = tgt_embedded
         for dec_layer in self.decoder_layers:
+            dec_output = dec_layer(dec_output, src_mask, tgt_mask, enc_output)
             dec_output = dec_layer(dec_output, src_mask, tgt_mask, enc_output)
 
         output = self.fc(dec_output)
