@@ -37,6 +37,7 @@ class DropPath(nn.Module):
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
         super().__init__()
+
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
         self.fc1 = nn.Linear(in_features, hidden_features)
@@ -56,10 +57,10 @@ class Mlp(nn.Module):
 class Attention(nn.Module):
     def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.):
         super().__init__()
+
         self.num_heads = num_heads
         head_dim = dim // num_heads
         self.scale = qk_scale or head_dim ** -0.5
-
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
@@ -88,11 +89,9 @@ class CrossAttention(nn.Module):
             context_dim = query_dim
         self.scale = dim_head ** -0.5
         self.heads = heads
-
         self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
         self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
         self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
-
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim, query_dim),
             nn.Dropout(dropout)
@@ -100,17 +99,12 @@ class CrossAttention(nn.Module):
 
     def forward(self, x, context=None, mask=None):
         h = self.heads
-
         q = self.to_q(x)
-
         if context is None:
             context = x
-
         k = self.to_k(context)
         v = self.to_v(context)
-
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
-
         sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
         if mask is not None:
             mask = rearrange(mask, 'b ... -> b (...)')
@@ -119,10 +113,8 @@ class CrossAttention(nn.Module):
             print(mask.shape)
             print(sim.shape)
             sim.masked_fill_(mask, max_neg_value)
-
         # attention, what we cannot get enough of
         attn = sim.softmax(dim=-1)
-
         out = einsum('b i j, b j d -> b i d', attn, v)
         out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
         return self.to_out(out)
@@ -152,7 +144,6 @@ class Block(nn.Module):
 class DecoderLayer(nn.Module):
     def __init__(self, dim, n_heads, d_head, hidden_size, dropout=0., context_dim=None):
         super().__init__()
-
         self.self_attn = CrossAttention(query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout)
         self.cross_attn = CrossAttention(query_dim=dim, context_dim=context_dim,
                                          heads=n_heads, dim_head=d_head, dropout=dropout)
@@ -162,7 +153,8 @@ class DecoderLayer(nn.Module):
         self.norm3 = nn.LayerNorm(dim)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None):
+
+    def forward(self, x, src_mask= None, tgt_mask= None, enc_output=None):
         attn_output = self.self_attn(x, mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
@@ -179,10 +171,8 @@ class PositionalEncoding(nn.Module):
         pe = torch.zeros(max_seq_length, d_model)
         position = torch.arange(0, max_seq_length, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model))
-
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
-
         self.register_buffer('pe', pe.unsqueeze(0))
 
     def forward(self, x):
@@ -227,13 +217,12 @@ class TTransformer(nn.Module):
 
     def generate_mask(self, src, tgt):
         labels = tgt.clone()
-
         src_mask = torch.tensor((src != 0),dtype=bool)
         tgt_pad = torch.tensor((tgt != 0),dtype=bool)
+        #don't mask the cls token
         tgt_pad = torch.cat((self.cls_label.expand(tgt_pad.shape[0], 1), tgt_pad), dim=1)
-
         probability_matrix = torch.full(tgt_pad.shape, self.mlm_probability)
-        probability_matrix.masked_fill(~tgt_pad, 0)
+        probability_matrix = probability_matrix.masked_fill(~tgt_pad, 0)
         tgt_mask = torch.bernoulli(probability_matrix).bool()
         # seq_length = tgt.size(1)
         # nopeak_mask = (1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)).bool()
@@ -241,7 +230,6 @@ class TTransformer(nn.Module):
         labels = torch.cat((torch.tensor(0).expand(labels.shape[0], 1), labels), dim=1)
         labels[~tgt_mask] = -100
         src_mask = torch.randint(20000, size=(src.shape[0], src.shape[1])).bool()
-
         # labels = torch.cat((self.cls_label.expand(labels.shape[0],1), labels), dim=1)
         return src_mask, tgt_mask, labels
 
@@ -249,9 +237,7 @@ class TTransformer(nn.Module):
         B, nc, d = x.shape
         # add the [CLS] token to the embed patch tokens
         cls_tokens = self.cls_token.expand(B, -1, -1)
-
         x = torch.cat((cls_tokens, x), dim=1)
-
         # add positional encoding to each token
         x = x + self.positional_encoding(x)
 
@@ -283,7 +269,7 @@ if __name__ == "__main__":
     dropout = 0.1
     n_tokens = 200
     decoder = DecoderLayer(dim=d_model, n_heads=num_heads, hidden_size=d_ff, dropout=dropout, d_head=64,
-                           context_dim=d_model)
+                            context_dim=d_model)
     transformer = TTransformer()
     # Generate random sample data
     src_data = torch.rand(10, 500, d_model)

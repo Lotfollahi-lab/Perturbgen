@@ -1,0 +1,15 @@
+#figure resolution
+figure.dpi : 100
+savefig.dpi : 300
+
+#axes 
+axes.spines.top : False
+axes.spines.right : False
+legend.frameon : False
+
+#font size
+font.family : sans-serif
+font.size: 12
+
+#classic style
+
