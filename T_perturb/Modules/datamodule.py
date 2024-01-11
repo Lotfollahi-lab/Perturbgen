@@ -37,17 +37,11 @@ class GeneformerDataset(Dataset):
         # Success
         return self.dataset[ind]
 
-    # def pad_tensor(self,tensor, max_len=2048):
-    #     tensor = torch.nn.functional.pad(tensor, 
-    #                                      pad=(0,max_len - tensor.numel()),
-    #                                      mode='constant',
-    #                                      value=self.pad_token_id)
-    #     return tensor
-
 #two dataloader vs one dataloader
 class GeneformerDataModule(LightningDataModule):
     def __init__(self,
-                 folder= "./data/tokenized.dataset",
+                 src_folder= "./data/tokenized.dataset",
+                 tgt_folder= "./data/tokenized.dataset",
                  batch_size=3,
                  num_workers=0,
                  shuffle=False,
@@ -59,7 +53,8 @@ class GeneformerDataModule(LightningDataModule):
         Custom datamodule for Geneformer tokenised data.
         """
         super().__init__()
-        self.folder = folder
+        self.src_folder = src_folder
+        self.tgt_folder = tgt_folder
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.shuffle = shuffle
@@ -71,13 +66,34 @@ class GeneformerDataModule(LightningDataModule):
         self.dataset = None
 
     def setup(self, stage=None):
-        self.dataset = GeneformerDataset(self.folder, shuffle=self.shuffle)
+        self.src_dataset = GeneformerDataset(
+            folder=self.src_folder,
+            shuffle=self.shuffle,
+            )
+        self.tgt_dataset = GeneformerDataset(
+            folder=self.tgt_folder,
+            shuffle=self.shuffle,
+            )
 
     def train_dataloader(self):
-        return DataLoader(self.dataset, collate_fn= self.src_collate, batch_size=self.batch_size
-                          , shuffle=self.shuffle, num_workers=self.num_workers)
-
-    def src_collate(self,batch):
+        return {
+            "src": DataLoader(
+                self.src_dataset,
+                batch_size=self.batch_size,
+                shuffle=self.shuffle,
+                num_workers=self.num_workers,
+                collate_fn=self.src_collate,
+                ),
+            "tgt": DataLoader(
+                self.tgt_dataset,
+                batch_size=self.batch_size,
+                shuffle=self.shuffle,
+                num_workers=self.num_workers,
+                collate_fn=self.tgt_collate,
+                )
+        }
+    def src_collate(self, batch):
+        batch = batch
         model_input_size = self.max_len
         input_batch_id = [torch.tensor(d["input_ids"]) for d in batch]
         length = torch.stack([torch.tensor(d["length"]) for d in batch])
@@ -89,12 +105,31 @@ class GeneformerDataModule(LightningDataModule):
             self.max_len,
             self.pad_token_id,
             model_input_size)
-        return {"src_input_id": input_batch_id.clone().detach(), 
-                "src_length" : length.clone().detach(), 
-                "src_cell_type" : cell_type,
-                "src_time_point" : time_point,
-                "src_Donor" : Donor,
-                "src_attention_mask" : self.gen_attention_mask(length), #no attention mask needed for tgt
+        return {"input_id": input_batch_id.clone().detach(), 
+                "length" : length.clone().detach(), 
+                "cell_type" : cell_type,
+                "time_point" : time_point,
+                "Donor" : Donor,
+                "attention_mask" : self.gen_attention_mask(length), #no attention mask needed for tgt
+                }
+    def tgt_collate(self, batch):
+        batch = batch
+        model_input_size = self.max_len
+        input_batch_id = [torch.tensor(d["input_ids"]) for d in batch]
+        length = torch.stack([torch.tensor(d["length"]) for d in batch])
+        cell_type = [d["Cell_type"] for d in batch]
+        time_point = [d["Time_point"] for d in batch],
+        Donor = [d["Donor"] for d in batch],
+        input_batch_id = pad_tensor_list(
+            input_batch_id,
+            self.max_len,
+            self.pad_token_id,
+            model_input_size)
+        return {"input_id": input_batch_id.clone().detach(), 
+                "length" : length.clone().detach(), 
+                "cell_type" : cell_type,
+                "time_point" : time_point,
+                "Donor" : Donor
                 }
 
     def gen_attention_mask(self, length):
@@ -108,10 +143,14 @@ class GeneformerDataModule(LightningDataModule):
     
 if __name__ ==  "__main__":
     #test dataloader
-    data_module=GeneformerDataModule("./res/dataset/cytoimmgen_tokenised_degs.dataset", max_len=334) 
+    data_module=GeneformerDataModule(
+        src_folder= "/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_0h.dataset",
+        tgt_folder= "/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_16h.dataset",
+        max_len=334
+        )
     data_module.setup()
     dataloader = data_module.train_dataloader()
     #iterate through batches
-    train_iterator = iter(dataloader)
+    train_iterator = iter(dataloader["src"])
     batch = next(train_iterator)
     print(batch)
