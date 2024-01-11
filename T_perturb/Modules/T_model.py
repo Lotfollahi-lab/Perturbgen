@@ -3,19 +3,23 @@ Mostly copy-paste from timm library.
 https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
 """
 
-from torch import nn, einsum
-from einops import rearrange, repeat
-import torch
-import torch.nn as nn
 import math
+
+import torch
+from einops import rearrange, repeat
+from torch import einsum, nn
 from transformers import BertForMaskedLM
 
+from T_perturb.Modules.datamodule import GeneformerDataModule
 
-def drop_path(x, drop_prob: float = 0., training: bool = False):
-    if drop_prob == 0. or not training:
+
+def drop_path(x, drop_prob: float = 0.0, training: bool = False):
+    if drop_prob == 0.0 or not training:
         return x
     keep_prob = 1 - drop_prob
-    shape = (x.shape[0],) + (1,) * (x.ndim - 1)  # work with diff dim tensors, not just 2D ConvNets
+    shape = (x.shape[0],) + (1,) * (
+        x.ndim - 1
+    )  # work with diff dim tensors, not just 2D ConvNets
     random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
     random_tensor.floor_()  # binarize
     output = x.div(keep_prob) * random_tensor
@@ -23,7 +27,9 @@ def drop_path(x, drop_prob: float = 0., training: bool = False):
 
 
 class DropPath(nn.Module):
-    """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
+    """
+    Drop paths (Stochastic Depth) per sample
+    (when applied in main path of residual blocks).
     """
 
     def __init__(self, drop_prob=None):
@@ -35,7 +41,14 @@ class DropPath(nn.Module):
 
 
 class Mlp(nn.Module):
-    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
+    def __init__(
+        self,
+        in_features,
+        hidden_features=None,
+        out_features=None,
+        act_layer=nn.GELU,
+        drop=0.0,
+    ):
         super().__init__()
 
         out_features = out_features or in_features
@@ -55,12 +68,20 @@ class Mlp(nn.Module):
 
 
 class Attention(nn.Module):
-    def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.):
+    def __init__(
+        self,
+        dim,
+        num_heads=8,
+        qkv_bias=False,
+        qk_scale=None,
+        attn_drop=0.0,
+        proj_drop=0.0,
+    ):
         super().__init__()
 
         self.num_heads = num_heads
         head_dim = dim // num_heads
-        self.scale = qk_scale or head_dim ** -0.5
+        self.scale = qk_scale or head_dim**-0.5
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
@@ -68,7 +89,11 @@ class Attention(nn.Module):
 
     def forward(self, x):
         B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        qkv = (
+            self.qkv(x)
+            .reshape(B, N, 3, self.num_heads, C // self.num_heads)
+            .permute(2, 0, 3, 1, 4)
+        )
         q, k, v = qkv[0], qkv[1], qkv[2]
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
@@ -82,19 +107,18 @@ class Attention(nn.Module):
 
 
 class CrossAttention(nn.Module):
-    def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.):
+    def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.0):
         super().__init__()
         inner_dim = dim_head * heads
         if context_dim is None:
             context_dim = query_dim
-        self.scale = dim_head ** -0.5
+        self.scale = dim_head**-0.5
         self.heads = heads
         self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
         self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
         self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
         self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, query_dim),
-            nn.Dropout(dropout)
+            nn.Linear(inner_dim, query_dim), nn.Dropout(dropout)
         )
 
     def forward(self, x, context=None, mask=None):
@@ -110,27 +134,52 @@ class CrossAttention(nn.Module):
             mask = rearrange(mask, 'b ... -> b (...)')
             max_neg_value = -torch.finfo(sim.dtype).max
             mask = repeat(mask, 'b j -> (b h) () j', h=h)
-            print(mask.shape)
-            print(sim.shape)
+            print(mask[0])
+            print(sim[0])
             sim.masked_fill_(mask, max_neg_value)
+            print(f'after mask fill {sim[0]}')
+            raise
         # attention, what we cannot get enough of
         attn = sim.softmax(dim=-1)
+        print(attn)
         out = einsum('b i j, b j d -> b i d', attn, v)
         out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
         return self.to_out(out)
 
 
 class Block(nn.Module):
-    def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm):
+    def __init__(
+        self,
+        dim,
+        num_heads,
+        mlp_ratio=4.0,
+        qkv_bias=False,
+        qk_scale=None,
+        drop=0.0,
+        attn_drop=0.0,
+        drop_path=0.0,
+        act_layer=nn.GELU,
+        norm_layer=nn.LayerNorm,
+    ):
         super().__init__()
         self.norm1 = norm_layer(dim)
         self.attn = Attention(
-            dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+            dim,
+            num_heads=num_heads,
+            qkv_bias=qkv_bias,
+            qk_scale=qk_scale,
+            attn_drop=attn_drop,
+            proj_drop=drop,
+        )
+        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+        self.mlp = Mlp(
+            in_features=dim,
+            hidden_features=mlp_hidden_dim,
+            act_layer=act_layer,
+            drop=drop,
+        )
 
     def forward(self, x, return_attention=False):
         y, attn = self.attn(self.norm1(x))
@@ -142,19 +191,27 @@ class Block(nn.Module):
 
 
 class DecoderLayer(nn.Module):
-    def __init__(self, dim, n_heads, d_head, hidden_size, dropout=0., context_dim=None):
+    def __init__(
+        self, dim, n_heads, d_head, hidden_size, dropout=0.0, context_dim=None
+    ):
         super().__init__()
-        self.self_attn = CrossAttention(query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout)
-        self.cross_attn = CrossAttention(query_dim=dim, context_dim=context_dim,
-                                         heads=n_heads, dim_head=d_head, dropout=dropout)
+        self.self_attn = CrossAttention(
+            query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout
+        )
+        self.cross_attn = CrossAttention(
+            query_dim=dim,
+            context_dim=context_dim,
+            heads=n_heads,
+            dim_head=d_head,
+            dropout=dropout,
+        )
         self.feed_forward = Mlp(in_features=dim, hidden_features=hidden_size)
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)
         self.norm3 = nn.LayerNorm(dim)
         self.dropout = nn.Dropout(dropout)
 
-
-    def forward(self, x, src_mask= None, tgt_mask= None, enc_output=None):
+    def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None):
         attn_output = self.self_attn(x, mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
@@ -170,27 +227,36 @@ class PositionalEncoding(nn.Module):
 
         pe = torch.zeros(max_seq_length, d_model)
         position = torch.arange(0, max_seq_length, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model))
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model)
+        )
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         self.register_buffer('pe', pe.unsqueeze(0))
 
     def forward(self, x):
-        return x + self.pe[:, :x.size(1)]
+        return x + self.pe[:, : x.size(1)]
 
 
 class Geneformerwrapper(nn.Module):
-    def __init__(self, model_path="/lustre/scratch126/cellgen/team205/ml19/Arian/Geneformer/geneformer-6L-30M/"
-                 , output_attentions=False, output_hidden_states=True):
+    def __init__(
+        self,
+        model_path='/lustre/scratch126/cellgen/team205/'
+        'ml19/Arian/Geneformer/geneformer-6L-30M/',
+        output_attentions=False,
+        output_hidden_states=True,
+    ):
         super(Geneformerwrapper, self).__init__()
-        self.model = BertForMaskedLM.from_pretrained(model_path, output_attentions=output_attentions,
-                                                     output_hidden_states=output_hidden_states).to("cuda")
+        self.model = BertForMaskedLM.from_pretrained(
+            model_path,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+        )
 
-    def forward(self, x):
+    def forward(self, src_input_id, src_attention_mask):
         with torch.no_grad():
             outputs = self.model.forward(
-                input_ids=x["input_ids"].to("cuda"),
-                attention_mask=x["attention_mask"].to("cuda")
+                input_ids=src_input_id, attention_mask=src_attention_mask
             )
             embs = outputs.hidden_states[-1]
 
@@ -198,8 +264,17 @@ class Geneformerwrapper(nn.Module):
 
 
 class TTransformer(nn.Module):
-    def __init__(self, tgt_vocab_size=25000, d_model=256, num_heads=8, num_layers=1, d_ff=2048,
-                 max_seq_length=2048, dropout=0.0, mlm_probability=0.15):
+    def __init__(
+        self,
+        tgt_vocab_size=25000,
+        d_model=256,
+        num_heads=8,
+        num_layers=1,
+        d_ff=2048,
+        max_seq_length=2048,
+        dropout=0.0,
+        mlm_probability=0.15,
+    ):
         super(TTransformer, self).__init__()
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
@@ -210,26 +285,30 @@ class TTransformer(nn.Module):
 
         self.encoder_layers = Geneformerwrapper()
         self.decoder_layers = nn.ModuleList(
-            [DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
+            [DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)]
+        )
 
         self.fc = nn.Linear(d_model, tgt_vocab_size)
         self.dropout = nn.Dropout(dropout)
 
     def generate_mask(self, src, tgt):
         labels = tgt.clone()
-        src_mask = torch.tensor((src != 0),dtype=bool)
-        tgt_pad = torch.tensor((tgt != 0),dtype=bool)
-        #don't mask the cls token
-        tgt_pad = torch.cat((self.cls_label.expand(tgt_pad.shape[0], 1), tgt_pad), dim=1)
+        src_mask = torch.tensor((src != 0), dtype=bool)
+        tgt_pad = torch.tensor((tgt != 0), dtype=bool)
+        # don't mask the cls token
+        tgt_pad = torch.cat(
+            (self.cls_label.expand(tgt_pad.shape[0], 1), tgt_pad), dim=1
+        )
         probability_matrix = torch.full(tgt_pad.shape, self.mlm_probability)
         probability_matrix = probability_matrix.masked_fill(~tgt_pad, 0)
         tgt_mask = torch.bernoulli(probability_matrix).bool()
         # seq_length = tgt.size(1)
-        # nopeak_mask = (1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)).bool()
+        # nopeak_mask = (
+        #     1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)
+        #     ).bool()
         # tgt_mask = tgt_mask & nopeak_mask
         labels = torch.cat((torch.tensor(0).expand(labels.shape[0], 1), labels), dim=1)
         labels[~tgt_mask] = -100
-        src_mask = torch.randint(20000, size=(src.shape[0], src.shape[1])).bool()
         # labels = torch.cat((self.cls_label.expand(labels.shape[0],1), labels), dim=1)
         return src_mask, tgt_mask, labels
 
@@ -243,12 +322,11 @@ class TTransformer(nn.Module):
 
         return x
 
-    def forward(self, src, tgt):
-        src_mask, tgt_mask, labels = self.generate_mask(src, tgt)
+    def forward(self, src_input_id, src_attention_mask, tgt_input_id):
+        src_mask, tgt_mask, labels = self.generate_mask(src_input_id, tgt_input_id)
 
-        # src_embedded = self.encoder_layers(src)
-        src_embedded = src
-        tgt_embedded = self.prepare_tokens(self.decoder_embedding(tgt))
+        src_embedded = self.encoder_layers(src_input_id, src_attention_mask)
+        tgt_embedded = self.prepare_tokens(self.decoder_embedding(tgt_input_id))
         enc_output = src_embedded
         dec_output = tgt_embedded
         for dec_layer in self.decoder_layers:
@@ -258,7 +336,7 @@ class TTransformer(nn.Module):
         return output, labels
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     src_vocab_size = 5000
     tgt_vocab_size = 5000
     d_model = 256
@@ -268,17 +346,36 @@ if __name__ == "__main__":
     max_seq_length = 400
     dropout = 0.1
     n_tokens = 200
-    decoder = DecoderLayer(dim=d_model, n_heads=num_heads, hidden_size=d_ff, dropout=dropout, d_head=64,
-                            context_dim=d_model)
+    decoder = DecoderLayer(
+        dim=d_model,
+        n_heads=num_heads,
+        hidden_size=d_ff,
+        dropout=dropout,
+        d_head=64,
+        context_dim=d_model,
+    )
     transformer = TTransformer()
-    # Generate random sample data
-    src_data = torch.rand(10, 500, d_model)
+    # test dataloader
+    data_module = GeneformerDataModule(
+        src_folder='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_0h.dataset',
+        tgt_folder='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_16h.dataset',
+        max_len=334,
+    )
+    data_module.setup()
+    dataloader = data_module.train_dataloader()
+    # iterate through batches
+    src_train_iterator = iter(dataloader['src'])
+    tgt_train_iterator = iter(dataloader['tgt'])
+    src_batch = next(src_train_iterator)
+    tgt_batch = next(tgt_train_iterator)
     # src_data = torch.randint(20000,(10, 500))
-    tgt_data = torch.randint(20000,(10, n_tokens))
+    # tgt_data = torch.randint(20000,(10, n_tokens))
     # (batch_size, seq_length)
-    position = PositionalEncoding(d_model, max_seq_length)
+    # position = PositionalEncoding(d_model, max_seq_length)
     # print(position(tgt_data).shape)
     # print(decoder(tgt_data, enc_output=src_data).shape)
-    out, label = transformer(src_data, tgt_data)
+    out, label = transformer(src_batch, tgt_batch)
     print(out.shape)
     print(label.shape)
