@@ -2,17 +2,16 @@
 
 import argparse
 import os
-
-
 from datetime import datetime
-from utils import load_model
+
 import pytorch_lightning as pl
 import torch
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint,TQDMProgressBar
-from pytorch_lightning.loggers import WandbLogger
-from data_module import GeneseqDataModule
-from clipgen_trainer import Clipgenetrainer
 import wandb
+from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
+from pytorch_lightning.loggers import WandbLogger
+
+from T_perturb.Dataloaders.datamodule import GeneformerDataModule
+from T_perturb.Model.trainer import TTransformertrainer
 
 RANDOM_SEED = 42
 
@@ -20,7 +19,7 @@ RANDOM_SEED = 42
 def get_args():
     """Get command line arguments."""
     parser = argparse.ArgumentParser()
-    parser.add_argument('--batch_size', type=int, default=4, help='batch_size')
+    parser.add_argument('--batch_size', type=int, default=16, help='batch_size')
     parser.add_argument(
         '--epochs', type=int, default=4, help='number of training epochs'
     )
@@ -28,13 +27,25 @@ def get_args():
         '--model_id', type=str, default='resnet34', help='model id for torch hub'
     )
     parser.add_argument(
-        '--data_dir', type=str, default='data', help='path to data directory'
+        '--src_folder',
+        type=str,
+        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_0h.dataset',
+        help='path to tokenised resting data',
+    )
+    parser.add_argument(
+        '--tgt_folder',
+        type=str,
+        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_16h.dataset',
+        help='path to tokenised activated data',
     )
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
     )
-    parser.add_argument('--lr', type=float, default=1e-1, help='learning rate')
-    parser.add_argument('--wd', type=float, default=0, help='weight decay')
+    parser.add_argument('--max_len', type=int, default=334, help='max sequence length')
+    parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
+    parser.add_argument('--wd', type=float, default=1e-3, help='weight decay')
     parser.add_argument('--n_cls', type=int, default=10, help='number of classes')
     parser.add_argument('--n_workers', type=int, default=2, help='number of workers')
     args = parser.parse_args()
@@ -50,66 +61,70 @@ def main() -> None:
 
     # Initialize model module
     # ----------------------------------------------------------------------------------
-    gene_encoder = load_model('Pretrained', 0,
-                              "/lustre/scratch126/cellgen/team205/ml19/Arian/Geneformer/geneformer-6L-30M/")
-    model_module = Clipgenetrainer(
-        gene_encoder=gene_encoder,
+    model_module = TTransformertrainer(
+        tgt_vocab_size=25426,
+        d_model=256,
+        num_heads=8,
+        num_layers=1,
+        d_ff=32,
+        max_seq_length=2000,
+        dropout=0.0,
+        mlm_probability=0.15,
         weight_decay=args.wd,
+        lr=args.lr,
+        lr_scheduler_patience=1.0,
+        lr_scheduler_factor=0.8,
     )
-
-
     # Initialize data module
     # ----------------------------------------------------------------------------------
 
     # While there is a wide variety of different augmentation strategies, we simply
     # resort to the supposedly optimal AutoAugment policy.
-    data_module = GeneseqDataModule(
-        batch_size=args.batch_size,
-        num_workers=args.n_workers,
+    # change dataloader and input
+    data_module = GeneformerDataModule(
+        src_folder=args.src_folder, tgt_folder=args.tgt_folder, max_len=args.max_len
     )
 
     # Setup trainer
     # ----------------------------------------------------------------------------------
-    run_id = datetime.now().strftime('clip_geneseq_%Y_%m_%d_%H_%M')
+    run_id = datetime.now().strftime('ttransformer_%Y_%m_%d_%H_%M')
     log_path = os.path.join(args.log_dir, run_id)
-    os.makedirs(os.path.join(os.getcwd(),log_path) , exist_ok=True)
+    os.makedirs(os.path.join(os.getcwd(), log_path), exist_ok=True)
 
     # Define Callbacks
     # This callback always keeps a checkpoint of the best model according to
     # validation accuracy.
     checkpoint_callback = ModelCheckpoint(
-        dirpath="/lustre/scratch126/cellgen/team205/av13/clipgeneseq/model",
+        dirpath='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+        't_generative/T_perturb/T_perturb/Model',
         filename='checkpoint',
         save_top_k=1,
         verbose=True,
         monitor='train/loss',
         mode='min',
     )
-    # Early stopping interrupts training, if there was no improvement in validation
-    # loss for a certain training period.
-    early_stopping_callback = EarlyStopping(monitor='val/loss', patience=5)
 
     # The tensorboard logger allows for monitoring the progress of training
     if torch.cuda.device_count() > 1:
         # multi gpu training with group logging
         wandb.init(
-            entity='amirh-vahidi',
-            project='clip_gene_seq',
+            entity='k-ly',
+            project='ttransformer',
             # id=unique_id,  # specify id to log to same run
-            group=log_path ,  # all runs are saved in one group for multi gpu training
-            dir="/lustre/scratch126/cellgen/team205/av13/clipgeneseq"
+            group=log_path,  # all runs are saved in one group for multi gpu training
+            dir='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+            't_generative/T_perturb/T_perturb',
         )
     else:
         wandb.init(
-            entity='amirh-vahidi',
-            project='clip_gene_seq',
-            id=run_id ,
-            dir="/lustre/scratch126/cellgen/team205/av13/clipgeneseq",
+            entity='k-ly',
+            project='ttransformer',
+            id=run_id,
+            dir='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+            't_generative/T_perturb/T_perturb',
         )
 
-    wandb_logger = WandbLogger(
-        log_model="all"
-    )
+    wandb_logger = WandbLogger(log_model='all')
 
     # In this simple example we just check if a GPU is available.
     # For training larger models in a distributed settings, this needs more care.
@@ -124,7 +139,7 @@ def main() -> None:
     # precision training, etc. using the trainer class.
     trainer = pl.Trainer(
         logger=wandb_logger,
-        callbacks=[TQDMProgressBar(refresh_rate=10),checkpoint_callback],
+        callbacks=[TQDMProgressBar(refresh_rate=10), checkpoint_callback],
         max_epochs=args.epochs,
         accelerator=accelerator,
     )
