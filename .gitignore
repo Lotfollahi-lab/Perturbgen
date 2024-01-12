@@ -133,3 +133,5 @@ dmypy.json
 data
 logs
 res
+wandb
+checkpoints
