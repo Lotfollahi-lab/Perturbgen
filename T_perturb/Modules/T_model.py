@@ -10,34 +10,33 @@ from einops import rearrange, repeat
 from torch import einsum, nn
 from transformers import BertForMaskedLM
 
-from T_perturb.Modules.datamodule import GeneformerDataModule
+from T_perturb.Dataloaders.datamodule import GeneformerDataModule
+
+# def drop_path(x, drop_prob: float = 0.0, training: bool = False):
+#     if drop_prob == 0.0 or not training:
+#         return x
+#     keep_prob = 1 - drop_prob
+#     shape = (x.shape[0],) + (1,) * (
+#         x.ndim - 1
+#     )  # work with diff dim tensors, not just 2D ConvNets
+#     random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
+#     random_tensor.floor_()  # binarize
+#     output = x.div(keep_prob) * random_tensor
+#     return output
 
 
-def drop_path(x, drop_prob: float = 0.0, training: bool = False):
-    if drop_prob == 0.0 or not training:
-        return x
-    keep_prob = 1 - drop_prob
-    shape = (x.shape[0],) + (1,) * (
-        x.ndim - 1
-    )  # work with diff dim tensors, not just 2D ConvNets
-    random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
-    random_tensor.floor_()  # binarize
-    output = x.div(keep_prob) * random_tensor
-    return output
+# class DropPath(nn.Module):
+#     """
+#     Drop paths (Stochastic Depth) per sample
+#     (when applied in main path of residual blocks).
+#     """
 
+#     def __init__(self, drop_prob=None):
+#         super(DropPath, self).__init__()
+#         self.drop_prob = drop_prob
 
-class DropPath(nn.Module):
-    """
-    Drop paths (Stochastic Depth) per sample
-    (when applied in main path of residual blocks).
-    """
-
-    def __init__(self, drop_prob=None):
-        super(DropPath, self).__init__()
-        self.drop_prob = drop_prob
-
-    def forward(self, x):
-        return drop_path(x, self.drop_prob, self.training)
+#     def forward(self, x):
+#         return drop_path(x, self.drop_prob, self.training)
 
 
 class Mlp(nn.Module):
@@ -67,45 +66,6 @@ class Mlp(nn.Module):
         return x
 
 
-class Attention(nn.Module):
-    def __init__(
-        self,
-        dim,
-        num_heads=8,
-        qkv_bias=False,
-        qk_scale=None,
-        attn_drop=0.0,
-        proj_drop=0.0,
-    ):
-        super().__init__()
-
-        self.num_heads = num_heads
-        head_dim = dim // num_heads
-        self.scale = qk_scale or head_dim**-0.5
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
-        self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim, dim)
-        self.proj_drop = nn.Dropout(proj_drop)
-
-    def forward(self, x):
-        B, N, C = x.shape
-        qkv = (
-            self.qkv(x)
-            .reshape(B, N, 3, self.num_heads, C // self.num_heads)
-            .permute(2, 0, 3, 1, 4)
-        )
-        q, k, v = qkv[0], qkv[1], qkv[2]
-
-        attn = (q @ k.transpose(-2, -1)) * self.scale
-        attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
-
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
-        x = self.proj(x)
-        x = self.proj_drop(x)
-        return x, attn
-
-
 class CrossAttention(nn.Module):
     def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.0):
         super().__init__()
@@ -118,7 +78,7 @@ class CrossAttention(nn.Module):
         self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
         self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
         self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, query_dim), nn.Dropout(dropout)
+            nn.Linear(inner_dim, query_dim), nn.Dropout(dropout)  # projection head
         )
 
     def forward(self, x, context=None, mask=None):
@@ -134,60 +94,55 @@ class CrossAttention(nn.Module):
             mask = rearrange(mask, 'b ... -> b (...)')
             max_neg_value = -torch.finfo(sim.dtype).max
             mask = repeat(mask, 'b j -> (b h) () j', h=h)
-            print(mask[0])
-            print(sim[0])
             sim.masked_fill_(mask, max_neg_value)
-            print(f'after mask fill {sim[0]}')
-            raise
         # attention, what we cannot get enough of
         attn = sim.softmax(dim=-1)
-        print(attn)
         out = einsum('b i j, b j d -> b i d', attn, v)
         out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
         return self.to_out(out)
 
 
-class Block(nn.Module):
-    def __init__(
-        self,
-        dim,
-        num_heads,
-        mlp_ratio=4.0,
-        qkv_bias=False,
-        qk_scale=None,
-        drop=0.0,
-        attn_drop=0.0,
-        drop_path=0.0,
-        act_layer=nn.GELU,
-        norm_layer=nn.LayerNorm,
-    ):
-        super().__init__()
-        self.norm1 = norm_layer(dim)
-        self.attn = Attention(
-            dim,
-            num_heads=num_heads,
-            qkv_bias=qkv_bias,
-            qk_scale=qk_scale,
-            attn_drop=attn_drop,
-            proj_drop=drop,
-        )
-        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
-        self.norm2 = norm_layer(dim)
-        mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp(
-            in_features=dim,
-            hidden_features=mlp_hidden_dim,
-            act_layer=act_layer,
-            drop=drop,
-        )
+# class Block(nn.Module):
+#     def __init__(
+#         self,
+#         dim,
+#         num_heads,
+#         mlp_ratio=4.0,
+#         qkv_bias=False,
+#         qk_scale=None,
+#         drop=0.0,
+#         attn_drop=0.0,
+#         drop_path=0.0,
+#         act_layer=nn.GELU,
+#         norm_layer=nn.LayerNorm,
+#     ):
+#         super().__init__()
+#         self.norm1 = norm_layer(dim)
+#         self.attn = Attention(
+#             dim,
+#             num_heads=num_heads,
+#             qkv_bias=qkv_bias,
+#             qk_scale=qk_scale,
+#             attn_drop=attn_drop,
+#             proj_drop=drop,
+#         )
+#         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+#         self.norm2 = norm_layer(dim)
+#         mlp_hidden_dim = int(dim * mlp_ratio)
+#         self.mlp = Mlp(
+#             in_features=dim,
+#             hidden_features=mlp_hidden_dim,
+#             act_layer=act_layer,
+#             drop=drop,
+#         )
 
-    def forward(self, x, return_attention=False):
-        y, attn = self.attn(self.norm1(x))
-        if return_attention:
-            return attn
-        x = x + self.drop_path(y)
-        x = x + self.drop_path(self.mlp(self.norm2(x)))
-        return x
+#     def forward(self, x, return_attention=False):
+#         y, attn = self.attn(self.norm1(x))
+#         if return_attention:
+#             return attn
+#         x = x + self.drop_path(y)
+#         x = x + self.drop_path(self.mlp(self.norm2(x)))
+#         return x
 
 
 class DecoderLayer(nn.Module):
@@ -205,7 +160,9 @@ class DecoderLayer(nn.Module):
             dim_head=d_head,
             dropout=dropout,
         )
-        self.feed_forward = Mlp(in_features=dim, hidden_features=hidden_size)
+        self.feed_forward = Mlp(
+            in_features=dim, hidden_features=hidden_size
+        )  # add hidden size
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)
         self.norm3 = nn.LayerNorm(dim)
@@ -252,6 +209,8 @@ class Geneformerwrapper(nn.Module):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
         )
+        for param in self.model.parameters():
+            param.requires_grad = False
 
     def forward(self, src_input_id, src_attention_mask):
         with torch.no_grad():
@@ -266,7 +225,7 @@ class Geneformerwrapper(nn.Module):
 class TTransformer(nn.Module):
     def __init__(
         self,
-        tgt_vocab_size=25000,
+        tgt_vocab_size=25426,
         d_model=256,
         num_heads=8,
         num_layers=1,
@@ -276,15 +235,16 @@ class TTransformer(nn.Module):
         mlm_probability=0.15,
     ):
         super(TTransformer, self).__init__()
+
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
-        self.cls_label = torch.tensor(False)
         self.cls_label = torch.tensor(False)
         self.decoder_embedding = nn.Embedding(tgt_vocab_size, d_model)
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
 
         self.encoder_layers = Geneformerwrapper()
+        self.encoder_layers.eval()
         self.decoder_layers = nn.ModuleList(
             [DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)]
         )
@@ -292,28 +252,41 @@ class TTransformer(nn.Module):
         self.fc = nn.Linear(d_model, tgt_vocab_size)
         self.dropout = nn.Dropout(dropout)
 
+    def padding_mask(self, x):
+        # take care that the CLS is unmasked but the padding is always masked
+        pass
+
     def generate_mask(self, src, tgt):
         labels = tgt.clone()
-        src_mask = torch.tensor((src != 0), dtype=bool)
-        tgt_pad = torch.tensor((tgt != 0), dtype=bool)
+        src_mask = (
+            torch.tensor((src != 0), dtype=bool).cpu().detach()
+        )  # can use attention mask from Geneformer
+        tgt_pad = torch.tensor((tgt != 0), dtype=bool).cpu().detach()
         # don't mask the cls token
         tgt_pad = torch.cat(
             (self.cls_label.expand(tgt_pad.shape[0], 1), tgt_pad), dim=1
         )
         probability_matrix = torch.full(tgt_pad.shape, self.mlm_probability)
-        probability_matrix = probability_matrix.masked_fill(~tgt_pad, 0)
-        probability_matrix = probability_matrix.masked_fill(~tgt_pad, 0)
+        probability_matrix = probability_matrix.masked_fill(
+            ~tgt_pad, 0
+        )  # add CLS token to the tokens
         tgt_mask = torch.bernoulli(probability_matrix).bool()
         # seq_length = tgt.size(1)
         # nopeak_mask = (
         #     1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)
         #     ).bool()
         # tgt_mask = tgt_mask & nopeak_mask
-        labels = torch.cat((torch.tensor(0).expand(labels.shape[0], 1), labels), dim=1)
-        labels = torch.cat((torch.tensor(0).expand(labels.shape[0], 1), labels), dim=1)
+        labels = torch.cat(
+            (torch.tensor(0).expand(labels.shape[0], 1).to('cuda'), labels), dim=1
+        )
         labels[~tgt_mask] = -100
+
+        tgt_mask.masked_fill(tgt_pad, True)
+        # unmask the cls token
+        tgt_mask[:, 0] = False
+        raise
         # labels = torch.cat((self.cls_label.expand(labels.shape[0],1), labels), dim=1)
-        return src_mask, tgt_mask, labels
+        return src_mask.to('cuda'), tgt_mask.to('cuda'), labels
 
     def prepare_tokens(self, x):
         B, nc, d = x.shape
@@ -324,7 +297,6 @@ class TTransformer(nn.Module):
         x = x + self.positional_encoding(x)
 
         return x
-        return x
 
     def forward(self, src_input_id, src_attention_mask, tgt_input_id):
         src_mask, tgt_mask, labels = self.generate_mask(src_input_id, tgt_input_id)
@@ -334,7 +306,6 @@ class TTransformer(nn.Module):
         enc_output = src_embedded
         dec_output = tgt_embedded
         for dec_layer in self.decoder_layers:
-            dec_output = dec_layer(dec_output, src_mask, tgt_mask, enc_output)
             dec_output = dec_layer(dec_output, src_mask, tgt_mask, enc_output)
 
         output = self.fc(dec_output)
@@ -360,6 +331,7 @@ if __name__ == '__main__':
         context_dim=d_model,
     )
     transformer = TTransformer()
+
     # test dataloader
     data_module = GeneformerDataModule(
         src_folder='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
@@ -381,6 +353,6 @@ if __name__ == '__main__':
     # position = PositionalEncoding(d_model, max_seq_length)
     # print(position(tgt_data).shape)
     # print(decoder(tgt_data, enc_output=src_data).shape)
-    out, label = transformer(src_batch, tgt_batch)
-    print(out.shape)
-    print(label.shape)
+    out, label = transformer(
+        src_batch['input_id'], src_batch['attention_mask'], tgt_batch['input_id']
+    )
