@@ -91,10 +91,22 @@ class CrossAttention(nn.Module):
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
         sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
         if mask is not None:
+            device = sim.device
             mask = rearrange(mask, 'b ... -> b (...)')
             max_neg_value = -torch.finfo(sim.dtype).max
             mask = repeat(mask, 'b j -> (b h) () j', h=h)
-            sim.masked_fill_(mask, max_neg_value)
+            print("Shape of mask:")
+            print(mask.shape)
+            print(mask[0])
+            print(mask[1])
+            print(mask[0]==mask[1])
+            sim.masked_fill_(mask.to(device), max_neg_value)
+            print("Sim:")
+            print(sim.shape)
+            print(sim[0][0])
+            print(sim[1])
+            raise
+
         # attention, what we cannot get enough of
         attn = sim.softmax(dim=-1)
         out = einsum('b i j, b j d -> b i d', attn, v)
@@ -232,15 +244,16 @@ class TTransformer(nn.Module):
         d_ff=2048,
         max_seq_length=2048,
         dropout=0.0,
-        mlm_probability=0.15,
+        mlm_probability=0.5,
     ):
         super(TTransformer, self).__init__()
 
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
-        self.cls_label = torch.tensor(False)
-        self.decoder_embedding = nn.Embedding(tgt_vocab_size, d_model, padding_idx=0)
+        
+        self.cls_token = torch.tensor([tgt_vocab_size], dtype=torch.long)#start at 25426, because of 0 Python indexing
+        self.decoder_embedding = nn.Embedding(tgt_vocab_size + 1, d_model, padding_idx=0)
+
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
 
         self.encoder_layers = Geneformerwrapper()
@@ -251,51 +264,52 @@ class TTransformer(nn.Module):
 
         self.fc = nn.Linear(d_model, tgt_vocab_size)
         self.dropout = nn.Dropout(dropout)
-
-    def generate_mask(self, tgt):
-        labels = tgt.clone()
+    def generate_pad(self, tgt):
         tgt_pad = torch.tensor((tgt != 0), dtype=bool).cpu().detach()
-        # don't mask the cls token
-        tgt_pad = torch.cat(
-            (self.cls_label.expand(tgt_pad.shape[0], 1), tgt_pad), dim=1
-        )
+
+        return tgt_pad
+    
+    def generate_mask(self, tgt, tgt_pad):
+        device = tgt.device 
+        labels = tgt.clone()
         probability_matrix = torch.full(tgt_pad.shape, self.mlm_probability)
+        cls_tgt_pad = tgt_pad.clone()
+        cls_tgt_pad[:,0] = False
         probability_matrix = probability_matrix.masked_fill(
-            ~tgt_pad, 0
+            ~cls_tgt_pad, 0
         )  # add CLS token to the tokens
+        print(probability_matrix)
         tgt_mask = torch.bernoulli(probability_matrix).bool()
         # seq_length = tgt.size(1)
         # nopeak_mask = (
         #     1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)
         #     ).bool()
         # tgt_mask = tgt_mask & nopeak_mask
-        labels = torch.cat(
-            (torch.tensor(0).expand(labels.shape[0], 1).to('cuda'), labels), dim=1
-        )
         labels[~tgt_mask] = -100
+        labels = labels[:,1:]
+        tgt_mask = tgt_mask.masked_fill(~tgt_pad, True)    
         # labels = torch.cat((self.cls_label.expand(labels.shape[0],1), labels), dim=1)
         return tgt_mask.to('cuda'), labels
 
     def prepare_tokens(self, x):
-        B, nc, d = x.shape
-        # add the [CLS] token to the embed patch tokens
-        cls_tokens = self.cls_token.expand(B, -1, -1) # add cls token 
-        x = torch.cat((cls_tokens, x), dim=1)
+        # B, nc, d = x.shape
         # add positional encoding to each token
         x = x + self.positional_encoding(x)
 
         return x
 
     def forward(self, src_input_id, src_attention_mask, tgt_input_id):
+        tgt_input_id = torch.cat((self.cls_token.expand(tgt_input_id.shape[0], -1), tgt_input_id), dim=1)
         src_attention_mask = src_attention_mask.bool()
-        print(src_attention_mask.shape)
-        print(src_attention_mask)
+
+        tgt_pad = self.generate_pad(tgt_input_id)
         if self.training:
-            tgt_mask, labels = self.generate_mask(tgt_input_id)
+            tgt_mask, labels = self.generate_mask(tgt_input_id, tgt_pad)
         else:
-            tgt_mask, labels = None, None #no mask should be generated during infer
+            tgt_mask, labels = tgt_pad, None #no mask should be generated during infer
 
         src_embedded = self.encoder_layers(src_input_id, src_attention_mask)
+        print(tgt_input_id)
         tgt_embedded = self.prepare_tokens(self.decoder_embedding(tgt_input_id))
         enc_output = src_embedded
         dec_output = tgt_embedded
@@ -306,46 +320,53 @@ class TTransformer(nn.Module):
         return output, labels
 
 if __name__ == '__main__':
-    src_vocab_size = 5000
-    tgt_vocab_size = 5000
-    d_model = 256
-    num_heads = 8
-    num_layers = 6
-    d_ff = 2048
-    max_seq_length = 400
-    dropout = 0.1
+    # src_vocab_size = 5000
+    # tgt_vocab_size = 5000
+    # d_model = 256
+    # num_heads = 8
+    # num_layers = 6
+    # d_ff = 2048
+    # max_seq_length = 400
+    # dropout = 0.1
     n_tokens = 200
-    decoder = DecoderLayer(
-        dim=d_model,
-        n_heads=num_heads,
-        hidden_size=d_ff,
-        dropout=dropout,
-        d_head=64,
-        context_dim=d_model,
-    )
+    # decoder = DecoderLayer(
+    #     dim=d_model,
+    #     n_heads=num_heads,
+    #     hidden_size=d_ff,
+    #     dropout=dropout,
+    #     d_head=64,
+    #     context_dim=d_model,
+    # )
     transformer = TTransformer()
 
-    # test dataloader
-    data_module = GeneformerDataModule(
-        src_folder='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_0h.dataset',
-        tgt_folder='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_16h.dataset',
-        max_len=334,
-    )
-    data_module.setup()
-    dataloader = data_module.train_dataloader()
-    # iterate through batches
-    src_train_iterator = iter(dataloader['src'])
-    tgt_train_iterator = iter(dataloader['tgt'])
-    src_batch = next(src_train_iterator)
-    tgt_batch = next(tgt_train_iterator)
-    # src_data = torch.randint(20000,(10, 500))
-    # tgt_data = torch.randint(20000,(10, n_tokens))
+    # # test dataloader
+    # data_module = GeneformerDataModule(
+    #     src_folder='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+    #     'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_0h.dataset',
+    #     tgt_folder='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+    #     'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_16h.dataset',
+    #     max_len=334,
+    # )
+    # data_module.setup()
+    # dataloader = data_module.train_dataloader()
+    # # iterate through batches
+    # src_train_iterator = iter(dataloader['src'])
+    # tgt_train_iterator = iter(dataloader['tgt'])
+    # src_batch = next(src_train_iterator)
+    # tgt_batch = next(tgt_train_iterator)
+    
     # (batch_size, seq_length)
     # position = PositionalEncoding(d_model, max_seq_length)
     # print(position(tgt_data).shape)
     # print(decoder(tgt_data, enc_output=src_data).shape)
-    out, label = transformer(
-        src_batch['input_id'], src_batch['attention_mask'], tgt_batch['input_id']
-    )
+    # out, label = transformer(
+    #     src_batch['input_id'], src_batch['attention_mask'], tgt_batch['input_id']
+    # )
+
+    src_data = torch.randint(20000,(10, 500))
+    src_attn_mask = torch.ones((10, 500))
+    src_attn_mask[:, 200:] = 0
+    tgt_data = torch.randint(20000,(10, n_tokens))
+    #pad
+    tgt_data[:, 100:] = 0
+    out, label = transformer(src_data, src_attn_mask, tgt_data)
