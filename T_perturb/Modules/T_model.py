@@ -240,7 +240,7 @@ class TTransformer(nn.Module):
         self.mlm_probability = mlm_probability
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
         self.cls_label = torch.tensor(False)
-        self.decoder_embedding = nn.Embedding(tgt_vocab_size, d_model)
+        self.decoder_embedding = nn.Embedding(tgt_vocab_size, d_model, padding_idx=0)
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
 
         self.encoder_layers = Geneformerwrapper()
@@ -252,15 +252,8 @@ class TTransformer(nn.Module):
         self.fc = nn.Linear(d_model, tgt_vocab_size)
         self.dropout = nn.Dropout(dropout)
 
-    def padding_mask(self, x):
-        # take care that the CLS is unmasked but the padding is always masked
-        pass
-
-    def generate_mask(self, src, tgt):
+    def generate_mask(self, tgt):
         labels = tgt.clone()
-        src_mask = (
-            torch.tensor((src != 0), dtype=bool).cpu().detach()
-        )  # can use attention mask from Geneformer
         tgt_pad = torch.tensor((tgt != 0), dtype=bool).cpu().detach()
         # don't mask the cls token
         tgt_pad = torch.cat(
@@ -280,18 +273,13 @@ class TTransformer(nn.Module):
             (torch.tensor(0).expand(labels.shape[0], 1).to('cuda'), labels), dim=1
         )
         labels[~tgt_mask] = -100
-
-        tgt_mask.masked_fill(tgt_pad, True)
-        # unmask the cls token
-        tgt_mask[:, 0] = False
-        raise
         # labels = torch.cat((self.cls_label.expand(labels.shape[0],1), labels), dim=1)
-        return src_mask.to('cuda'), tgt_mask.to('cuda'), labels
+        return tgt_mask.to('cuda'), labels
 
     def prepare_tokens(self, x):
         B, nc, d = x.shape
         # add the [CLS] token to the embed patch tokens
-        cls_tokens = self.cls_token.expand(B, -1, -1)
+        cls_tokens = self.cls_token.expand(B, -1, -1) # add cls token 
         x = torch.cat((cls_tokens, x), dim=1)
         # add positional encoding to each token
         x = x + self.positional_encoding(x)
@@ -299,18 +287,23 @@ class TTransformer(nn.Module):
         return x
 
     def forward(self, src_input_id, src_attention_mask, tgt_input_id):
-        src_mask, tgt_mask, labels = self.generate_mask(src_input_id, tgt_input_id)
+        src_attention_mask = src_attention_mask.bool()
+        print(src_attention_mask.shape)
+        print(src_attention_mask)
+        if self.training:
+            tgt_mask, labels = self.generate_mask(tgt_input_id)
+        else:
+            tgt_mask, labels = None, None #no mask should be generated during infer
 
         src_embedded = self.encoder_layers(src_input_id, src_attention_mask)
         tgt_embedded = self.prepare_tokens(self.decoder_embedding(tgt_input_id))
         enc_output = src_embedded
         dec_output = tgt_embedded
         for dec_layer in self.decoder_layers:
-            dec_output = dec_layer(dec_output, src_mask, tgt_mask, enc_output)
+            dec_output = dec_layer(dec_output, src_attention_mask , tgt_mask, enc_output)
 
         output = self.fc(dec_output)
         return output, labels
-
 
 if __name__ == '__main__':
     src_vocab_size = 5000

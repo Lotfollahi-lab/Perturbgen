@@ -19,13 +19,6 @@ RANDOM_SEED = 42
 def get_args():
     """Get command line arguments."""
     parser = argparse.ArgumentParser()
-    parser.add_argument('--batch_size', type=int, default=16, help='batch_size')
-    parser.add_argument(
-        '--epochs', type=int, default=4, help='number of training epochs'
-    )
-    parser.add_argument(
-        '--model_id', type=str, default='resnet34', help='model id for torch hub'
-    )
     parser.add_argument(
         '--src_folder',
         type=str,
@@ -41,16 +34,40 @@ def get_args():
         help='path to tokenised activated data',
     )
     parser.add_argument(
+        '--batch_size', 
+        type=int, 
+        default=32, 
+        help='batch_size'
+        )
+    parser.add_argument(
+        '--num_workers', 
+        type=int, 
+        default=0, 
+        help='num_workers'
+        )
+    parser.add_argument(
+        '--shuffle', 
+        type=bool, 
+        default=False, 
+        help='shuffle'
+        )
+    parser.add_argument(
+        '--epochs', type=int, default=4, help='number of training epochs'
+    )
+    parser.add_argument(
+        '--model_id', type=str, default='resnet34', help='model id for torch hub'
+    )
+
+    parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
     )
     parser.add_argument('--max_len', type=int, default=334, help='max sequence length')
-    parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
+    parser.add_argument('--lr', type=float, default=1e-5, help='learning rate')
     parser.add_argument('--wd', type=float, default=1e-3, help='weight decay')
-    parser.add_argument('--n_cls', type=int, default=10, help='number of classes')
+    # parser.add_argument('--n_cls', type=int, default=10, help='number of classes')
     parser.add_argument('--n_workers', type=int, default=2, help='number of workers')
     args = parser.parse_args()
     return args
-
 
 def main() -> None:
     """Run training."""
@@ -69,7 +86,7 @@ def main() -> None:
         d_ff=32,
         max_seq_length=2000,
         dropout=0.0,
-        mlm_probability=0.15,
+        mlm_probability=0.5,
         weight_decay=args.wd,
         lr=args.lr,
         lr_scheduler_patience=1.0,
@@ -82,7 +99,12 @@ def main() -> None:
     # resort to the supposedly optimal AutoAugment policy.
     # change dataloader and input
     data_module = GeneformerDataModule(
-        src_folder=args.src_folder, tgt_folder=args.tgt_folder, max_len=args.max_len
+        src_folder=args.src_folder, 
+        tgt_folder=args.tgt_folder, 
+        batch_size=args.batch_size,
+        num_workers=args.n_workers,
+        shuffle=args.shuffle,
+        max_len=args.max_len,
     )
 
     # Setup trainer
@@ -146,7 +168,6 @@ def main() -> None:
 
     # Finally, kick of the training process.
     trainer.fit(model_module, data_module)
-
 
 if __name__ == '__main__':
     main()

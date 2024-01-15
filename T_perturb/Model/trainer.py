@@ -1,7 +1,6 @@
 import pickle
 
 import scanpy as sc
-
 # import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -103,7 +102,6 @@ class TTransformertrainer(LightningModule):
         pass
 
     def test_step(self, batch, *args, **kwargs):
-        output, labels = self.forward(batch)  # adapt based on output
+        output,_ = self.forward(batch)  # adapt based on output
         output = output.view(-1, output.size(-1))
-        labels = labels.view(-1)
-        return output, labels
+        return output

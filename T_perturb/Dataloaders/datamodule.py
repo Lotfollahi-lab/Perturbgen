@@ -45,7 +45,7 @@ class GeneformerDataModule(LightningDataModule):
         batch_size=3,
         num_workers=0,
         shuffle=False,
-        max_len=2048,
+        max_len=2048
     ):
         """
         Description:
