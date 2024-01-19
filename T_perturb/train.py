@@ -23,51 +23,36 @@ def get_args():
         '--src_folder',
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_0h.dataset',
+        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_16h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
         '--tgt_folder',
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_16h.dataset',
+        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_40h.dataset',
         help='path to tokenised activated data',
     )
-    parser.add_argument(
-        '--batch_size', 
-        type=int, 
-        default=32, 
-        help='batch_size'
-        )
-    parser.add_argument(
-        '--num_workers', 
-        type=int, 
-        default=0, 
-        help='num_workers'
-        )
-    parser.add_argument(
-        '--shuffle', 
-        type=bool, 
-        default=False, 
-        help='shuffle'
-        )
+    parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
+    parser.add_argument('--shuffle', type=bool, default=True, help='shuffle')
     parser.add_argument(
         '--epochs', type=int, default=4, help='number of training epochs'
-    )
-    parser.add_argument(
-        '--model_id', type=str, default='resnet34', help='model id for torch hub'
     )
 
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
     )
-    parser.add_argument('--max_len', type=int, default=334, help='max sequence length')
-    parser.add_argument('--lr', type=float, default=1e-5, help='learning rate')
+    parser.add_argument(
+        '--mlm_probability', type=float, default=0.15, help='BERT MLM probability'
+    )
+    parser.add_argument('--max_len', type=int, default=246, help='max sequence length')
+    parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
     parser.add_argument('--wd', type=float, default=1e-3, help='weight decay')
     # parser.add_argument('--n_cls', type=int, default=10, help='number of classes')
-    parser.add_argument('--n_workers', type=int, default=2, help='number of workers')
+    parser.add_argument('--n_workers', type=int, default=0, help='number of workers')
     args = parser.parse_args()
     return args
+
 
 def main() -> None:
     """Run training."""
@@ -83,15 +68,17 @@ def main() -> None:
         d_model=256,
         num_heads=8,
         num_layers=1,
-        d_ff=32,
-        max_seq_length=2000,
+        d_ff=64,
+        max_seq_length=1000,
         dropout=0.0,
-        mlm_probability=0.5,
+        mlm_probability=args.mlm_probability,
         weight_decay=args.wd,
         lr=args.lr,
         lr_scheduler_patience=1.0,
         lr_scheduler_factor=0.8,
     )
+    # print(model_module)
+
     # Initialize data module
     # ----------------------------------------------------------------------------------
 
@@ -99,8 +86,8 @@ def main() -> None:
     # resort to the supposedly optimal AutoAugment policy.
     # change dataloader and input
     data_module = GeneformerDataModule(
-        src_folder=args.src_folder, 
-        tgt_folder=args.tgt_folder, 
+        src_folder=args.src_folder,
+        tgt_folder=args.tgt_folder,
         batch_size=args.batch_size,
         num_workers=args.n_workers,
         shuffle=args.shuffle,
@@ -109,7 +96,9 @@ def main() -> None:
 
     # Setup trainer
     # ----------------------------------------------------------------------------------
-    run_id = datetime.now().strftime('ttransformer_%Y_%m_%d_%H_%M')
+    run_id = datetime.now().strftime(
+        f'%Y%m%d_%H%M_ttransformer_{args.batch_size}_{args.lr}_{args.wd}'
+    )
     log_path = os.path.join(args.log_dir, run_id)
     os.makedirs(os.path.join(os.getcwd(), log_path), exist_ok=True)
 
@@ -118,7 +107,7 @@ def main() -> None:
     # validation accuracy.
     checkpoint_callback = ModelCheckpoint(
         dirpath='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/T_perturb/T_perturb/Model',
+        't_generative/T_perturb/T_perturb/Model/checkpoints',
         filename='checkpoint',
         save_top_k=1,
         verbose=True,
@@ -166,8 +155,15 @@ def main() -> None:
         accelerator=accelerator,
     )
 
-    # Finally, kick of the training process.
+    # # Finally, kick of the training process.
     trainer.fit(model_module, data_module)
+    # trainer.test(
+    #     model_module,
+    #     data_module,
+    #     ckpt_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+    #     't_generative/T_perturb/T_perturb/Model/checkpoints/checkpoint-v6.ckpt'
+    # )
+
 
 if __name__ == '__main__':
     main()
