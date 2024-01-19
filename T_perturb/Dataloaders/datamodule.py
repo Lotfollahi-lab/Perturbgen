@@ -11,7 +11,8 @@ from torch.utils.data import DataLoader, Dataset
 class GeneformerDataset(Dataset):
     def __init__(
         self,
-        folder='./data/tokenized.dataset',
+        src_folder='./data/tokenized.dataset',
+        tgt_folder='./data/tokenized.dataset',
         shuffle=False,
     ):
         super().__init__()
@@ -23,17 +24,19 @@ class GeneformerDataset(Dataset):
         - length: length of each cell
         """
         self.shuffle = shuffle
-        self.dataset = load_from_disk(folder)
+        self.src_data = load_from_disk(src_folder)
+        self.tgt_data = load_from_disk(tgt_folder)
         # with open(token_dictionary_file, "rb") as f:
         #     self.gene_token_dict = pickle.load(f)
         # self.pad_token_id = self.gene_token_dict.get("<pad>")
 
     def __len__(self):
-        return len(self.dataset)
+        if len(self.src_data) != len(self.tgt_data):
+            Warning('src and tgt dataset have different length')
+        return min(len(self.src_data), len(self.tgt_data))
 
     def __getitem__(self, ind):
-        # Success
-        return self.dataset[ind]
+        return {'src': self.src_data[ind], 'tgt': self.tgt_data[ind]}
 
 
 # two dataloader vs one dataloader
@@ -45,7 +48,7 @@ class GeneformerDataModule(LightningDataModule):
         batch_size=3,
         num_workers=0,
         shuffle=False,
-        max_len=2048
+        max_len=2048,
     ):
         """
         Description:
@@ -66,73 +69,71 @@ class GeneformerDataModule(LightningDataModule):
         self.dataset = None
 
     def setup(self, stage=None):
-        self.src_dataset = GeneformerDataset(
-            folder=self.src_folder,
+        self.dataset = GeneformerDataset(
+            src_folder=self.src_folder,
+            tgt_folder=self.tgt_folder,
             shuffle=self.shuffle,
         )
-        self.tgt_dataset = GeneformerDataset(
-            folder=self.tgt_folder,
-            shuffle=self.shuffle,
-        )
+        # if stage == 'fit' or stage is None:
+        #     self.dataset = self.src_dataset + self.tgt_dataset
+        # if stage == 'test' or stage is None:
+        #     self.dataset = self.tgt_dataset
+
+    def train_test_split(self):
+        pass
 
     def train_dataloader(self):
-        return {
-            'src': DataLoader(
-                self.src_dataset,
-                batch_size=self.batch_size,
-                shuffle=self.shuffle,
-                num_workers=self.num_workers,
-                collate_fn=self.src_collate,
-            ),
-            'tgt': DataLoader(
-                self.tgt_dataset,
-                batch_size=self.batch_size,
-                shuffle=self.shuffle,
-                num_workers=self.num_workers,
-                collate_fn=self.tgt_collate,
-            ),
-        }
-
-    def src_collate(self, batch):
-        batch = batch
-        model_input_size = self.max_len
-
-        input_batch_id = [torch.tensor(d['input_ids']) for d in batch]
-        length = torch.stack([torch.tensor(d['length']) for d in batch])
-        cell_type = [d['Cell_type'] for d in batch]
-        time_point = ([d['Time_point'] for d in batch],)
-        Donor = ([d['Donor'] for d in batch],)
-        input_batch_id = pad_tensor_list(
-            input_batch_id, self.max_len, self.pad_token_id, model_input_size
+        data = DataLoader(
+            self.dataset,
+            batch_size=self.batch_size,
+            shuffle=self.shuffle,
+            num_workers=self.num_workers,
+            collate_fn=self.collate,
         )
-        return {
-            'input_id': input_batch_id.clone().detach(),
-            'length': length.clone().detach(),
-            'cell_type': cell_type,
-            'time_point': time_point,
-            'Donor': Donor,
-            'attention_mask': self.gen_attention_mask(
-                length
-            ),  # no attention mask needed for tgt
-        }
+        return data
 
-    def tgt_collate(self, batch):
-        batch = batch
-        model_input_size = self.max_len
-        input_batch_id = [torch.tensor(d['input_ids']) for d in batch]
-        length = torch.stack([torch.tensor(d['length']) for d in batch])
-        cell_type = [d['Cell_type'] for d in batch]
-        time_point = ([d['Time_point'] for d in batch],)
-        Donor = ([d['Donor'] for d in batch],)
-        input_batch_id = pad_tensor_list(
-            input_batch_id, self.max_len, self.pad_token_id, model_input_size
+    def test_dataloader(self):
+        data = DataLoader(
+            self.src_dataset,
+            batch_size=self.batch_size,
+            shuffle=self.shuffle,
+            num_workers=self.num_workers,
+            collate_fn=self.collate,
         )
+        return data
+
+    def collate(self, batch):
+        if any('src' in item for item in batch):
+            src_input_batch_id = [torch.tensor(d['src']['input_ids']) for d in batch]
+            src_length = torch.stack([torch.tensor(d['src']['length']) for d in batch])
+            model_input_size = torch.max(src_length)
+            src_cell_type = [d['src']['Cell_type'] for d in batch]
+            src_time_point = ([d['src']['Time_point'] for d in batch],)
+            src_donor = ([d['src']['Donor'] for d in batch],)
+            src_input_batch_id = pad_tensor_list(
+                src_input_batch_id, self.max_len, self.pad_token_id, model_input_size
+            )
+        if any('tgt' in item for item in batch):
+            tgt_input_batch_id = [torch.tensor(d['tgt']['input_ids']) for d in batch]
+            tgt_length = torch.stack([torch.tensor(d['tgt']['length']) for d in batch])
+            model_input_size = torch.max(tgt_length)
+            tgt_cell_type = [d['tgt']['Cell_type'] for d in batch]
+            tgt_time_point = ([d['tgt']['Time_point'] for d in batch],)
+            tgt_donor = ([d['tgt']['Donor'] for d in batch],)
+            tgt_input_batch_id = pad_tensor_list(
+                tgt_input_batch_id, self.max_len, self.pad_token_id, model_input_size
+            )
         return {
-            'input_id': input_batch_id.clone().detach(),
-            'length': length.clone().detach(),
-            'cell_type': cell_type,
-            'time_point': time_point,
-            'Donor': Donor,
+            'src_input_ids': src_input_batch_id,
+            'src_length': src_length,
+            'src_cell_type': src_cell_type,
+            'src_time_point': src_time_point,
+            'src_donor': src_donor,
+            'tgt_input_ids': tgt_input_batch_id,
+            'tgt_length': tgt_length,
+            'tgt_cell_type': tgt_cell_type,
+            'tgt_time_point': tgt_time_point,
+            'tgt_donor': tgt_donor,
         }
 
     def gen_attention_mask(self, length):
@@ -158,6 +159,6 @@ if __name__ == '__main__':
     data_module.setup()
     dataloader = data_module.train_dataloader()
     # iterate through batches
-    train_iterator = iter(dataloader['src'])
+    train_iterator = iter(dataloader)
     batch = next(train_iterator)
     print(batch)

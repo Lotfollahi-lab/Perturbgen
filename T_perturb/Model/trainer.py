@@ -1,10 +1,13 @@
 import pickle
+from typing import List
 
+import anndata
 import scanpy as sc
-# import torch
+import torch
 import torch.nn as nn
 import torch.optim as optim
 import wandb
+from geneformer.perturber_utils import mean_nonpadding_embs
 from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningModule
 
@@ -48,12 +51,13 @@ class TTransformertrainer(LightningModule):
             dropout=dropout,
             mlm_probability=mlm_probability,
         )
-        self.loss = nn.CrossEntropyLoss()
+        self.loss = nn.CrossEntropyLoss(ignore_index=0)
         self.save_hyperparameters()
         self.weight_decay = weight_decay
         self.lr = lr
         self.lr_scheduler_patience = lr_scheduler_patience
         self.lr_scheduler_factor = lr_scheduler_factor
+        self.embedding_list: List[torch.tensor] = []  # noqa
 
         with open(TOKEN_DICTIONARY_FILE, 'rb') as f:
             gene_token_dict = pickle.load(f)
@@ -62,12 +66,21 @@ class TTransformertrainer(LightningModule):
     def forward(self, batch):
         src_batch = batch['src']
         tgt_batch = batch['tgt']
-        output, labels = self.transformer(
-            src_input_id=src_batch['input_id'],
-            src_attention_mask=src_batch['attention_mask'],
-            tgt_input_id=tgt_batch['input_id'],
-        )
-        return output, labels
+
+        if self.training:
+            output, labels = self.transformer(
+                src_input_id=src_batch['input_id'],
+                src_attention_mask=src_batch['attention_mask'],
+                tgt_input_id=tgt_batch['input_id'],
+            )
+            return output, labels
+        else:
+            output, embeddings = self.transformer(
+                src_input_id=src_batch['input_id'],
+                src_attention_mask=src_batch['attention_mask'],
+                tgt_input_id=tgt_batch['input_id'],
+            )
+            return output, embeddings
 
     def configure_optimizers(self):
         parameters = [{'params': self.transformer.parameters(), 'lr': self.lr}]
@@ -85,8 +98,12 @@ class TTransformertrainer(LightningModule):
 
     def training_step(self, batch, *args, **kwargs):
         output, labels = self.forward(batch)  # adapt based on output
-        output = output.view(-1, output.size(-1))
-        labels = labels.view(-1)
+        output = output.contiguous().view(-1, output.size(-1))
+        labels = labels.contiguous().view(-1)
+
+        # arg_max=torch.argmax(nn.Softmax(dim=1)(output_loss), dim=1)
+        # #reashape to bxlxtoken_size
+        # arg_max=arg_max.reshape(64,247)
         loss = self.loss(output, labels)
         # correct = 0
         # __, predicted = torch.max(output, 1)
@@ -102,6 +119,15 @@ class TTransformertrainer(LightningModule):
         pass
 
     def test_step(self, batch, *args, **kwargs):
-        output,_ = self.forward(batch)  # adapt based on output
-        output = output.view(-1, output.size(-1))
-        return output
+        padded = batch['input_id']
+        padded[padded != 0] = 1
+        _, embeddings = self.forward(batch)  # adapt based on output
+        cell_embeddings = mean_nonpadding_embs(embeddings, batch['length'])
+        self.embedding_list.append(cell_embeddings)
+
+    def on_test_epoch_end(self, outputs, adata_path):
+        adata = anndata.AnnData(torch.cat(self.embedding_list).detach().numpy())
+        adata.write(
+            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+            'T_perturb/T_perturb/pp/res/encoder/embedding.h5ad'
+        )
