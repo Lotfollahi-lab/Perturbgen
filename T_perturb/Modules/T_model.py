@@ -6,7 +6,7 @@ https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision
 import math
 
 import torch
-from einops import rearrange, repeat
+from einops import rearrange
 from torch import einsum, nn
 from transformers import BertForMaskedLM
 
@@ -81,41 +81,37 @@ class CrossAttention(nn.Module):
             nn.Linear(inner_dim, query_dim), nn.Dropout(dropout)  # projection head
         )
 
-    def forward(self, x, context=None, mask=None):
+    def forward(self, x, context=None, tgt_mask=None, src_mask=None):
         h = self.heads
         q = self.to_q(x)
         if context is None:
             context = x
-            print('SelfAttention')
-        else:
-            print('CrossAttention')
         k = self.to_k(context)
         v = self.to_v(context)
-        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=h), (q, k, v))
         # b = batch size, n = sequence length
         # h = number of heads, d = dimension of each hea[d
-        sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
-        if mask is not None:
+        sim = einsum('b h i d, b h j d -> b h i j', q, k) * self.scale
+        max_neg_value = -torch.finfo(sim.dtype).max
+        if tgt_mask is not None:
             # print(mask.shape)
-            mask = rearrange(mask, 'b ... -> b (...)')  # flattening mask
-            max_neg_value = -torch.finfo(sim.dtype).max
+            # mask = rearrange(mask, 'b ... -> b (...)')  # flattening mask
+            sim = sim.masked_fill(tgt_mask == 0, max_neg_value)
             # print(mask.shape)
-            mask = repeat(mask, 'b j -> (b h) () j', h=h)  # repeat mask for each head
-            # #mask shape is off and is not broadcasted correctly
-            mask = mask.view(sim.shape)
-            sim = sim.masked_fill(mask == 0, max_neg_value)
-
+            # mask = repeat(mask, 'b i j -> (b h) i j', h=h)
+            # repeat mask for each head
+        if src_mask is not None:
+            sim = sim.masked_fill_(~src_mask[:, None, :], max_neg_value)
             # sim.masked_fill_(mask.to(device), max_neg_value)
-        else:
-            raise ValueError('mask is None')
+        # else:
+        #     raise ValueError('mask is None')
 
         # attention, what we cannot get enough of
         attn = sim.softmax(dim=-1)
-        print(attn[:, :10, :10])
-        print(attn[0, -30:, -30:])
-        out = einsum('b i j, b j d -> b i d', attn, v)
-        out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
-
+        # aggregate
+        out = einsum('b h i j, b h j d -> b h i d', attn, v)
+        # head
+        out = rearrange(out, 'b h n d -> b n (h d)', h=h)
         return self.to_out(out)
 
 
@@ -186,11 +182,9 @@ class DecoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None):
-        attn_output = self.self_attn(x, mask=tgt_mask)
+        attn_output = self.self_attn(x, tgt_mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
-        attn_output = self.cross_attn(
-            x, context=enc_output, mask=src_mask
-        )  # change this back
+        attn_output = self.cross_attn(x, context=enc_output)  # change this back
         x = self.norm2(x + self.dropout(attn_output))
         ff_output = self.feed_forward(x)
         x = self.norm3(x + self.dropout(ff_output))
@@ -283,12 +277,51 @@ class TTransformer(nn.Module):
         tgt_pad = torch.tensor((tgt != 0), dtype=bool)
         return tgt_pad
 
+    def create_extended_attention_mask_for_decoder(
+        self, input_id, attention_mask, device=None
+    ):
+        # if device is not None:
+        #     warnings.warn(
+        #         "The `device` argument is deprecated and
+        #           will be removed in v5 of Transformers.", FutureWarning
+        #     )
+        # else:
+        #     device = attention_mask.device
+        batch_size, seq_length = input_id.shape
+        seq_ids = torch.arange(seq_length, device=device)
+        causal_mask = (
+            seq_ids[None, None, :].repeat(batch_size, seq_length, 1)
+            <= seq_ids[None, :, None]
+        )
+        # in case past_key_values are used we need to
+        # add a prefix ones mask to the causal mask
+        # causal and attention masks must have same type with pytorch version < 1.3
+        causal_mask = causal_mask.to(attention_mask.dtype)
+
+        if causal_mask.shape[1] < attention_mask.shape[1]:
+            prefix_seq_len = attention_mask.shape[1] - causal_mask.shape[1]
+            causal_mask = torch.cat(
+                [
+                    torch.ones(
+                        (batch_size, seq_length, prefix_seq_len),
+                        device=device,
+                        dtype=causal_mask.dtype,
+                    ),
+                    causal_mask,
+                ],
+                axis=-1,
+            )
+
+        extended_attention_mask = (
+            causal_mask[:, None, :, :] * attention_mask[:, None, None, :]
+        )
+        return extended_attention_mask
+
     def generate_mask(self, src_attention_mask, tgt, tgt_pad):
         src_mask = src_attention_mask.unsqueeze(1).unsqueeze(2)
-        # repeat src mask
-        src_mask = src_mask.repeat(1, 1, tgt.size(1), 1)
+        # # repeat src mask
+        # src_mask = src_mask.repeat(1, 1, tgt.size(1), 1)
         tgt_pad = tgt_pad.unsqueeze(1).unsqueeze(3)
-
         seq_length = tgt.size(1)
         nopeak_mask = (
             1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)
@@ -304,24 +337,23 @@ class TTransformer(nn.Module):
         )  # add positional encoding to eagit fetch origin
         return x
 
-    def forward(self, src_input_id, src_attention_mask, tgt_input_id):
+    def forward(self, src_input_id, tgt_input_id):
         device = tgt_input_id.device
         tgt_input_id = torch.cat(
             (self.cls_token.expand(tgt_input_id.shape[0], -1).to(device), tgt_input_id),
             dim=1,
         )
-        src_attention_mask = src_attention_mask.bool()
+        src_attention_mask = src_input_id != 0
         tgt_pad = self.generate_pad(tgt_input_id)
         if self.training:
-            src_attention_mask_reshaped, tgt_mask = self.generate_mask(
-                src_attention_mask, tgt_input_id, tgt_pad
+            # _, tgt_mask = self.generate_mask(
+            #     src_attention_mask, tgt_input_id, tgt_pad
+            # )
+            tgt_mask = self.create_extended_attention_mask_for_decoder(
+                tgt_input_id, tgt_pad, device
             )
         else:
             tgt_mask, _ = (tgt_pad, None)
-
-        # print(tgt_mask.shape)
-        # print(src_attention_mask.shape)
-        # print(src_attention_mask)
         src_embedded = self.encoder_layers(src_input_id, src_attention_mask)
         src_embedded[~src_attention_mask] = 0
         tgt_embedded = self.prepare_tokens(
@@ -330,9 +362,7 @@ class TTransformer(nn.Module):
         enc_output = src_embedded
         dec_output = tgt_embedded
         for dec_layer in self.decoder_layers:
-            dec_output = dec_layer(
-                dec_output, src_attention_mask_reshaped, tgt_mask, enc_output
-            )
+            dec_output = dec_layer(dec_output, src_attention_mask, tgt_mask, enc_output)
 
         output = self.fc(dec_output)
         # mask cls
@@ -343,6 +373,67 @@ class TTransformer(nn.Module):
         else:
             return output, dec_output
 
+    def generate(self, input_ids):
+        # Assuming input_ids is a tensor with shape [batch_size, sequence_length]
+        with torch.no_grad():
+            attention_mask = input_ids != 0
+            # Perform the necessary processing steps
+            # (e.g., embedding, positional encoding)
+            embedded_input = self.decoder_embedding(input_ids)
+            embedded_input[~attention_mask] = 0
+            embedded_input = self.prepare_tokens(embedded_input)
+            enc_output = self.encoder_layers(input_ids, attention_mask=None)
+            # Initialize the generated sequence with the <CLS> token
+            generated_sequence = self.cls_token.expand(input_ids.size(0), 1, -1)
+            # Generate the sequence step by step
+            for dec_layer in self.decoder_layers:
+                dec_output = dec_layer(
+                    generated_sequence, attention_mask=None, enc_output=enc_output
+                )
+                logits = self.fc(
+                    dec_output[:, -1, :]
+                )  # Take the logits for the last position
+                next_token = torch.argmax(logits, dim=-1, keepdim=True)
+                generated_sequence = torch.cat([generated_sequence, next_token], dim=1)
+        return generated_sequence
+
+
+# def generate(
+#         self, idx,
+#         max_new_tokens, temperature=1.0,
+#         do_sample=False, top_k=None
+#         ):
+#     """
+#     Take a conditioning sequence of indices idx
+#     (LongTensor of shape (b,t)) and complete
+#     the sequence max_new_tokens times, feeding the
+#     predictions back into the model each time.
+#     Most likely you'll want to make sure to be in model.eval()
+#     mode of operation for this.
+#     """
+#     for _ in range(max_new_tokens):
+#         # if the sequence context is growing too long we must crop it at block_size
+#         idx_cond = (idx if idx.size(1) <= self.block_size
+#                     else idx[:, -self.block_size:])
+#         # forward the model to get the logits for the index in the sequence
+#         logits, _ = self(idx_cond)
+#         # pluck the logits at the final step and scale by desired temperature
+#         logits = logits[:, -1, :] / temperature
+#         # optionally crop the logits to only the top k options
+#         if top_k is not None:
+#             v, _ = torch.topk(logits, top_k)
+#             logits[logits < v[:, [-1]]] = -float('Inf')
+#         # apply softmax to convert logits to (normalized) probabilities
+#         probs = F.softmax(logits, dim=-1)
+#         # either sample from the distribution or take the most likely element
+#         if do_sample:
+#             idx_next = torch.multinomial(probs, num_samples=1)
+#         else:
+#             _, idx_next = torch.topk(probs, k=1, dim=-1)
+#         # append sampled index to the running sequence and continue
+#         idx = torch.cat((idx, idx_next), dim=1)
+
+#     return idx
 
 if __name__ == '__main__':
     src_vocab_size = 5000
@@ -375,18 +466,17 @@ if __name__ == '__main__':
     data_module.setup()
     dataloader = data_module.train_dataloader()
     # # iterate through batches
-    src_train_iterator = iter(dataloader['src'])
-    tgt_train_iterator = iter(dataloader['tgt'])
-    src_batch = next(src_train_iterator)
-    tgt_batch = next(tgt_train_iterator)
+    train_iterator = iter(dataloader)
+    batch = next(train_iterator)
+    print(batch['src_input_ids'].shape)
+    print(batch)
 
     # (batch_size, seq_length)
     # position = PositionalEncoding(d_model, max_seq_length)
     # print(position(tgt_data).shape)
     # print(decoder(tgt_data, enc_output=src_data).shape)
-    out, label = transformer(
-        src_batch['input_id'], src_batch['attention_mask'], tgt_batch['input_id']
-    )
+    out, label = transformer(batch['src_input_ids'], batch['tgt_input_ids'])
+    print(out)
 
     # src_data = torch.randint(20000,(10, 500))
     # src_attn_mask = torch.ones((10, 500))

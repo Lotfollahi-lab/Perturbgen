@@ -64,21 +64,17 @@ class TTransformertrainer(LightningModule):
         self.gene_token_dict = {value: key for key, value in gene_token_dict.items()}
 
     def forward(self, batch):
-        src_batch = batch['src']
-        tgt_batch = batch['tgt']
-
         if self.training:
             output, labels = self.transformer(
-                src_input_id=src_batch['input_id'],
-                src_attention_mask=src_batch['attention_mask'],
-                tgt_input_id=tgt_batch['input_id'],
+                src_input_id=batch['src_input_ids'],
+                tgt_input_id=batch['tgt_input_ids'],
             )
+
             return output, labels
         else:
             output, embeddings = self.transformer(
-                src_input_id=src_batch['input_id'],
-                src_attention_mask=src_batch['attention_mask'],
-                tgt_input_id=tgt_batch['input_id'],
+                src_input_id=batch['src_input_ids'],
+                tgt_input_id=batch['tgt_input_ids'],
             )
             return output, embeddings
 

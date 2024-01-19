@@ -43,7 +43,7 @@ def get_args():
         '--log_dir', type=str, default='logs', help='path to data directory'
     )
     parser.add_argument(
-        '--mlm_probability', type=float, default=0.15, help='BERT MLM probability'
+        '--mlm_probability', type=float, default=0.9, help='BERT MLM probability'
     )
     parser.add_argument('--max_len', type=int, default=246, help='max sequence length')
     parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
