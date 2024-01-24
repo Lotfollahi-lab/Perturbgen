@@ -7,7 +7,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import wandb
-from geneformer.perturber_utils import mean_nonpadding_embs
+
+# from geneformer.perturber_utils import mean_nonpadding_embs
 from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningModule
 
@@ -94,12 +95,17 @@ class TTransformertrainer(LightningModule):
 
     def training_step(self, batch, *args, **kwargs):
         output, labels = self.forward(batch)  # adapt based on output
+        # softmax_output = nn.Softmax(dim=1)(output)
+        print(labels.shape)
+        print('labels', labels[:, :5])
+        print(output.shape)
+        arg_max = torch.argmax(nn.Softmax(dim=2)(output), dim=2)
+        # #reashape to bxlxtoken_size
+        print('arg_max', arg_max[:, :5])
+
         output = output.contiguous().view(-1, output.size(-1))
         labels = labels.contiguous().view(-1)
 
-        # arg_max=torch.argmax(nn.Softmax(dim=1)(output_loss), dim=1)
-        # #reashape to bxlxtoken_size
-        # arg_max=arg_max.reshape(64,247)
         loss = self.loss(output, labels)
         # correct = 0
         # __, predicted = torch.max(output, 1)
@@ -115,11 +121,11 @@ class TTransformertrainer(LightningModule):
         pass
 
     def test_step(self, batch, *args, **kwargs):
-        padded = batch['input_id']
-        padded[padded != 0] = 1
-        _, embeddings = self.forward(batch)  # adapt based on output
-        cell_embeddings = mean_nonpadding_embs(embeddings, batch['length'])
-        self.embedding_list.append(cell_embeddings)
+        output = self.transformer.generate(
+            input_ids=batch['src_input_ids'], max_length=torch.max(batch['tgt_length'])
+        )
+
+        print(output)
 
     def on_test_epoch_end(self, outputs, adata_path):
         adata = anndata.AnnData(torch.cat(self.embedding_list).detach().numpy())

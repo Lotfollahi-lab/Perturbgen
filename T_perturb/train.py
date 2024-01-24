@@ -13,7 +13,7 @@ from pytorch_lightning.loggers import WandbLogger
 from T_perturb.Dataloaders.datamodule import GeneformerDataModule
 from T_perturb.Model.trainer import TTransformertrainer
 
-RANDOM_SEED = 42
+RANDOM_SEED = 21
 
 
 def get_args():
@@ -45,7 +45,7 @@ def get_args():
     parser.add_argument(
         '--mlm_probability', type=float, default=0.9, help='BERT MLM probability'
     )
-    parser.add_argument('--max_len', type=int, default=246, help='max sequence length')
+    parser.add_argument('--max_len', type=int, default=20, help='max sequence length')
     parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
     parser.add_argument('--wd', type=float, default=1e-3, help='weight decay')
     # parser.add_argument('--n_cls', type=int, default=10, help='number of classes')

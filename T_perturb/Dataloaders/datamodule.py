@@ -8,6 +8,28 @@ from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset
 
 
+# Dummy dataset
+class DummyDataset(torch.utils.data.Dataset):
+    def __init__(self, max_len, tgt_vocab_size):
+        self.max_len = max_len
+        self.tgt_vocab_size = tgt_vocab_size
+
+    def __len__(self):
+        return 1000  # Dummy number of samples
+
+    def __getitem__(self, idx):
+        # Dummy input data (replace with your actual data loading)
+        src_input_ids = torch.randint(0, self.tgt_vocab_size, (self.max_len,))
+        tgt_input_ids = torch.randint(0, self.tgt_vocab_size, (self.max_len,))
+        src_input_ids[:, -5:] = 0
+        tgt_input_ids[:, -5:] = 0
+
+        return {
+            'src': src_input_ids,
+            'tgt': tgt_input_ids,
+        }
+
+
 class GeneformerDataset(Dataset):
     def __init__(
         self,
@@ -94,7 +116,7 @@ class GeneformerDataModule(LightningDataModule):
 
     def test_dataloader(self):
         data = DataLoader(
-            self.src_dataset,
+            self.dataset,
             batch_size=self.batch_size,
             shuffle=self.shuffle,
             num_workers=self.num_workers,

@@ -157,8 +157,8 @@ def main() -> None:
     trainer.test(
         model_module,
         data_module,
-        ckpt_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative'
-        '/T_perturb/T_perturb/Model/checkpoints/checkpoint-v9.ckpt',
+        ckpt_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        'T_perturb/T_perturb/Model/checkpoints/checkpoint-v12.ckpt',
     )
 
 
