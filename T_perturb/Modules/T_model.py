@@ -126,9 +126,6 @@ class CrossAttention(nn.Module):
         # print("out", out[1,:10,:10])
         # head
         out = rearrange(out, 'b h n d -> b n (h d)', h=h)
-        print(out.shape)
-        print('out', out[0, :10, :10])
-
         return self.to_out(out)
 
 
@@ -264,7 +261,7 @@ class TTransformer(nn.Module):
         num_layers=1,
         d_ff=2048,
         max_seq_length=2048,
-        dropout=0.0,
+        dropout=0.2,
         mlm_probability=0.15,
     ):
         super(TTransformer, self).__init__()
@@ -319,8 +316,6 @@ class TTransformer(nn.Module):
         nopeak_mask = nopeak_mask.to(self.device)
         tgt_pad = tgt_pad.to(self.device)
         tgt_mask = tgt_pad & nopeak_mask
-        print(tgt_mask.shape)
-        print(tgt_mask)
         return src_mask, tgt_mask
 
     def prepare_tokens(self, x, mask=None):
@@ -334,22 +329,20 @@ class TTransformer(nn.Module):
         # print(self.map_deg_to_tokenid)
         # [print(key) for key in tgt_input_id]
         # # print(inner_seq)
-        # raise
-        device = tgt_input_id.device
-        tgt_input_id = torch.cat(
-            (self.cls_token.expand(tgt_input_id.shape[0], -1).to(device), tgt_input_id),
-            dim=1,
-        )
+
+        # tgt_input_id = torch.cat(
+        #     (self.cls_token.expand(
+        #         tgt_input_id.shape[0], -1
+        #         ).to(self.device), tgt_input_id),
+        #     dim=1,
+        # )
         src_attention_mask = src_input_id != 0
         tgt_pad = self.generate_pad(tgt_input_id)
-        if self.training:
-            _, tgt_mask = self.generate_mask(src_attention_mask, tgt_input_id, tgt_pad)
+        _, tgt_mask = self.generate_mask(src_attention_mask, tgt_input_id, tgt_pad)
 
-            # tgt_mask = self.create_extended_attention_mask_for_decoder(
-            #     tgt_input_id, tgt_pad, device
-            # )
-        else:
-            tgt_mask = None
+        # tgt_mask = self.create_extended_attention_mask_for_decoder(
+        #     tgt_input_id, tgt_pad, device
+        # )
         src_embedded = self.encoder_layers(src_input_id, src_attention_mask)
         src_embedded[~src_attention_mask] = 0
         tgt_embedded = self.prepare_tokens(
@@ -363,7 +356,7 @@ class TTransformer(nn.Module):
         output = self.fc(dec_output)
         # mask cls
         tgt_input_id_ = tgt_input_id.clone()
-        tgt_input_id_[:, 0] = 0
+        # tgt_input_id_[:, 0] = 0
         if self.training:
             return output, tgt_input_id_
         else:
@@ -411,7 +404,15 @@ class TTransformer(nn.Module):
 
     #     return labels
 
-    def generate(self, input_ids, max_length, do_sample=False, top_k=None):
+    def generate(
+        self,
+        input_ids,
+        max_length,
+        tgt_vocab_size,
+        temperature=1,
+        do_sample=True,
+        top_k=20,
+    ):
         """
         Take a conditioning sequence of indices idx (LongTensor of shape (b,t))
         and complete the sequence max_length times,
@@ -419,16 +420,23 @@ class TTransformer(nn.Module):
         Most likely you'll want to
         make sure to be in model.eval() mode of operation for this.
         """
-        for _ in range(max_length):
+        context_number = 5
+        B, _ = input_ids.size()
+        labels = input_ids[:, :context_number]  # provide some context
+        # labels = torch.full(
+        #     (B, 1), 0, dtype=torch.long, device=input_ids.device
+        # )  # initialise CLS token as 0
+        for i in range(context_number, max_length):
             # if the sequence context is growing too long we must crop it at block_size
             # input_ids_cond = input_ids if input_ids.size(1)
             # <= self.block_size else input_ids[:, -self.block_size:]
             # forward the model to get the logits for the index in the sequence
-            B, _ = input_ids.size()
-            labels = torch.full(
-                (B, 1), 25426, dtype=torch.long, device=input_ids.device
-            )  # initialise CLS token as 0
+            # stop after padding token
             logits, _ = self(input_ids, labels)
+            logits = logits[:, -1, :] / temperature
+
+            # print(logits.shape)
+            # print(logits)
             # optionally crop the logits to only the top k options
             if top_k is not None:
                 v, _ = torch.topk(logits, top_k)
@@ -440,7 +448,6 @@ class TTransformer(nn.Module):
                 input_idx_next = torch.multinomial(probs, num_samples=1)
             else:
                 _, input_idx_next = torch.topk(probs, k=1, dim=-1)
-            print(input_idx_next.shape)
             # flatten indices
             input_idx_next = input_idx_next.view(-1, 1)
             # append sampled index to the running sequence and continue
@@ -498,8 +505,6 @@ def _detect_is_causal_mask(
         causal_comparison = _generate_square_subsequent_mask(
             sz, device=mask.device, dtype=mask.dtype
         )
-        print(causal_comparison.shape)
-        print(causal_comparison)
 
         # Do not use `torch.equal` so we handle batched masks by
         # broadcasting the comparison.

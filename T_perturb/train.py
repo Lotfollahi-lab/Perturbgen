@@ -13,7 +13,7 @@ from pytorch_lightning.loggers import WandbLogger
 from T_perturb.Dataloaders.datamodule import GeneformerDataModule
 from T_perturb.Model.trainer import TTransformertrainer
 
-RANDOM_SEED = 21
+RANDOM_SEED = 100
 
 
 def get_args():
@@ -22,15 +22,19 @@ def get_args():
     parser.add_argument(
         '--src_folder',
         type=str,
+        # default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+        # 't_generative/data/20230803_cytoimmgen.dataset',
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_16h.dataset',
+        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_degs_random_pairing_0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
         '--tgt_folder',
         type=str,
+        # default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+        # 't_generative/data/20230803_cytoimmgen.dataset',
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_40h.dataset',
+        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_degs_random_pairing_16h.dataset',
         help='path to tokenised activated data',
     )
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
@@ -45,11 +49,11 @@ def get_args():
     parser.add_argument(
         '--mlm_probability', type=float, default=0.9, help='BERT MLM probability'
     )
-    parser.add_argument('--max_len', type=int, default=20, help='max sequence length')
+    parser.add_argument('--max_len', type=int, default=257, help='max sequence length')
     parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
     parser.add_argument('--wd', type=float, default=1e-3, help='weight decay')
     # parser.add_argument('--n_cls', type=int, default=10, help='number of classes')
-    parser.add_argument('--n_workers', type=int, default=0, help='number of workers')
+    parser.add_argument('--n_workers', type=int, default=8, help='number of workers')
     args = parser.parse_args()
     return args
 
@@ -64,12 +68,13 @@ def main() -> None:
     # Initialize model module
     # ----------------------------------------------------------------------------------
     model_module = TTransformertrainer(
-        tgt_vocab_size=25426,
+        # tgt_vocab_size=25467,
+        tgt_vocab_size=704,
         d_model=256,
         num_heads=8,
         num_layers=1,
         d_ff=64,
-        max_seq_length=1000,
+        max_seq_length=2048,
         dropout=0.0,
         mlm_probability=args.mlm_probability,
         weight_decay=args.wd,

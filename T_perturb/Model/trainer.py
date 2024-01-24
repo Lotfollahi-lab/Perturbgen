@@ -96,12 +96,12 @@ class TTransformertrainer(LightningModule):
     def training_step(self, batch, *args, **kwargs):
         output, labels = self.forward(batch)  # adapt based on output
         # softmax_output = nn.Softmax(dim=1)(output)
-        print(labels.shape)
-        print('labels', labels[:, :5])
-        print(output.shape)
-        arg_max = torch.argmax(nn.Softmax(dim=2)(output), dim=2)
+        # print(labels.shape)
+        # print('labels', labels[:, :5])
+        # print(output.shape)
+        # arg_max = torch.argmax(nn.Softmax(dim=2)(output), dim=2)
         # #reashape to bxlxtoken_size
-        print('arg_max', arg_max[:, :5])
+        # print('arg_max', arg_max[:, :5])
 
         output = output.contiguous().view(-1, output.size(-1))
         labels = labels.contiguous().view(-1)
@@ -121,11 +121,18 @@ class TTransformertrainer(LightningModule):
         pass
 
     def test_step(self, batch, *args, **kwargs):
+        # num_samples = 10
+        # x = torch.tensor([0]) #start with padding token
+        # x.to('cuda')
+        # x = x.expand(num_samples, -1)
         output = self.transformer.generate(
-            input_ids=batch['src_input_ids'], max_length=torch.max(batch['tgt_length'])
+            input_ids=batch['src_input_ids'],
+            max_length=torch.max(batch['tgt_length']),
+            tgt_vocab_size=704
+            # top_k=5
         )
-
-        print(output)
+        print(output[:20, :20])
+        print(batch['tgt_input_ids'][:20, :20])
 
     def on_test_epoch_end(self, outputs, adata_path):
         adata = anndata.AnnData(torch.cat(self.embedding_list).detach().numpy())
