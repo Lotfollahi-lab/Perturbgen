@@ -22,15 +22,19 @@ def get_args():
     parser.add_argument(
         '--src_folder',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_degs_random_pairing_0h.dataset',
+        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+        't_generative/data/20230803_cytoimmgen.dataset',
+        # default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        # 'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_degs_random_pairing_0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
         '--tgt_folder',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_degs_random_pairing_16h.dataset',
+        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+        't_generative/data/20230803_cytoimmgen.dataset',
+        # default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        # 'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_degs_random_pairing_16h.dataset',
         help='path to tokenised activated data',
     )
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
@@ -64,7 +68,8 @@ def main() -> None:
     # Initialize model module
     # ----------------------------------------------------------------------------------
     model_module = TTransformertrainer(
-        tgt_vocab_size=704,
+        # tgt_vocab_size=704,
+        tgt_vocab_size=25467,
         d_model=256,
         num_heads=8,
         num_layers=1,
@@ -156,8 +161,8 @@ def main() -> None:
     trainer.test(
         model_module,
         data_module,
-        ckpt_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/Model/checkpoints/checkpoint-v3.ckpt',
+        ckpt_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+        't_generative/T_perturb/T_perturb/Model/checkpoints/checkpoint-v2.ckpt',
     )
 
 

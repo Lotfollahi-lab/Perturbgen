@@ -104,8 +104,8 @@ class CrossAttention(nn.Module):
             # mask = rearrange(mask, 'b ... -> b (...)')  # flattening mask
             sim = sim.masked_fill(tgt_mask == 0, max_neg_value)
             # print(sim.shape)
-            # print("sim", sim[0,0,:10,:10])
-            # print("sim", sim[1,0,:10,:10])
+            # print("sim", sim[0,0,20:35,20:35])
+            # print("sim", sim[1,0,20:35,20:35])
             # print(mask.shape)
             # mask = repeat(mask, 'b i j -> (b h) i j', h=h)
             # repeat mask for each head
@@ -122,8 +122,8 @@ class CrossAttention(nn.Module):
         # aggregate
         out = einsum('b h i j, b h j d -> b h i d', attn, v)
         # print(out.shape)
-        # print("out", out[0,:10,:10])
-        # print("out", out[1,:10,:10])
+        # print("out", out[0,20:35,20:35])
+        # print("out", out[1,20:35,20:35])
         # head
         out = rearrange(out, 'b h n d -> b n (h d)', h=h)
         return self.to_out(out)
@@ -408,9 +408,8 @@ class TTransformer(nn.Module):
         self,
         input_ids,
         max_length,
-        tgt_vocab_size,
-        temperature=1,
-        do_sample=True,
+        temperature=1.0,
+        do_sample=False,
         top_k=20,
     ):
         """
@@ -420,9 +419,9 @@ class TTransformer(nn.Module):
         Most likely you'll want to
         make sure to be in model.eval() mode of operation for this.
         """
-        context_number = 5
+        context_number = 20
         B, _ = input_ids.size()
-        labels = input_ids[:, :context_number]  # provide some context
+        labels = input_ids[:, :context_number]  # provide some context acting as prompt
         # labels = torch.full(
         #     (B, 1), 0, dtype=torch.long, device=input_ids.device
         # )  # initialise CLS token as 0
@@ -434,10 +433,18 @@ class TTransformer(nn.Module):
             # stop after padding token
             logits, _ = self(input_ids, labels)
             logits = logits[:, -1, :] / temperature
+            # Get a mask of tokens that have already appeared
+            mask = torch.zeros_like(logits).scatter_(-1, labels, 1.0).bool()
+            print(mask.shape)
+            print(labels)
+            print(mask)
 
+            # Set the logits of the masked tokens to negative infinity
+            logits.masked_fill_(mask, -float('Inf'))
             # print(logits.shape)
             # print(logits)
             # optionally crop the logits to only the top k options
+
             if top_k is not None:
                 v, _ = torch.topk(logits, top_k)
                 logits[logits < v[:, [-1]]] = -float('Inf')
@@ -446,12 +453,16 @@ class TTransformer(nn.Module):
             # either sample from the distribution or take the most likely element
             if do_sample:
                 input_idx_next = torch.multinomial(probs, num_samples=1)
+                # print(input_idx_next)
             else:
                 _, input_idx_next = torch.topk(probs, k=1, dim=-1)
+
             # flatten indices
             input_idx_next = input_idx_next.view(-1, 1)
             # append sampled index to the running sequence and continue
             labels = torch.cat((labels, input_idx_next), dim=1)
+            print('labels', labels[20:, 20:])
+            print('input_ids', input_ids[20:35, 20:35])
 
         return labels
 

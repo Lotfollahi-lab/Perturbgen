@@ -126,13 +126,13 @@ class TTransformertrainer(LightningModule):
         # x.to('cuda')
         # x = x.expand(num_samples, -1)
         output = self.transformer.generate(
-            input_ids=batch['src_input_ids'],
-            max_length=torch.max(batch['tgt_length']),
-            tgt_vocab_size=704
+            input_ids=batch['tgt_input_ids'],
+            max_length=torch.max(batch['tgt_length'])
+            # tgt_vocab_size=704
             # top_k=5
         )
-        print(output[:20, :20])
-        print(batch['tgt_input_ids'][:20, :20])
+        print('output', output[:20, :20])
+        # print("input batch",batch['tgt_input_ids'][:20, :20])
 
     def on_test_epoch_end(self, outputs, adata_path):
         adata = anndata.AnnData(torch.cat(self.embedding_list).detach().numpy())
