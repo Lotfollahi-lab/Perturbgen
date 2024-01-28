@@ -1,7 +1,10 @@
+import pickle
 from pathlib import Path
 
 import anndata as ad
+import numpy as np
 import pandas as pd
+import scanpy as sc
 
 
 def map_ensembl_to_genename(
@@ -32,3 +35,18 @@ def map_ensembl_to_genename(
     adata.var = adata.var.drop(columns=['index', 'ensembl_id'])
 
     return adata
+
+
+def map_deg_to_tokenid(adata_deg_path: Path, token_id_path: Path):
+    adata_deg = sc.read_h5ad(adata_deg_path)
+    with open(token_id_path, 'rb') as f:
+        token_id_dict = pickle.load(f)
+    adata_deg.var['token_id'] = adata_deg.var_names.map(token_id_dict)
+    adata_deg.var['token_id'] = adata_deg.var['token_id'].astype('Int64')
+    adata_deg_df = adata_deg[:, adata_deg.var['token_id'].notna()].var
+    # enumerate token_id based on row index
+    adata_deg_df.index = np.arange(0, len(adata_deg_df)) + 1
+    token_id_dict = dict(zip(adata_deg_df['token_id'], adata_deg_df.index))
+    token_id_dict[0] = 0
+
+    return token_id_dict
