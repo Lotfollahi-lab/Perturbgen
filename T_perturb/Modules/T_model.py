@@ -8,9 +8,8 @@ import math
 import torch
 from einops import rearrange, repeat
 from torch import einsum, nn
+from torch.nn import functional as F
 from transformers import BertForMaskedLM
-
-from T_perturb.Dataloaders.datamodule import GeneformerDataModule
 
 # def drop_path(x, drop_prob: float = 0.0, training: bool = False):
 #     if drop_prob == 0.0 or not training:
@@ -95,17 +94,16 @@ class CrossAttention(nn.Module):
             mask = rearrange(mask, 'b ... -> b (...)')
             max_neg_value = -torch.finfo(sim.dtype).max
             mask = repeat(mask, 'b j -> (b h) () j', h=h)
-            print("Shape of mask:")
-            print(mask.shape)
-            print(mask[0])
-            print(mask[1])
-            print(mask[0]==mask[1])
+            # print("Shape of mask:")
+            # print(mask.shape)
+            # print(mask[0])
+            # print(mask[1])
+            # print(mask[0]==mask[1])
             sim.masked_fill_(mask.to(device), max_neg_value)
-            print("Sim:")
-            print(sim.shape)
-            print(sim[0][0])
-            print(sim[1])
-            raise
+            # print("Sim:")
+            # print(sim.shape)
+            # print(sim[0][0])
+            # print(sim[1])
 
         # attention, what we cannot get enough of
         attn = sim.softmax(dim=-1)
@@ -181,9 +179,9 @@ class DecoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None):
-        attn_output = self.self_attn(x, mask=tgt_mask)
+        attn_output = self.self_attn(x, mask=None)
         x = self.norm1(x + self.dropout(attn_output))
-        attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
+        attn_output = self.cross_attn(x, context=enc_output, mask=None)
         x = self.norm2(x + self.dropout(attn_output))
         ff_output = self.feed_forward(x)
         x = self.norm3(x + self.dropout(ff_output))
@@ -250,9 +248,13 @@ class TTransformer(nn.Module):
 
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
-        
-        self.cls_token = torch.tensor([tgt_vocab_size], dtype=torch.long)#start at 25426, because of 0 Python indexing
-        self.decoder_embedding = nn.Embedding(tgt_vocab_size + 1, d_model, padding_idx=0)
+
+        self.cls_token = torch.tensor(
+            [tgt_vocab_size], dtype=torch.long
+        )  # start at 25426, because of 0 Python indexing
+        self.decoder_embedding = nn.Embedding(
+            tgt_vocab_size + 1, d_model, padding_idx=0
+        )
 
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
 
@@ -261,33 +263,54 @@ class TTransformer(nn.Module):
         self.decoder_layers = nn.ModuleList(
             [DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)]
         )
-
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.fc = nn.Linear(d_model, tgt_vocab_size)
         self.dropout = nn.Dropout(dropout)
+
     def generate_pad(self, tgt):
-        tgt_pad = torch.tensor((tgt != 0), dtype=bool).cpu().detach()
+        tgt_pad = torch.tensor((tgt == 0), dtype=bool).cpu().detach()
 
         return tgt_pad
-    
+
+    # def generate_mask(self, src_attention_mask, tgt, tgt_pad):
+    #     src_mask = src_attention_mask.unsqueeze(1).unsqueeze(2)
+    #     # # repeat src mask
+    #     # src_mask = src_mask.repeat(1, 1, tgt.size(1), 1)
+    #     tgt_pad = tgt_pad.unsqueeze(1).unsqueeze(3)
+    #     seq_length = tgt.size(1)
+    #     nopeak_mask = (
+    #         1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)
+    #     ).bool()
+    #     # Set the first element of the diagonal to False
+    #     # nopeak_mask[0, 0, 0] = True
+    #     nopeak_mask = nopeak_mask.to(self.device)
+    #     tgt_pad = tgt_pad.to(self.device)
+    #     tgt_mask = tgt_pad & nopeak_mask
+    #     return src_mask, tgt_mask
+
     def generate_mask(self, tgt, tgt_pad):
-        device = tgt.device 
         labels = tgt.clone()
         probability_matrix = torch.full(tgt_pad.shape, self.mlm_probability)
         cls_tgt_pad = tgt_pad.clone()
-        cls_tgt_pad[:,0] = False
+        cls_tgt_pad[:, 0] = True
         probability_matrix = probability_matrix.masked_fill(
-            ~cls_tgt_pad, 0
+            cls_tgt_pad, 0
         )  # add CLS token to the tokens
-        print(probability_matrix)
+        # print(probability_matrix.shape)
+        # print(probability_matrix)
+        # print(probability_matrix)
         tgt_mask = torch.bernoulli(probability_matrix).bool()
+        # print(tgt_mask.shape)
+        # print(tgt_mask)
         # seq_length = tgt.size(1)
         # nopeak_mask = (
         #     1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)
         #     ).bool()
         # tgt_mask = tgt_mask & nopeak_mask
         labels[~tgt_mask] = -100
-        labels = labels[:,1:]
-        tgt_mask = tgt_mask.masked_fill(~tgt_pad, True)    
+        # print(labels.shape)
+        # print(labels)
+        tgt_mask = tgt_mask.masked_fill(tgt_pad, True)
         # labels = torch.cat((self.cls_label.expand(labels.shape[0],1), labels), dim=1)
         return tgt_mask.to('cuda'), labels
 
@@ -298,28 +321,99 @@ class TTransformer(nn.Module):
 
         return x
 
-    def forward(self, src_input_id, src_attention_mask, tgt_input_id):
-        tgt_input_id = torch.cat((self.cls_token.expand(tgt_input_id.shape[0], -1), tgt_input_id), dim=1)
-        src_attention_mask = src_attention_mask.bool()
-
+    def forward(self, src_input_id, tgt_input_id):
+        tgt_input_id = torch.cat(
+            (
+                self.cls_token.to(self.device).expand(tgt_input_id.shape[0], -1),
+                tgt_input_id,
+            ),
+            dim=1,
+        )
+        src_attention_mask = src_input_id == 0
+        tgt_input_id = tgt_input_id.to(self.device)
         tgt_pad = self.generate_pad(tgt_input_id)
         if self.training:
             tgt_mask, labels = self.generate_mask(tgt_input_id, tgt_pad)
         else:
-            tgt_mask, labels = tgt_pad, None #no mask should be generated during infer
+            tgt_mask, labels = tgt_pad, None  # no mask should be generated during infer
 
         src_embedded = self.encoder_layers(src_input_id, src_attention_mask)
-        print(tgt_input_id)
-        tgt_embedded = self.prepare_tokens(self.decoder_embedding(tgt_input_id))
+        src_embedded[src_attention_mask] = 0
+        tgt_embedded_mask = self.decoder_embedding(tgt_input_id).clone()
+        tgt_embedded_mask[tgt_mask] = 0
+        tgt_embedded_mask = self.prepare_tokens(tgt_embedded_mask)
         enc_output = src_embedded
-        dec_output = tgt_embedded
+        dec_output = tgt_embedded_mask
         for dec_layer in self.decoder_layers:
-            dec_output = dec_layer(dec_output, src_attention_mask , tgt_mask, enc_output)
+            dec_output = dec_layer(dec_output, src_attention_mask, tgt_mask, enc_output)
 
         output = self.fc(dec_output)
-        return output, labels
+        if self.training:
+            return output, labels
+        else:
+            return output[:, 1:, :], dec_output  # , tgt_pad[:,1:] #remove CLS token
+
+    @staticmethod
+    def select_unique_topk(labels_ind, labels_prob, tgt_pad):
+        for i in range(labels_ind.shape[0]):
+            _, idxs, counts = torch.unique(
+                labels_ind[i], return_inverse=True, return_counts=True
+            )
+            duplicate_elements_mask = counts > 1
+            for duplicates in duplicate_elements_mask.nonzero():
+                mask = torch.isin(idxs, duplicates)
+                filtered_probs_max = labels_prob[i] == labels_prob[i][mask].max()
+                labels_ind[i][~filtered_probs_max & mask] = 1
+        labels_ind[tgt_pad] = 0
+        return labels_ind
+
+    def generate(
+        self,
+        src_input_id,
+        tgt_input_id,
+        seq_length,
+        threshold,
+        top_k=5,
+    ):
+        tgt_pad = self.generate_pad(tgt_input_id)
+        tgt_pad = tgt_pad.to(self.device)
+        probability_matrix = (~tgt_pad).long()  # B, seq_length
+        while torch.any(probability_matrix == 1):
+            print('number of ones', torch.sum(probability_matrix == 1))
+            logits, _ = self(src_input_id, probability_matrix)
+            # tmp_vocab = (
+            #     torch.arange(0, logits.shape[-1])
+            #     .expand(logits.shape[0], -1)
+            #     .to(self.device)
+            # )
+            max_neg_value = -torch.finfo(logits.dtype).max
+            logits.masked_fill_(tgt_pad.unsqueeze(2), max_neg_value)
+            probs = F.softmax(logits, dim=-1)
+            labels_prob, labels_ind = torch.max(probs, dim=-1)
+            labels_ind = self.select_unique_topk(labels_ind, labels_prob, tgt_pad)
+            topk_probs = torch.topk(labels_prob, k=top_k, dim=-1).values
+            # get the lowest threshold per batch
+            threshold = topk_probs[:, -1].unsqueeze(1)
+            # print("labels_ind", labels_ind)
+            # print("labels_prob", labels_prob)
+            # count number of ones in probability matrix
+            # print("probability_matrix",probability_matrix[labels_prob >= threshold])
+            probability_matrix[labels_prob >= threshold] = labels_ind[
+                labels_prob >= threshold
+            ].long()
+            probability_matrix[tgt_pad] = 0
+
+            # print("labels ind",labels_ind[labels_prob >= threshold])
+            print(probability_matrix)
+            # [tmp_vocab=-1 for i in probability_matrix[probability_matrix>=2]
+        print('probability_matrix', probability_matrix)
+        raise
+
+        return probability_matrix
+
 
 if __name__ == '__main__':
+    # from T_perturb.Dataloaders.datamodule import GeneformerDataModule
     # src_vocab_size = 5000
     # tgt_vocab_size = 5000
     # d_model = 256
@@ -328,7 +422,7 @@ if __name__ == '__main__':
     # d_ff = 2048
     # max_seq_length = 400
     # dropout = 0.1
-    n_tokens = 200
+    # n_tokens = 200
     # decoder = DecoderLayer(
     #     dim=d_model,
     #     n_heads=num_heads,
@@ -337,7 +431,7 @@ if __name__ == '__main__':
     #     d_head=64,
     #     context_dim=d_model,
     # )
-    transformer = TTransformer()
+    # transformer = TTransformer()
 
     # # test dataloader
     # data_module = GeneformerDataModule(
@@ -354,7 +448,7 @@ if __name__ == '__main__':
     # tgt_train_iterator = iter(dataloader['tgt'])
     # src_batch = next(src_train_iterator)
     # tgt_batch = next(tgt_train_iterator)
-    
+
     # (batch_size, seq_length)
     # position = PositionalEncoding(d_model, max_seq_length)
     # print(position(tgt_data).shape)
@@ -363,10 +457,53 @@ if __name__ == '__main__':
     #     src_batch['input_id'], src_batch['attention_mask'], tgt_batch['input_id']
     # )
 
-    src_data = torch.randint(20000,(10, 500))
-    src_attn_mask = torch.ones((10, 500))
-    src_attn_mask[:, 200:] = 0
-    tgt_data = torch.randint(20000,(10, n_tokens))
-    #pad
-    tgt_data[:, 100:] = 0
-    out, label = transformer(src_data, src_attn_mask, tgt_data)
+    # src_data = torch.randint(20000,(10, 500))
+    # src_attn_mask = torch.ones((10, 500))
+    # src_attn_mask[:, 200:] = 0
+    # tgt_data = torch.randint(20000,(10, n_tokens))
+    # #pad
+    # tgt_data[:, 100:] = 0
+    # out, label = transformer(src_data, src_attn_mask, tgt_data)
+    label_tensor = torch.tensor(
+        [[1, 2, 2, 4, 5, 6, 9, 8, 9, 6, 0, 0], [1, 2, 2, 4, 5, 6, 9, 8, 9, 6, 0, 0]]
+    )
+    label_prob = torch.tensor(
+        [
+            [0.1, 0.25, 0.2, 0.4, 0.5, 0.6, 0.6, 0.8, 0.9, 1.0, 0.95, 0.92],
+            [0.1, 0.2, 0.25, 0.4, 0.5, 0.6, 0.6, 0.8, 0.9, 1.0, 0.95, 0.92],
+        ]
+    )
+    tgt_pad = torch.tensor(
+        [
+            [
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                True,
+                True,
+            ],
+            [
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                True,
+                True,
+            ],
+        ]
+    )
+    threshold = 0.5
+    TTransformer.select_unique_topk(label_tensor, label_prob, tgt_pad)

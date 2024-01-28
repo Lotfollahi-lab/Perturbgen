@@ -1,7 +1,11 @@
 import pickle
+from typing import List
 
+import anndata as ad
+import numpy as np
+import pandas as pd
 import scanpy as sc
-# import torch
+import torch
 import torch.nn as nn
 import torch.optim as optim
 import wandb
@@ -58,16 +62,23 @@ class TTransformertrainer(LightningModule):
         with open(TOKEN_DICTIONARY_FILE, 'rb') as f:
             gene_token_dict = pickle.load(f)
         self.gene_token_dict = {value: key for key, value in gene_token_dict.items()}
+        self.cls_embeddings: List[torch.tensor] = []
+        self.tgt_cell_type: List[str] = []
 
     def forward(self, batch):
-        src_batch = batch['src']
-        tgt_batch = batch['tgt']
-        output, labels = self.transformer(
-            src_input_id=src_batch['input_id'],
-            src_attention_mask=src_batch['attention_mask'],
-            tgt_input_id=tgt_batch['input_id'],
-        )
-        return output, labels
+        if self.training:
+            output, labels = self.transformer(
+                src_input_id=batch['src_input_ids'],
+                tgt_input_id=batch['tgt_input_ids'],
+            )
+
+            return output, labels
+        else:
+            output, embeddings = self.transformer(
+                src_input_id=batch['src_input_ids'],
+                tgt_input_id=batch['tgt_input_ids'],
+            )
+            return output, embeddings
 
     def configure_optimizers(self):
         parameters = [{'params': self.transformer.parameters(), 'lr': self.lr}]
@@ -85,8 +96,17 @@ class TTransformertrainer(LightningModule):
 
     def training_step(self, batch, *args, **kwargs):
         output, labels = self.forward(batch)  # adapt based on output
-        output = output.view(-1, output.size(-1))
-        labels = labels.view(-1)
+        # softmax_output = nn.Softmax(dim=1)(output)
+        # print(labels.shape)
+        # print('labels', labels[:, :5])
+        # print(output.shape)
+        # arg_max = torch.argmax(nn.Softmax(dim=2)(output), dim=2)
+        # #reashape to bxlxtoken_size
+        # print('arg_max', arg_max[:, :5])
+
+        output = output.contiguous().view(-1, output.size(-1))
+        labels = labels.contiguous().view(-1)
+
         loss = self.loss(output, labels)
         # correct = 0
         # __, predicted = torch.max(output, 1)
@@ -102,6 +122,47 @@ class TTransformertrainer(LightningModule):
         pass
 
     def test_step(self, batch, *args, **kwargs):
-        output,_ = self.forward(batch)  # adapt based on output
-        output = output.view(-1, output.size(-1))
-        return output
+        # return embedding
+
+        _, embeddings = self.forward(batch)
+        self.cls_embeddings.append(embeddings[:, 0, :])
+        self.tgt_cell_type.append(batch['tgt_cell_type'])
+        # num_samples = 10
+        # x = torch.tensor([0]) #start with padding token
+        # x.to('cuda')
+        # x = x.expand(num_samples, -1)
+        # output = self.transformer.generate(
+        #     src_input_id=batch['tgt_input_ids'],
+        #     tgt_input_id=batch['tgt_input_ids'],
+        #     seq_length=246,
+        #     threshold=0.8,
+        #     # tgt_vocab_size=704
+        #     # top_k=5
+        # )
+
+        # print('output', output[:20, :20])
+
+    def on_test_epoch_end(self):
+        # return F1 score and accuracy
+        # print(self.cls_embeddings)
+        self.cls_embeddings = torch.cat(self.cls_embeddings)
+        self.cls_embeddings = (
+            self.cls_embeddings.detach().cpu().numpy()
+        )  # Convert to numpy array
+        self.tgt_cell_type = np.concatenate(self.tgt_cell_type)
+        # create dataframe for obs with tgt_cell_type with pseudocell name cell+number
+        # list with cell names in range tgt_cell_type.shape[0]
+        cell_names = ['cell' + str(i) for i in range(len(self.tgt_cell_type))]
+        obs = pd.DataFrame(
+            {'cell_names': cell_names, 'tgt_cell_type': self.tgt_cell_type}
+        )
+        # adata = sc.read_h5ad(
+        #     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        #     'T_perturb/T_perturb/pp/res/h5ad_data/cytoimmgen_tokenisation_degs_random_16h.h5ad')
+        # adata.obsm['X_CLS_embeddings'] = self.cls_embeddings
+        adata = ad.AnnData(X=self.cls_embeddings, obs=obs)
+        # save anndata
+        adata.write_h5ad(
+            '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+            't_generative/T_perturb/T_perturb/pp/res/cls_embeddings.h5ad'
+        )
