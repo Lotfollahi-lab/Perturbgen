@@ -38,6 +38,7 @@ class TTransformertrainer(LightningModule):
         lr: float = 1e-3,
         lr_scheduler_patience: float = 1.0,
         lr_scheduler_factor: float = 0.8,
+        return_cls_embedding=False,
         *args,
         **kwargs
     ) -> None:
@@ -64,6 +65,9 @@ class TTransformertrainer(LightningModule):
         self.gene_token_dict = {value: key for key, value in gene_token_dict.items()}
         self.cls_embeddings: List[torch.tensor] = []
         self.tgt_cell_type: List[str] = []
+        self.tgt_cell_population: List[str] = []
+        self.adata_path = None
+        self.return_cls_embedding = return_cls_embedding
 
     def forward(self, batch):
         if self.training:
@@ -123,10 +127,12 @@ class TTransformertrainer(LightningModule):
 
     def test_step(self, batch, *args, **kwargs):
         # return embedding
+        if self.return_cls_embedding:
+            _, embeddings = self.forward(batch)
+            self.cls_embeddings.append(embeddings[:, 0, :])
+            self.tgt_cell_type.append(batch['tgt_cell_type'])
+            self.tgt_cell_population.append(batch['tgt_cell_population'])
 
-        _, embeddings = self.forward(batch)
-        self.cls_embeddings.append(embeddings[:, 0, :])
-        self.tgt_cell_type.append(batch['tgt_cell_type'])
         # num_samples = 10
         # x = torch.tensor([0]) #start with padding token
         # x.to('cuda')
@@ -145,24 +151,28 @@ class TTransformertrainer(LightningModule):
     def on_test_epoch_end(self):
         # return F1 score and accuracy
         # print(self.cls_embeddings)
-        self.cls_embeddings = torch.cat(self.cls_embeddings)
-        self.cls_embeddings = (
-            self.cls_embeddings.detach().cpu().numpy()
-        )  # Convert to numpy array
-        self.tgt_cell_type = np.concatenate(self.tgt_cell_type)
-        # create dataframe for obs with tgt_cell_type with pseudocell name cell+number
-        # list with cell names in range tgt_cell_type.shape[0]
-        cell_names = ['cell' + str(i) for i in range(len(self.tgt_cell_type))]
-        obs = pd.DataFrame(
-            {'cell_names': cell_names, 'tgt_cell_type': self.tgt_cell_type}
-        )
-        # adata = sc.read_h5ad(
-        #     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        #     'T_perturb/T_perturb/pp/res/h5ad_data/cytoimmgen_tokenisation_degs_random_16h.h5ad')
-        # adata.obsm['X_CLS_embeddings'] = self.cls_embeddings
-        adata = ad.AnnData(X=self.cls_embeddings, obs=obs)
-        # save anndata
-        adata.write_h5ad(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            't_generative/T_perturb/T_perturb/pp/res/cls_embeddings.h5ad'
-        )
+        if self.return_cls_embedding:
+            self.cls_embeddings = torch.cat(self.cls_embeddings)
+            self.cls_embeddings = (
+                self.cls_embeddings.detach().cpu().numpy()
+            )  # Convert to numpy array
+            self.tgt_cell_type = np.concatenate(self.tgt_cell_type)
+            self.tgt_cell_population = np.concatenate(self.tgt_cell_population)
+            cell_names = ['cell' + str(i) for i in range(len(self.tgt_cell_type))]
+            obs = pd.DataFrame(
+                {
+                    'cell_names': cell_names,
+                    'tgt_cell_type': self.tgt_cell_type,
+                    'tgt_cell_population': self.tgt_cell_population,
+                }
+            )
+            # adata = sc.read_h5ad(
+            #     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+            #     'T_perturb/T_perturb/pp/res/h5ad_data/cytoimmgen_tokenisation_degs_random_16h.h5ad')
+            # adata.obsm['X_CLS_embeddings'] = self.cls_embeddings
+            adata = ad.AnnData(X=self.cls_embeddings, obs=obs)
+            # save anndata
+            adata.write_h5ad(
+                '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+                't_generative/T_perturb/T_perturb/pp/res/cls_embeddings.h5ad'
+            )

@@ -140,6 +140,7 @@ class GeneformerDataModule(LightningDataModule):
             tgt_length = torch.stack([torch.tensor(d['tgt']['length']) for d in batch])
             model_input_size = torch.max(tgt_length)
             tgt_cell_type = [d['tgt']['Cell_type'] for d in batch]
+            tgt_cell_population = [d['tgt']['Cell_population'] for d in batch]
             tgt_time_point = ([d['tgt']['Time_point'] for d in batch],)
             tgt_donor = ([d['tgt']['Donor'] for d in batch],)
             tgt_input_batch_id = pad_tensor_list(
@@ -154,6 +155,7 @@ class GeneformerDataModule(LightningDataModule):
             'tgt_input_ids': tgt_input_batch_id,
             'tgt_length': tgt_length,
             'tgt_cell_type': tgt_cell_type,
+            'tgt_cell_population': tgt_cell_population,
             'tgt_time_point': tgt_time_point,
             'tgt_donor': tgt_donor,
         }

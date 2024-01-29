@@ -38,7 +38,7 @@ def get_args():
         help='path to tokenised activated data',
     )
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
-    parser.add_argument('--shuffle', type=bool, default=True, help='shuffle')
+    parser.add_argument('--shuffle', type=bool, default=False, help='shuffle')
     parser.add_argument(
         '--epochs', type=int, default=4, help='number of training epochs'
     )
@@ -80,6 +80,7 @@ def main() -> None:
         lr=args.lr,
         lr_scheduler_patience=1.0,
         lr_scheduler_factor=0.8,
+        return_cls_embedding=True,
     )
     # Initialize data module
     # ----------------------------------------------------------------------------------
