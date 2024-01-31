@@ -133,20 +133,18 @@ class TTransformertrainer(LightningModule):
             self.tgt_cell_type.append(batch['tgt_cell_type'])
             self.tgt_cell_population.append(batch['tgt_cell_population'])
 
-        # num_samples = 10
-        # x = torch.tensor([0]) #start with padding token
-        # x.to('cuda')
-        # x = x.expand(num_samples, -1)
-        # output = self.transformer.generate(
-        #     src_input_id=batch['tgt_input_ids'],
-        #     tgt_input_id=batch['tgt_input_ids'],
-        #     seq_length=246,
-        #     threshold=0.8,
-        #     # tgt_vocab_size=704
-        #     # top_k=5
-        # )
-
-        # print('output', output[:20, :20])
+        num_samples = 10
+        x = torch.tensor([0])  # start with padding token
+        x.to('cuda')
+        x = x.expand(num_samples, -1)
+        output = self.transformer.generate(
+            src_input_id=batch['tgt_input_ids'],
+            tgt_input_id=batch['tgt_input_ids'],
+            seq_length=246,
+            tgt_vocab_size=704
+            # top_k=5
+        )
+        print('output', output[:20, :20])
 
     def on_test_epoch_end(self):
         # return F1 score and accuracy

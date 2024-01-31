@@ -354,84 +354,124 @@ class TTransformer(nn.Module):
             return output[:, 1:, :], dec_output  # , tgt_pad[:,1:] #remove CLS token
 
     @staticmethod
-    def select_unique_topk(labels_ind, labels_prob, tgt_pad):
+    def select_unique_topk(labels_ind, labels_prob, tgt_pad, probability_matrix):
         for i in range(labels_ind.shape[0]):
             _, idxs, counts = torch.unique(
                 labels_ind[i], return_inverse=True, return_counts=True
             )
             duplicate_elements_mask = counts > 1
-            for duplicates in duplicate_elements_mask.nonzero():
-                mask = torch.isin(idxs, duplicates)
-                filtered_probs_max = labels_prob[i] == labels_prob[i][mask].max()
-                labels_ind[i][~filtered_probs_max & mask] = 1
-        labels_ind[tgt_pad] = 0
+            if duplicate_elements_mask.any():
+                for duplicates in duplicate_elements_mask.nonzero():
+                    # ignore padding and masked tokens
+
+                    mask = torch.isin(idxs, duplicates)
+                    filtered_probs_max = labels_prob[i] == labels_prob[i][mask].max()
+                    # print('sum of probability matrix',sum(filtered_probs_max))
+                    if sum(filtered_probs_max) == len(labels_prob[i]):
+                        print(labels_prob[i])
+                        print(labels_ind[i])
+                        raise
+
+                    # print('duplicated',labels_ind[i][~filtered_probs_max & mask])
+                    labels_ind[i][~filtered_probs_max & mask] = probability_matrix[i][
+                        ~filtered_probs_max & mask
+                    ]  # only keep the most probable labels for duplicates
+
+                    # if sum(filtered_probs_max) > 1:
+
         return labels_ind
+
+    @staticmethod
+    def update_tmp_vocab(tmp_vocab, probability_matrix):
+        for i in range(tmp_vocab.shape[0]):
+            if any(probability_matrix[i] >= 2):
+                tmp_vocab[i][probability_matrix[i]] = -1
+                print('tmp_vocab', tmp_vocab[i])
+        return tmp_vocab
 
     def generate(
         self,
         src_input_id,
+        tgt_vocab_size,
         tgt_input_id,
         seq_length,
-        threshold,
-        top_k=5,
+        confidence=0.5,
+        top_k=200,
     ):
         tgt_pad = self.generate_pad(tgt_input_id)
         tgt_pad = tgt_pad.to(self.device)
         probability_matrix = (~tgt_pad).long()  # B, seq_length
+        tmp_vocab = (
+            torch.arange(0, tgt_vocab_size)  # token vocab
+            .expand(tgt_pad.shape[0], -1)  # B
+            .to(self.device)
+        )
+        # probability_matrix_ = probability_matrix.clone()
         while torch.any(probability_matrix == 1):
-            print('number of ones', torch.sum(probability_matrix == 1))
             logits, _ = self(src_input_id, probability_matrix)
-            # tmp_vocab = (
-            #     torch.arange(0, logits.shape[-1])
-            #     .expand(logits.shape[0], -1)
-            #     .to(self.device)
-            # )
+
             max_neg_value = -torch.finfo(logits.dtype).max
             logits.masked_fill_(tgt_pad.unsqueeze(2), max_neg_value)
+            # only keep labels which are >2 in tmp_vocab
+            logits.masked_fill_(tmp_vocab.unsqueeze(1) == -1, max_neg_value)
             probs = F.softmax(logits, dim=-1)
             labels_prob, labels_ind = torch.max(probs, dim=-1)
-            labels_ind = self.select_unique_topk(labels_ind, labels_prob, tgt_pad)
+
+            # avoid duplicated entries in labels_ind
+            labels_ind = self.select_unique_topk(
+                labels_ind, labels_prob, tgt_pad, probability_matrix
+            )
             topk_probs = torch.topk(labels_prob, k=top_k, dim=-1).values
             # get the lowest threshold per batch
             threshold = topk_probs[:, -1].unsqueeze(1)
+            threshold = torch.where(threshold > confidence, confidence, threshold)
+
             # print("labels_ind", labels_ind)
             # print("labels_prob", labels_prob)
             # count number of ones in probability matrix
             # print("probability_matrix",probability_matrix[labels_prob >= threshold])
+            # print('substituted labels',
+            #       labels_ind[labels_prob >= threshold]
+            #       )
+            # reshape substistuted labels to same shape as (B, top_k)
+            # substituted_labels = labels_ind[labels_prob >= threshold].unsqueeze(1)
+
+            # print('substituted labels',substituted_labels)
+            # print(substituted_labels.shape)
+
             probability_matrix[labels_prob >= threshold] = labels_ind[
                 labels_prob >= threshold
             ].long()
-            probability_matrix[tgt_pad] = 0
-
+            # print(tmp_vocab.shape)
+            tmp_vocab = self.update_tmp_vocab(tmp_vocab, probability_matrix)
+            # probability_matrix[tgt_pad] = 0
+            # probability_matrix_ = probability_matrix.clone()
             # print("labels ind",labels_ind[labels_prob >= threshold])
-            print(probability_matrix)
             # [tmp_vocab=-1 for i in probability_matrix[probability_matrix>=2]
-        print('probability_matrix', probability_matrix)
-        raise
-
+            print('probability_matrix', probability_matrix)
         return probability_matrix
 
 
 if __name__ == '__main__':
     # from T_perturb.Dataloaders.datamodule import GeneformerDataModule
-    # src_vocab_size = 5000
-    # tgt_vocab_size = 5000
-    # d_model = 256
-    # num_heads = 8
-    # num_layers = 6
-    # d_ff = 2048
-    # max_seq_length = 400
-    # dropout = 0.1
-    # n_tokens = 200
-    # decoder = DecoderLayer(
-    #     dim=d_model,
-    #     n_heads=num_heads,
-    #     hidden_size=d_ff,
-    #     dropout=dropout,
-    #     d_head=64,
-    #     context_dim=d_model,
-    # )
-    # transformer = TTransformer()
+    src_vocab_size = 5000
+    tgt_vocab_size = 5000
+    d_model = 256
+    num_heads = 8
+    num_layers = 6
+    d_ff = 2048
+    max_seq_length = 400
+    dropout = 0.1
+    n_tokens = 200
+    decoder = DecoderLayer(
+        dim=d_model,
+        n_heads=num_heads,
+        hidden_size=d_ff,
+        dropout=dropout,
+        d_head=64,
+        context_dim=d_model,
+    )
+    transformer = TTransformer()
 
     # # test dataloader
     # data_module = GeneformerDataModule(
@@ -464,6 +504,8 @@ if __name__ == '__main__':
     # #pad
     # tgt_data[:, 100:] = 0
     # out, label = transformer(src_data, src_attn_mask, tgt_data)
+    # set seed
+    torch.manual_seed(42)
     label_tensor = torch.tensor(
         [[1, 2, 2, 4, 5, 6, 9, 8, 9, 6, 0, 0], [1, 2, 2, 4, 5, 6, 9, 8, 9, 6, 0, 0]]
     )
@@ -473,6 +515,10 @@ if __name__ == '__main__':
             [0.1, 0.2, 0.25, 0.4, 0.5, 0.6, 0.6, 0.8, 0.9, 1.0, 0.95, 0.92],
         ]
     )
+    # create logits with random probabilities adding up to 1 for each row
+    # (B, seq_length, vocab_size)
+    logits = torch.rand((2, 12, 10))
+    logits = logits / logits.sum(dim=-1, keepdim=True)
     tgt_pad = torch.tensor(
         [
             [
@@ -505,5 +551,16 @@ if __name__ == '__main__':
             ],
         ]
     )
+    # generate probability matrix
+    probability_matrix = (~tgt_pad).long()
     threshold = 0.5
-    TTransformer.select_unique_topk(label_tensor, label_prob, tgt_pad)
+    # TTransformer.select_unique_topk
+    # (label_tensor, label_prob, tgt_pad, probability_matrix)
+    # transformer.generate(
+    #     # src_input_id=src_batch['input_id'],
+    #     logits=logits.to('cuda'),
+    #     tgt_input_id=label_tensor.to('cuda'),
+    #     # seq_length=334,
+    #     confidence=0.8,
+    #     top_k=1,
+    # )

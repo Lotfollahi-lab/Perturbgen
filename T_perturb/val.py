@@ -80,7 +80,7 @@ def main() -> None:
         lr=args.lr,
         lr_scheduler_patience=1.0,
         lr_scheduler_factor=0.8,
-        return_cls_embedding=True,
+        return_cls_embedding=False,
     )
     # Initialize data module
     # ----------------------------------------------------------------------------------
