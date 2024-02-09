@@ -175,9 +175,9 @@ if __name__ == '__main__':
     # test dataloader
     data_module = GeneformerDataModule(
         src_folder='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_0h.dataset',
+        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_degs_random_pairing_0h.dataset',
         tgt_folder='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_16h.dataset',
+        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_degs_random_pairing_40h.dataset',
         max_len=334,
     )
     data_module.setup()
@@ -185,4 +185,5 @@ if __name__ == '__main__':
     # iterate through batches
     train_iterator = iter(dataloader)
     batch = next(train_iterator)
-    print(batch)
+    print(batch['tgt_input_ids'][:20, :20])
+    print(sum(batch['tgt_input_ids'] == 1))

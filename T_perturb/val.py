@@ -47,7 +47,7 @@ def get_args():
         '--log_dir', type=str, default='logs', help='path to data directory'
     )
     parser.add_argument(
-        '--mlm_probability', type=float, default=0.5, help='BERT MLM probability'
+        '--mlm_probability', type=float, default=0.15, help='BERT MLM probability'
     )
     parser.add_argument('--max_len', type=int, default=246, help='max sequence length')
     parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
@@ -81,6 +81,7 @@ def main() -> None:
         lr_scheduler_patience=1.0,
         lr_scheduler_factor=0.8,
         return_cls_embedding=False,
+        generate=True,
     )
     # Initialize data module
     # ----------------------------------------------------------------------------------
@@ -162,7 +163,8 @@ def main() -> None:
         model_module,
         data_module,
         ckpt_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/T_perturb/T_perturb/Model/checkpoints/checkpoint-v2.ckpt',
+        't_generative/T_perturb/T_perturb/Model/checkpoints/'
+        'ttransformer_2024_02_08_10_41_lr_0.001_wd_0.001_batch_size_64_16h.ckpt',
     )
 
 

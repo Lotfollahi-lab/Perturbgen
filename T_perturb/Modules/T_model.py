@@ -4,11 +4,12 @@ https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision
 """
 
 import math
+from pathlib import Path
 
 import torch
 from einops import rearrange, repeat
 from torch import einsum, nn
-from torch.nn import functional as F
+from tqdm import tqdm
 from transformers import BertForMaskedLM
 
 # def drop_path(x, drop_prob: float = 0.0, training: bool = False):
@@ -208,8 +209,8 @@ class PositionalEncoding(nn.Module):
 class Geneformerwrapper(nn.Module):
     def __init__(
         self,
-        model_path='/lustre/scratch126/cellgen/team205/'
-        'ml19/Arian/Geneformer/geneformer-6L-30M/',
+        model_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        'generative_modelling_omic/Geneformer/',
         output_attentions=False,
         output_hidden_states=True,
     ):
@@ -224,12 +225,54 @@ class Geneformerwrapper(nn.Module):
 
     def forward(self, src_input_id, src_attention_mask):
         with torch.no_grad():
+            # print('src_input_id', src_input_id.device)
+            # print('src_attention_mask', src_attention_mask.device)
             outputs = self.model.forward(
                 input_ids=src_input_id, attention_mask=src_attention_mask
             )
             embs = outputs.hidden_states[-1]
 
         return embs
+
+
+# noise schedule
+def cosine_schedule(t):
+    return torch.cos(t * math.pi * 0.5)
+
+
+def uniform(shape, min=0, max=1, device=None):
+    return torch.zeros(shape, device=device).float().uniform_(0, 1)
+
+
+def prob_mask_like(shape, prob, device=None):
+    if prob == 1:
+        return torch.ones(shape, device=device, dtype=torch.bool)
+    elif prob == 0:
+        return torch.zeros(shape, device=device, dtype=torch.bool)
+    else:
+        return uniform(shape, device=device) < prob
+
+
+def top_k(logits, thres=0.9):
+    k = math.ceil((1 - thres) * logits.shape[-1])
+    val, ind = logits.topk(k, dim=-1)
+    probs = torch.full_like(logits, float('-inf'))
+    probs.scatter_(2, ind, val)
+    return probs
+
+
+# sampling helper
+def log(t, eps=1e-20):
+    return torch.log(t.clamp(min=eps))
+
+
+def gumbel_noise(t):
+    noise = torch.zeros_like(t).uniform_(0, 1)
+    return -log(-log(noise))
+
+
+def gumbel_sample(t, temperature=1.0, dim=-1):
+    return ((t / max(temperature, 1e-10)) + gumbel_noise(t)).argmax(dim=dim)
 
 
 class TTransformer(nn.Module):
@@ -243,29 +286,47 @@ class TTransformer(nn.Module):
         max_seq_length=2048,
         dropout=0.0,
         mlm_probability=0.5,
+        add_mask_id=True,
     ):
         super(TTransformer, self).__init__()
-
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
 
         self.cls_token = torch.tensor(
             [tgt_vocab_size], dtype=torch.long
         )  # start at 25426, because of 0 Python indexing
+        total_vocab_size = tgt_vocab_size
+        if add_mask_id:
+            total_vocab_size = total_vocab_size + 1
+            self.mask_token = total_vocab_size
+
         self.decoder_embedding = nn.Embedding(
-            tgt_vocab_size + 1, d_model, padding_idx=0
+            total_vocab_size + 1, d_model, padding_idx=0, device=self.device
         )
 
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
+        self.positional_encoding = self.positional_encoding.to(self.device)
 
         self.encoder_layers = Geneformerwrapper()
+        self.encoder_layers = self.encoder_layers.to(self.device)
         self.encoder_layers.eval()
         self.decoder_layers = nn.ModuleList(
             [DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)]
         )
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.decoder_layers = self.decoder_layers.to(self.device)
         self.fc = nn.Linear(d_model, tgt_vocab_size)
+        self.fc = self.fc.to(self.device)
         self.dropout = nn.Dropout(dropout)
+
+    def save(self, path):
+        torch.save(self.state_dict(), path)
+
+    def load(self, path):
+        path = Path(path)
+        assert path.exists()
+        state_dict = torch.load(str(path))
+        self.load_state_dict(state_dict)
 
     def generate_pad(self, tgt):
         tgt_pad = torch.tensor((tgt == 0), dtype=bool).cpu().detach()
@@ -288,9 +349,9 @@ class TTransformer(nn.Module):
     #     tgt_mask = tgt_pad & nopeak_mask
     #     return src_mask, tgt_mask
 
-    def generate_mask(self, tgt, tgt_pad):
+    def generate_mask(self, tgt, tgt_pad, mlm_probability=0.15):
         labels = tgt.clone()
-        probability_matrix = torch.full(tgt_pad.shape, self.mlm_probability)
+        probability_matrix = torch.full(tgt_pad.shape, mlm_probability)
         cls_tgt_pad = tgt_pad.clone()
         cls_tgt_pad[:, 0] = True
         probability_matrix = probability_matrix.masked_fill(
@@ -321,7 +382,43 @@ class TTransformer(nn.Module):
 
         return x
 
-    def forward(self, src_input_id, tgt_input_id):
+    # def forward_with_cond_scale(
+    #     self,
+    #     *args,
+    #     cond_scale = 3.,
+    #     return_embed = False,
+    #     generate = False,
+    #     **kwargs
+    # ):
+    # if cond_scale == 1:
+    #     return self.forward(
+    #         *args,
+    #         return_embed = return_embed,
+    #         cond_drop_prob = 0., **kwargs
+    #         )
+
+    # logits, embed = self.forward(
+    #     *args,
+    #     return_embed = True,
+    #     cond_drop_prob = 0., **kwargs
+    #     )
+
+    #     null_logits = self.forward(*args, cond_drop_prob = 1., **kwargs)
+
+    #     scaled_logits = null_logits + (logits - null_logits) * cond_scale
+
+    #     if return_embed:
+    #         return scaled_logits, embed
+
+    #     return scaled_logits
+
+    def forward(
+        self,
+        src_input_id,
+        tgt_input_id,
+        # self_cond_embed = None,
+        return_embed=False,
+    ):
         tgt_input_id = torch.cat(
             (
                 self.cls_token.to(self.device).expand(tgt_input_id.shape[0], -1),
@@ -330,126 +427,166 @@ class TTransformer(nn.Module):
             dim=1,
         )
         src_attention_mask = src_input_id == 0
+        # convert to numeric type
+        src_attention_mask = src_attention_mask.int()
+        # src_input_id = src_input_id.to(self.device)
         tgt_input_id = tgt_input_id.to(self.device)
         tgt_pad = self.generate_pad(tgt_input_id)
         if self.training:
-            tgt_mask, labels = self.generate_mask(tgt_input_id, tgt_pad)
+            tgt_mask, labels = self.generate_mask(
+                tgt_input_id, tgt_pad, self.mlm_probability
+            )
         else:
-            tgt_mask, labels = tgt_pad, None  # no mask should be generated during infer
-
+            tgt_mask = tgt_input_id == (self.mask_token)
+            tgt_mask = tgt_mask | (tgt_input_id == 0)
+        if self.generate:
+            # mask CLS token from prediction
+            tgt_mask[:, 0] = False
         src_embedded = self.encoder_layers(src_input_id, src_attention_mask)
         src_embedded[src_attention_mask] = 0
-        tgt_embedded_mask = self.decoder_embedding(tgt_input_id).clone()
+        tgt_embedded_mask = self.decoder_embedding(tgt_input_id)
         tgt_embedded_mask[tgt_mask] = 0
         tgt_embedded_mask = self.prepare_tokens(tgt_embedded_mask)
         enc_output = src_embedded
-        dec_output = tgt_embedded_mask
+        dec_embedding = tgt_embedded_mask
         for dec_layer in self.decoder_layers:
-            dec_output = dec_layer(dec_output, src_attention_mask, tgt_mask, enc_output)
-
-        output = self.fc(dec_output)
-        if self.training:
-            return output, labels
-        else:
-            return output[:, 1:, :], dec_output  # , tgt_pad[:,1:] #remove CLS token
-
-    @staticmethod
-    def select_unique_topk(labels_ind, labels_prob, tgt_pad, probability_matrix):
-        for i in range(labels_ind.shape[0]):
-            _, idxs, counts = torch.unique(
-                labels_ind[i], return_inverse=True, return_counts=True
+            dec_embedding = dec_layer(
+                dec_embedding, src_attention_mask, tgt_mask, enc_output
             )
-            duplicate_elements_mask = counts > 1
-            if duplicate_elements_mask.any():
-                for duplicates in duplicate_elements_mask.nonzero():
-                    # ignore padding and masked tokens
+        logits = self.fc(dec_embedding)
 
-                    mask = torch.isin(idxs, duplicates)
-                    filtered_probs_max = labels_prob[i] == labels_prob[i][mask].max()
-                    # print('sum of probability matrix',sum(filtered_probs_max))
-                    if sum(filtered_probs_max) == len(labels_prob[i]):
-                        print(labels_prob[i])
-                        print(labels_ind[i])
-                        raise
+        if self.training:
+            # remove CLS token to not include it in the loss
+            return logits, labels
+        elif return_embed:
+            return logits[:, 1:, :], dec_embedding
+        else:
+            return logits[:, 1:, :]
 
-                    # print('duplicated',labels_ind[i][~filtered_probs_max & mask])
-                    labels_ind[i][~filtered_probs_max & mask] = probability_matrix[i][
-                        ~filtered_probs_max & mask
-                    ]  # only keep the most probable labels for duplicates
+    # @staticmethod
+    # def select_unique_topk(labels_ind, labels_prob, tgt_pad, probability_matrix):
+    #     for i in range(labels_ind.shape[0]):
+    #         _, idxs, counts = torch.unique(
+    #             labels_ind[i], return_inverse=True, return_counts=True
+    #         )
+    #         duplicate_elements_mask = counts > 1
+    #         if duplicate_elements_mask.any():
+    #             for duplicates in duplicate_elements_mask.nonzero():
+    #                 # ignore padding and masked tokens
 
-                    # if sum(filtered_probs_max) > 1:
+    #                 mask = torch.isin(idxs, duplicates)
+    #                 filtered_probs_max = labels_prob[i] == labels_prob[i][mask].max()
+    #                 # print('sum of probability matrix',sum(filtered_probs_max))
+    #                 if sum(filtered_probs_max) == len(labels_prob[i]):
+    #                     print(labels_prob[i])
+    #                     print(labels_ind[i])
+    #                     raise
 
-        return labels_ind
+    #                 # print('duplicated',labels_ind[i][~filtered_probs_max & mask])
+    #                 labels_ind[i][~filtered_probs_max & mask] = probability_matrix[i][
+    #                     ~filtered_probs_max & mask
+    #                 ]  # only keep the most probable labels for duplicates
 
-    @staticmethod
-    def update_tmp_vocab(tmp_vocab, probability_matrix):
-        for i in range(tmp_vocab.shape[0]):
-            if any(probability_matrix[i] >= 2):
-                tmp_vocab[i][probability_matrix[i]] = -1
-                print('tmp_vocab', tmp_vocab[i])
-        return tmp_vocab
+    #                 # if sum(filtered_probs_max) > 1:
+    #     return labels_ind
+
+    # @staticmethod
+    # def update_tmp_vocab(tmp_vocab, probability_matrix):
+    #     for i in range(tmp_vocab.shape[0]):
+    #         if any(probability_matrix[i] >= 2):
+    #             tmp_vocab[i][probability_matrix[i]] = -1
+    #             print('tmp_vocab', tmp_vocab[i])
+    #     return tmp_vocab
 
     def generate(
         self,
         src_input_id,
+        noise_schedule,
         tgt_vocab_size,
         tgt_input_id,
         seq_length,
-        confidence=0.5,
-        top_k=200,
+        can_remask_prev_masked=False,
+        topk_filter_thres=0.9,
+        steps=18,
+        temperature=2.0,
+        self_cond_prob=0.9,
+        timesteps=30,  # optimal iterations found in maskgit paper
     ):
         tgt_pad = self.generate_pad(tgt_input_id)
+        batch_size = tgt_input_id.shape[0]
+        seq_len = tgt_input_id.shape[1]
+        shape = (batch_size, seq_len)
+        # create ids and scores matrix for each batch
+        # exclude CLS token from token
+        ids = torch.full(shape, self.mask_token, dtype=torch.long, device=self.device)
+        # pad ids
+
+        scores = torch.zeros(shape, dtype=torch.float, device=self.device)
+
         tgt_pad = tgt_pad.to(self.device)
-        probability_matrix = (~tgt_pad).long()  # B, seq_length
-        tmp_vocab = (
-            torch.arange(0, tgt_vocab_size)  # token vocab
-            .expand(tgt_pad.shape[0], -1)  # B
-            .to(self.device)
-        )
-        # probability_matrix_ = probability_matrix.clone()
-        while torch.any(probability_matrix == 1):
-            logits, _ = self(src_input_id, probability_matrix)
+        # probability_matrix = (~tgt_pad).long()  # B, seq_length
+        # tmp_vocab = (
+        #     torch.arange(0, tgt_vocab_size)  # token vocab
+        #     .expand(tgt_pad.shape[0], -1)  # B
+        #     .to(self.device)
+        # )
 
-            max_neg_value = -torch.finfo(logits.dtype).max
-            logits.masked_fill_(tgt_pad.unsqueeze(2), max_neg_value)
-            # only keep labels which are >2 in tmp_vocab
-            logits.masked_fill_(tmp_vocab.unsqueeze(1) == -1, max_neg_value)
-            probs = F.softmax(logits, dim=-1)
-            labels_prob, labels_ind = torch.max(probs, dim=-1)
+        starting_temperature = temperature
+        demask_fn = self.forward
 
-            # avoid duplicated entries in labels_ind
-            labels_ind = self.select_unique_topk(
-                labels_ind, labels_prob, tgt_pad, probability_matrix
+        for timestep, steps_until_x0 in tqdm(
+            zip(
+                torch.linspace(0, 1, timesteps, device=self.device),
+                reversed(range(timesteps)),
+            ),
+            total=timesteps,
+        ):
+            # mask scheduler function, gamma
+            rand_mask_prob = noise_schedule(timestep)
+            # pad scores and ids
+            scores = scores.masked_fill(tgt_pad, -torch.finfo().max)
+            ids = ids.masked_fill(tgt_pad, 0)
+            ids_to_keep = torch.zeros_like(ids, dtype=torch.long)
+            for i, score in enumerate(scores):
+                # count zeros in each row
+                unpadded = len(score) - sum(score == -torch.finfo().max)
+                num_token_masked = int(unpadded * rand_mask_prob)
+                masked_indices = score.topk(num_token_masked, dim=-1).indices
+                # mask ids
+                mask = torch.zeros_like(ids[i], dtype=torch.bool)
+                mask[masked_indices] = True
+                ids[i, masked_indices] = self.mask_token
+                # keep indices which are not masked
+
+                ids_to_keep[i, ~mask] = ids[i, ~mask]
+            logits = demask_fn(
+                src_input_id=src_input_id,  # target
+                # self_cond_embed = self_cond_embed,
+                tgt_input_id=ids,  # change to token id
+                return_embed=False,
             )
-            topk_probs = torch.topk(labels_prob, k=top_k, dim=-1).values
-            # get the lowest threshold per batch
-            threshold = topk_probs[:, -1].unsqueeze(1)
-            threshold = torch.where(threshold > confidence, confidence, threshold)
+            # Create a mask of already predicted tokens
+            for sample in range(batch_size):
+                unique_ids = torch.unique(ids_to_keep[sample])
+                logits[sample, :, unique_ids] = -float('inf')
+            filtered_logits = top_k(logits, topk_filter_thres)
+            temperature = starting_temperature * (
+                steps_until_x0 / timesteps
+            )  # temperature is annealed
+            pred_ids = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
 
-            # print("labels_ind", labels_ind)
-            # print("labels_prob", labels_prob)
-            # count number of ones in probability matrix
-            # print("probability_matrix",probability_matrix[labels_prob >= threshold])
-            # print('substituted labels',
-            #       labels_ind[labels_prob >= threshold]
-            #       )
-            # reshape substistuted labels to same shape as (B, top_k)
-            # substituted_labels = labels_ind[labels_prob >= threshold].unsqueeze(1)
+            is_mask = ids == self.mask_token
 
-            # print('substituted labels',substituted_labels)
-            # print(substituted_labels.shape)
+            ids = torch.where(is_mask, pred_ids, ids)
+            probs_without_temperature = logits.softmax(dim=-1)
+            # avoid predicting the same token
+            scores = 1 - probs_without_temperature.gather(2, pred_ids[..., None])
+            scores = rearrange(scores, '... 1 -> ...')
 
-            probability_matrix[labels_prob >= threshold] = labels_ind[
-                labels_prob >= threshold
-            ].long()
-            # print(tmp_vocab.shape)
-            tmp_vocab = self.update_tmp_vocab(tmp_vocab, probability_matrix)
-            # probability_matrix[tgt_pad] = 0
-            # probability_matrix_ = probability_matrix.clone()
-            # print("labels ind",labels_ind[labels_prob >= threshold])
-            # [tmp_vocab=-1 for i in probability_matrix[probability_matrix>=2]
-            print('probability_matrix', probability_matrix)
-        return probability_matrix
+            if not can_remask_prev_masked:
+                scores = scores.masked_fill(~is_mask, -torch.finfo().max)
+
+        return ids, tgt_input_id
 
 
 if __name__ == '__main__':
@@ -471,7 +608,7 @@ if __name__ == '__main__':
         d_head=64,
         context_dim=d_model,
     )
-    transformer = TTransformer()
+    transformer = TTransformer(tgt_vocab_size=13)
 
     # # test dataloader
     # data_module = GeneformerDataModule(
@@ -506,6 +643,12 @@ if __name__ == '__main__':
     # out, label = transformer(src_data, src_attn_mask, tgt_data)
     # set seed
     torch.manual_seed(42)
+    src_input_id = torch.tensor(
+        [
+            [1, 2, 2, 5, 7, 6, 9, 8, 9, 6, 0, 0],
+            [1, 3, 2, 4, 7, 4, 9, 3, 9, 6, 0, 0],
+        ]
+    )
     label_tensor = torch.tensor(
         [[1, 2, 2, 4, 5, 6, 9, 8, 9, 6, 0, 0], [1, 2, 2, 4, 5, 6, 9, 8, 9, 6, 0, 0]]
     )
@@ -556,11 +699,11 @@ if __name__ == '__main__':
     threshold = 0.5
     # TTransformer.select_unique_topk
     # (label_tensor, label_prob, tgt_pad, probability_matrix)
-    # transformer.generate(
-    #     # src_input_id=src_batch['input_id'],
-    #     logits=logits.to('cuda'),
-    #     tgt_input_id=label_tensor.to('cuda'),
-    #     # seq_length=334,
-    #     confidence=0.8,
-    #     top_k=1,
-    # )
+    transformer.eval()
+    transformer.generate(
+        src_input_id=src_input_id.to('cuda'),
+        noise_schedule=cosine_schedule,
+        tgt_input_id=label_tensor.to('cuda'),
+        tgt_vocab_size=10,
+        seq_length=12,
+    )

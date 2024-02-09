@@ -108,7 +108,7 @@ def main() -> None:
     checkpoint_callback = ModelCheckpoint(
         dirpath='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
         't_generative/T_perturb/T_perturb/Model/checkpoints',
-        filename='checkpoint',
+        filename=f'{run_id}_lr_{args.lr}_wd_{args.wd}_batch_size_{args.batch_size}_5d',
         save_top_k=1,
         verbose=True,
         monitor='train/loss',

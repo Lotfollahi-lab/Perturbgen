@@ -15,7 +15,8 @@ style.use(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
     'T_perturb/T_perturb/pp/mpl_style.mplstyle'
 )
-
+# Set default figure facecolor to white
+plt.rcParams['figure.facecolor'] = 'white'
 if os.getcwd().split('/')[-3] != 'T_perturb':
     # set working directory to root of repository
     os.chdir(
@@ -34,6 +35,7 @@ num_labels = len(set(list(dataset['Cell_type'])))
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+
 embex = EmbExtractor(
     model_type='CellClassifier',
     num_classes=num_labels,  # number of cell types for unsupervised training
@@ -47,35 +49,50 @@ embex = EmbExtractor(
     summary_stat=None,
 )
 
+# embs = embex.extract_embs(
+#     './res/Geneformer/240131_geneformer_CellClassifier_L2048_B32_LR5e-05_LSlinear_WU10000_E3_Oadamw_F5_16h/checkpoint-16272',
+#     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+#     'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_degs_random_pairing_16h.dataset',
+#     './res/Geneformer',
+#     'cell_embeddings_finetuned_16h',
+# )
 embs = embex.extract_embs(
-    './res/Geneformer/'
-    '240129_geneformer_CellClassifier_L2048_B32_LR5e-05_LSlinear_WU500_E4_Oadamw_F5/'
-    'checkpoint-17380',
+    '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+    't_generative/generative_modelling_omic/Geneformer',
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
     'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_degs_random_pairing_16h.dataset',
     './res/Geneformer',
-    'cell_embeddings',
+    'cell_embeddings_zeroshot_16h',
 )
-
 embs_df = pd.read_csv(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    'T_perturb/T_perturb/plt/res/Geneformer/cell_embeddings.csv',
+    'T_perturb/T_perturb/plt/res/Geneformer/cell_embeddings_zeroshot_16h.csv',
     index_col=0,
 )
-emb_dims = 256
+
+emb_label = ['Cell_type', 'Cell_population']
+emb_dims = embs.shape[1] - len(emb_label)
 only_embs_df = embs_df.iloc[:, :emb_dims]
 only_embs_df.index = pd.RangeIndex(0, only_embs_df.shape[0], name=None).astype(str)
 only_embs_df.columns = pd.RangeIndex(0, only_embs_df.shape[1], name=None).astype(str)
 vars_dict = {'embs': only_embs_df.columns}
-label = ['Cell_type', 'Cell_population']
+
 obs_dict = {
     'cell_id': list(only_embs_df.index),
-    'Cell_type': list(dataset[label[0]]),
-    'Cell_population': list(dataset[label[1]]),
+    'Cell_type': list(embs_df[emb_label[0]]),
+    'Cell_population': list(embs_df[emb_label[1]]),
 }
 adata = ad.AnnData(X=only_embs_df, obs=obs_dict, var=vars_dict)
-sc.tl.pca(adata, svd_solver='arpack')
-sc.pp.neighbors(adata)
-sc.tl.umap(adata)
-sc.pl.umap(adata, color=label, save=False)
-plt.savefig('./res/Geneformer/umap_cell_type.pdf', dpi=300, bbox_inches='tight')
+adata_ = adata.copy()
+adata_.obs['activation'] = None
+adata_.obs['activation'][adata_.obs['Cell_population'].str.contains('LA')] = 'LA'
+adata_.obs['activation'][~adata_.obs['Cell_population'].str.contains('LA')] = 'HA'
+emb_label = emb_label + ['activation']
+sc.tl.pca(adata_, svd_solver='arpack')
+sc.pp.neighbors(adata_)
+sc.tl.umap(adata_)
+sc.pl.umap(adata_, color=emb_label, save=False, frameon=False, wspace=0.3)
+plt.savefig(
+    './res/Geneformer/umap_cell_type_zeroshot_16h.pdf', dpi=200, bbox_inches='tight'
+)
+plt.close()
