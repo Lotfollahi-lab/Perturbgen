@@ -20,34 +20,31 @@ def get_args():
     """Get command line arguments."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--src_folder',
+        '--src_dataset_folder',
         type=str,
-        # default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        # 't_generative/data/20230803_cytoimmgen.dataset',
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_degs_random_pairing_0h.dataset',
+        'T_perturb/T_perturb/pp/res/dataset/'
+        'cytoimmgen_tokenised_degs_stratified_pairing_0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
-        '--tgt_folder',
+        '--tgt_dataset_folder',
         type=str,
-        # default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        # 't_generative/data/20230803_cytoimmgen.dataset',
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_degs_random_pairing_16h.dataset',
+        'T_perturb/T_perturb/pp/res/dataset/'
+        'cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset',
         help='path to tokenised activated data',
     )
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=False, help='shuffle')
     parser.add_argument(
-        '--epochs', type=int, default=4, help='number of training epochs'
+        '--epochs', type=int, default=5, help='number of training epochs'
     )
-
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
     )
     parser.add_argument(
-        '--mlm_probability', type=float, default=0.15, help='BERT MLM probability'
+        '--mlm_probability', type=float, default=0.5, help='mlm probability'
     )
     parser.add_argument('--max_len', type=int, default=246, help='max sequence length')
     parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
@@ -90,8 +87,8 @@ def main() -> None:
     # resort to the supposedly optimal AutoAugment policy.
     # change dataloader and input
     data_module = GeneformerDataModule(
-        src_folder=args.src_folder,
-        tgt_folder=args.tgt_folder,
+        src_dataset_folder=args.src_dataset_folder,
+        tgt_dataset_folder=args.tgt_dataset_folder,
         batch_size=args.batch_size,
         num_workers=args.n_workers,
         shuffle=args.shuffle,
@@ -162,9 +159,10 @@ def main() -> None:
     trainer.test(
         model_module,
         data_module,
-        ckpt_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/T_perturb/T_perturb/Model/checkpoints/'
-        'ttransformer_2024_02_08_10_41_lr_0.001_wd_0.001_batch_size_64_16h.ckpt',
+        ckpt_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        'T_perturb/T_perturb/Model/checkpoints/'
+        '20240212_1657_ttransformer_lr_0.001_wd_0.001_'
+        'batchsize_64_mlmprob_0.4_16h_pairing_stratified.ckpt',
     )
 
 

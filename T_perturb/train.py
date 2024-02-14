@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import re
 from datetime import datetime
 
 import pytorch_lightning as pl
@@ -15,34 +16,48 @@ from T_perturb.Model.trainer import TTransformertrainer
 
 RANDOM_SEED = 42
 
+test_dataset = 'cytoimmgen_tokenised_degs_stratified_pairing_40h.dataset'
+# use regex to find condition between degs and .dataset
+condition = re.findall(r'(?<=degs_).*(?=.dataset)', test_dataset)[0]
+
 
 def get_args():
     """Get command line arguments."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--src_folder',
+        '--src_dataset_folder',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_degs_random_pairing_0h.dataset',
+        default=(
+            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+            'T_perturb/T_perturb/pp/res/dataset/'
+            'cytoimmgen_tokenised_degs_stratified_pairing_0h.dataset'
+        ),
         help='path to tokenised resting data',
     )
     parser.add_argument(
-        '--tgt_folder',
+        '--tgt_dataset_folder',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_degs_random_pairing_16h.dataset',
+        default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        f'T_perturb/T_perturb/pp/res/dataset/{test_dataset}',
         help='path to tokenised activated data',
     )
-    parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
-    parser.add_argument('--num_workers', type=int, default=0, help='num_workers')
-    parser.add_argument('--shuffle', type=bool, default=True, help='shuffle')
+
     parser.add_argument(
-        '--epochs', type=int, default=4, help='number of training epochs'
-    )
-    parser.add_argument(
-        '--model_id', type=str, default='resnet34', help='model id for torch hub'
+        '--tgt_adata_folder',
+        type=str,
+        default=(
+            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+            'T_perturb/T_perturb/pp/res/h5ad_data/'
+            'cytoimmgen_tokenisation_degs_stratified_16h.h5ad'
+        ),
+        help='path to tgt',
     )
 
+    parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
+    parser.add_argument('--shuffle', type=bool, default=True, help='shuffle')
+    parser.add_argument(
+        '--epochs', type=int, default=5, help='number of training epochs'
+    )
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
     )
@@ -50,9 +65,8 @@ def get_args():
     parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
     parser.add_argument('--wd', type=float, default=1e-3, help='weight decay')
     parser.add_argument(
-        '--mlm_probability', type=float, default=0.15, help='mlm probability'
+        '--mlm_probability', type=float, default=0.3, help='mlm probability'
     )
-    # parser.add_argument('--n_cls', type=int, default=10, help='number of classes')
     parser.add_argument('--n_workers', type=int, default=8, help='number of workers')
     args = parser.parse_args()
     return args
@@ -75,7 +89,7 @@ def main() -> None:
         d_ff=32,
         max_seq_length=2000,
         dropout=0.0,
-        mlm_probability=0.15,
+        mlm_probability=args.mlm_probability,
         weight_decay=args.wd,
         lr=args.lr,
         lr_scheduler_patience=1.0,
@@ -88,8 +102,9 @@ def main() -> None:
     # resort to the supposedly optimal AutoAugment policy.
     # change dataloader and input
     data_module = GeneformerDataModule(
-        src_folder=args.src_folder,
-        tgt_folder=args.tgt_folder,
+        src_dataset_folder=args.src_dataset_folder,
+        tgt_dataset_folder=args.tgt_dataset_folder,
+        tgt_adata_folder=args.tgt_adata_folder,
         batch_size=args.batch_size,
         num_workers=args.n_workers,
         shuffle=args.shuffle,
@@ -98,7 +113,7 @@ def main() -> None:
 
     # Setup trainer
     # ----------------------------------------------------------------------------------
-    run_id = datetime.now().strftime('ttransformer_%Y_%m_%d_%H_%M')
+    run_id = datetime.now().strftime('%Y%m%d_%H%M_ttransformer')
     log_path = os.path.join(args.log_dir, run_id)
     os.makedirs(os.path.join(os.getcwd(), log_path), exist_ok=True)
 
@@ -108,7 +123,10 @@ def main() -> None:
     checkpoint_callback = ModelCheckpoint(
         dirpath='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
         't_generative/T_perturb/T_perturb/Model/checkpoints',
-        filename=f'{run_id}_lr_{args.lr}_wd_{args.wd}_batch_size_{args.batch_size}_5d',
+        filename=(
+            f'{run_id}_lr_{args.lr}_wd_{args.wd}_batchsize_'
+            f'{args.batch_size}_mlmprob_{args.mlm_probability}_{condition}'
+        ),
         save_top_k=1,
         verbose=True,
         monitor='train/loss',
@@ -141,6 +159,7 @@ def main() -> None:
     # For training larger models in a distributed settings, this needs more care.
     accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
     print('Using device {}.'.format(accelerator))
+    # early
 
     # Instantiate trainer object.
     # The lightning trainer has a large number of parameters that can improve the
@@ -148,9 +167,20 @@ def main() -> None:
     # further information.
     # Lightning allows for simple multi-gpu training, gradient accumulation, half
     # precision training, etc. using the trainer class.
+    early_stop_callback = pl.callbacks.EarlyStopping(
+        monitor='train/loss',
+        min_delta=0.00,
+        patience=3,
+        verbose=False,
+        mode='min',
+    )
     trainer = pl.Trainer(
         logger=wandb_logger,
-        callbacks=[TQDMProgressBar(refresh_rate=10), checkpoint_callback],
+        callbacks=[
+            TQDMProgressBar(refresh_rate=10),
+            checkpoint_callback,
+            early_stop_callback,
+        ],
         max_epochs=args.epochs,
         accelerator=accelerator,
     )

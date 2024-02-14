@@ -116,7 +116,7 @@ for i in tqdm(range(len(dataset))):
     ensembl_ids = [swapped_token_dictionary.get(i, None) for i in input_ids_tmp]
     ensembl_ids_list.append(ensembl_ids)
 # load adata
-adata = sc.read_h5ad('./res/h5ad_data//cytoimmgen_tokenisation_degs.h5ad')
+adata = sc.read_h5ad('./res/h5ad_data/cytoimmgen_tokenisation_degs.h5ad')
 # use adata var to map ensembl ids to gene names
 ensembl_id_to_genename = dict(zip(adata.var_names, adata.var['gene_name']))
 gene_name_list = [

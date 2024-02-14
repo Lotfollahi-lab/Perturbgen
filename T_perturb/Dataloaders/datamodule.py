@@ -1,5 +1,6 @@
 import pickle
 
+import scanpy as sc
 import torch
 from datasets import load_from_disk
 from geneformer.perturber_utils import pad_tensor_list
@@ -33,8 +34,9 @@ class DummyDataset(torch.utils.data.Dataset):
 class GeneformerDataset(Dataset):
     def __init__(
         self,
-        src_folder='./data/tokenized.dataset',
-        tgt_folder='./data/tokenized.dataset',
+        src_dataset_folder='./data/tokenized.dataset',
+        tgt_dataset_folder='./data/tokenized.dataset',
+        tgt_adata_folder='./h5ad_data/cytoimmgen_tokenisation_degs.h5ad',
         shuffle=False,
     ):
         super().__init__()
@@ -46,8 +48,10 @@ class GeneformerDataset(Dataset):
         - length: length of each cell
         """
         self.shuffle = shuffle
-        self.src_data = load_from_disk(src_folder)
-        self.tgt_data = load_from_disk(tgt_folder)
+        self.src_data = load_from_disk(src_dataset_folder)
+        self.tgt_data = load_from_disk(tgt_dataset_folder)
+        self.tgt_adata = sc.read_h5ad(tgt_adata_folder)
+
         # with open(token_dictionary_file, "rb") as f:
         #     self.gene_token_dict = pickle.load(f)
         # self.pad_token_id = self.gene_token_dict.get("<pad>")
@@ -58,15 +62,20 @@ class GeneformerDataset(Dataset):
         return min(len(self.src_data), len(self.tgt_data))
 
     def __getitem__(self, ind):
-        return {'src': self.src_data[ind], 'tgt': self.tgt_data[ind]}
+        return {
+            'src_dataset': self.src_data[ind],
+            'tgt_dataset': self.tgt_data[ind],
+            'tgt_adata': self.tgt_adata[ind],
+        }
 
 
 # two dataloader vs one dataloader
 class GeneformerDataModule(LightningDataModule):
     def __init__(
         self,
-        src_folder='./data/tokenized.dataset',
-        tgt_folder='./data/tokenized.dataset',
+        src_dataset_folder='./data/tokenized.dataset',
+        tgt_dataset_folder='./data/tokenized.dataset',
+        tgt_adata_folder='./h5ad_data/cytoimmgen_tokenisation_degs.h5ad',
         batch_size=3,
         num_workers=0,
         shuffle=False,
@@ -78,8 +87,9 @@ class GeneformerDataModule(LightningDataModule):
         Custom datamodule for Geneformer tokenised data.
         """
         super().__init__()
-        self.src_folder = src_folder
-        self.tgt_folder = tgt_folder
+        self.src_dataset_folder = src_dataset_folder
+        self.tgt_dataset_folder = tgt_dataset_folder
+        self.tgt_adata_folder = tgt_adata_folder
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.shuffle = shuffle
@@ -92,8 +102,9 @@ class GeneformerDataModule(LightningDataModule):
 
     def setup(self, stage=None):
         self.dataset = GeneformerDataset(
-            src_folder=self.src_folder,
-            tgt_folder=self.tgt_folder,
+            src_dataset_folder=self.src_dataset_folder,
+            tgt_dataset_folder=self.tgt_dataset_folder,
+            tgt_adata_folder=self.tgt_adata_folder,
             shuffle=self.shuffle,
         )
         # if stage == 'fit' or stage is None:
@@ -125,27 +136,56 @@ class GeneformerDataModule(LightningDataModule):
         return data
 
     def collate(self, batch):
-        if any('src' in item for item in batch):
-            src_input_batch_id = [torch.tensor(d['src']['input_ids']) for d in batch]
-            src_length = torch.stack([torch.tensor(d['src']['length']) for d in batch])
+        if any('src_dataset' in item for item in batch):
+            src_input_batch_id = [
+                torch.tensor(d['src_dataset']['input_ids']) for d in batch
+            ]
+            src_length = torch.stack(
+                [torch.tensor(d['src_dataset']['length']) for d in batch]
+            )
             model_input_size = torch.max(src_length)
-            src_cell_type = [d['src']['Cell_type'] for d in batch]
-            src_time_point = ([d['src']['Time_point'] for d in batch],)
-            src_donor = ([d['src']['Donor'] for d in batch],)
+            src_cell_type = [d['src_dataset']['Cell_type'] for d in batch]
+            src_time_point = ([d['src_dataset']['Time_point'] for d in batch],)
+            src_donor = ([d['src_dataset']['Donor'] for d in batch],)
             src_input_batch_id = pad_tensor_list(
                 src_input_batch_id, self.max_len, self.pad_token_id, model_input_size
             )
-        if any('tgt' in item for item in batch):
-            tgt_input_batch_id = [torch.tensor(d['tgt']['input_ids']) for d in batch]
-            tgt_length = torch.stack([torch.tensor(d['tgt']['length']) for d in batch])
+        else:
+            src_input_batch_id = None
+            src_length = None
+            src_cell_type = None
+            src_time_point = None
+            src_donor = None
+
+        if any('tgt_dataset' in item for item in batch):
+            # return counts
+            tgt_input_batch_id = [
+                torch.tensor(d['tgt_dataset']['input_ids']) for d in batch
+            ]
+            tgt_length = torch.stack(
+                [torch.tensor(d['tgt_dataset']['length']) for d in batch]
+            )
             model_input_size = torch.max(tgt_length)
-            tgt_cell_type = [d['tgt']['Cell_type'] for d in batch]
-            tgt_cell_population = [d['tgt']['Cell_population'] for d in batch]
-            tgt_time_point = ([d['tgt']['Time_point'] for d in batch],)
-            tgt_donor = ([d['tgt']['Donor'] for d in batch],)
+            tgt_cell_type = [d['tgt_dataset']['Cell_type'] for d in batch]
+            tgt_cell_population = [d['tgt_dataset']['Cell_population'] for d in batch]
+            tgt_time_point = ([d['tgt_dataset']['Time_point'] for d in batch],)
+            tgt_donor = ([d['tgt_dataset']['Donor'] for d in batch],)
             tgt_input_batch_id = pad_tensor_list(
                 tgt_input_batch_id, self.max_len, self.pad_token_id, model_input_size
             )
+        else:
+            tgt_input_batch_id = None
+            tgt_length = None
+            tgt_cell_type = None
+            tgt_cell_population = None
+            tgt_time_point = None
+            tgt_donor = None
+
+        if any('tgt_adata' in item for item in batch):
+            tgt_counts = [d['tgt_adata'].X for d in batch]
+        else:
+            tgt_counts = None
+
         return {
             'src_input_ids': src_input_batch_id,
             'src_length': src_length,
@@ -158,6 +198,7 @@ class GeneformerDataModule(LightningDataModule):
             'tgt_cell_population': tgt_cell_population,
             'tgt_time_point': tgt_time_point,
             'tgt_donor': tgt_donor,
+            'tgt_counts': tgt_counts,
         }
 
     def gen_attention_mask(self, length):
@@ -174,10 +215,21 @@ class GeneformerDataModule(LightningDataModule):
 if __name__ == '__main__':
     # test dataloader
     data_module = GeneformerDataModule(
-        src_folder='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_degs_random_pairing_0h.dataset',
-        tgt_folder='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_degs_random_pairing_40h.dataset',
+        src_dataset_folder=(
+            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+            'T_perturb/T_perturb/pp/res/dataset/'
+            'cytoimmgen_tokenised_degs_stratified_pairing_0h.dataset'
+        ),
+        tgt_dataset_folder=(
+            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+            'T_perturb/T_perturb/pp/res/dataset/'
+            'cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset'
+        ),
+        tgt_adata_folder=(
+            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+            'T_perturb/T_perturb/pp/res/h5ad_data/'
+            'cytoimmgen_tokenisation_degs_stratified_16h.h5ad'
+        ),
         max_len=334,
     )
     data_module.setup()
@@ -186,4 +238,4 @@ if __name__ == '__main__':
     train_iterator = iter(dataloader)
     batch = next(train_iterator)
     print(batch['tgt_input_ids'][:20, :20])
-    print(sum(batch['tgt_input_ids'] == 1))
+    print(len(batch['tgt_counts'][0]))
