@@ -6,6 +6,7 @@ import re
 from datetime import datetime
 
 import pytorch_lightning as pl
+import scanpy as sc
 import torch
 import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
@@ -16,7 +17,7 @@ from T_perturb.Model.trainer import TTransformertrainer
 
 RANDOM_SEED = 42
 
-test_dataset = 'cytoimmgen_tokenised_degs_stratified_pairing_40h.dataset'
+test_dataset = 'cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset'
 # use regex to find condition between degs and .dataset
 condition = re.findall(r'(?<=degs_).*(?=.dataset)', test_dataset)[0]
 
@@ -53,10 +54,10 @@ def get_args():
         help='path to tgt',
     )
 
-    parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
+    parser.add_argument('--batch_size', type=int, default=1, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=True, help='shuffle')
     parser.add_argument(
-        '--epochs', type=int, default=5, help='number of training epochs'
+        '--epochs', type=int, default=20, help='number of training epochs'
     )
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
@@ -68,6 +69,21 @@ def get_args():
         '--mlm_probability', type=float, default=0.3, help='mlm probability'
     )
     parser.add_argument('--n_workers', type=int, default=8, help='number of workers')
+    parser.add_argument(
+        '--loss_mode', type=str, default='zinb', help='loss mode [zinb, nb, mse]'
+    )
+    parser.add_argument(
+        '--condition_keys',
+        nargs='+',
+        default='Cell_culture_batch',
+        type=str,
+        help='Selection of condition keys to use for model',
+    )
+    parser.add_argument('--conditions', type=dict, default=None, help='conditions')
+    parser.add_argument(
+        '--conditions_combined', type=list, default=None, help='conditions combined'
+    )
+    parser.add_argument('--alpha', type=float, default=0.1, help='alpha')
     args = parser.parse_args()
     return args
 
@@ -78,6 +94,37 @@ def main() -> None:
 
     # PyTorch Lightning allows to set all necessary seeds in one function call.
     pl.seed_everything(RANDOM_SEED)
+    torch.manual_seed(RANDOM_SEED)
+    tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
+    if args.loss_mode == 'mse':
+        # log normalize data only for mse loss
+        sc.pp.normalize_total(tgt_adata, target_sum=1e4)
+        sc.pp.log1p(tgt_adata)
+    if isinstance(args.condition_keys, str):
+        condition_keys_ = [args.condition_keys]
+    else:
+        condition_keys_ = args.condition_keys
+
+    if args.conditions is None:
+        if args.condition_keys is not None:
+            conditions_ = {}
+            for cond in condition_keys_:
+                conditions_[cond] = tgt_adata.obs[cond].unique().tolist()
+        else:
+            conditions_ = {}
+    else:
+        conditions_ = args.conditions
+
+    if args.conditions_combined is None:
+        if len(condition_keys_) > 1:
+            tgt_adata.obs['conditions_combined'] = tgt_adata.obs[
+                args.condition_keys
+            ].apply(lambda x: '_'.join(x), axis=1)
+        else:
+            tgt_adata.obs['conditions_combined'] = tgt_adata.obs[args.condition_keys]
+        conditions_combined_ = tgt_adata.obs['conditions_combined'].unique().tolist()
+    else:
+        conditions_combined_ = args.conditions_combined
 
     # Initialize model module
     # ----------------------------------------------------------------------------------
@@ -94,7 +141,17 @@ def main() -> None:
         lr=args.lr,
         lr_scheduler_patience=1.0,
         lr_scheduler_factor=0.8,
+        loss_mode=args.loss_mode,
+        alpha=args.alpha,
+        conditions=conditions_,
+        conditions_combined=conditions_combined_,
     )
+    if args.loss_mode == 'mse':
+        condition_encodings = None
+        conditions_combined_encodings = None
+    else:
+        condition_encodings = model_module.condition_encodings
+        conditions_combined_encodings = model_module.conditions_combined_encodings
     # Initialize data module
     # ----------------------------------------------------------------------------------
 
@@ -104,11 +161,14 @@ def main() -> None:
     data_module = GeneformerDataModule(
         src_dataset_folder=args.src_dataset_folder,
         tgt_dataset_folder=args.tgt_dataset_folder,
-        tgt_adata_folder=args.tgt_adata_folder,
+        tgt_adata=tgt_adata,
         batch_size=args.batch_size,
         num_workers=args.n_workers,
         shuffle=args.shuffle,
         max_len=args.max_len,
+        condition_keys=condition_keys_,
+        condition_encodings=condition_encodings,
+        conditions_combined_encodings=conditions_combined_encodings,
     )
 
     # Setup trainer
@@ -167,22 +227,23 @@ def main() -> None:
     # further information.
     # Lightning allows for simple multi-gpu training, gradient accumulation, half
     # precision training, etc. using the trainer class.
-    early_stop_callback = pl.callbacks.EarlyStopping(
-        monitor='train/loss',
-        min_delta=0.00,
-        patience=3,
-        verbose=False,
-        mode='min',
-    )
+    # early_stop_callback = pl.callbacks.EarlyStopping(
+    #     monitor='train/loss',
+    #     min_delta=0.00,
+    #     patience=3,
+    #     verbose=False,
+    #     mode='min',
+    # )
     trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=[
             TQDMProgressBar(refresh_rate=10),
             checkpoint_callback,
-            early_stop_callback,
+            # early_stop_callback,
         ],
         max_epochs=args.epochs,
         accelerator=accelerator,
+        limit_train_batches=1,
     )
 
     # Finally, kick of the training process.

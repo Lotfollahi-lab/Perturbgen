@@ -169,7 +169,7 @@ class DecoderLayer(nn.Module):
         )
         self.cross_attn = CrossAttention(
             query_dim=dim,
-            context_dim=context_dim,
+            # context_dim=context_dim,
             heads=n_heads,
             dim_head=d_head,
             dropout=dropout,
@@ -290,9 +290,11 @@ class TTransformer(nn.Module):
         dropout: float = 0.0,
         mlm_probability: float = 0.3,
         add_mask_id: bool = True,
+        loss_mode: str = 'zinb',
     ):
         super(TTransformer, self).__init__()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.loss_mode = loss_mode
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
 
@@ -320,6 +322,20 @@ class TTransformer(nn.Module):
             [DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)]
         )
         self.decoder_layers = self.decoder_layers.to(self.device)
+        if self.loss_mode == 'mse':
+            self.relu_output = nn.Sequential(
+                nn.Linear(d_model, tgt_vocab_size), nn.ReLU()
+            )
+        elif self.loss_mode == 'zinb':
+            self.linear_output = nn.Linear(d_model, tgt_vocab_size)
+            self.softmax_output = nn.Sequential(
+                nn.Linear(d_model, tgt_vocab_size), nn.Softmax(dim=-1)
+            )
+
+        elif self.loss_mode == 'nb':
+            self.softmax_output = nn.Sequential(
+                nn.Linear(d_model, tgt_vocab_size), nn.Softmax(dim=-1)
+            )
         self.count_decoder = Mlp(in_features=d_model, out_features=tgt_vocab_size)
 
         self.fc = nn.Linear(d_model, tgt_vocab_size)
@@ -424,7 +440,9 @@ class TTransformer(nn.Module):
         src_input_id,
         tgt_input_id,
         # self_cond_embed = None,
+        pred_counts=False,
         return_embed=False,
+        generate=False,
     ):
         tgt_input_id = torch.cat(
             (
@@ -440,9 +458,9 @@ class TTransformer(nn.Module):
         tgt_input_id = tgt_input_id.to(self.device)
         tgt_pad = self.generate_pad(tgt_input_id)
         if self.training:
-            tgt_mask, labels = self.generate_mask(
-                tgt_input_id, tgt_pad, self.mlm_probability
-            )
+            _, labels = self.generate_mask(tgt_input_id, tgt_pad, self.mlm_probability)
+            # test without masking
+            tgt_mask = tgt_pad
         else:
             tgt_mask = tgt_input_id == (self.mask_token)
             tgt_mask = tgt_mask | (tgt_input_id == 0)
@@ -453,7 +471,7 @@ class TTransformer(nn.Module):
 
         # overwrite with tgt input id with masked token
         tgt_embedded_mask = self.token_embedding(tgt_input_id)
-        tgt_embedded_mask[tgt_mask, :] = self.masked_embed
+        # tgt_embedded_mask[tgt_mask, :] = self.masked_embed
         tgt_embedded_mask = self.prepare_tokens(tgt_embedded_mask)
         enc_output = src_embedded
         dec_embedding = tgt_embedded_mask
@@ -461,17 +479,39 @@ class TTransformer(nn.Module):
             dec_embedding = dec_layer(
                 dec_embedding, src_attention_mask, tgt_mask, enc_output
             )
-        count_pred = self.count_decoder(dec_embedding[:, 0, :])
-
         logits = self.fc(dec_embedding)
+        # count decoder
+        if self.loss_mode == 'mse':
+            count_lognorm = self.relu_output(dec_embedding[:, 0, :])
+        elif self.loss_mode == 'zinb':
+            count_mean = self.softmax_output(dec_embedding[:, 0, :])
+            count_dropout = self.linear_output(dec_embedding[:, 0, :])
+        elif self.loss_mode == 'nb':
+            count_mean = self.softmax_output(dec_embedding[:, 0, :])
 
         if self.training:
-            # remove CLS token to not include it in the loss
-            return logits, labels
+            if pred_counts:
+                # cls token set to -100 in labels will be ignored in loss
+                if self.loss_mode == 'mse':
+                    return count_lognorm
+                elif self.loss_mode == 'zinb':
+                    return count_mean, count_dropout
+                elif self.loss_mode == 'nb':
+                    return count_mean
+            else:
+                return logits, labels
         elif return_embed:
-            return logits[:, 1:, :], count_pred, dec_embedding
-        else:
-            return logits[:, 1:, :]
+            return dec_embedding
+        elif generate:
+            if pred_counts:
+                if self.loss_mode == 'mse':
+                    return pred_counts
+                elif self.loss_mode == 'zinb':
+                    return count_mean, count_dropout
+                elif self.loss_mode == 'nb':
+                    return count_mean
+            else:
+                return logits[:, 1:, :]  # remove CLS token
 
     def generate(
         self,

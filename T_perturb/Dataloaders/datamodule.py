@@ -1,12 +1,18 @@
 import pickle
+from typing import Optional
 
-import scanpy as sc
+import anndata as ad
+import numpy as np
+
+# import scanpy as sc
 import torch
 from datasets import load_from_disk
 from geneformer.perturber_utils import pad_tensor_list
 from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset
+
+from T_perturb.src.utils import label_encoder
 
 
 # Dummy dataset
@@ -34,10 +40,13 @@ class DummyDataset(torch.utils.data.Dataset):
 class GeneformerDataset(Dataset):
     def __init__(
         self,
-        src_dataset_folder='./data/tokenized.dataset',
-        tgt_dataset_folder='./data/tokenized.dataset',
-        tgt_adata_folder='./h5ad_data/cytoimmgen_tokenisation_degs.h5ad',
-        shuffle=False,
+        src_dataset_folder: str = './data/tokenized.dataset',
+        tgt_dataset_folder: str = './data/tokenized.dataset',
+        shuffle: bool = False,
+        tgt_adata: ad.AnnData = None,
+        conditions: Optional[torch.Tensor] = None,
+        conditions_combined: Optional[torch.Tensor] = None,
+        condition_encodings: Optional[dict] = None,
     ):
         super().__init__()
         """
@@ -50,7 +59,13 @@ class GeneformerDataset(Dataset):
         self.shuffle = shuffle
         self.src_data = load_from_disk(src_dataset_folder)
         self.tgt_data = load_from_disk(tgt_dataset_folder)
-        self.tgt_adata = sc.read_h5ad(tgt_adata_folder)
+        self.tgt_adata = tgt_adata
+        self.size_factor = np.ravel(tgt_adata.X.sum(axis=1))
+        self.conditions = conditions
+        print(self.conditions)
+        self.conditions_combined = conditions_combined
+        print(self.conditions_combined)
+        self.condition_encodings = condition_encodings
 
         # with open(token_dictionary_file, "rb") as f:
         #     self.gene_token_dict = pickle.load(f)
@@ -66,6 +81,11 @@ class GeneformerDataset(Dataset):
             'src_dataset': self.src_data[ind],
             'tgt_dataset': self.tgt_data[ind],
             'tgt_adata': self.tgt_adata[ind],
+            'tgt_size_factor': self.size_factor[ind],
+            'conditions': self.conditions[ind] if self.conditions is not None else None,
+            'conditions_combined': self.conditions_combined[ind]
+            if self.conditions_combined is not None
+            else None,
         }
 
 
@@ -73,13 +93,17 @@ class GeneformerDataset(Dataset):
 class GeneformerDataModule(LightningDataModule):
     def __init__(
         self,
-        src_dataset_folder='./data/tokenized.dataset',
-        tgt_dataset_folder='./data/tokenized.dataset',
-        tgt_adata_folder='./h5ad_data/cytoimmgen_tokenisation_degs.h5ad',
-        batch_size=3,
-        num_workers=0,
-        shuffle=False,
-        max_len=2048,
+        src_dataset_folder: str = './data/tokenized.dataset',
+        tgt_dataset_folder: str = './data/tokenized.dataset',
+        batch_size: int = 64,
+        num_workers: int = 8,
+        shuffle: bool = False,
+        max_len: int = 2048,
+        loss_mode: str = 'mse',
+        tgt_adata: ad.AnnData = None,
+        condition_keys: Optional[list] = None,
+        condition_encodings: Optional[dict] = None,
+        conditions_combined_encodings: Optional[dict] = None,
     ):
         """
         Description:
@@ -89,7 +113,7 @@ class GeneformerDataModule(LightningDataModule):
         super().__init__()
         self.src_dataset_folder = src_dataset_folder
         self.tgt_dataset_folder = tgt_dataset_folder
-        self.tgt_adata_folder = tgt_adata_folder
+        self.tgt_adata = tgt_adata
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.shuffle = shuffle
@@ -99,14 +123,52 @@ class GeneformerDataModule(LightningDataModule):
         self.pad_token_id = self.gene_token_dict.get('<pad>')
         self.max_len = max_len
         self.dataset = None
+        self.loss_mode = loss_mode
+        self.size_factor = np.ravel(tgt_adata.X.sum(axis=1))
+        self.condition_keys = condition_keys
+        self.condition_encodings = condition_encodings
+        self.conditions_combined_encodings = conditions_combined_encodings
+
+        # create condition encoder for categorical variables in
+        # form of dictionary with key: value pairs based on condition_keys
+        if (self.condition_encodings is not None) and (self.condition_keys is not None):
+            self.conditions = [
+                label_encoder(
+                    tgt_adata,
+                    encoder=self.condition_encodings[self.condition_keys[i]],
+                    condition_key=self.condition_keys[i],
+                )
+                for i in range(len(self.condition_encodings))
+            ]
+            self.conditions = torch.tensor(self.conditions, dtype=torch.long).T
+            self.conditions_combined = label_encoder(
+                tgt_adata,
+                encoder=self.conditions_combined_encodings,
+                condition_key='conditions_combined',
+            )
+            self.conditions_combined = torch.tensor(
+                self.conditions_combined, dtype=torch.long
+            )
 
     def setup(self, stage=None):
-        self.dataset = GeneformerDataset(
-            src_dataset_folder=self.src_dataset_folder,
-            tgt_dataset_folder=self.tgt_dataset_folder,
-            tgt_adata_folder=self.tgt_adata_folder,
-            shuffle=self.shuffle,
-        )
+        if self.condition_encodings is not None:
+            self.dataset = GeneformerDataset(
+                src_dataset_folder=self.src_dataset_folder,
+                tgt_dataset_folder=self.tgt_dataset_folder,
+                tgt_adata=self.tgt_adata,
+                shuffle=self.shuffle,
+                conditions=self.conditions if self.condition_keys is not None else None,
+                conditions_combined=self.conditions_combined
+                if self.condition_keys is not None
+                else None,
+            )
+        else:
+            self.dataset = GeneformerDataset(
+                src_dataset_folder=self.src_dataset_folder,
+                tgt_dataset_folder=self.tgt_dataset_folder,
+                tgt_adata=self.tgt_adata,
+                shuffle=self.shuffle,
+            )
         # if stage == 'fit' or stage is None:
         #     self.dataset = self.src_dataset + self.tgt_dataset
         # if stage == 'test' or stage is None:
@@ -183,8 +245,16 @@ class GeneformerDataModule(LightningDataModule):
 
         if any('tgt_adata' in item for item in batch):
             tgt_counts = [d['tgt_adata'].X for d in batch]
+            tgt_size_factor = [d['tgt_size_factor'] for d in batch]
+            if self.condition_encodings is not None:
+                condition = [d['conditions'] for d in batch]
+                condition_combined = [d['conditions_combined'] for d in batch]
+            else:
+                condition = None
+                condition_combined = None
         else:
             tgt_counts = None
+            tgt_size_factor = None
 
         return {
             'src_input_ids': src_input_batch_id,
@@ -199,6 +269,9 @@ class GeneformerDataModule(LightningDataModule):
             'tgt_time_point': tgt_time_point,
             'tgt_donor': tgt_donor,
             'tgt_counts': tgt_counts,
+            'size_factor': tgt_size_factor,
+            'batch': condition,
+            'combined_batch': condition_combined,
         }
 
     def gen_attention_mask(self, length):
@@ -224,11 +297,6 @@ if __name__ == '__main__':
             '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
             'T_perturb/T_perturb/pp/res/dataset/'
             'cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset'
-        ),
-        tgt_adata_folder=(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-            'T_perturb/T_perturb/pp/res/h5ad_data/'
-            'cytoimmgen_tokenisation_degs_stratified_16h.h5ad'
         ),
         max_len=334,
     )
