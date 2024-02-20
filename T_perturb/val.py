@@ -2,9 +2,11 @@
 
 import argparse
 import os
+import re
 from datetime import datetime
 
 import pytorch_lightning as pl
+import scanpy as sc
 import torch
 import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
@@ -13,7 +15,10 @@ from pytorch_lightning.loggers import WandbLogger
 from T_perturb.Dataloaders.datamodule import GeneformerDataModule
 from T_perturb.Model.trainer import TTransformertrainer
 
-RANDOM_SEED = 100
+RANDOM_SEED = 42
+test_dataset = 'cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset'
+# use regex to find condition between degs and .dataset
+dataset_info = re.findall(r'(?<=degs_).*(?=.dataset)', test_dataset)[0]
 
 
 def get_args():
@@ -30,10 +35,20 @@ def get_args():
     parser.add_argument(
         '--tgt_dataset_folder',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/'
-        'cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset',
+        default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        f'T_perturb/T_perturb/pp/res/dataset/'
+        f'{test_dataset}',
         help='path to tokenised activated data',
+    )
+    parser.add_argument(
+        '--tgt_adata_folder',
+        type=str,
+        default=(
+            f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+            f'T_perturb/T_perturb/pp/res/h5ad_data/'
+            f'cytoimmgen_tokenisation_degs_{dataset_info}.h5ad'
+        ),
+        help='path to tgt',
     )
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=False, help='shuffle')
@@ -49,8 +64,22 @@ def get_args():
     parser.add_argument('--max_len', type=int, default=246, help='max sequence length')
     parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
     parser.add_argument('--wd', type=float, default=1e-3, help='weight decay')
-    # parser.add_argument('--n_cls', type=int, default=10, help='number of classes')
     parser.add_argument('--n_workers', type=int, default=8, help='number of workers')
+    parser.add_argument(
+        '--loss_mode', type=str, default='mse', help='loss mode [zinb, nb, mse]'
+    )
+    parser.add_argument(
+        '--condition_keys',
+        nargs='+',
+        default='Cell_culture_batch',
+        type=str,
+        help='Selection of condition keys to use for model',
+    )
+    parser.add_argument('--conditions', type=dict, default=None, help='conditions')
+    parser.add_argument(
+        '--conditions_combined', type=list, default=None, help='conditions combined'
+    )
+    parser.add_argument('--alpha', type=float, default=0.1, help='alpha')
     args = parser.parse_args()
     return args
 
@@ -61,7 +90,37 @@ def main() -> None:
 
     # PyTorch Lightning allows to set all necessary seeds in one function call.
     pl.seed_everything(RANDOM_SEED)
+    torch.manual_seed(RANDOM_SEED)
+    tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
+    if args.loss_mode == 'mse':
+        # log normalize data only for mse loss
+        sc.pp.normalize_total(tgt_adata, target_sum=1e4)
+        sc.pp.log1p(tgt_adata)
+    if isinstance(args.condition_keys, str):
+        condition_keys_ = [args.condition_keys]
+    else:
+        condition_keys_ = args.condition_keys
 
+    if args.conditions is None:
+        if args.condition_keys is not None:
+            conditions_ = {}
+            for cond in condition_keys_:
+                conditions_[cond] = tgt_adata.obs[cond].unique().tolist()
+        else:
+            conditions_ = {}
+    else:
+        conditions_ = args.conditions
+
+    if args.conditions_combined is None:
+        if len(condition_keys_) > 1:
+            tgt_adata.obs['conditions_combined'] = tgt_adata.obs[
+                args.condition_keys
+            ].apply(lambda x: '_'.join(x), axis=1)
+        else:
+            tgt_adata.obs['conditions_combined'] = tgt_adata.obs[args.condition_keys]
+        conditions_combined_ = tgt_adata.obs['conditions_combined'].unique().tolist()
+    else:
+        conditions_combined_ = args.conditions_combined
     # Initialize model module
     # ----------------------------------------------------------------------------------
     model_module = TTransformertrainer(
@@ -77,9 +136,21 @@ def main() -> None:
         lr=args.lr,
         lr_scheduler_patience=1.0,
         lr_scheduler_factor=0.8,
-        return_cls_embedding=False,
-        generate=True,
+        loss_mode=args.loss_mode,
+        alpha=args.alpha,
+        conditions=conditions_,
+        conditions_combined=conditions_combined_,
+        return_embeddings=True,
+        generate=False,
+        adata=tgt_adata,
+        dataset_info=dataset_info,
     )
+    if args.loss_mode == 'mse':
+        condition_encodings = None
+        conditions_combined_encodings = None
+    else:
+        condition_encodings = model_module.condition_encodings
+        conditions_combined_encodings = model_module.conditions_combined_encodings
     # Initialize data module
     # ----------------------------------------------------------------------------------
 
@@ -89,10 +160,14 @@ def main() -> None:
     data_module = GeneformerDataModule(
         src_dataset_folder=args.src_dataset_folder,
         tgt_dataset_folder=args.tgt_dataset_folder,
+        tgt_adata=tgt_adata,
         batch_size=args.batch_size,
         num_workers=args.n_workers,
         shuffle=args.shuffle,
         max_len=args.max_len,
+        condition_keys=condition_keys_,
+        condition_encodings=condition_encodings,
+        conditions_combined_encodings=conditions_combined_encodings,
     )
 
     # Setup trainer
@@ -109,7 +184,10 @@ def main() -> None:
     checkpoint_callback = ModelCheckpoint(
         dirpath='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
         't_generative/T_perturb/T_perturb/Model/checkpoints',
-        filename='checkpoint',
+        filename=(
+            f'{run_id}_lr_{args.lr}_wd_{args.wd}_batchsize_'
+            f'{args.batch_size}_mlmprob_{args.mlm_probability}_{dataset_info}'
+        ),
         save_top_k=1,
         verbose=True,
         monitor='train/loss',
@@ -161,8 +239,8 @@ def main() -> None:
         data_module,
         ckpt_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
         'T_perturb/T_perturb/Model/checkpoints/'
-        '20240212_1657_ttransformer_lr_0.001_wd_0.001_'
-        'batchsize_64_mlmprob_0.4_16h_pairing_stratified.ckpt',
+        '20240217_2114_ttransformer'
+        '_lr_0.001_wd_0.001_batchsize_64_mlmprob_0.3_stratified_pairing_16h.ckpt',
     )
 
 

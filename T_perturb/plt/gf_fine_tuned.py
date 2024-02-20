@@ -27,7 +27,7 @@ if os.getcwd().split('/')[-3] != 'T_perturb':
 
 tokenized_dir = (
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-    'T_perturb/pp/res/dataset/cytoimmgen_degs_random_pairing_16h.dataset'
+    'T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset'
 )
 dataset = load_from_disk(tokenized_dir)
 # create an example file of lengths of each example cell and save as pickle

@@ -1,10 +1,14 @@
 import pickle
 from pathlib import Path
+from typing import Dict, List
 
 import anndata as ad
 import numpy as np
 import pandas as pd
+import scanpy as sc
 import torch
+import tqdm
+from scipy.sparse import csr_matrix
 
 
 def map_ensembl_to_genename(
@@ -52,15 +56,125 @@ def map_deg_to_tokenid(adata_deg: ad.AnnData, token_id_path: Path):
 
 
 def subset_adata(adata, cell_pairings):
-    df = pd.DataFrame(adata.X.A, index=adata.obs.index, columns=adata.var.index)
+    adata_ = adata.copy()
+    # check if obs index is not range index
+    if adata_.obs.index.dtype != 'int64':
+        adata_.obs = adata_.obs.reset_index()
+    df = pd.DataFrame(adata_.X.A, index=adata_.obs.index, columns=adata_.var.index)
     # use row index instead of index
     df.reset_index(drop=True, inplace=True)
     subset_df = df.loc[cell_pairings]
-    obs = adata.obs.loc[cell_pairings]
+    obs = adata_.obs.loc[cell_pairings]
     obs.index = obs['level_0']
-    var = adata.var.loc[df.columns]
+    var = adata_.var.loc[df.columns]
     adata_subsetted = ad.AnnData(X=subset_df.values, obs=obs, var=var)
+    adata_subsetted.obs_names.name = None
+    adata_subsetted.X = csr_matrix(adata_subsetted.X)
     return adata_subsetted
+
+
+def map_token_id_to_genename(adata_subset):
+    """
+    Description:
+    ------------
+    This function maps subset_token_id to gene_name and saves the dictionary as pickle.
+
+    Parameters:
+    -----------
+    adata_subset: `~anndata.AnnData`
+        Annotated data matrix subsetted to include only DEGs.
+    Returns:
+    --------
+    adata_subset: `~anndata.AnnData`
+        Annotated data matrix with subset_token_id and gene_name.
+    """
+    # create dictionary to map subset_token_id to gene_name
+    adata_subset.var['subset_token_id'] = np.arange(adata_subset.n_vars) + 1
+    # save dictionary as pickle
+    subset_tokenid_to_deg = dict(
+        zip(adata_subset.var['subset_token_id'], adata_subset.var['gene_name'])
+    )
+    with open(
+        '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        'T_perturb/T_perturb/pp/res/dataset/token_dictionary_for_subset_token_id.pkl',
+        'wb',
+    ) as f:
+        pickle.dump(subset_tokenid_to_deg, f)
+    return adata_subset
+
+
+def pairing_resting_to_activated_cells(
+    adata_subset: sc.AnnData, pairing_mode: str, seed: int = 42
+):
+    """
+    Description:
+    ------------
+    This function pairs resting cells to activated cells based on time point.
+
+    Parameters:
+    -----------
+    adata_subset: `~anndata.AnnData`
+        Annotated data matrix subsetted to include only DEGs.
+    pairing_mode: `str`
+        Mode to pair cells. Choose between 'random' and 'stratified'.
+    seed: `int`
+        Seed for random number generator.
+
+    Returns:
+    --------
+    cell_pairings: `dict`
+        Dictionary containing pairing indices of resting and activated cells.
+    """
+    np.random.seed(seed)
+    # replace index by row number
+    adata_subset_ = adata_subset.copy()
+    adata_subset_.obs = adata_subset_.obs.reset_index()
+
+    pairing_mode = 'stratified'  # choose between 'random' and 'stratified'
+    # find index for each time point
+    adata_0h_ = adata_subset_.obs.loc[adata_subset_.obs['Time_point'] == '0h', :]
+    adata_16h_ = adata_subset_.obs.loc[adata_subset_.obs['Time_point'] == '16h', :]
+    adata_40h_ = adata_subset_.obs.loc[adata_subset_.obs['Time_point'] == '40h', :]
+    adata_5d_ = adata_subset_.obs.loc[adata_subset_.obs['Time_point'] == '5d', :]
+    # initiate dictionary to store cell pairings
+    cell_pairings: Dict[str, List[int]] = {'0h': [], '16h': [], '40h': [], '5d': []}
+    if pairing_mode == 'stratified':
+        # drop Donor if they do not have Cell_type, Donor in all the Time_points
+        adata_grouped = adata_subset_.obs[
+            adata_subset_.obs.groupby(['Donor', 'Cell_type'])['Time_point'].transform(
+                'nunique'
+            )
+            == 4
+        ]
+        dropped_donors = (
+            adata_subset.obs['Donor'].nunique() - adata_grouped['Donor'].nunique()
+        )
+        print(f'dropped {dropped_donors} donors')
+        resting_cells = adata_grouped.loc[adata_grouped['Time_point'] == '0h', :]
+        grouped = adata_grouped.groupby(['Donor', 'Cell_type'])
+        for idx, resting in tqdm.tqdm(
+            resting_cells.iterrows(), total=resting_cells.shape[0]
+        ):
+            # get the indices of the other time points for the same cell type and donor
+            group = grouped.get_group((resting['Donor'], resting['Cell_type']))
+            indices_16h = group[group['Time_point'] == '16h'].index
+            indices_40h = group[group['Time_point'] == '40h'].index
+            indices_5d = group[group['Time_point'] == '5d'].index
+            cell_pairings['0h'].append(idx)
+            cell_pairings['16h'].append(np.random.choice(indices_16h))
+            cell_pairings['40h'].append(np.random.choice(indices_40h))
+            cell_pairings['5d'].append(np.random.choice(indices_5d))
+
+    elif pairing_mode == 'random':
+        # randomly sample from each time point
+        for idx, row in tqdm.tqdm(adata_0h_.iterrows(), total=adata_0h_.shape[0]):
+            cell_pairings['0h'].append(idx)
+            cell_pairings['16h'].append(np.random.choice(adata_16h_.index))
+            cell_pairings['40h'].append(np.random.choice(adata_40h_.index))
+            cell_pairings['5d'].append(np.random.choice(adata_5d_.index))
+    else:
+        raise ValueError('pairing_mode must be either random or stratified')
+    return cell_pairings
 
 
 def one_hot_encoder(idx, n_cls):
@@ -74,8 +188,12 @@ def one_hot_encoder(idx, n_cls):
 
 
 def label_encoder(adata, encoder, condition_key=None):
-    """Encode labels of Annotated `adata` matrix.
-    Parameters
+    """
+    Description:
+    ------------
+    Encode labels of Annotated `adata` matrix.
+
+    Parameters:
     ----------
     adata: : `~anndata.AnnData`
          Annotated data matrix.
@@ -84,7 +202,7 @@ def label_encoder(adata, encoder, condition_key=None):
     condition_key: String
          column name of conditions in `adata.obs` data frame.
 
-    Returns
+    Returns:
     -------
     labels: `~numpy.ndarray`
          Array of encoded labels

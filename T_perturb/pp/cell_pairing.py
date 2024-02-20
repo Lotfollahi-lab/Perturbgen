@@ -28,6 +28,11 @@ deg_to_tokenid_dict, adata_subset = map_deg_to_tokenid(
         'generative_modelling_omic/Geneformer/geneformer/token_dictionary.pkl'
     ),
 )
+adata_subset.var['subset_token_id'] = np.arange(adata_subset.n_vars) + 1
+# create dictionary to map subset_token_id to gene_name
+subset_tokenid_to_deg = dict(
+    zip(adata_subset.var['subset_token_id'], adata_subset.var['gene_name'])
+)
 
 
 # use dictionary to map token_id to input_ids
@@ -43,13 +48,7 @@ dataset = dataset.map(map_input_ids)
 # replace index by row number
 adata_subset_ = adata_subset.copy()
 adata_subset_.obs = adata_subset_.obs.reset_index()
-metadata_df = pd.DataFrame(
-    {
-        'Donor': dataset['Donor'],
-        'Cell_type': dataset['Cell_type'],
-        'Time_point': dataset['Time_point'],
-    }
-)
+
 pairing_mode = 'stratified'  # choose between 'random' and 'stratified'
 # find index for each time point
 adata_0h_ = adata_subset_.obs.loc[adata_subset_.obs['Time_point'] == '0h', :]

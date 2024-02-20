@@ -15,7 +15,16 @@ from geneformer import TranscriptomeTokenizer
 from matplotlib import style
 from tqdm import tqdm
 
-from T_perturb.src.utils import map_ensembl_to_genename
+from T_perturb.src.utils import (
+    map_deg_to_tokenid,
+    map_ensembl_to_genename,
+    map_token_id_to_genename,
+    pairing_resting_to_activated_cells,
+    subset_adata,
+)
+
+seed_no = 42
+np.random.seed(seed_no)
 
 style.use('default')
 style.use(
@@ -31,12 +40,13 @@ if os.getcwd().split('/')[-3] != 'T_perturb':
     )
     print('Changed working directory to root of repository')
 
-# load adata
+# Preprocess adata
+# ----------------
+
 adata = sc.read_h5ad(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
     't_generative/data/h5d_files/cytoimmgen.h5ad'
 )
-# map ensembl ids to gene names
 adata = map_ensembl_to_genename(
     adata,
     Path(
@@ -44,17 +54,26 @@ adata = map_ensembl_to_genename(
         'data/h5d_files/phase2_data_qced_cells_cellCycleScored_geneMetadata.csv.gz'
     ),
 )
-adata.var['ensembl_id'] = adata.var.index
-
-# filter for only DEGs
+# filter adata for only genes occuring in the token dictionary
+deg_to_tokenid_dict, adata_subset = map_deg_to_tokenid(
+    adata,
+    Path(
+        '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        'generative_modelling_omic/Geneformer/geneformer/token_dictionary.pkl'
+    ),
+)
+adata_subset.var['ensembl_id'] = adata_subset.var.index
+# Filter adata for only DEGs
 degs = pd.read_csv(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
     'generative_modelling_omic_notebooks/'
     'pp/res/deg/significant_deg_1.5logfc_0.05padj_hvg_5k.csv'
 )
 unique_degs = degs['names'].unique()
-# filter adata for only degs
-adata = adata[:, adata.var['gene_name'].isin(unique_degs)]
+adata_subset = adata_subset[:, adata_subset.var['gene_name'].isin(unique_degs)]
+
+adata_subset = map_token_id_to_genename(adata_subset)
+adata_subset.layers['counts'] = adata_subset.X.copy()
 
 var_list = [
     'Cell_population',
@@ -66,20 +85,48 @@ var_list = [
     'Cell_culture_batch',
     'Phase',
     'Donor',
+    'index',
 ]
 var_to_keep: Dict[str, str] = {v: v for v in var_list}.copy()
+# save filtered adata with DEGs
+adata_subset.write_h5ad('./res/h5ad_data/cytoimmgen_tokenisation_degs.h5ad')
+pairing_mode = 'stratified'
+# Pairing resting to activated cells and tokenise individual datasets
+cell_pairings = pairing_resting_to_activated_cells(
+    adata_subset=adata_subset, pairing_mode=pairing_mode, seed=seed_no
+)
+adata_0h = subset_adata(adata_subset, cell_pairings['0h'])
+adata_16h = subset_adata(adata_subset, cell_pairings['16h'])
+adata_40h = subset_adata(adata_subset, cell_pairings['40h'])
+adata_5d = subset_adata(adata_subset, cell_pairings['5d'])
+# make new directory to store h5ad files
+paired_h5ad_dir = './res/h5ad_pairing'
+if not os.path.exists(paired_h5ad_dir):
+    os.makedirs(paired_h5ad_dir)
 
-adata.write_h5ad('./pp/res/h5ad_data/cytoimmgen_tokenisation_degs.h5ad')
-input_dir = './pp/res/h5ad_data'
+adata_0h.write_h5ad(
+    f'{paired_h5ad_dir}/cytoimmgen_tokenisation_degs_{pairing_mode}_0h.h5ad'
+)
+adata_16h.write_h5ad(
+    f'{paired_h5ad_dir}/cytoimmgen_tokenisation_degs_{pairing_mode}_16h.h5ad'
+)
+adata_40h.write_h5ad(
+    f'{paired_h5ad_dir}/cytoimmgen_tokenisation_degs_{pairing_mode}_40h.h5ad'
+)
+adata_5d.write_h5ad(
+    f'{paired_h5ad_dir}/cytoimmgen_tokenisation_degs_{pairing_mode}_5d.h5ad'
+)
+
+input_dir = paired_h5ad_dir
 output_dir = './res/dataset'
 tk = TranscriptomeTokenizer(var_to_keep, nproc=8)
 tk.tokenize_data(
     input_dir,  # input directory - all h5ad files in this directory will be tokenised
     output_dir,  # output directory - tokenised h5ad files will be saved here
-    'cytoimmgen_tokenised_degs',  # name of output file
+    'cytoimmgen_tokenised_degs_paired',  # name of output file
     file_format='h5ad',  # format [loom, h5ad]
 )
-
+dataset = load_from_disk('./res/dataset/cytoimmgen_tokenised_degs_paired.dataset')
 # --- Explore tokenised data ---
 dataset = load_from_disk('./res/dataset/cytoimmgen_tokenised_degs.dataset')
 # extract length of tokenised data

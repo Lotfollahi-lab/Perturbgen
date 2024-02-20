@@ -17,9 +17,9 @@ from T_perturb.Model.trainer import TTransformertrainer
 
 RANDOM_SEED = 42
 
-test_dataset = 'cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset'
+train_dataset = 'cytoimmgen_tokenised_degs_stratified_pairing_5d.dataset'
 # use regex to find condition between degs and .dataset
-condition = re.findall(r'(?<=degs_).*(?=.dataset)', test_dataset)[0]
+dataset_info = re.findall(r'(?<=degs_).*(?=.dataset)', train_dataset)[0]
 
 
 def get_args():
@@ -39,7 +39,7 @@ def get_args():
         '--tgt_dataset_folder',
         type=str,
         default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        f'T_perturb/T_perturb/pp/res/dataset/{test_dataset}',
+        f'T_perturb/T_perturb/pp/res/dataset/{train_dataset}',
         help='path to tokenised activated data',
     )
 
@@ -54,10 +54,10 @@ def get_args():
         help='path to tgt',
     )
 
-    parser.add_argument('--batch_size', type=int, default=1, help='batch_size')
+    parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=True, help='shuffle')
     parser.add_argument(
-        '--epochs', type=int, default=20, help='number of training epochs'
+        '--epochs', type=int, default=5, help='number of training epochs'
     )
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
@@ -68,9 +68,9 @@ def get_args():
     parser.add_argument(
         '--mlm_probability', type=float, default=0.3, help='mlm probability'
     )
-    parser.add_argument('--n_workers', type=int, default=8, help='number of workers')
+    parser.add_argument('--n_workers', type=int, default=4, help='number of workers')
     parser.add_argument(
-        '--loss_mode', type=str, default='zinb', help='loss mode [zinb, nb, mse]'
+        '--loss_mode', type=str, default='mse', help='loss mode [zinb, nb, mse]'
     )
     parser.add_argument(
         '--condition_keys',
@@ -145,7 +145,21 @@ def main() -> None:
         alpha=args.alpha,
         conditions=conditions_,
         conditions_combined=conditions_combined_,
+        adata=tgt_adata,
+        dataset_info=dataset_info,
     )
+    # def print_parameters(model_module):
+    #     print("Trainable parameters:")
+    #     for name, param in model_module.named_parameters():
+    #         if param.requires_grad:
+    #             print(name)
+
+    #     print("\nNon-trainable parameters:")
+    #     for name, param in model_module.named_parameters():
+    #         if not param.requires_grad:
+    #             print(name)
+
+    # # Assume `model` is your model
     if args.loss_mode == 'mse':
         condition_encodings = None
         conditions_combined_encodings = None
@@ -185,11 +199,11 @@ def main() -> None:
         't_generative/T_perturb/T_perturb/Model/checkpoints',
         filename=(
             f'{run_id}_lr_{args.lr}_wd_{args.wd}_batchsize_'
-            f'{args.batch_size}_mlmprob_{args.mlm_probability}_{condition}'
+            f'{args.batch_size}_mlmprob_{args.mlm_probability}_{dataset_info}'
         ),
         save_top_k=1,
         verbose=True,
-        monitor='train/loss',
+        monitor='train/masking_loss',
         mode='min',
     )
 
@@ -243,7 +257,7 @@ def main() -> None:
         ],
         max_epochs=args.epochs,
         accelerator=accelerator,
-        limit_train_batches=1,
+        # limit_train_batches=1,
     )
 
     # Finally, kick of the training process.

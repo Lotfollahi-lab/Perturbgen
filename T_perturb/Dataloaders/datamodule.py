@@ -244,7 +244,8 @@ class GeneformerDataModule(LightningDataModule):
             tgt_donor = None
 
         if any('tgt_adata' in item for item in batch):
-            tgt_counts = [d['tgt_adata'].X for d in batch]
+            tgt_counts = [torch.tensor(d['tgt_adata'].X) for d in batch]
+            tgt_counts = torch.cat(tgt_counts, dim=0)
             tgt_size_factor = [d['tgt_size_factor'] for d in batch]
             if self.condition_encodings is not None:
                 condition = [d['conditions'] for d in batch]
