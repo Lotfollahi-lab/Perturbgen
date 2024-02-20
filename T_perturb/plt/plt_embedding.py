@@ -24,14 +24,15 @@ style.use(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
     'T_perturb/T_perturb/pp/mpl_style.mplstyle'
 )
-
+time_point = '40h'
 
 # Plotting CLS embeddings
 # --------------------------------
 
 adata = sc.read_h5ad(
-    '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-    'T_perturb/plt/res/scConformer/cls_embeddings_stratified_pairing_16h.h5ad'
+    f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
+    f'T_perturb/plt/res/scConformer/'
+    f'cls_embeddings_stratified_pairing_{time_point}.h5ad'
 )
 
 # Plotting log normalised embeddings
@@ -71,7 +72,7 @@ sc.pl.embedding(
     frameon=False,
     show=False,
 )
-plt.savefig('./res/umap_lognorm_16h.pdf', dpi=300, bbox_inches='tight')
+plt.savefig(f'./res/umap_lognorm_{time_point}.pdf', dpi=300, bbox_inches='tight')
 plt.close()
 
 # plot umap of cls embeddings
@@ -110,15 +111,15 @@ sc.pl.embedding(
     show=False,
 )
 plt.savefig(
-    './res/scConformer/cls_embeddings_umap_16h.pdf',
+    f'./res/scConformer/cls_embeddings_umap_{time_point}.pdf',
     bbox_inches='tight',
 )
 plt.close()
 
 adata = sc.read_h5ad(
-    '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-    'T_perturb/plt/res/scConformer/'
-    'cls_embeddings_stratified_pairing_16h_cosine_similarity.h5ad'
+    f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
+    f'T_perturb/plt/res/scConformer/'
+    f'cls_embeddings_stratified_pairing_{time_point}cosine_similarity.h5ad'
 )
 var_names = adata.obsm['cosine_similarity'].columns
 adata.var_names = adata.var['gene_name']
@@ -141,7 +142,7 @@ sc.pl.dotplot(
 
 # save figure
 plt.savefig(
-    './res/scConformer/cosine_similarity_16h.pdf',
+    f'./res/scConformer/cosine_similarity_{time_point}.pdf',
     bbox_inches='tight',
 )
 plt.close()
