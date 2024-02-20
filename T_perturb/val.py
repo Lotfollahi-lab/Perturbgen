@@ -12,11 +12,11 @@ import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 
-from T_perturb.Dataloaders.datamodule import GeneformerDataModule
+from T_perturb.Dataloaders.datamodule import scConformerDataModule
 from T_perturb.Model.trainer import TTransformertrainer
 
 RANDOM_SEED = 42
-test_dataset = 'cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset'
+test_dataset = 'cytoimmgen_tokenised_degs_stratified_pairing_5d.dataset'
 # use regex to find condition between degs and .dataset
 dataset_info = re.findall(r'(?<=degs_).*(?=.dataset)', test_dataset)[0]
 
@@ -44,8 +44,8 @@ def get_args():
         '--tgt_adata_folder',
         type=str,
         default=(
-            f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-            f'T_perturb/T_perturb/pp/res/h5ad_data/'
+            f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
+            f'T_perturb/pp/res/h5ad_pairing/'
             f'cytoimmgen_tokenisation_degs_{dataset_info}.h5ad'
         ),
         help='path to tgt',
@@ -64,7 +64,7 @@ def get_args():
     parser.add_argument('--max_len', type=int, default=246, help='max sequence length')
     parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
     parser.add_argument('--wd', type=float, default=1e-3, help='weight decay')
-    parser.add_argument('--n_workers', type=int, default=8, help='number of workers')
+    parser.add_argument('--n_workers', type=int, default=1, help='number of workers')
     parser.add_argument(
         '--loss_mode', type=str, default='mse', help='loss mode [zinb, nb, mse]'
     )
@@ -92,6 +92,8 @@ def main() -> None:
     pl.seed_everything(RANDOM_SEED)
     torch.manual_seed(RANDOM_SEED)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
+    if tgt_adata.X.__class__.__name__ == 'csr_matrix':
+        tgt_adata.X = tgt_adata.X.A
     if args.loss_mode == 'mse':
         # log normalize data only for mse loss
         sc.pp.normalize_total(tgt_adata, target_sum=1e4)
@@ -157,7 +159,7 @@ def main() -> None:
     # While there is a wide variety of different augmentation strategies, we simply
     # resort to the supposedly optimal AutoAugment policy.
     # change dataloader and input
-    data_module = GeneformerDataModule(
+    data_module = scConformerDataModule(
         src_dataset_folder=args.src_dataset_folder,
         tgt_dataset_folder=args.tgt_dataset_folder,
         tgt_adata=tgt_adata,
@@ -239,8 +241,8 @@ def main() -> None:
         data_module,
         ckpt_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
         'T_perturb/T_perturb/Model/checkpoints/'
-        '20240217_2114_ttransformer'
-        '_lr_0.001_wd_0.001_batchsize_64_mlmprob_0.3_stratified_pairing_16h.ckpt',
+        '20240220_1948_ttransformer_lr_0.001_wd_0.001_'
+        'batchsize_64_mlmprob_0.3_stratified_pairing_5d.ckpt',
     )
 
 

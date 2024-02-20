@@ -444,8 +444,6 @@ class TTransformer(nn.Module):
         src_attention_mask = src_input_id == 0
         # convert to numeric type
         src_attention_mask = src_attention_mask.int()
-        # src_input_id = src_input_id.to(self.device)
-        tgt_input_id = tgt_input_id
         tgt_pad = self.generate_pad(tgt_input_id)
         if self.training:
             tgt_mask, labels = self.generate_mask(
@@ -460,7 +458,6 @@ class TTransformer(nn.Module):
             # mask CLS token from prediction
             tgt_mask[:, 0] = False
         src_embedded = self.encoder_layers(src_input_id, src_attention_mask)
-
         # overwrite with tgt input id with masked token
         tgt_embedded_mask = self.token_embedding(tgt_input_id)
         tgt_embedded_mask[tgt_mask, :] = self.masked_embed

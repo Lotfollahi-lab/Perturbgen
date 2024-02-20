@@ -37,7 +37,7 @@ class DummyDataset(torch.utils.data.Dataset):
         }
 
 
-class GeneformerDataset(Dataset):
+class scConformerDataset(Dataset):
     def __init__(
         self,
         src_dataset_folder: str = './data/tokenized.dataset',
@@ -90,7 +90,7 @@ class GeneformerDataset(Dataset):
 
 
 # two dataloader vs one dataloader
-class GeneformerDataModule(LightningDataModule):
+class scConformerDataModule(LightningDataModule):
     def __init__(
         self,
         src_dataset_folder: str = './data/tokenized.dataset',
@@ -108,7 +108,7 @@ class GeneformerDataModule(LightningDataModule):
         """
         Description:
         ------------
-        Custom datamodule for Geneformer tokenised data.
+        Custom datamodule for scConformer tokenised data.
         """
         super().__init__()
         self.src_dataset_folder = src_dataset_folder
@@ -152,7 +152,7 @@ class GeneformerDataModule(LightningDataModule):
 
     def setup(self, stage=None):
         if self.condition_encodings is not None:
-            self.dataset = GeneformerDataset(
+            self.dataset = scConformerDataset(
                 src_dataset_folder=self.src_dataset_folder,
                 tgt_dataset_folder=self.tgt_dataset_folder,
                 tgt_adata=self.tgt_adata,
@@ -163,7 +163,7 @@ class GeneformerDataModule(LightningDataModule):
                 else None,
             )
         else:
-            self.dataset = GeneformerDataset(
+            self.dataset = scConformerDataset(
                 src_dataset_folder=self.src_dataset_folder,
                 tgt_dataset_folder=self.tgt_dataset_folder,
                 tgt_adata=self.tgt_adata,
@@ -288,7 +288,7 @@ class GeneformerDataModule(LightningDataModule):
 
 if __name__ == '__main__':
     # test dataloader
-    data_module = GeneformerDataModule(
+    data_module = scConformerDataModule(
         src_dataset_folder=(
             '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
             'T_perturb/T_perturb/pp/res/dataset/'
