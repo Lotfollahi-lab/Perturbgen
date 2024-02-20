@@ -12,7 +12,7 @@ import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 
-from T_perturb.Dataloaders.datamodule import GeneformerDataModule
+from T_perturb.Dataloaders.datamodule import scConformerDataModule
 from T_perturb.Model.trainer import TTransformertrainer
 
 RANDOM_SEED = 42
@@ -47,9 +47,9 @@ def get_args():
         '--tgt_adata_folder',
         type=str,
         default=(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-            'T_perturb/T_perturb/pp/res/h5ad_data/'
-            'cytoimmgen_tokenisation_degs_stratified_16h.h5ad'
+            f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
+            f'T_perturb/pp/res/h5ad_pairing/'
+            f'cytoimmgen_tokenisation_degs_{dataset_info}.h5ad'
         ),
         help='path to tgt',
     )
@@ -96,6 +96,8 @@ def main() -> None:
     pl.seed_everything(RANDOM_SEED)
     torch.manual_seed(RANDOM_SEED)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
+    if tgt_adata.X.__class__.__name__ == 'csr_matrix':
+        tgt_adata.X = tgt_adata.X.A
     if args.loss_mode == 'mse':
         # log normalize data only for mse loss
         sc.pp.normalize_total(tgt_adata, target_sum=1e4)
@@ -172,7 +174,7 @@ def main() -> None:
     # While there is a wide variety of different augmentation strategies, we simply
     # resort to the supposedly optimal AutoAugment policy.
     # change dataloader and input
-    data_module = GeneformerDataModule(
+    data_module = scConformerDataModule(
         src_dataset_folder=args.src_dataset_folder,
         tgt_dataset_folder=args.tgt_dataset_folder,
         tgt_adata=tgt_adata,
@@ -184,7 +186,6 @@ def main() -> None:
         condition_encodings=condition_encodings,
         conditions_combined_encodings=conditions_combined_encodings,
     )
-
     # Setup trainer
     # ----------------------------------------------------------------------------------
     run_id = datetime.now().strftime('%Y%m%d_%H%M_ttransformer')

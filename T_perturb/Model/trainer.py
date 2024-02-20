@@ -258,7 +258,9 @@ class TTransformertrainer(LightningModule):
 
     def training_step(self, batch, *args, **kwargs):
         # logits, labels, count_output, count_dropout = self.forward(batch)
-        logits, labels = self.forward(batch)
+        outputs = self.forward(batch)
+        logits = outputs['logits']
+        labels = outputs['labels']
         # count_loss = self.compute_count_loss(count_output, count_dropout, batch)
 
         perp = Perplexity(ignore_index=-100).to('cuda')  # -100 = masked labels
@@ -431,13 +433,10 @@ class TTransformertrainer(LightningModule):
                 'HLA-DRA',
                 'HLA-DRB1',
             ]
-            print(self.subset_tokenid_to_deg.items())
             # filter for marker genes and swap key value
             marker_genes_ids = {
                 v: k for k, v in self.subset_tokenid_to_deg.items() if v in marker_genes
             }
-            print('marker_genes_ids', marker_genes_ids)
-            print(self.token_id_list)
 
             emb = torch.zeros(
                 cosine_similarity_list.shape[0], len(marker_genes_ids.keys())
@@ -455,8 +454,6 @@ class TTransformertrainer(LightningModule):
                     cond_select_markers[0], cond_select_markers[1]
                 ].cpu()
                 # self.adata.obsm[marker_genes[i]] = emb.numpy()
-            print(emb.shape)
-            print(emb)
             # create a dataframe and annotate columns as marker genes
             df = pd.DataFrame(emb.numpy(), columns=marker_genes_ids.keys())
             df.index = self.adata.obs_names
