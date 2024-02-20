@@ -82,12 +82,14 @@ class TTransformertrainer(LightningModule):
         lr: float = 1e-3,
         lr_scheduler_patience: float = 1.0,
         lr_scheduler_factor: float = 0.8,
-        return_cls_embedding: bool = False,
+        return_embeddings: bool = False,
         generate: bool = True,
         loss_mode: Union[str, str, str] = 'mse',
         alpha: float = 0.5,
         conditions: Optional[Dict[Any, Any]] = None,
         conditions_combined: Optional[List[Any]] = None,
+        adata: Optional[ad.AnnData] = None,
+        dataset_info: Optional[str] = None,
         *args,
         **kwargs,
     ) -> None:
@@ -150,31 +152,40 @@ class TTransformertrainer(LightningModule):
         with open(TOKEN_DICTIONARY_FILE, 'rb') as f:
             gene_token_dict = pickle.load(f)
         self.gene_token_dict = {value: key for key, value in gene_token_dict.items()}
-        self.return_cls_embedding = return_cls_embedding
+        with open(
+            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
+            'T_perturb/pp/res/dataset/token_dictionary_for_subset_token_id.pkl',
+            'rb',
+        ) as f:
+            self.subset_tokenid_to_deg = pickle.load(f)
+        self.return_embeddings = return_embeddings
         self.generate = generate
         self.cls_embeddings_list: List[torch.tensor] = []
-        self.tgt_output: Dict[str, List[str]] = {'cell_type': [], 'cell_population': []}
-        self.time_point = None
+        self.gene_embeddings_list: List[torch.tensor] = []
+        self.token_id_list: List[torch.tensor] = []
         self.tgt_vocab_size = tgt_vocab_size
+        self.adata = adata
+        self.dataset_info = dataset_info
 
-    def compute_count_loss(self, outputs: torch.Tensor, batch: Dict[str, torch.Tensor]):
-        true_counts = np.array(batch['tgt_counts'])
-        true_counts = torch.tensor(true_counts).squeeze(1).float()
-        true_counts = true_counts.to(self.target_device)
+    def compute_count_loss(
+        self,
+        count_output: torch.Tensor,
+        count_dropout: torch.Tensor,
+        batch: Dict[str, torch.Tensor],
+    ):
+        true_counts = batch['tgt_counts'].float()
         batch_size_factor = np.array(batch['size_factor'])
         batch_size_factor = torch.tensor(batch_size_factor)
         batch_size_factor = batch_size_factor.to(self.target_device)
 
         if self.loss_mode == 'mse':
-            pred_counts = outputs
-            pred_counts = pred_counts[:, 1:]  # ignore CLS tokens
-            loss = mse_loss(pred_counts, true_counts).sum(dim=-1).mean().float()
+            loss = mse_loss(count_output, true_counts).sum(dim=-1).mean().float()
             return loss
+
         elif self.loss_mode == 'zinb':
             combined_batch = torch.tensor(batch['combined_batch'])
             combined_batch = combined_batch.to(self.target_device)
-            dec_mean_gamma, dec_dropout = outputs
-            dec_mean_gamma, dec_dropout = dec_mean_gamma[:, 1:], dec_dropout[:, 1:]
+            dec_mean_gamma, dec_dropout = count_output, count_dropout
             size_factor_view = batch_size_factor.unsqueeze(1).expand(
                 dec_mean_gamma.size(0), dec_mean_gamma.size(1)
             )
@@ -188,13 +199,12 @@ class TTransformertrainer(LightningModule):
                 .sum(dim=-1)
                 .mean()
             )
-
             return loss
+
         elif self.loss_mode == 'nb':
             combined_batch = torch.tensor(batch['combined_batch'])
             combined_batch = combined_batch.to(self.target_device)
-            dec_mean_gamma = outputs
-            dec_mean_gamma = dec_mean_gamma[:, 1:]
+            dec_mean_gamma = count_output
             size_factor_view = batch_size_factor.unsqueeze(1).expand(
                 dec_mean_gamma.size(0), dec_mean_gamma.size(1)
             )
@@ -211,24 +221,17 @@ class TTransformertrainer(LightningModule):
 
     def forward(self, batch):
         if self.training:
-            logits, labels = self.transformer(
+            outputs = self.transformer(
+                src_input_id=batch['src_input_ids'], tgt_input_id=batch['tgt_input_ids']
+            )
+            return outputs
+        elif self.return_embeddings:
+            outputs = self.transformer(
                 src_input_id=batch['src_input_ids'],
                 tgt_input_id=batch['tgt_input_ids'],
-                pred_counts=False,
+                return_embeddings=True,
             )
-            count_output = self.transformer(
-                src_input_id=batch['src_input_ids'],
-                tgt_input_id=batch['tgt_input_ids'],
-                pred_counts=True,
-            )
-            return logits, labels, count_output
-        elif self.return_cls_embedding:
-            embeddings = self.transformer(
-                src_input_id=batch['src_input_ids'],
-                tgt_input_id=batch['tgt_input_ids'],
-                return_cls_embedding=True,
-            )
-            return embeddings
+            return outputs
         elif self.generate:
             outputs = self.transformer.generate(
                 src_input_id=batch['src_input_ids'],
@@ -254,8 +257,9 @@ class TTransformertrainer(LightningModule):
         }
 
     def training_step(self, batch, *args, **kwargs):
-        logits, labels, count_output = self.forward(batch)
-        count_loss = self.compute_count_loss(count_output, batch)
+        # logits, labels, count_output, count_dropout = self.forward(batch)
+        logits, labels = self.forward(batch)
+        # count_loss = self.compute_count_loss(count_output, count_dropout, batch)
 
         perp = Perplexity(ignore_index=-100).to('cuda')  # -100 = masked labels
         perp.update(logits, labels)
@@ -271,15 +275,17 @@ class TTransformertrainer(LightningModule):
             on_epoch=True,
             prog_bar=True,
             logger=True,
+            batch_size=batch['tgt_input_ids'].shape[0],
         )
-        self.log(
-            'train/count_loss',
-            count_loss,
-            on_step=True,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-        )
+        # self.log(
+        #     'train/count_loss',
+        #     count_loss,
+        #     on_step=True,
+        #     on_epoch=True,
+        #     prog_bar=True,
+        #     logger=True,
+        #     batch_size=batch['tgt_input_ids'].shape[0]
+        # )
         # combined_loss = self.alpha * masking_loss + (1 - self.alpha) * count_loss
         # rescale with hyperparameter so that they have similar magnitude
 
@@ -290,20 +296,23 @@ class TTransformertrainer(LightningModule):
             on_epoch=True,
             prog_bar=True,
             logger=True,
+            batch_size=batch['tgt_input_ids'].shape[0],
         )
-        return count_loss
+        return masking_loss
 
     def on_train_epoch_end(self):
         # return F1 score and accuracy
         pass
 
     def test_step(self, batch, *args, **kwargs):
-        if self.return_cls_embedding:
-            embeddings = self.forward(batch)
-            self.cls_embeddings_list.append(embeddings[:, 0, :])
-            self.tgt_output['cell_type'].append(batch['tgt_cell_type'])
-            self.tgt_output['cell_population'].append(batch['tgt_cell_population'])
-            self.time_point = batch['tgt_time_point']
+        if self.return_embeddings:
+            outputs = self.forward(batch)
+            self.cls_embeddings_list.append(outputs['embeddings'][:, 0, :])
+            self.gene_embeddings_list.append(outputs['embeddings'][:, 1:, :])
+            self.token_id_list.append(batch['tgt_input_ids'])
+            # self.tgt_output['cell_type'].append(batch['tgt_cell_type'])
+            # self.tgt_output['cell_population'].append(batch['tgt_cell_population'])
+            # self.time_point = batch['tgt_time_point']
         if self.generate:
             # num_samples = 10
             # x = torch.tensor([0])  # start with padding token
@@ -355,32 +364,138 @@ class TTransformertrainer(LightningModule):
     def on_test_epoch_end(self):
         # return F1 score and accuracy
         # print(self.cls_embeddings)
-        if self.return_cls_embedding:
+        if self.return_embeddings:
             self.cls_embeddings_list = torch.cat(self.cls_embeddings_list)
-            self.cls_embeddings_list = self.cls_embeddings_list.detach().cpu().numpy()
-            for key in self.tgt_output:
-                print(key)
-                self.tgt_output[key] = np.concatenate(self.tgt_output[key], axis=0)
-            cell_names = [
-                'cell' + str(i) for i in range(len(self.tgt_output['cell_type']))
+            self.gene_embeddings_list = torch.cat(self.gene_embeddings_list)
+            self.token_id_list = torch.cat(self.token_id_list)
+            cosine_similarity_list = []
+            for i in range(self.gene_embeddings_list.shape[0]):
+                # gene level cosine similarity
+                tmp_consine_similarity = F.cosine_similarity(
+                    self.cls_embeddings_list[i],
+                    self.gene_embeddings_list[i, :, :],
+                    dim=1,
+                )
+                cosine_similarity_list.append(tmp_consine_similarity)
+            cosine_similarity_list = torch.stack(cosine_similarity_list)
+
+            # marker_genes = [
+            #     'IL7R', 'CD52', 'GIMAP7', 'SARAF', 'BTG1',
+            #     'LTB', 'CXCR4', 'STAT1', 'IRF1', 'IFIT3',
+            #     'GBP1', 'SYNE2', 'SOCS3', 'IL4R', 'CD69',
+            #     'MIR155HG', 'DDX21', 'TNFRSF4', 'HSP90AA1', 'HSP90AB1',
+            #     'HSPA8', 'TXN', 'FABP5', 'TUBA1B', 'HMGA1',
+            #     'PCNA', 'IL2RA', 'BATF', 'CD63'
+            # ]
+
+            marker_genes = [
+                'IL7R',
+                'CD52',
+                'GIMAP7',
+                'SARAF',
+                'BTG1',
+                'LTB',
+                'CXCR4',
+                'STAT1',
+                'IRF1',
+                'IFIT3',
+                'GBP1',
+                'SYNE2',
+                'SOCS3',
+                'IL4R',
+                'CD69',
+                'MIR155HG',
+                'DDX21',
+                'TNFRSF4',
+                'HSP90AA1',
+                'HSP90AB1',
+                'HSPA8',
+                'TXN',
+                'FABP5',
+                'TUBA1B',
+                'HMGA1',
+                'PCNA',
+                'IL2RA',
+                'BATF',
+                'CD63',
+                'IFITM2',
+                'CORO1B',
+                'ISG15',
+                'ALDOC',
+                'DDIT4',
+                'LGALS1',
+                'S100A4',
+                'S100A6',
+                'VIM',
+                'CD74',
+                'HLA-DRA',
+                'HLA-DRB1',
             ]
-            obs = pd.DataFrame(
-                {
-                    'cell_names': cell_names,
-                    'cell_type': self.tgt_output['cell_type'],
-                    'cell_population': self.tgt_output['cell_population'],
-                }
+            print(self.subset_tokenid_to_deg.items())
+            # filter for marker genes and swap key value
+            marker_genes_ids = {
+                v: k for k, v in self.subset_tokenid_to_deg.items() if v in marker_genes
+            }
+            print('marker_genes_ids', marker_genes_ids)
+            print(self.token_id_list)
+
+            emb = torch.zeros(
+                cosine_similarity_list.shape[0], len(marker_genes_ids.keys())
+            )
+            for i, gene in enumerate(marker_genes_ids.keys()):
+                print(emb.shape)
+                cond_embs_to_fill = (self.token_id_list == marker_genes_ids[gene]).sum(
+                    1
+                ) > 0
+                cond_select_markers = torch.where(
+                    self.token_id_list == marker_genes_ids[gene]
+                )
+                cond_embs_to_fill = cond_embs_to_fill.cpu()
+                emb[cond_embs_to_fill, i] = cosine_similarity_list[
+                    cond_select_markers[0], cond_select_markers[1]
+                ].cpu()
+                # self.adata.obsm[marker_genes[i]] = emb.numpy()
+            print(emb.shape)
+            print(emb)
+            # create a dataframe and annotate columns as marker genes
+            df = pd.DataFrame(emb.numpy(), columns=marker_genes_ids.keys())
+            df.index = self.adata.obs_names
+            self.adata.obsm['cosine_similarity'] = df
+
+            self.cls_embeddings_list = self.cls_embeddings_list.detach().cpu().numpy()
+            # save under adata.obsm
+            self.adata.obsm['X_CLS_embeddings'] = self.cls_embeddings_list
+            # save anndata
+            self.adata.write_h5ad(
+                f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+                f't_generative/T_perturb/T_perturb/'
+                f'plt/res/scConformer/'
+                f'cls_embeddings_{self.dataset_info}_cosine_similarity.h5ad'
             )
 
-            time_points = np.unique(self.time_point)[0]
+            # for key in self.tgt_output:
+            #     print(key)
+            #     self.tgt_output[key] = np.concatenate(self.tgt_output[key], axis=0)
+            # cell_names = [
+            #     'cell' + str(i) for i in range(len(self.tgt_output['cell_type']))
+            # ]
+            # obs = pd.DataFrame(
+            #     {
+            #         'cell_names': cell_names,
+            #         'cell_type': self.tgt_output['cell_type'],
+            #         'cell_population': self.tgt_output['cell_population'],
+            #     }
+            # )
+
+            # time_points = np.unique(self.time_point)[0]
             # adata = sc.read_h5ad(
             #     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
             #     'T_perturb/T_perturb/pp/res/h5ad_data/cytoimmgen_tokenisation_degs_random_16h.h5ad')
             # adata.obsm['X_CLS_embeddings'] = self.cls_embeddings
-            adata = ad.AnnData(X=self.cls_embeddings_list, obs=obs)
-            # save anndata
-            adata.write_h5ad(
-                f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-                f't_generative/T_perturb/T_perturb/'
-                f'plt/res/scConformer/cls_embeddings_{time_points}.h5ad'
-            )
+            # adata = ad.AnnData(X=self.cls_embeddings_list, obs=obs)
+            # # save anndata
+            # adata.write_h5ad(
+            #     f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+            #     f't_generative/T_perturb/T_perturb/'
+            #     f'plt/res/scConformer/cls_embeddings_{time_points}.h5ad'
+            # )

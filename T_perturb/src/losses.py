@@ -81,12 +81,18 @@ def nb(x: torch.Tensor, mu: torch.Tensor, theta: torch.Tensor, eps=1e-8):
     res = (
         theta * (torch.log(theta + eps) - log_theta_mu_eps)
         + x * (torch.log(mu + eps) - log_theta_mu_eps)
-        + torch.lgamma(x + eps)
+        + torch.lgamma(x + theta)
         - torch.lgamma(theta)
         - torch.lgamma(x + 1)
     )
 
     return res
+
+
+# def nb_dist(x: torch.Tensor, mu: torch.Tensor, theta: torch.Tensor, eps=1e-8):
+#     loss = -NegativeBinomial(mu=mu, theta=theta).log_prob(x)
+
+#     return res
 
 
 def zinb(
@@ -121,15 +127,14 @@ def zinb(
     If 'mean' is 'True' ZINB loss value gets returned,
     otherwise Torch tensor of losses gets returned.
     """
-
     # theta is the dispersion rate. If .ndimension() == 1,
     # it is shared for all cells (regardless of batch or labels)
     if theta.ndimension() == 1:
         theta = theta.view(
             1, theta.size(0)
         )  # In this case, we reshape theta for broadcasting
-    #  uses log(sigmoid(x)) = -softplus(-x)
-    softplus_pi = F.softplus(-pi)
+
+    softplus_pi = F.softplus(-pi)  # uses log(sigmoid(x)) = -softplus(-x)
     log_theta_eps = torch.log(theta + eps)
     log_theta_mu_eps = torch.log(theta + mu + eps)
     pi_theta_log = -pi + theta * (log_theta_eps - log_theta_mu_eps)
@@ -141,7 +146,7 @@ def zinb(
         -softplus_pi
         + pi_theta_log
         + x * (torch.log(mu + eps) - log_theta_mu_eps)
-        + torch.lgamma(x + eps)
+        + torch.lgamma(x + theta)
         - torch.lgamma(theta)
         - torch.lgamma(x + 1)
     )

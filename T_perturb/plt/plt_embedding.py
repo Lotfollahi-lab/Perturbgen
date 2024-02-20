@@ -1,9 +1,14 @@
 import os
+import random
 
 import matplotlib.pyplot as plt
+import numpy as np
 import scanpy as sc
 import seaborn as sns
 from matplotlib import style
+
+np.random.seed(42)
+random.seed(42)
 
 # colorblind friendly palette
 plt.rcParams['axes.prop_cycle'] = plt.cycler(color=sns.color_palette('colorblind'))
@@ -20,57 +25,123 @@ style.use(
     'T_perturb/T_perturb/pp/mpl_style.mplstyle'
 )
 
+
+# Plotting CLS embeddings
+# --------------------------------
+
 adata = sc.read_h5ad(
-    '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    'T_perturb/T_perturb/plt/res/scConformer/cls_embeddings_5d.h5ad'
+    '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
+    'T_perturb/plt/res/scConformer/cls_embeddings_stratified_pairing_16h.h5ad'
 )
-adata_ = adata.copy()
-adata_.obs['activation'] = None
-adata_.obs['activation'][adata_.obs['cell_population'].str.contains('LA')] = 'LA'
-adata_.obs['activation'][~adata_.obs['cell_population'].str.contains('LA')] = 'HA'
-# plot umap of cls embeddings
-fig, ax = plt.subplots(figsize=(1, 1))
-sc.pp.neighbors(adata_, n_neighbors=15, use_rep='X')
-sc.tl.umap(adata_)
-# use colorblind friendly palette
-sc.pl.umap(
-    adata_,
+
+# Plotting log normalised embeddings
+# --------------------------------
+
+# plot log normalised embeddings
+sc.tl.pca(adata, svd_solver='arpack', n_comps=50)
+sc.pp.neighbors(adata, n_neighbors=10, n_pcs=50)
+sc.tl.umap(adata)
+adata.obsm['X_lognorm_umap'] = adata.obsm['X_umap']
+# sc.pl.umap(
+#     adata,
+#     color=[
+#         'Cell_type',
+#         'Cell_population',
+#         'Cell_culture_batch',
+#         'Activation_level',
+#     ],  # leave gap between cell type and cell population
+#     wspace=0.5,
+#     ncols=2,
+#     #plot 2x2 grid
+
+#     frameon=False,
+#     show=False,
+# )
+sc.pl.embedding(
+    adata,
+    basis='X_lognorm_umap',
     color=[
-        'cell_type',
-        'cell_population',
-        'activation',
-    ],  # leave gap between cell type and cell population
-    wspace=0.5,
+        'Cell_type',
+        'Cell_population',
+        'Cell_culture_batch',
+        'Activation_level',
+    ],
+    ncols=2,
+    wspace=0.3,
+    frameon=False,
+    show=False,
+)
+plt.savefig('./res/umap_lognorm_16h.pdf', dpi=300, bbox_inches='tight')
+plt.close()
+
+# plot umap of cls embeddings
+fig, ax = plt.subplots(figsize=(5, 5))
+sc.pp.neighbors(adata, n_neighbors=15, use_rep='X_CLS_embeddings')
+sc.tl.umap(adata)
+adata.obsm['X_CLS_umap'] = adata.obsm['X_umap']
+# use colorblind friendly palette
+# sc.pl.umap(
+#     adata,
+#     color=[
+#         'Cell_type',
+#         'Cell_population',
+#         'Cell_culture_batch',
+#         'Activation_level',
+#     ],  # leave gap between cell type and cell population
+#     wspace=0.5,
+#     ncols=2,
+#     #plot 2x2 grid
+
+#     frameon=False,
+#     show=False,
+# )
+sc.pl.embedding(
+    adata,
+    basis='X_CLS_umap',
+    color=[
+        'Cell_type',
+        'Cell_population',
+        'Cell_culture_batch',
+        'Activation_level',
+    ],
+    ncols=2,
+    wspace=0.3,
     frameon=False,
     show=False,
 )
 plt.savefig(
-    '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    'T_perturb/T_perturb/pp/res/cls_embeddings_umap_5d.pdf',
+    './res/scConformer/cls_embeddings_umap_16h.pdf',
     bbox_inches='tight',
 )
 plt.close()
 
 adata = sc.read_h5ad(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-    'T_perturb/pp/res/h5ad_data/cytoimmgen_tokenisation_degs_16h.h5ad'
+    'T_perturb/plt/res/scConformer/'
+    'cls_embeddings_stratified_pairing_16h_cosine_similarity.h5ad'
 )
-sc.pp.normalize_total(adata, target_sum=1e4)
-sc.pp.log1p(adata)
-sc.pp.highly_variable_genes(adata, n_top_genes=5000)
-sc.tl.pca(adata, svd_solver='arpack', n_comps=50, use_highly_variable=True)
-sc.pp.neighbors(adata, n_neighbors=10, n_pcs=50)
-sc.tl.umap(adata)
-adata_ = adata.copy()
-adata_.obs['activation'] = None
-adata_.obs['activation'][adata_.obs['Cell_population'].str.contains('LA')] = 'LA'
-adata_.obs['activation'][~adata_.obs['Cell_population'].str.contains('LA')] = 'HA'
-sc.pl.umap(
-    adata_,
-    color=['Cell_type', 'Cell_population', 'activation'],
-    save='umap_test',
-    frameon=False,
-    wspace=0.3,
+var_names = adata.obsm['cosine_similarity'].columns
+adata.var_names = adata.var['gene_name']
+# filter adata to only include genes in var_names
+adata = adata[:, var_names]
+adata.obs['Cell_type_activity'] = (
+    adata.obs['Cell_type'].astype(str) + '_' + adata.obs['Activation_level'].astype(str)
 )
-plt.savefig('./res/umap_lognorm_16h.pdf', dpi=300, bbox_inches='tight')
+adata.layers['cosine_similarity'] = adata.obsm['cosine_similarity']
+sc.pl.dotplot(
+    adata,
+    var_names,
+    groupby='Cell_type_activity',
+    dendrogram=False,
+    layer='cosine_similarity',
+    show=False,
+    swap_axes=True,
+    var_group_rotation=60,
+)
+
+# save figure
+plt.savefig(
+    './res/scConformer/cosine_similarity_16h.pdf',
+    bbox_inches='tight',
+)
 plt.close()

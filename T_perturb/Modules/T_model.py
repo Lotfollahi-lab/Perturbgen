@@ -94,7 +94,6 @@ class CrossAttention(nn.Module):
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
         sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
         if mask is not None:
-            device = sim.device
             mask = rearrange(mask, 'b ... -> b (...)')
             max_neg_value = -torch.finfo(sim.dtype).max
             mask = repeat(mask, 'b j -> (b h) () j', h=h)
@@ -103,7 +102,7 @@ class CrossAttention(nn.Module):
             # print(mask[0])
             # print(mask[1])
             # print(mask[0]==mask[1])
-            sim.masked_fill_(mask.to(device), max_neg_value)
+            sim.masked_fill_(mask, max_neg_value)
             # print('Sim:')
             # print(sim.shape)
             # print(sim[0][0])
@@ -169,7 +168,7 @@ class DecoderLayer(nn.Module):
         )
         self.cross_attn = CrossAttention(
             query_dim=dim,
-            # context_dim=context_dim,
+            context_dim=context_dim,
             heads=n_heads,
             dim_head=d_head,
             dropout=dropout,
@@ -183,7 +182,7 @@ class DecoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None):
-        attn_output = self.self_attn(x, mask=None)
+        attn_output = self.self_attn(x, mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
         attn_output = self.cross_attn(x, context=enc_output, mask=None)
         x = self.norm2(x + self.dropout(attn_output))
@@ -299,17 +298,17 @@ class TTransformer(nn.Module):
         self.mlm_probability = mlm_probability
 
         self.cls_token = torch.tensor(
-            [tgt_vocab_size], dtype=torch.long
+            [tgt_vocab_size], dtype=torch.long, device=self.device
         )  # start at 25426, because of 0 Python indexing
 
-        total_vocab_size = tgt_vocab_size
+        total_vocab_size = tgt_vocab_size + 1
         if add_mask_id:
             total_vocab_size = total_vocab_size + 1
             self.mask_token = total_vocab_size
             self.masked_embed = nn.Parameter(torch.zeros(1, self.embed_dim))
 
         self.token_embedding = nn.Embedding(
-            total_vocab_size + 1, d_model, padding_idx=0, device=self.device
+            total_vocab_size, d_model, padding_idx=0, device=self.device
         )
 
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
@@ -322,21 +321,19 @@ class TTransformer(nn.Module):
             [DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)]
         )
         self.decoder_layers = self.decoder_layers.to(self.device)
+        n_genes = tgt_vocab_size - 1
         if self.loss_mode == 'mse':
-            self.relu_output = nn.Sequential(
-                nn.Linear(d_model, tgt_vocab_size), nn.ReLU()
-            )
+            self.relu_output = nn.Sequential(nn.Linear(d_model, n_genes), nn.ReLU())
         elif self.loss_mode == 'zinb':
-            self.linear_output = nn.Linear(d_model, tgt_vocab_size)
+            self.linear_output = nn.Linear(d_model, n_genes)
             self.softmax_output = nn.Sequential(
-                nn.Linear(d_model, tgt_vocab_size), nn.Softmax(dim=-1)
+                nn.Linear(d_model, n_genes), nn.Softmax(dim=-1)
             )
 
         elif self.loss_mode == 'nb':
             self.softmax_output = nn.Sequential(
-                nn.Linear(d_model, tgt_vocab_size), nn.Softmax(dim=-1)
+                nn.Linear(d_model, n_genes), nn.Softmax(dim=-1)
             )
-        self.count_decoder = Mlp(in_features=d_model, out_features=tgt_vocab_size)
 
         self.fc = nn.Linear(d_model, tgt_vocab_size)
         self.fc = self.fc.to(self.device)
@@ -380,20 +377,14 @@ class TTransformer(nn.Module):
         probability_matrix = probability_matrix.masked_fill(
             cls_tgt_pad, 0
         )  # add CLS token to the tokens
-        # print(probability_matrix.shape)
-        # print(probability_matrix)
-        # print(probability_matrix)
         tgt_mask = torch.bernoulli(probability_matrix).bool()
-        # print(tgt_mask.shape)
-        # print(tgt_mask)
+
         # seq_length = tgt.size(1)
         # nopeak_mask = (
         #     1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)
         #     ).bool()
         # tgt_mask = tgt_mask & nopeak_mask
         labels[~tgt_mask] = -100
-        # print(labels.shape)
-        # print(labels)
         tgt_mask = tgt_mask.masked_fill(tgt_pad, True)
         # labels = torch.cat((self.cls_label.expand(labels.shape[0],1), labels), dim=1)
         return tgt_mask.to('cuda'), labels
@@ -440,13 +431,12 @@ class TTransformer(nn.Module):
         src_input_id,
         tgt_input_id,
         # self_cond_embed = None,
-        pred_counts=False,
-        return_embed=False,
+        return_embeddings=False,
         generate=False,
     ):
         tgt_input_id = torch.cat(
             (
-                self.cls_token.to(self.device).expand(tgt_input_id.shape[0], -1),
+                self.cls_token.expand(tgt_input_id.shape[0], -1),
                 tgt_input_id,
             ),
             dim=1,
@@ -455,12 +445,14 @@ class TTransformer(nn.Module):
         # convert to numeric type
         src_attention_mask = src_attention_mask.int()
         # src_input_id = src_input_id.to(self.device)
-        tgt_input_id = tgt_input_id.to(self.device)
+        tgt_input_id = tgt_input_id
         tgt_pad = self.generate_pad(tgt_input_id)
         if self.training:
-            _, labels = self.generate_mask(tgt_input_id, tgt_pad, self.mlm_probability)
+            tgt_mask, labels = self.generate_mask(
+                tgt_input_id, tgt_pad, self.mlm_probability
+            )
             # test without masking
-            tgt_mask = tgt_pad
+            # tgt_mask = tgt_pad
         else:
             tgt_mask = tgt_input_id == (self.mask_token)
             tgt_mask = tgt_mask | (tgt_input_id == 0)
@@ -471,7 +463,7 @@ class TTransformer(nn.Module):
 
         # overwrite with tgt input id with masked token
         tgt_embedded_mask = self.token_embedding(tgt_input_id)
-        # tgt_embedded_mask[tgt_mask, :] = self.masked_embed
+        tgt_embedded_mask[tgt_mask, :] = self.masked_embed
         tgt_embedded_mask = self.prepare_tokens(tgt_embedded_mask)
         enc_output = src_embedded
         dec_embedding = tgt_embedded_mask
@@ -480,38 +472,43 @@ class TTransformer(nn.Module):
                 dec_embedding, src_attention_mask, tgt_mask, enc_output
             )
         logits = self.fc(dec_embedding)
-        # count decoder
-        if self.loss_mode == 'mse':
-            count_lognorm = self.relu_output(dec_embedding[:, 0, :])
-        elif self.loss_mode == 'zinb':
-            count_mean = self.softmax_output(dec_embedding[:, 0, :])
-            count_dropout = self.linear_output(dec_embedding[:, 0, :])
-        elif self.loss_mode == 'nb':
-            count_mean = self.softmax_output(dec_embedding[:, 0, :])
-
+        # # count decoder
+        # if self.loss_mode == 'mse':
+        #     count_lognorm = self.relu_output(dec_embedding[:, 0, :])
+        # elif self.loss_mode == 'zinb':
+        #     count_mean = self.softmax_output(dec_embedding[:, 0, :])
+        #     count_dropout = self.linear_output(dec_embedding[:, 0, :])
+        # elif self.loss_mode == 'nb':
+        #     count_mean = self.softmax_output(dec_embedding[:, 0, :])
+        outputs = {}
         if self.training:
-            if pred_counts:
-                # cls token set to -100 in labels will be ignored in loss
+            outputs['logits'] = logits
+            outputs['labels'] = labels
+            # cls token set to -100 in labels will be ignored in loss
+            # if self.loss_mode == 'mse':
+            #     return logits, labels, count_lognorm, None
+            # elif self.loss_mode == 'zinb':
+            #     return logits, labels, count_mean, count_dropout
+            # elif self.loss_mode == 'nb':
+            #     return logits, labels, count_mean, None
+        # create dictionnary to store the output
+        if self.eval:
+            if return_embeddings:
+                outputs['embeddings'] = dec_embedding
+            if generate:
                 if self.loss_mode == 'mse':
-                    return count_lognorm
+                    outputs['logits'] = logits[:, 1:, :]
+                    # output['count_lognorm'] = count_lognorm
+                    # output['count_dropout'] = None
                 elif self.loss_mode == 'zinb':
-                    return count_mean, count_dropout
+                    outputs['logits'] = logits[:, 1:, :]
+                    # output['count_mean'] = count_mean
+                    # output['count_dropout'] = count_dropout
                 elif self.loss_mode == 'nb':
-                    return count_mean
-            else:
-                return logits, labels
-        elif return_embed:
-            return dec_embedding
-        elif generate:
-            if pred_counts:
-                if self.loss_mode == 'mse':
-                    return pred_counts
-                elif self.loss_mode == 'zinb':
-                    return count_mean, count_dropout
-                elif self.loss_mode == 'nb':
-                    return count_mean
-            else:
-                return logits[:, 1:, :]  # remove CLS token
+                    outputs['logits'] = logits[:, 1:, :]
+                    # output['count_mean'] = count_mean
+                    # output['count_dropout'] = None
+        return outputs
 
     def generate(
         self,
@@ -536,7 +533,7 @@ class TTransformer(nn.Module):
         ids = torch.full(shape, self.mask_token, dtype=torch.long, device=self.device)
         # pad ids
         scores = torch.zeros(shape, dtype=torch.float, device=self.device)
-        tgt_pad = tgt_pad.to(self.device)
+        tgt_pad = tgt_pad
         starting_temperature = temperature
         demask_fn = self.forward
 
