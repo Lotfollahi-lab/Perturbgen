@@ -24,7 +24,7 @@ style.use(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
     'T_perturb/T_perturb/pp/mpl_style.mplstyle'
 )
-time_point = '40h'
+time_point = '5d'
 
 # Plotting CLS embeddings
 # --------------------------------
@@ -32,7 +32,7 @@ time_point = '40h'
 adata = sc.read_h5ad(
     f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
     f'T_perturb/plt/res/scConformer/'
-    f'cls_embeddings_stratified_pairing_{time_point}.h5ad'
+    f'cls_embeddings_stratified_pairing_{time_point}_cosine_similarity.h5ad'
 )
 
 # Plotting log normalised embeddings
@@ -119,7 +119,7 @@ plt.close()
 adata = sc.read_h5ad(
     f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
     f'T_perturb/plt/res/scConformer/'
-    f'cls_embeddings_stratified_pairing_{time_point}cosine_similarity.h5ad'
+    f'cls_embeddings_stratified_pairing_{time_point}_cosine_similarity.h5ad'
 )
 var_names = adata.obsm['cosine_similarity'].columns
 adata.var_names = adata.var['gene_name']
