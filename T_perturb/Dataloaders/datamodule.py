@@ -58,25 +58,25 @@ class scConformerDataset(Dataset):
         """
         self.shuffle = shuffle
         self.src_data = load_from_disk(src_dataset_folder)
+
         self.tgt_data = load_from_disk(tgt_dataset_folder)
         self.tgt_adata = tgt_adata
+        print(self.tgt_adata)
         self.size_factor = np.ravel(tgt_adata.X.sum(axis=1))
         self.conditions = conditions
         print(self.conditions)
         self.conditions_combined = conditions_combined
         print(self.conditions_combined)
         self.condition_encodings = condition_encodings
+        # self.num_samples = 100
 
         # with open(token_dictionary_file, "rb") as f:
         #     self.gene_token_dict = pickle.load(f)
         # self.pad_token_id = self.gene_token_dict.get("<pad>")
 
-    def __len__(self):
-        if len(self.src_data) != len(self.tgt_data):
-            Warning('src and tgt dataset have different length')
-        return min(len(self.src_data), len(self.tgt_data))
-
     def __getitem__(self, ind):
+        # if ind >= self.num_samples:
+        #     raise StopIteration
         return {
             'src_dataset': self.src_data[ind],
             'tgt_dataset': self.tgt_data[ind],
@@ -87,6 +87,13 @@ class scConformerDataset(Dataset):
             if self.conditions_combined is not None
             else None,
         }
+
+    def __len__(self):
+        print(len(self.src_data))
+        if len(self.src_data) != len(self.tgt_data):
+            Warning('src and tgt dataset have different length')
+        return min(len(self.src_data), len(self.tgt_data))
+        # return self.num_samples
 
 
 # two dataloader vs one dataloader
@@ -104,6 +111,7 @@ class scConformerDataModule(LightningDataModule):
         condition_keys: Optional[list] = None,
         condition_encodings: Optional[dict] = None,
         conditions_combined_encodings: Optional[dict] = None,
+        drop_last: bool = False,
     ):
         """
         Description:
@@ -128,6 +136,7 @@ class scConformerDataModule(LightningDataModule):
         self.condition_keys = condition_keys
         self.condition_encodings = condition_encodings
         self.conditions_combined_encodings = conditions_combined_encodings
+        self.drop_last = drop_last
 
         # create condition encoder for categorical variables in
         # form of dictionary with key: value pairs based on condition_keys
@@ -184,6 +193,7 @@ class scConformerDataModule(LightningDataModule):
             shuffle=self.shuffle,
             num_workers=self.num_workers,
             collate_fn=self.collate,
+            drop_last=self.drop_last,
         )
         return data
 
@@ -194,6 +204,7 @@ class scConformerDataModule(LightningDataModule):
             shuffle=self.shuffle,
             num_workers=self.num_workers,
             collate_fn=self.collate,
+            drop_last=self.drop_last,
         )
         return data
 

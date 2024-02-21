@@ -13,11 +13,11 @@ from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 
 from T_perturb.Dataloaders.datamodule import scConformerDataModule
-from T_perturb.Model.trainer import TTransformertrainer
+from T_perturb.Model.trainer import CountDecodertrainer, scConformertrainer
 
 RANDOM_SEED = 42
 
-train_dataset = 'cytoimmgen_tokenised_degs_stratified_pairing_5d.dataset'
+train_dataset = 'cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset'
 # use regex to find condition between degs and .dataset
 dataset_info = re.findall(r'(?<=degs_).*(?=.dataset)', train_dataset)[0]
 
@@ -54,23 +54,23 @@ def get_args():
         help='path to tgt',
     )
 
-    parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
+    parser.add_argument('--batch_size', type=int, default=512, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=True, help='shuffle')
     parser.add_argument(
-        '--epochs', type=int, default=5, help='number of training epochs'
+        '--epochs', type=int, default=20, help='number of training epochs'
     )
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
     )
     parser.add_argument('--max_len', type=int, default=246, help='max sequence length')
     parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
-    parser.add_argument('--wd', type=float, default=1e-3, help='weight decay')
+    parser.add_argument('--wd', type=float, default=0, help='weight decay')
     parser.add_argument(
         '--mlm_probability', type=float, default=0.3, help='mlm probability'
     )
     parser.add_argument('--n_workers', type=int, default=4, help='number of workers')
     parser.add_argument(
-        '--loss_mode', type=str, default='mse', help='loss mode [zinb, nb, mse]'
+        '--loss_mode', type=str, default='zinb', help='loss mode [zinb, nb, mse]'
     )
     parser.add_argument(
         '--condition_keys',
@@ -83,7 +83,6 @@ def get_args():
     parser.add_argument(
         '--conditions_combined', type=list, default=None, help='conditions combined'
     )
-    parser.add_argument('--alpha', type=float, default=0.1, help='alpha')
     args = parser.parse_args()
     return args
 
@@ -130,7 +129,7 @@ def main() -> None:
 
     # Initialize model module
     # ----------------------------------------------------------------------------------
-    model_module = TTransformertrainer(
+    pretrained_module = scConformertrainer(
         tgt_vocab_size=704,
         d_model=256,
         num_heads=8,
@@ -143,31 +142,28 @@ def main() -> None:
         lr=args.lr,
         lr_scheduler_patience=1.0,
         lr_scheduler_factor=0.8,
-        loss_mode=args.loss_mode,
-        alpha=args.alpha,
-        conditions=conditions_,
-        conditions_combined=conditions_combined_,
+        batch_size=args.batch_size,
         adata=tgt_adata,
         dataset_info=dataset_info,
     )
-    # def print_parameters(model_module):
-    #     print("Trainable parameters:")
-    #     for name, param in model_module.named_parameters():
-    #         if param.requires_grad:
-    #             print(name)
-
-    #     print("\nNon-trainable parameters:")
-    #     for name, param in model_module.named_parameters():
-    #         if not param.requires_grad:
-    #             print(name)
+    decoder_module = CountDecodertrainer(
+        loss_mode=args.loss_mode,
+        lr=args.lr,
+        weight_decay=args.wd,
+        lr_scheduler_patience=1.0,
+        lr_scheduler_factor=0.8,
+        conditions=conditions_,
+        conditions_combined=conditions_combined_,
+        tgt_vocab_size=704,
+    )
 
     # # Assume `model` is your model
     if args.loss_mode == 'mse':
         condition_encodings = None
         conditions_combined_encodings = None
     else:
-        condition_encodings = model_module.condition_encodings
-        conditions_combined_encodings = model_module.conditions_combined_encodings
+        condition_encodings = decoder_module.condition_encodings
+        conditions_combined_encodings = decoder_module.conditions_combined_encodings
     # Initialize data module
     # ----------------------------------------------------------------------------------
 
@@ -185,6 +181,7 @@ def main() -> None:
         condition_keys=condition_keys_,
         condition_encodings=condition_encodings,
         conditions_combined_encodings=conditions_combined_encodings,
+        drop_last=True,
     )
     # Setup trainer
     # ----------------------------------------------------------------------------------
@@ -249,6 +246,9 @@ def main() -> None:
     #     verbose=False,
     #     mode='min',
     # )
+    # limited_dataloader = scConformerDataModule(LimitedBatchesIterableDataset(
+    #     data_module, 100
+    # ),batch_size=None)
     trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=[
@@ -257,12 +257,14 @@ def main() -> None:
             # early_stop_callback,
         ],
         max_epochs=args.epochs,
-        accelerator=accelerator,
-        # limit_train_batches=1,
+        accelerator=accelerator
+        # limit_train_batches=100
     )
 
     # Finally, kick of the training process.
-    trainer.fit(model_module, data_module)
+    trainer.fit(pretrained_module, data_module)
+
+    trainer.fit(decoder_module, data_module)
 
 
 if __name__ == '__main__':

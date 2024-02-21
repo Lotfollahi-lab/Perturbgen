@@ -4,7 +4,6 @@ from typing import (
     Dict,
     List,
     Optional,
-    Union,
 )
 
 import anndata as ad
@@ -21,11 +20,16 @@ from pytorch_lightning import LightningModule
 from torchmetrics import (
     CosineSimilarity,
     MeanSquaredError,
+    PearsonCorrCoef,
     SpearmanCorrCoef,
 )
 from torchmetrics.text import Perplexity
 
-from T_perturb.Modules.T_model import TTransformer, cosine_schedule
+from T_perturb.Modules.T_model import (
+    CountDecoder,
+    cosine_schedule,
+    scConformer,
+)
 from T_perturb.src.losses import (
     mse_loss,
     nb,
@@ -67,7 +71,7 @@ def batch_token_ranking(tokenised_cells: torch.tensor, vocab_size: int):
     return first_occurrence_indices
 
 
-class TTransformertrainer(LightningModule):
+class scConformertrainer(LightningModule):
     def __init__(
         self,
         tgt_vocab_size: int = 25000,
@@ -84,17 +88,14 @@ class TTransformertrainer(LightningModule):
         lr_scheduler_factor: float = 0.8,
         return_embeddings: bool = False,
         generate: bool = True,
-        loss_mode: Union[str, str, str] = 'mse',
-        alpha: float = 0.5,
-        conditions: Optional[Dict[Any, Any]] = None,
-        conditions_combined: Optional[List[Any]] = None,
-        adata: Optional[ad.AnnData] = None,
+        batch_size: int = 32,
         dataset_info: Optional[str] = None,
+        adata: Optional[ad.AnnData] = None,
         *args,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
-        self.transformer = TTransformer(
+        self.transformer = scConformer(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
             num_heads=num_heads,
@@ -103,7 +104,6 @@ class TTransformertrainer(LightningModule):
             max_seq_length=max_seq_length,
             dropout=dropout,
             mlm_probability=mlm_probability,
-            loss_mode=loss_mode,
         )
         self.target_device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu'
@@ -119,36 +119,11 @@ class TTransformertrainer(LightningModule):
                 'perplexity': Perplexity(ignore_index=-100),
                 'cosine_similarity': CosineSimilarity(reduction='mean'),
                 'mse': MeanSquaredError(),
-                'spearman': SpearmanCorrCoef(num_outputs=64),
+                'spearman': SpearmanCorrCoef(num_outputs=batch_size),
+                'pearson': PearsonCorrCoef(num_outputs=batch_size),
             }
         )
-        self.loss_mode = loss_mode
 
-        if (
-            (self.loss_mode in ['nb', 'zinb'])
-            and (conditions is not None)
-            and (conditions_combined is not None)
-        ):
-            self.n_conditions = [len(conditions[cond]) for cond in conditions.keys()]
-            self.conditions = conditions
-            self.condition_encodings = {
-                cond: {
-                    k: v for k, v in zip(conditions[cond], range(len(conditions[cond])))
-                }
-                for cond in conditions.keys()
-            }
-            self.conditions_combined = conditions_combined
-            self.n_conditions_combined = len(conditions_combined)
-            self.conditions_combined_encodings = {
-                k: v
-                for k, v in zip(conditions_combined, range(len(conditions_combined)))
-            }
-            self.theta = torch.nn.Parameter(
-                torch.randn(tgt_vocab_size - 1, self.n_conditions_combined)
-            )
-        else:
-            self.theta = None
-        self.alpha = alpha
         with open(TOKEN_DICTIONARY_FILE, 'rb') as f:
             gene_token_dict = pickle.load(f)
         self.gene_token_dict = {value: key for key, value in gene_token_dict.items()}
@@ -167,62 +142,12 @@ class TTransformertrainer(LightningModule):
         self.adata = adata
         self.dataset_info = dataset_info
 
-    def compute_count_loss(
-        self,
-        count_output: torch.Tensor,
-        count_dropout: torch.Tensor,
-        batch: Dict[str, torch.Tensor],
-    ):
-        true_counts = batch['tgt_counts'].float()
-        batch_size_factor = np.array(batch['size_factor'])
-        batch_size_factor = torch.tensor(batch_size_factor)
-        batch_size_factor = batch_size_factor.to(self.target_device)
-
-        if self.loss_mode == 'mse':
-            loss = mse_loss(count_output, true_counts).sum(dim=-1).mean().float()
-            return loss
-
-        elif self.loss_mode == 'zinb':
-            combined_batch = torch.tensor(batch['combined_batch'])
-            combined_batch = combined_batch.to(self.target_device)
-            dec_mean_gamma, dec_dropout = count_output, count_dropout
-            size_factor_view = batch_size_factor.unsqueeze(1).expand(
-                dec_mean_gamma.size(0), dec_mean_gamma.size(1)
-            )
-            dec_mean = dec_mean_gamma * size_factor_view
-            dispersion = F.linear(
-                one_hot_encoder(combined_batch, self.n_conditions_combined), self.theta
-            )
-            dispersion = torch.exp(dispersion)
-            loss = (
-                -zinb(x=true_counts, mu=dec_mean, theta=dispersion, pi=dec_dropout)
-                .sum(dim=-1)
-                .mean()
-            )
-            return loss
-
-        elif self.loss_mode == 'nb':
-            combined_batch = torch.tensor(batch['combined_batch'])
-            combined_batch = combined_batch.to(self.target_device)
-            dec_mean_gamma = count_output
-            size_factor_view = batch_size_factor.unsqueeze(1).expand(
-                dec_mean_gamma.size(0), dec_mean_gamma.size(1)
-            )
-            dec_mean = dec_mean_gamma * size_factor_view
-            dispersion = F.linear(
-                one_hot_encoder(combined_batch, self.n_conditions_combined), self.theta
-            )
-            dispersion = torch.exp(dispersion)
-            loss = -nb(x=true_counts, mu=dec_mean, theta=dispersion).sum(dim=-1).mean()
-            return loss
-
-        else:
-            raise ValueError('Loss not supported, choose either mse or zinb')
-
     def forward(self, batch):
         if self.training:
             outputs = self.transformer(
-                src_input_id=batch['src_input_ids'], tgt_input_id=batch['tgt_input_ids']
+                src_input_id=batch['src_input_ids'],
+                tgt_input_id=batch['tgt_input_ids'],
+                original_lens=batch['src_length'],
             )
             return outputs
         elif self.return_embeddings:
@@ -261,7 +186,6 @@ class TTransformertrainer(LightningModule):
         outputs = self.forward(batch)
         logits = outputs['logits']
         labels = outputs['labels']
-        # count_loss = self.compute_count_loss(count_output, count_dropout, batch)
 
         perp = Perplexity(ignore_index=-100).to('cuda')  # -100 = masked labels
         perp.update(logits, labels)
@@ -279,17 +203,6 @@ class TTransformertrainer(LightningModule):
             logger=True,
             batch_size=batch['tgt_input_ids'].shape[0],
         )
-        # self.log(
-        #     'train/count_loss',
-        #     count_loss,
-        #     on_step=True,
-        #     on_epoch=True,
-        #     prog_bar=True,
-        #     logger=True,
-        #     batch_size=batch['tgt_input_ids'].shape[0]
-        # )
-        # combined_loss = self.alpha * masking_loss + (1 - self.alpha) * count_loss
-        # rescale with hyperparameter so that they have similar magnitude
 
         self.log(
             'train/Perplexity',
@@ -470,29 +383,162 @@ class TTransformertrainer(LightningModule):
                 f'cls_embeddings_{self.dataset_info}_cosine_similarity.h5ad'
             )
 
-            # for key in self.tgt_output:
-            #     print(key)
-            #     self.tgt_output[key] = np.concatenate(self.tgt_output[key], axis=0)
-            # cell_names = [
-            #     'cell' + str(i) for i in range(len(self.tgt_output['cell_type']))
-            # ]
-            # obs = pd.DataFrame(
-            #     {
-            #         'cell_names': cell_names,
-            #         'cell_type': self.tgt_output['cell_type'],
-            #         'cell_population': self.tgt_output['cell_population'],
-            #     }
-            # )
 
-            # time_points = np.unique(self.time_point)[0]
-            # adata = sc.read_h5ad(
-            #     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-            #     'T_perturb/T_perturb/pp/res/h5ad_data/cytoimmgen_tokenisation_degs_random_16h.h5ad')
-            # adata.obsm['X_CLS_embeddings'] = self.cls_embeddings
-            # adata = ad.AnnData(X=self.cls_embeddings_list, obs=obs)
-            # # save anndata
-            # adata.write_h5ad(
-            #     f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            #     f't_generative/T_perturb/T_perturb/'
-            #     f'plt/res/scConformer/cls_embeddings_{time_points}.h5ad'
-            # )
+class CountDecodertrainer(LightningModule):
+    def __init__(
+        self,
+        loss_mode: str = 'mse',
+        lr: float = 1e-3,
+        weight_decay: float = 0.0,
+        lr_scheduler_patience: float = 1.0,
+        lr_scheduler_factor: float = 0.8,
+        conditions: Optional[Dict[Any, Any]] = None,
+        conditions_combined: Optional[List[Any]] = None,
+        tgt_vocab_size: int = 25000,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.target_device = torch.device(
+            'cuda' if torch.cuda.is_available() else 'cpu'
+        )
+        self.decoder = CountDecoder(loss_mode=loss_mode)
+        self.save_hyperparameters()
+        self.weight_decay = weight_decay
+        self.lr = lr
+        self.lr_scheduler_patience = lr_scheduler_patience
+        self.lr_scheduler_factor = lr_scheduler_factor
+        self.loss_mode = loss_mode
+        self.metric = nn.ModuleDict(
+            {'mse': MeanSquaredError(), 'pearson': PearsonCorrCoef(num_outputs=32)}
+        )
+        if (
+            (self.loss_mode in ['nb', 'zinb'])
+            and (conditions is not None)
+            and (conditions_combined is not None)
+        ):
+            self.n_conditions = [len(conditions[cond]) for cond in conditions.keys()]
+            self.conditions = conditions
+            self.condition_encodings = {
+                cond: {
+                    k: v for k, v in zip(conditions[cond], range(len(conditions[cond])))
+                }
+                for cond in conditions.keys()
+            }
+            self.conditions_combined = conditions_combined
+            self.n_conditions_combined = len(conditions_combined)
+            self.conditions_combined_encodings = {
+                k: v
+                for k, v in zip(conditions_combined, range(len(conditions_combined)))
+            }
+            self.theta = torch.nn.Parameter(
+                torch.randn(tgt_vocab_size - 1, self.n_conditions_combined)
+            )
+        else:
+            self.theta = None
+
+    def forward(self, batch):
+        outputs = self.decoder(batch)
+        return outputs
+
+    def compute_count_loss(
+        self,
+        outputs: Dict[str, torch.Tensor],
+        batch: Dict[str, torch.Tensor],
+    ):
+        true_counts = batch['tgt_counts'].float()
+        batch_size_factor = np.array(batch['size_factor'])
+        batch_size_factor = torch.tensor(batch_size_factor)
+        batch_size_factor = batch_size_factor.to(self.target_device)
+
+        if self.loss_mode == 'mse':
+            print('true_counts', true_counts[:10, :10])
+            loss = (
+                mse_loss(outputs['count_lognorm'], true_counts)
+                .sum(dim=-1)
+                .mean()
+                .float()
+            )
+            return loss
+
+        elif self.loss_mode == 'zinb':
+            combined_batch = torch.tensor(batch['combined_batch'])
+            combined_batch = combined_batch.to(self.target_device)
+            dec_mean_gamma, dec_dropout = (
+                outputs['count_mean'],
+                outputs['count_dropout'],
+            )
+            size_factor_view = batch_size_factor.unsqueeze(1).expand(
+                dec_mean_gamma.size(0), dec_mean_gamma.size(1)
+            )
+            dec_mean = dec_mean_gamma * size_factor_view
+            dispersion = F.linear(
+                one_hot_encoder(combined_batch, self.n_conditions_combined), self.theta
+            )
+            dispersion = torch.exp(dispersion)
+            loss = (
+                -zinb(x=true_counts, mu=dec_mean, theta=dispersion, pi=dec_dropout)
+                .sum(dim=-1)
+                .mean()
+            )
+            return loss
+
+        elif self.loss_mode == 'nb':
+            combined_batch = torch.tensor(batch['combined_batch'])
+            combined_batch = combined_batch.to(self.target_device)
+            dec_mean_gamma = outputs['count_mean']
+            size_factor_view = batch_size_factor.unsqueeze(1).expand(
+                dec_mean_gamma.size(0), dec_mean_gamma.size(1)
+            )
+            dec_mean = dec_mean_gamma * size_factor_view
+            dispersion = F.linear(
+                one_hot_encoder(combined_batch, self.n_conditions_combined), self.theta
+            )
+            dispersion = torch.exp(dispersion)
+            loss = -nb(x=true_counts, mu=dec_mean, theta=dispersion).sum(dim=-1).mean()
+            return loss
+
+        else:
+            raise ValueError('Loss not supported, choose either mse or zinb')
+
+    def training_step(self, batch, *args, **kwargs):
+        outputs = self.forward(batch)
+        count_loss = self.compute_count_loss(outputs, batch)
+        if self.loss_mode in ['nb', 'zinb']:
+            pearson = self.metric['pearson'](
+                outputs['count_mean'].T,
+                batch['tgt_counts'].T,
+            )
+            mean_pearson = torch.mean(pearson)
+            self.log(
+                'train/pearson',
+                mean_pearson,
+                on_step=True,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+            )
+        self.log(
+            'train/count_loss',
+            count_loss,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=batch['tgt_input_ids'].shape[0],
+        )
+        return count_loss
+
+    def configure_optimizers(self):
+        parameters = [{'params': self.transformer.parameters(), 'lr': self.lr}]
+        optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
+        # lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        #     optimizer,
+        #     mode='min',
+        #     patience=self.lr_scheduler_patience,
+        # )
+        return {
+            'optimizer': optimizer,
+            # "lr_scheduler": lr_scheduler,
+            # "monitor": "train/loss",
+        }
