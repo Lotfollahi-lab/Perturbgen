@@ -277,7 +277,7 @@ def gumbel_sample(t, temperature=1.0, dim=-1):
     return ((t / max(temperature, 1e-10)) + gumbel_noise(t)).argmax(dim=dim)
 
 
-class TTransformer(nn.Module):
+class scConformer(nn.Module):
     def __init__(
         self,
         tgt_vocab_size: int = 25426,
@@ -289,18 +289,15 @@ class TTransformer(nn.Module):
         dropout: float = 0.0,
         mlm_probability: float = 0.3,
         add_mask_id: bool = True,
-        loss_mode: str = 'zinb',
     ):
-        super(TTransformer, self).__init__()
+        super(scConformer, self).__init__()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.loss_mode = loss_mode
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
 
         self.cls_token = torch.tensor(
             [tgt_vocab_size], dtype=torch.long, device=self.device
         )  # start at 25426, because of 0 Python indexing
-
         total_vocab_size = tgt_vocab_size + 1
         if add_mask_id:
             total_vocab_size = total_vocab_size + 1
@@ -316,24 +313,11 @@ class TTransformer(nn.Module):
 
         self.encoder_layers = Geneformerwrapper()
         self.encoder_layers = self.encoder_layers.to(self.device)
-        self.encoder_layers.eval()
+
         self.decoder_layers = nn.ModuleList(
             [DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)]
         )
         self.decoder_layers = self.decoder_layers.to(self.device)
-        n_genes = tgt_vocab_size - 1
-        if self.loss_mode == 'mse':
-            self.relu_output = nn.Sequential(nn.Linear(d_model, n_genes), nn.ReLU())
-        elif self.loss_mode == 'zinb':
-            self.linear_output = nn.Linear(d_model, n_genes)
-            self.softmax_output = nn.Sequential(
-                nn.Linear(d_model, n_genes), nn.Softmax(dim=-1)
-            )
-
-        elif self.loss_mode == 'nb':
-            self.softmax_output = nn.Sequential(
-                nn.Linear(d_model, n_genes), nn.Softmax(dim=-1)
-            )
 
         self.fc = nn.Linear(d_model, tgt_vocab_size)
         self.fc = self.fc.to(self.device)
@@ -430,6 +414,7 @@ class TTransformer(nn.Module):
         self,
         src_input_id,
         tgt_input_id,
+        original_lens,
         # self_cond_embed = None,
         return_embeddings=False,
         generate=False,
@@ -469,42 +454,30 @@ class TTransformer(nn.Module):
                 dec_embedding, src_attention_mask, tgt_mask, enc_output
             )
         logits = self.fc(dec_embedding)
-        # # count decoder
-        # if self.loss_mode == 'mse':
-        #     count_lognorm = self.relu_output(dec_embedding[:, 0, :])
-        # elif self.loss_mode == 'zinb':
-        #     count_mean = self.softmax_output(dec_embedding[:, 0, :])
-        #     count_dropout = self.linear_output(dec_embedding[:, 0, :])
-        # elif self.loss_mode == 'nb':
-        #     count_mean = self.softmax_output(dec_embedding[:, 0, :])
+
         outputs = {}
         if self.training:
             outputs['logits'] = logits
             outputs['labels'] = labels
-            # cls token set to -100 in labels will be ignored in loss
-            # if self.loss_mode == 'mse':
-            #     return logits, labels, count_lognorm, None
-            # elif self.loss_mode == 'zinb':
-            #     return logits, labels, count_mean, count_dropout
-            # elif self.loss_mode == 'nb':
-            #     return logits, labels, count_mean, None
-        # create dictionnary to store the output
-        if self.eval:
-            if return_embeddings:
-                outputs['embeddings'] = dec_embedding
-            if generate:
-                if self.loss_mode == 'mse':
-                    outputs['logits'] = logits[:, 1:, :]
-                    # output['count_lognorm'] = count_lognorm
-                    # output['count_dropout'] = None
-                elif self.loss_mode == 'zinb':
-                    outputs['logits'] = logits[:, 1:, :]
-                    # output['count_mean'] = count_mean
-                    # output['count_dropout'] = count_dropout
-                elif self.loss_mode == 'nb':
-                    outputs['logits'] = logits[:, 1:, :]
-                    # output['count_mean'] = count_mean
-                    # output['count_dropout'] = None
+            outputs['dec_embedding'] = dec_embedding
+
+        # # create dictionnary to store the output
+        # if self.eval:
+        #     if return_embeddings:
+        #         outputs['embeddings'] = dec_embedding
+        #     if generate:
+        #         if self.loss_mode == 'mse':
+        #             outputs['logits'] = logits[:, 1:, :]
+        #             # output['count_lognorm'] = count_lognorm
+        #             # output['count_dropout'] = None
+        #         elif self.loss_mode == 'zinb':
+        #             outputs['logits'] = logits[:, 1:, :]
+        #             # output['count_mean'] = count_mean
+        #             # output['count_dropout'] = count_dropout
+        #         elif self.loss_mode == 'nb':
+        #             outputs['logits'] = logits[:, 1:, :]
+        #             # output['count_mean'] = count_mean
+        #             # output['count_dropout'] = None
         return outputs
 
     def generate(
@@ -588,6 +561,54 @@ class TTransformer(nn.Module):
         return ids, tgt_input_id, logits
 
 
+class CountDecoder(scConformer):
+    def __init__(self, loss_mode: str = 'zinb', *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # freeze the Parameters
+        for param in self.parameters():
+            param.requires_grad = False
+        self.loss_mode = loss_mode
+        self.mlp = Mlp(d_model, d_model)
+        n_genes = tgt_vocab_size - 1
+        if self.loss_mode == 'mse':
+            self.relu_output = nn.Sequential(nn.Linear(d_model, n_genes), nn.ReLU())
+        elif self.loss_mode == 'zinb':
+            self.linear_output = nn.Linear(d_model, n_genes)
+            self.softmax_output = nn.Sequential(
+                nn.Linear(d_model, n_genes), nn.Softmax(dim=-1)
+            )
+        elif self.loss_mode == 'nb':
+            self.softmax_output = nn.Sequential(
+                nn.Linear(d_model, n_genes), nn.Softmax(dim=-1)
+            )
+
+    def forward(
+        self,
+        src_input_id,
+        tgt_input_id,
+        original_lens,
+        return_embeddings=False,
+        generate=False,
+    ):
+        # call the forward method of the parent class
+        outputs = super().forward(
+            src_input_id, tgt_input_id, original_lens, return_embeddings, generate
+        )
+        # use cls token for count prediction
+        count_outpus = {}
+        cls_embedding = outputs['dec_embedding'][:, 0, :]
+        mlp_output = self.mlp(cls_embedding)
+        mlp_output = nn.functional.normalize(mlp_output, dim=-1, p=2)
+        if self.loss_mode == 'mse':
+            count_outpus['count_lognorm'] = self.relu_output(mlp_output)
+        elif self.loss_mode == 'zinb':
+            count_outpus['count_mean'] = self.softmax_output(mlp_output)
+            count_outpus['count_dropout'] = self.linear_output(mlp_output)
+        elif self.loss_mode == 'nb':
+            count_outpus['count_mean'] = self.softmax_output(mlp_output)
+        return count_outpus
+
+
 if __name__ == '__main__':
     # from T_perturb.Dataloaders.datamodule import GeneformerDataModule
     src_vocab_size = 5000
@@ -607,7 +628,7 @@ if __name__ == '__main__':
         d_head=64,
         context_dim=d_model,
     )
-    transformer = TTransformer(tgt_vocab_size=13)
+    transformer = scConformer(tgt_vocab_size=13)
 
     # # test dataloader
     # data_module = GeneformerDataModule(
