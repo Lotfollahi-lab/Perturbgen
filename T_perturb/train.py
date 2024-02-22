@@ -26,6 +26,21 @@ def get_args():
     """Get command line arguments."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        '--train_mode',
+        type=str,
+        default='count',
+        help='masking or count',
+    )
+    parser.add_argument(
+        '--ckpt_path',
+        type=str,
+        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+        't_generative/T_perturb/T_perturb/Model/checkpoints/'
+        '20240222_0939_ttransformer_lr_0.001_wd_0_'
+        'batchsize_512_mlmprob_0.3_stratified_pairing_16h.ckpt',
+        help='path to checkpoint',
+    )
+    parser.add_argument(
         '--src_dataset_folder',
         type=str,
         default=(
@@ -42,7 +57,6 @@ def get_args():
         f'T_perturb/T_perturb/pp/res/dataset/{train_dataset}',
         help='path to tokenised activated data',
     )
-
     parser.add_argument(
         '--tgt_adata_folder',
         type=str,
@@ -53,11 +67,10 @@ def get_args():
         ),
         help='path to tgt',
     )
-
     parser.add_argument('--batch_size', type=int, default=512, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=True, help='shuffle')
     parser.add_argument(
-        '--epochs', type=int, default=20, help='number of training epochs'
+        '--epochs', type=int, default=5, help='number of training epochs'
     )
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
@@ -147,6 +160,7 @@ def main() -> None:
         dataset_info=dataset_info,
     )
     decoder_module = CountDecodertrainer(
+        ckpt_path=args.ckpt_path,
         loss_mode=args.loss_mode,
         lr=args.lr,
         weight_decay=args.wd,
@@ -155,6 +169,8 @@ def main() -> None:
         conditions=conditions_,
         conditions_combined=conditions_combined_,
         tgt_vocab_size=704,
+        d_model=256,
+        batch_size=args.batch_size,
     )
 
     # # Assume `model` is your model
@@ -261,10 +277,13 @@ def main() -> None:
         # limit_train_batches=100
     )
 
-    # Finally, kick of the training process.
-    trainer.fit(pretrained_module, data_module)
-
-    trainer.fit(decoder_module, data_module)
+    if args.train_mode == 'masking':
+        # Finally, kick of the training process.
+        trainer.fit(pretrained_module, data_module)
+    elif args.train_mode == 'count':
+        trainer.fit(decoder_module, data_module)
+    else:
+        raise ValueError('train_mode not recognised, needs to be masking or count')
 
 
 if __name__ == '__main__':

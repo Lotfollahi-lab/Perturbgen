@@ -13,7 +13,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 
 from T_perturb.Dataloaders.datamodule import scConformerDataModule
-from T_perturb.Model.trainer import TTransformertrainer
+from T_perturb.Model.trainer import CountDecodertrainer
 
 RANDOM_SEED = 42
 test_dataset = 'cytoimmgen_tokenised_degs_stratified_pairing_5d.dataset'
@@ -125,7 +125,7 @@ def main() -> None:
         conditions_combined_ = args.conditions_combined
     # Initialize model module
     # ----------------------------------------------------------------------------------
-    model_module = TTransformertrainer(
+    model_module = CountDecodertrainer(
         tgt_vocab_size=704,
         d_model=256,
         num_heads=8,
