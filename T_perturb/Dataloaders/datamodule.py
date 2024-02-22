@@ -61,22 +61,19 @@ class scConformerDataset(Dataset):
 
         self.tgt_data = load_from_disk(tgt_dataset_folder)
         self.tgt_adata = tgt_adata
-        print(self.tgt_adata)
+        # check if the index is the same
+        if not all(self.tgt_adata.obs_names == self.tgt_data['index']):
+            raise ValueError('Index of adata and tokenized data do not match')
         self.size_factor = np.ravel(tgt_adata.X.sum(axis=1))
         self.conditions = conditions
-        print(self.conditions)
         self.conditions_combined = conditions_combined
-        print(self.conditions_combined)
         self.condition_encodings = condition_encodings
-        # self.num_samples = 100
 
         # with open(token_dictionary_file, "rb") as f:
         #     self.gene_token_dict = pickle.load(f)
         # self.pad_token_id = self.gene_token_dict.get("<pad>")
 
     def __getitem__(self, ind):
-        # if ind >= self.num_samples:
-        #     raise StopIteration
         return {
             'src_dataset': self.src_data[ind],
             'tgt_dataset': self.tgt_data[ind],
@@ -89,7 +86,6 @@ class scConformerDataset(Dataset):
         }
 
     def __len__(self):
-        print(len(self.src_data))
         if len(self.src_data) != len(self.tgt_data):
             Warning('src and tgt dataset have different length')
         return min(len(self.src_data), len(self.tgt_data))

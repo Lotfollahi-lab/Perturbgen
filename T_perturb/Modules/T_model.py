@@ -3,7 +3,6 @@ Mostly copy-paste from timm library.
 https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
 '''
 import math
-from pathlib import Path
 
 import torch
 from einops import rearrange, repeat
@@ -323,15 +322,6 @@ class scConformer(nn.Module):
         self.fc = self.fc.to(self.device)
         self.dropout = nn.Dropout(dropout)
 
-    def save(self, path):
-        torch.save(self.state_dict(), path)
-
-    def load(self, path):
-        path = Path(path)
-        assert path.exists()
-        state_dict = torch.load(str(path))
-        self.load_state_dict(state_dict)
-
     def generate_pad(self, tgt):
         tgt_pad = torch.tensor((tgt == 0), dtype=bool).cpu().detach()
 
@@ -561,12 +551,19 @@ class scConformer(nn.Module):
         return ids, tgt_input_id, logits
 
 
-class CountDecoder(scConformer):
-    def __init__(self, loss_mode: str = 'zinb', *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # freeze the Parameters
-        for param in self.parameters():
+class CountDecoder(nn.Module):
+    def __init__(
+        self,
+        pretrained_model: nn.Module = None,
+        loss_mode: str = 'zinb',
+        tgt_vocab_size: int = 25426,
+        d_model: int = 256,
+    ):
+        super(CountDecoder, self).__init__()
+        self.pretrained_model = pretrained_model
+        for _, param in self.pretrained_model.named_parameters():
             param.requires_grad = False
+
         self.loss_mode = loss_mode
         self.mlp = Mlp(d_model, d_model)
         n_genes = tgt_vocab_size - 1
@@ -591,8 +588,12 @@ class CountDecoder(scConformer):
         generate=False,
     ):
         # call the forward method of the parent class
-        outputs = super().forward(
-            src_input_id, tgt_input_id, original_lens, return_embeddings, generate
+        outputs = self.pretrained_model.forward(
+            src_input_id=src_input_id,
+            tgt_input_id=tgt_input_id,
+            original_lens=original_lens,
+            return_embeddings=return_embeddings,
+            generate=generate,
         )
         # use cls token for count prediction
         count_outpus = {}

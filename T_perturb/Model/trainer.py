@@ -387,6 +387,7 @@ class scConformertrainer(LightningModule):
 class CountDecodertrainer(LightningModule):
     def __init__(
         self,
+        ckpt_path: str = 'ckpt_path',
         loss_mode: str = 'mse',
         lr: float = 1e-3,
         weight_decay: float = 0.0,
@@ -395,6 +396,8 @@ class CountDecodertrainer(LightningModule):
         conditions: Optional[Dict[Any, Any]] = None,
         conditions_combined: Optional[List[Any]] = None,
         tgt_vocab_size: int = 25000,
+        d_model: int = 256,
+        batch_size: int = 32,
         *args,
         **kwargs,
     ):
@@ -402,7 +405,36 @@ class CountDecodertrainer(LightningModule):
         self.target_device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu'
         )
-        self.decoder = CountDecoder(loss_mode=loss_mode)
+        # Create an instance of your model
+        checkpoint = torch.load(ckpt_path, map_location='cpu')
+        for keys in checkpoint['state_dict']:
+            print(keys)
+
+        pretrained_model = scConformer(
+            tgt_vocab_size=checkpoint['hyper_parameters']['tgt_vocab_size'],
+            d_model=checkpoint['hyper_parameters']['d_model'],
+            d_ff=checkpoint['hyper_parameters']['d_ff'],
+            max_seq_length=checkpoint['hyper_parameters']['max_seq_length'],
+        )
+        state_dict = checkpoint['state_dict']
+
+        new_state_dict = {}
+        for k, v in state_dict.items():
+            k = k.replace('transformer.', '')
+            new_state_dict[k] = v
+        state_dict = new_state_dict
+        # model = model.cuda()
+        # classifier = classifier.cuda()
+        # criterion = criterion.cuda()
+
+        pretrained_model.load_state_dict(new_state_dict, strict=False)
+
+        self.decoder = CountDecoder(
+            pretrained_model=pretrained_model,
+            loss_mode=loss_mode,
+            tgt_vocab_size=tgt_vocab_size,
+            d_model=d_model,
+        )
         self.save_hyperparameters()
         self.weight_decay = weight_decay
         self.lr = lr
@@ -410,7 +442,10 @@ class CountDecodertrainer(LightningModule):
         self.lr_scheduler_factor = lr_scheduler_factor
         self.loss_mode = loss_mode
         self.metric = nn.ModuleDict(
-            {'mse': MeanSquaredError(), 'pearson': PearsonCorrCoef(num_outputs=32)}
+            {
+                'mse': MeanSquaredError(),
+                'pearson': PearsonCorrCoef(num_outputs=batch_size),
+            }
         )
         if (
             (self.loss_mode in ['nb', 'zinb'])
@@ -438,7 +473,11 @@ class CountDecodertrainer(LightningModule):
             self.theta = None
 
     def forward(self, batch):
-        outputs = self.decoder(batch)
+        outputs = self.decoder(
+            src_input_id=batch['src_input_ids'],
+            tgt_input_id=batch['tgt_input_ids'],
+            original_lens=batch['src_length'],
+        )
         return outputs
 
     def compute_count_loss(
@@ -452,7 +491,6 @@ class CountDecodertrainer(LightningModule):
         batch_size_factor = batch_size_factor.to(self.target_device)
 
         if self.loss_mode == 'mse':
-            print('true_counts', true_counts[:10, :10])
             loss = (
                 mse_loss(outputs['count_lognorm'], true_counts)
                 .sum(dim=-1)
@@ -504,6 +542,7 @@ class CountDecodertrainer(LightningModule):
     def training_step(self, batch, *args, **kwargs):
         outputs = self.forward(batch)
         count_loss = self.compute_count_loss(outputs, batch)
+        print('count_loss', count_loss)
         if self.loss_mode in ['nb', 'zinb']:
             pearson = self.metric['pearson'](
                 outputs['count_mean'].T,
@@ -527,10 +566,11 @@ class CountDecodertrainer(LightningModule):
             logger=True,
             batch_size=batch['tgt_input_ids'].shape[0],
         )
+
         return count_loss
 
     def configure_optimizers(self):
-        parameters = [{'params': self.transformer.parameters(), 'lr': self.lr}]
+        parameters = [{'params': self.decoder.parameters(), 'lr': self.lr}]
         optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
         # lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         #     optimizer,
