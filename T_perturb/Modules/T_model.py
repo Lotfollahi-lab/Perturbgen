@@ -561,8 +561,8 @@ class CountDecoder(nn.Module):
     ):
         super(CountDecoder, self).__init__()
         self.pretrained_model = pretrained_model
-        for _, param in self.pretrained_model.named_parameters():
-            param.requires_grad = False
+        # for _, param in self.pretrained_model.named_parameters():
+        #     param.requires_grad = False
 
         self.loss_mode = loss_mode
         self.mlp = Mlp(d_model, d_model)
