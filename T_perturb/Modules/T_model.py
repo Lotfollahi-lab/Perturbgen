@@ -627,6 +627,86 @@ class CountDecoder(nn.Module):
         count_outpus = self.decoder.forward(cls_embedding)
         return count_outpus
 
+    def generate(
+        self,
+        src_input_id,
+        noise_schedule,
+        tgt_vocab_size,
+        tgt_input_id,
+        seq_length,
+        can_remask_prev_masked=False,
+        topk_filter_thres=0.9,
+        # steps=18,
+        temperature=2.0,  # keep in range 2.0-3.0
+        # self_cond_prob=0.9,
+        timesteps=18,  # optimal iterations found in maskgit paper
+    ):
+        tgt_pad = self.generate_pad(tgt_input_id)
+        batch_size = tgt_input_id.shape[0]
+        seq_len = tgt_input_id.shape[1]
+        shape = (batch_size, seq_len)
+        # create ids and scores matrix for each batch
+        # exclude CLS token from token
+        ids = torch.full(shape, self.mask_token, dtype=torch.long, device=self.device)
+        # pad ids
+        scores = torch.zeros(shape, dtype=torch.float, device=self.device)
+        tgt_pad = tgt_pad
+        starting_temperature = temperature
+        demask_fn = self.pretrained_model.forward()
+
+        for timestep, steps_until_x0 in tqdm(
+            zip(
+                torch.linspace(0, 1, timesteps, device=self.device),
+                reversed(range(timesteps)),
+            ),
+            total=timesteps,
+        ):
+            # mask scheduler function, gamma
+            rand_mask_prob = noise_schedule(timestep)
+            # pad scores and ids
+            scores = scores.masked_fill(tgt_pad, -torch.finfo().max)
+            ids = ids.masked_fill(tgt_pad, 0)
+            ids_to_keep = torch.zeros_like(ids, dtype=torch.long)
+            for i, score in enumerate(scores):
+                # count zeros in each row
+                unpadded = len(score) - sum(score == -torch.finfo().max)
+                num_token_masked = int(unpadded * rand_mask_prob)
+                masked_indices = score.topk(num_token_masked, dim=-1).indices
+                mask = torch.zeros_like(ids[i], dtype=torch.bool)
+                mask[masked_indices] = True
+                ids[i, masked_indices] = self.mask_token
+                # keep indices which are not masked
+
+                ids_to_keep[i, ~mask] = ids[i, ~mask]
+            logits = demask_fn(
+                src_input_id=src_input_id,  # target
+                # self_cond_embed = self_cond_embed,
+                tgt_input_id=ids,  # change to token id
+                return_embed=False,
+            )
+            # Create a mask of already predicted tokens
+            for sample in range(batch_size):
+                unique_ids = torch.unique(ids_to_keep[sample])
+                logits[sample, :, unique_ids] = -float('inf')
+            filtered_logits = top_k(logits, topk_filter_thres)
+            temperature = starting_temperature * (
+                steps_until_x0 / timesteps
+            )  # temperature is annealed
+            pred_ids = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
+
+            is_mask = ids == self.mask_token
+
+            ids = torch.where(is_mask, pred_ids, ids)
+            probs_without_temperature = logits.softmax(dim=-1)
+            # avoid predicting the same token
+            scores = 1 - probs_without_temperature.gather(2, pred_ids[..., None])
+            scores = rearrange(scores, '... 1 -> ...')
+
+            if not can_remask_prev_masked:
+                scores = scores.masked_fill(~is_mask, -torch.finfo().max)
+
+        return ids, tgt_input_id, logits
+
 
 if __name__ == '__main__':
     # from T_perturb.Dataloaders.datamodule import GeneformerDataModule

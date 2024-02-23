@@ -397,6 +397,7 @@ class CountDecodertrainer(LightningModule):
         tgt_vocab_size: int = 25000,
         d_model: int = 256,
         cell_number: int = 143360,
+        generate: bool = False,
         *args,
         **kwargs,
     ):
@@ -474,6 +475,7 @@ class CountDecodertrainer(LightningModule):
         )
         self.true_counts_list: List[int] = []
         self.pred_counts_list: List[int] = []
+        self.generate = generate
 
     def forward(self, batch):
         outputs = self.decoder(
@@ -575,6 +577,9 @@ class CountDecodertrainer(LightningModule):
             prog_bar=True,
             logger=True,
         )
+        # empty lists
+        self.true_counts_list = []
+        self.pred_counts_list = []
 
     def test_step(self, batch, *args, **kwargs):
         if self.generate:
@@ -583,7 +588,7 @@ class CountDecodertrainer(LightningModule):
             # x.to('cuda')
             # x = x.expand(num_samples, -1)
             batch_size, sequence_length = batch['tgt_input_ids'].shape
-            output, true_output, logits = self.transformer.generate(
+            output, true_output, logits = self.decoder.generate(
                 src_input_id=batch['src_input_ids'],
                 tgt_input_id=batch['tgt_input_ids'],
                 seq_length=sequence_length,
@@ -591,40 +596,10 @@ class CountDecodertrainer(LightningModule):
                 noise_schedule=cosine_schedule
                 # top_k=5
             )
-
-            ranked_tokenised_output = batch_token_ranking(
-                output, self.tgt_vocab_size
-            ).float()
-            ranked_tokenised_true_output = batch_token_ranking(
-                true_output, self.tgt_vocab_size
-            ).float()
-            # ignore padding
-            ranked_tokenised_output = ranked_tokenised_output.T[1:, :]
-            ranked_tokenised_true_output = ranked_tokenised_true_output.T[1:, :]
-            # ignore ranks when it is sequence
-            mask = (ranked_tokenised_output != sequence_length) | (
-                ranked_tokenised_true_output != sequence_length
-            )
-            spearman = self.metric['spearman'](
-                ranked_tokenised_output, ranked_tokenised_true_output
-            )
-            spearman_mean = torch.mean(spearman)
-            print(spearman_mean)
-            mse = self.metric['mse'](
-                ranked_tokenised_output[mask], ranked_tokenised_true_output[mask]
-            )
-            print(mse)
-            self.log(
-                'test/spearman',
-                spearman_mean,
-                on_step=True,
-                on_epoch=True,
-                prog_bar=True,
-                logger=True,
-            )
-            self.log(
-                'test/mse', mse, on_step=True, on_epoch=True, prog_bar=True, logger=True
-            )
+            # pass output to
+            # counts = self.decoder.decoder(output)
+            # pass on test epoch end
+            # run distribution metrics
 
     def configure_optimizers(self):
         parameters = [{'params': self.decoder.parameters(), 'lr': self.lr}]
