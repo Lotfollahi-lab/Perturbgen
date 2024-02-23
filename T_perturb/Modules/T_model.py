@@ -551,6 +551,45 @@ class scConformer(nn.Module):
         return ids, tgt_input_id, logits
 
 
+class CountHead(nn.Module):
+    def __init__(
+        self,
+        loss_mode: str = 'zinb',
+        tgt_vocab_size: int = 25426,
+        d_model: int = 256,
+    ):
+        super(CountHead, self).__init__()
+        self.loss_mode = loss_mode
+
+        self.mlp = Mlp(d_model, d_model)
+        n_genes = tgt_vocab_size - 1
+        if self.loss_mode == 'mse':
+            self.relu_output = nn.Sequential(nn.Linear(d_model, n_genes), nn.ReLU())
+        elif self.loss_mode == 'zinb':
+            self.linear_output = nn.Linear(d_model, n_genes)
+            self.softmax_output = nn.Sequential(
+                nn.Linear(d_model, n_genes), nn.Softmax(dim=-1)
+            )
+        elif self.loss_mode == 'nb':
+            self.softmax_output = nn.Sequential(
+                nn.Linear(d_model, n_genes), nn.Softmax(dim=-1)
+            )
+
+    def forward(self, x):
+        # use cls token for count prediction
+        count_outpus = {}
+        mlp_output = self.mlp(x)
+        mlp_output = nn.functional.normalize(mlp_output, dim=-1, p=2)
+        if self.loss_mode == 'mse':
+            count_outpus['count_lognorm'] = self.relu_output(mlp_output)
+        elif self.loss_mode == 'zinb':
+            count_outpus['count_mean'] = self.softmax_output(mlp_output)
+            count_outpus['count_dropout'] = self.linear_output(mlp_output)
+        elif self.loss_mode == 'nb':
+            count_outpus['count_mean'] = self.softmax_output(mlp_output)
+        return count_outpus
+
+
 class CountDecoder(nn.Module):
     def __init__(
         self,
@@ -565,19 +604,7 @@ class CountDecoder(nn.Module):
         #     param.requires_grad = False
 
         self.loss_mode = loss_mode
-        self.mlp = Mlp(d_model, d_model)
-        n_genes = tgt_vocab_size - 1
-        if self.loss_mode == 'mse':
-            self.relu_output = nn.Sequential(nn.Linear(d_model, n_genes), nn.ReLU())
-        elif self.loss_mode == 'zinb':
-            self.linear_output = nn.Linear(d_model, n_genes)
-            self.softmax_output = nn.Sequential(
-                nn.Linear(d_model, n_genes), nn.Softmax(dim=-1)
-            )
-        elif self.loss_mode == 'nb':
-            self.softmax_output = nn.Sequential(
-                nn.Linear(d_model, n_genes), nn.Softmax(dim=-1)
-            )
+        self.decoder = CountHead(loss_mode, tgt_vocab_size, d_model)
 
     def forward(
         self,
@@ -595,18 +622,9 @@ class CountDecoder(nn.Module):
             return_embeddings=return_embeddings,
             generate=generate,
         )
-        # use cls token for count prediction
-        count_outpus = {}
         cls_embedding = outputs['dec_embedding'][:, 0, :]
-        mlp_output = self.mlp(cls_embedding)
-        mlp_output = nn.functional.normalize(mlp_output, dim=-1, p=2)
-        if self.loss_mode == 'mse':
-            count_outpus['count_lognorm'] = self.relu_output(mlp_output)
-        elif self.loss_mode == 'zinb':
-            count_outpus['count_mean'] = self.softmax_output(mlp_output)
-            count_outpus['count_dropout'] = self.linear_output(mlp_output)
-        elif self.loss_mode == 'nb':
-            count_outpus['count_mean'] = self.softmax_output(mlp_output)
+        # use cls token for count prediction
+        count_outpus = self.decoder.forward(cls_embedding)
         return count_outpus
 
 
