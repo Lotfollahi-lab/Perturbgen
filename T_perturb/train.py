@@ -29,7 +29,7 @@ def get_args():
         '--train_mode',
         type=str,
         default='count',
-        help='masking or count',
+        help='Mode [masking, count]',
     )
     parser.add_argument(
         '--ckpt_path',
@@ -170,7 +170,7 @@ def main() -> None:
         conditions_combined=conditions_combined_,
         tgt_vocab_size=704,
         d_model=256,
-        batch_size=args.batch_size,
+        cell_number=tgt_adata.shape[0],
     )
 
     # # Assume `model` is your model
@@ -197,7 +197,7 @@ def main() -> None:
         condition_keys=condition_keys_,
         condition_encodings=condition_encodings,
         conditions_combined_encodings=conditions_combined_encodings,
-        drop_last=True,
+        drop_last=False,
     )
     # Setup trainer
     # ----------------------------------------------------------------------------------
@@ -273,8 +273,7 @@ def main() -> None:
             # early_stop_callback,
         ],
         max_epochs=args.epochs,
-        accelerator=accelerator
-        # limit_train_batches=100
+        accelerator=accelerator,
     )
 
     if args.train_mode == 'masking':

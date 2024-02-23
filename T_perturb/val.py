@@ -25,6 +25,30 @@ def get_args():
     """Get command line arguments."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        '--test_mode',
+        type=str,
+        default='count',
+        help='Mode [masking, count]',
+    )
+    parser.add_argument(
+        '--ckpt_masking_path',
+        type=str,
+        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+        't_generative/T_perturb/T_perturb/Model/checkpoints/'
+        '20240222_0939_ttransformer_lr_0.001_wd_0_'
+        'batchsize_512_mlmprob_0.3_stratified_pairing_16h.ckpt',
+        help='path to checkpoint',
+    )
+    parser.add_argument(
+        '--ckpt_count_path',
+        type=str,
+        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+        't_generative/T_perturb/T_perturb/Model/checkpoints/'
+        '20240220_1948_ttransformer_lr_0.001_wd_0.001_'
+        'batchsize_64_mlmprob_0.3_stratified_pairing_5d.ckpt',
+        help='path to checkpoint',
+    )
+    parser.add_argument(
         '--src_dataset_folder',
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
