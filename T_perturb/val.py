@@ -41,7 +41,7 @@ def get_args():
     parser.add_argument(
         '--num_cells',
         type=int,
-        default=0,
+        default=10000,
         help='number of cells to use for testing',
     )
     parser.add_argument(
@@ -247,6 +247,7 @@ def main() -> None:
             num_workers=args.num_workers,
             shuffle=args.shuffle,
             max_len=args.max_len,
+            split='stratified',
             drop_last=False,
         )
     elif args.test_mode == 'count':
@@ -259,6 +260,7 @@ def main() -> None:
             num_workers=args.num_workers,
             shuffle=args.shuffle,
             max_len=args.max_len,
+            split='stratified',
             condition_keys=condition_keys_,
             condition_encodings=condition_encodings,
             conditions_combined_encodings=conditions_combined_encodings,

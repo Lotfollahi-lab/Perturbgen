@@ -30,7 +30,7 @@ def get_args():
     parser.add_argument(
         '--train_mode',
         type=str,
-        default='masking',
+        default='count',
         help='Mode [masking, count]',
     )
     parser.add_argument(
@@ -210,7 +210,6 @@ def main() -> None:
             conditions_combined=conditions_combined_,
             tgt_vocab_size=704,
             d_model=256,
-            cell_number=tgt_adata.shape[0],
         )
 
         # # Assume `model` is your model
@@ -238,6 +237,7 @@ def main() -> None:
             num_workers=args.n_workers,
             shuffle=args.shuffle,
             max_len=args.max_len,
+            seed=RANDOM_SEED,
             drop_last=False,
         )
     elif args.train_mode == 'count':
@@ -253,6 +253,7 @@ def main() -> None:
             condition_keys=condition_keys_,
             condition_encodings=condition_encodings,
             conditions_combined_encodings=conditions_combined_encodings,
+            seed=RANDOM_SEED,
             drop_last=False,
         )
     # Setup trainer
@@ -274,7 +275,7 @@ def main() -> None:
         ),
         save_top_k=1,
         verbose=True,
-        monitor='train/loss',
+        monitor='val/loss',
         mode='min',
     )
 

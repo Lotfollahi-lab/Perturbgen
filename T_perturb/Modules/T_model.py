@@ -398,8 +398,6 @@ class scConformer(nn.Module):
         src_input_id,
         tgt_input_id,
         original_lens,
-        # self_cond_embed = None,
-        return_embeddings=False,
         generate=False,
     ):
         tgt_input_id = torch.cat(
@@ -413,15 +411,14 @@ class scConformer(nn.Module):
         # convert to numeric type
         src_attention_mask = src_attention_mask.int()
         tgt_pad = self.generate_pad(tgt_input_id)
-        if self.training:
+
+        if generate:
+            tgt_mask = tgt_input_id == (self.mask_token)
+            tgt_mask = tgt_mask | (tgt_input_id == 0)
+        else:
             tgt_mask, labels = self.generate_mask(
                 tgt_input_id, tgt_pad, self.mlm_probability
             )
-            # test without masking
-            # tgt_mask = tgt_pad
-        else:
-            tgt_mask = tgt_input_id == (self.mask_token)
-            tgt_mask = tgt_mask | (tgt_input_id == 0)
 
         src_embedded = self.encoder_layers(src_input_id, src_attention_mask)
         # overwrite with tgt input id with masked token
@@ -435,19 +432,16 @@ class scConformer(nn.Module):
                 dec_embedding, src_attention_mask, tgt_mask, enc_output
             )
         logits = self.fc(dec_embedding)
+
         outputs = {}
-        if self.training:
+        if generate:
+            outputs['cls_embedding'] = dec_embedding[:, 0, :]
+            outputs['logits'] = logits[:, 1:, :]  # ignore CLS token
+        else:
             outputs['logits'] = logits
             outputs['labels'] = labels
             outputs['dec_embedding'] = dec_embedding
 
-        # create dictionnary to store the output
-
-        if return_embeddings:
-            outputs['embeddings'] = dec_embedding
-        if generate:
-            outputs['cls_embedding'] = dec_embedding[:, 0, :]
-            outputs['logits'] = logits[:, 1:, :]  # ignore CLS token
         return outputs
 
 
@@ -520,22 +514,18 @@ class CountDecoder(nn.Module):
         src_input_id,
         tgt_input_id,
         original_lens,
-        return_embeddings=False,
         generate=False,
     ):
-        if self.training:
-            # call the forward method of the parent class
-            outputs = self.pretrained_model.forward(
-                src_input_id=src_input_id,
-                tgt_input_id=tgt_input_id,
-                original_lens=original_lens,
-                return_embeddings=return_embeddings,
-                generate=generate,
-            )
-            cls_embedding = outputs['dec_embedding'][:, 0, :]
+        outputs = self.pretrained_model.forward(
+            src_input_id=src_input_id,
+            tgt_input_id=tgt_input_id,
+            original_lens=original_lens,
+            generate=generate,
+        )
+        cls_embedding = outputs['dec_embedding'][:, 0, :]
 
-            # use cls token for count prediction
-            count_outputs = self.decoder.forward(cls_embedding)
+        # use cls token for count prediction
+        count_outputs = self.decoder.forward(cls_embedding)
 
         return count_outputs
 

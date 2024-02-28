@@ -48,42 +48,46 @@ class scConformerDataset(Dataset):
         src_dataset: DatasetDict,
         tgt_dataset: DatasetDict,
         shuffle: bool = False,
-        src_adata: ad.AnnData = None,
-        tgt_adata: ad.AnnData = None,
+        src_adata: Optional[ad.AnnData] = None,
+        tgt_adata: Optional[ad.AnnData] = None,
+        split_indices: Optional[list] = None,
         conditions: Optional[torch.Tensor] = None,
         conditions_combined: Optional[torch.Tensor] = None,
         condition_encodings: Optional[dict] = None,
     ):
         super().__init__()
         """
-        Description:
-        ------------
-        This class load tokenised data from disk and extract the following information:
-        - input_ids: tokenised gene expression data, padded to the same length
-        - length: length of each cell
-        """
+                Description:
+                ------------
+                This class load tokenised data from disk and
+                extract the following information:
+                - input_ids: tokenised gene expression data, padded to the same length
+                - length: length of each cell
+                """
         self.shuffle = shuffle
-        self.src_dataset = src_dataset
-        self.tgt_dataset = tgt_dataset
-        self.src_adata = src_adata
-        self.tgt_adata = tgt_adata
-        print('src_dataset', src_dataset)
-        print('tgt_dataset', tgt_dataset)
-        # check if the index is the same
-        if not all(
-            self.tgt_adata.obs['cell_pairing_index']
-            == self.tgt_dataset['cell_pairing_index']
-        ):
-            raise ValueError('Index of adata and tokenized data do not match')
+        if split_indices is None:
+            self.src_dataset = src_dataset
+            self.tgt_dataset = tgt_dataset
+            self.src_adata = src_adata
+            self.tgt_adata = tgt_adata
+        else:
+            self.src_dataset = src_dataset.select(split_indices)
+            self.tgt_dataset = tgt_dataset.select(split_indices)
+            if src_adata is not None:
+                self.src_adata = src_adata[split_indices, :]
+            if tgt_adata is not None:
+                self.tgt_adata = tgt_adata[split_indices, :]
+            # check if the index is the same
+        if tgt_adata is not None and tgt_adata.obs is not None:
+            if not all(
+                tgt_adata.obs['cell_pairing_index'] == tgt_dataset['cell_pairing_index']
+            ):
+                raise ValueError('Index of adata and tokenized data do not match')
 
-        self.size_factor = np.ravel(tgt_adata.X.sum(axis=1))
-        self.conditions = conditions
-        self.conditions_combined = conditions_combined
-        self.condition_encodings = condition_encodings
-
-        # with open(token_dictionary_file, "rb") as f:
-        #     self.gene_token_dict = pickle.load(f)
-        # self.pad_token_id = self.gene_token_dict.get("<pad>")
+            self.size_factor = np.ravel(tgt_adata.X.sum(axis=1))
+            self.conditions = conditions
+            self.conditions_combined = conditions_combined
+            self.condition_encodings = condition_encodings
 
     def __getitem__(self, ind):
         return {
@@ -115,7 +119,8 @@ class scConformerDataModule(LightningDataModule):
         num_workers: int = 8,
         shuffle: bool = False,
         max_len: int = 2048,
-        loss_mode: str = 'mse',
+        seed: int = 42,
+        split: str = 'stratified',  # 'random', 'stratified', 'unseen_donor
         src_adata: ad.AnnData = None,
         tgt_adata: ad.AnnData = None,
         condition_keys: Optional[list] = None,
@@ -142,16 +147,20 @@ class scConformerDataModule(LightningDataModule):
         self.pad_token_id = self.gene_token_dict.get('<pad>')
         self.max_len = max_len
         self.dataset = None
-        self.loss_mode = loss_mode
         self.size_factor = np.ravel(tgt_adata.X.sum(axis=1))
         self.condition_keys = condition_keys
         self.condition_encodings = condition_encodings
         self.conditions_combined_encodings = conditions_combined_encodings
         self.drop_last = drop_last
         # train test split
+        self.split = split
+        self.train_indices = None
+        self.val_indices = None
+        self.test_indices = None
         self.train_prop = 0.8
         self.val_prop = 0.1
         self.test_prop = 0.1
+        self.seed = seed
 
         # create condition encoder for categorical variables in
         # form of dictionary with key: value pairs based on condition_keys
@@ -175,62 +184,143 @@ class scConformerDataModule(LightningDataModule):
             )
 
     def setup(self, stage=None):
-        if self.condition_encodings is not None:
-            self.dataset = scConformerDataset(
-                src_dataset=self.src_dataset,
-                tgt_dataset=self.tgt_dataset,
-                src_adata=self.src_adata,
-                tgt_adata=self.tgt_adata,
-                shuffle=self.shuffle,
-                conditions=self.conditions if self.condition_keys is not None else None,
-                conditions_combined=self.conditions_combined
-                if self.condition_keys is not None
-                else None,
-            )
-        else:
-            self.dataset = scConformerDataset(
-                src_dataset=self.src_dataset,
-                tgt_dataset=self.tgt_dataset,
-                src_adata=self.src_adata,
-                tgt_adata=self.tgt_adata,
-                shuffle=self.shuffle,
-            )
-        # if self.train is None and self.val is None and self.test is None:
-        #     self.train, self.val, self.test = self.train_test_val_split()
+        # if self.condition_encodings is not None:
+        #     self.dataset = scConformerDataset(
+        #         src_dataset=self.src_dataset,
+        #         tgt_dataset=self.tgt_dataset,
+        #         split_indices=self.train_indices,
+        #         src_adata=self.src_adata,
+        #         tgt_adata=self.tgt_adata,
+        #         shuffle=self.shuffle,
+        #         conditions=self.conditions if
+        #         self.condition_keys is not None else None,
+        #         conditions_combined=self.conditions_combined
+        #         if self.condition_keys is not None
+        #         else None,
+        #     )
+        # else:
+        #     self.dataset = scConformerDataset(
+        #         src_dataset=self.src_dataset,
+        #         tgt_dataset=self.tgt_dataset,
+        #         split_indices=self.test_indices,
+        #         src_adata=self.src_adata,
+        #         tgt_adata=self.tgt_adata,
+        #         shuffle=self.shuffle,
+        #     )
+        if (
+            self.train_indices is None
+            and self.val_indices is None
+            and self.test_indices is None
+        ):
+            (
+                self.train_indices,
+                self.val_indices,
+                self.test_indices,
+            ) = self.train_test_val_split()
 
-        # # Assign train/val datasets for use in dataloaders
-        # if stage == 'fit' or stage is None:
-        #     self.train_dataset = self.train
-        #     self.val_dataset = self.val
-
-        # # Assign test dataset for use in dataloader(s)
-        # if stage == 'test' or stage is None:
-        #     self.test_dataset = self.test
+        # Assign train/val datasets for use in dataloaders
+        if stage == 'fit' or stage is None:
+            if self.condition_encodings is not None:
+                self.train_dataset = scConformerDataset(
+                    src_dataset=self.src_dataset,
+                    tgt_dataset=self.tgt_dataset,
+                    split_indices=self.train_indices,
+                    src_adata=self.src_adata,
+                    tgt_adata=self.tgt_adata,
+                    shuffle=self.shuffle,
+                    conditions=self.conditions
+                    if self.condition_keys is not None
+                    else None,
+                    conditions_combined=self.conditions_combined
+                    if self.condition_keys is not None
+                    else None,
+                )
+                self.val_dataset = scConformerDataset(
+                    src_dataset=self.src_dataset,
+                    tgt_dataset=self.tgt_dataset,
+                    split_indices=self.val_indices,
+                    src_adata=self.src_adata,
+                    tgt_adata=self.tgt_adata,
+                    shuffle=self.shuffle,
+                    conditions=self.conditions
+                    if self.condition_keys is not None
+                    else None,
+                    conditions_combined=self.conditions_combined
+                    if self.condition_keys is not None
+                    else None,
+                )
+            else:
+                self.train_dataset = scConformerDataset(
+                    src_dataset=self.src_dataset,
+                    tgt_dataset=self.tgt_dataset,
+                    split_indices=self.train_indices,
+                    src_adata=self.src_adata,
+                    tgt_adata=self.tgt_adata,
+                    shuffle=self.shuffle,
+                )
+                self.val_dataset = scConformerDataset(
+                    src_dataset=self.src_dataset,
+                    tgt_dataset=self.tgt_dataset,
+                    split_indices=self.val_indices,
+                    src_adata=self.src_adata,
+                    tgt_adata=self.tgt_adata,
+                    shuffle=self.shuffle,
+                )
+        if stage == 'test' or stage is None:
+            if self.condition_encodings is not None:
+                self.test_dataset = scConformerDataset(
+                    src_dataset=self.src_dataset,
+                    tgt_dataset=self.tgt_dataset,
+                    split_indices=self.test_indices,
+                    src_adata=self.src_adata,
+                    tgt_adata=self.tgt_adata,
+                    shuffle=self.shuffle,
+                    conditions=self.conditions
+                    if self.condition_keys is not None
+                    else None,
+                    conditions_combined=self.conditions_combined
+                    if self.condition_keys is not None
+                    else None,
+                )
+            else:
+                self.test_dataset = scConformerDataset(
+                    src_dataset=self.src_dataset,
+                    tgt_dataset=self.tgt_dataset,
+                    split_indices=self.test_indices,
+                    src_adata=self.src_adata,
+                    tgt_adata=self.tgt_adata,
+                    shuffle=self.shuffle,
+                )
 
     def train_test_val_split(self):
         np.random.seed(self.seed)  # reproducibility
-        if self.split == 'random':
-            train, val, test = self.random_split()
-        elif self.split == 'stratified':
-            train, val, test = self.stratified_split()
-        elif self.split == 'unseen_donor':
-            train, val, test = self.unseen_donor_split()
+
+        if self.split == 'stratified':
+            train_indices, val_indices, test_indices = self.stratified_split()
+            # check that indices are unique to avoid data leakage
+            assert len(set(train_indices).intersection(val_indices)) == 0
+            assert len(set(train_indices).intersection(test_indices)) == 0
+            assert len(set(val_indices).intersection(test_indices)) == 0
+        # elif self.split == 'random':
+        #     train, val, test = self.random_split()
+        # elif self.split == 'unseen_donor':
+        #     train, val, test = self.unseen_donor_split()
         else:
             raise ValueError(
                 "split is not available, must be either '"
                 "random','stratified' or 'unseen_donor'"
             )
         print(
-            f'Number of samples in train set: {len(train)}\n'
-            f'Number of samples in val set: {len(val)}\n'
-            f'Number of samples in test set: {len(test)}'
+            f'Number of samples in train set: {len(train_indices)}\n'
+            f'Number of samples in val set: {len(val_indices)}\n'
+            f'Number of samples in test set: {len(test_indices)}'
         )
 
-        return train, val, test
+        return train_indices, val_indices, test_indices
 
     def train_dataloader(self):
         data = DataLoader(
-            self.dataset,
+            self.train_dataset,
             batch_size=self.batch_size,
             shuffle=self.shuffle,
             num_workers=self.num_workers,
@@ -239,19 +329,21 @@ class scConformerDataModule(LightningDataModule):
         )
         return data
 
-    # def val_dataloader(self):
-    #     data = DataLoader(
-    #         self.val_dataset,
-    #         batch_size=self.batch_size,
-    #         shuffle=self.shuffle,
-    #         num_workers=self.num_workers,
-    #         collate_fn=self.collate,
-    #         drop_last=self.drop_last,
-    #     )
-    #     return data
+    def val_dataloader(self):
+        data = DataLoader(
+            self.val_dataset,
+            # self.dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            collate_fn=self.collate,
+            drop_last=self.drop_last,
+        )
+        return data
+
     def test_dataloader(self):
         data = DataLoader(
-            self.dataset,
+            self.test_dataset,
             batch_size=self.batch_size,
             shuffle=self.shuffle,
             num_workers=self.num_workers,
@@ -370,40 +462,42 @@ class scConformerDataModule(LightningDataModule):
         return train, val, test
 
     def stratified_split(self):
-        # define groups for stratified split by Time_point and Cell_type
-        groups = self.dataset.adata.obs['Cell_type'].copy()
-        # combine to one column
-        groups.loc[:, 'stratified'] = groups.loc[:, ['Cell_type']].apply(
-            lambda x: '_'.join(x), axis=1
-        )
+        """
+        Description:
+        ------------
+        Stratified split of dataset based on cell type.
+        """
         # define train, val and test size based on unique groups
         # extract unique groups and counts
-        unique_groups = groups['stratified'].unique()
-        group_indices = [np.where(groups == i)[0] for i in unique_groups]
+        groups = ['Cell_type', 'Donor']
+        groups_df = self.tgt_adata.obs[groups].copy()
+        if len(groups) > 1:
+            groups_df.loc[:, 'stratified'] = groups_df.loc[:, groups].apply(
+                lambda x: '_'.join(x), axis=1
+            )
+        else:
+            groups_df.loc[:, 'stratified'] = groups_df.loc[:, groups]
+        groups_df.reset_index(drop=True, inplace=True)
+        unique_groups = groups_df['stratified'].unique()
+        group_indices = [
+            np.where(groups_df['stratified'] == i)[0] for i in unique_groups
+        ]
         train_indices, test_indices, val_indices = [], [], []
-        count = 0
+
         for indices in group_indices:
             assert (
-                len(np.unique(groups.iloc[indices].stratified)) == 1
+                len(np.unique(groups_df.iloc[indices].stratified)) == 1
             ), 'groups are not stratified'
             # randomly shuffle indices
             np.random.shuffle(indices)
             train_size = np.round(self.train_prop * len(indices)).astype(int)
             test_size = np.round(self.test_prop * len(indices)).astype(int)
             # val_size = len(indices) - train_size - test_size
-
             # split indices into train, val and test set
             train_indices.extend(indices[:train_size])
             test_indices.extend(indices[train_size : train_size + test_size])
             val_indices.extend(indices[train_size + test_size :])
-            count += 1
-
-            # assert len(np.unique(groups.iloc[train_indices])) == 1
-        train = Subset(self.dataset, train_indices)
-        val = Subset(self.dataset, val_indices)
-        test = Subset(self.dataset, test_indices)
-
-        return train, val, test
+        return train_indices, val_indices, test_indices
 
     def unseen_donor_split(self):
         # define groups for stratified split by Time_point and Cell_type
