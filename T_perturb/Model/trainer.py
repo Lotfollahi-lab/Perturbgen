@@ -153,7 +153,6 @@ class scConformertrainer(LightningModule):
             original_lens=batch['src_length'],
             generate=self.generate,
         )
-
         return outputs
 
     def configure_optimizers(self):
@@ -208,11 +207,39 @@ class scConformertrainer(LightningModule):
         # return F1 score and accuracy
         pass
 
+    def validation_step(self, batch, *args, **kwargs):
+        outputs = self.forward(batch)
+        logits = outputs['logits']
+        labels = outputs['labels']
+        perp = Perplexity(ignore_index=-100).to('cuda')
+        perp.update(logits, labels)
+        logits = logits.contiguous().view(-1, logits.size(-1))
+        labels = labels.contiguous().view(-1)
+        masking_loss = self.masking_loss(logits, labels)
+        self.log(
+            'val/loss',
+            masking_loss,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=batch['tgt_input_ids'].shape[0],
+        )
+        self.log(
+            'val/Perplexity',
+            perp.compute(),
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=batch['tgt_input_ids'].shape[0],
+        )
+
     def test_step(self, batch, *args, **kwargs):
         if self.return_embeddings:
             outputs = self.forward(batch)
-            self.cls_embeddings_list.append(outputs['embeddings'][:, 0, :])
-            self.gene_embeddings_list.append(outputs['embeddings'][:, 1:, :])
+            self.cls_embeddings_list.append(outputs['dec_embedding'][:, 0, :])
+            self.gene_embeddings_list.append(outputs['dec_embedding'][:, 1:, :])
             self.token_id_list.append(batch['tgt_input_ids'])
             # self.tgt_output['cell_type'].append(batch['tgt_cell_type'])
             # self.tgt_output['cell_population'].append(batch['tgt_cell_population'])
@@ -337,7 +364,6 @@ class CountDecodertrainer(LightningModule):
         conditions_combined: Optional[List[Any]] = None,
         tgt_vocab_size: int = 25000,
         d_model: int = 256,
-        cell_number: int = 143360,
         generate: bool = True,
         tgt_adata: Optional[ad.AnnData] = None,
         *args,
@@ -411,7 +437,7 @@ class CountDecodertrainer(LightningModule):
         self.metric = nn.ModuleDict(
             {
                 'mse': MeanSquaredError(),
-                'pearson': PearsonCorrCoef(num_outputs=cell_number),
+                'pearson': PearsonCorrCoef(),
             }
         )
         self.generate = generate
@@ -420,6 +446,10 @@ class CountDecodertrainer(LightningModule):
         self.train_true_counts_list: List[int] = []
         self.train_ctrl_counts_list: List[int] = []
         self.train_pred_counts_list: List[int] = []
+        self.val_true_counts_list: List[int] = []
+        self.val_pred_counts_list: List[int] = []
+        self.test_true_counts_list: List[int] = []
+        self.test_ctrl_counts_list: List[int] = []
         self.test_pred_counts_list: List[int] = []
 
     def forward(self, batch):
@@ -546,7 +576,10 @@ class CountDecodertrainer(LightningModule):
         pred_counts = torch.cat(self.train_pred_counts_list)
         ctrl_counts = torch.cat(self.train_ctrl_counts_list)
         # Pearson correlation coefficient
-        pearson = self.metric['pearson'](pred_counts.T, true_counts.T)
+        self.metric['pearson_train'] = PearsonCorrCoef(
+            num_outputs=true_counts.shape[0]
+        ).to(self.target_device)
+        pearson = self.metric['pearson_train'](pred_counts.T, true_counts.T)
         mean_pearson = torch.mean(pearson)
         self.log(
             'train/pearson',
@@ -558,7 +591,7 @@ class CountDecodertrainer(LightningModule):
         # Pearson delta
         true_delta = true_counts - ctrl_counts
         pred_delta = pred_counts - ctrl_counts
-        pearson_delta = self.metric['pearson'](pred_delta.T, true_delta.T)
+        pearson_delta = self.metric['pearson_train'](pred_delta.T, true_delta.T)
         mean_pearson_delta = torch.mean(pearson_delta)
         self.log(
             'train/pearson_delta',
@@ -571,6 +604,54 @@ class CountDecodertrainer(LightningModule):
         self.train_true_counts_list = []
         self.train_ctrl_counts_list = []
         self.train_pred_counts_list = []
+
+    def validation_step(self, batch, *args, **kwargs):
+        outputs = self.forward(batch)
+        count_loss, pred_count = self.compute_count_loss(outputs, batch)
+        self.log(
+            'val/loss',
+            count_loss,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=batch['tgt_input_ids'].shape[0],
+        )
+        # MSE
+        mse = self.metric['mse'](pred_count, batch['tgt_counts'])
+        mean_mse = torch.mean(mse)
+        self.log(
+            'val/mse',
+            mean_mse,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
+        self.val_true_counts_list.append(batch['tgt_counts'])
+        self.val_pred_counts_list.append(pred_count)
+        return count_loss
+
+    def on_validation_epoch_end(self):
+        # return Pearson correlation coefficient
+        true_counts = torch.cat(self.val_true_counts_list)
+        pred_counts = torch.cat(self.val_pred_counts_list)
+        # Pearson correlation coefficient
+
+        self.metric['pearson_val'] = PearsonCorrCoef(
+            num_outputs=true_counts.shape[0]
+        ).to(self.target_device)
+        pearson = self.metric['pearson_val'](pred_counts.T, true_counts.T)
+        mean_pearson = torch.mean(pearson)
+        self.log(
+            'val/pearson',
+            mean_pearson,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
+        # set to status quo
+        self.val_true_counts_list = []
+        self.val_pred_counts_list = []
 
     def test_step(self, batch, *args, **kwargs):
         if self.generate:
@@ -606,28 +687,91 @@ class CountDecodertrainer(LightningModule):
                 logger=True,
             )
             self.test_pred_counts_list.append(pred_count)
+        else:
+            outputs = self.forward(batch)
+            count_loss, pred_count = self.compute_count_loss(outputs, batch)
+            self.log(
+                'test/loss',
+                count_loss,
+                on_step=True,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+                batch_size=batch['tgt_input_ids'].shape[0],
+            )
+            # MSE
+            mse = self.metric['mse'](pred_count, batch['tgt_counts'])
+            mean_mse = torch.mean(mse)
+            self.log(
+                'test/mse',
+                mean_mse,
+                on_epoch=True,
+                on_step=True,
+                prog_bar=True,
+                logger=True,
+            )
+            self.test_pred_counts_list.append(pred_count)
+            self.test_true_counts_list.append(batch['tgt_counts'])
+            self.test_ctrl_counts_list.append(batch['src_counts'])
 
     def on_test_epoch_end(self):
-        # create anndata for mmd
-        pred_counts = torch.cat(self.test_pred_counts_list).detach().cpu().numpy()
-        pred_adata = ad.AnnData(X=pred_counts, obs=self.adata.obs, var=self.adata.var)
-        # calculate MMD and EMD
-        condition_key = 'Cell_type'
-        mmd = evaluate_mmd(self.adata, pred_adata, condition_key=condition_key)
-        mmd['metric'] = 'mmd'
-        # rename column called mmd
-        mmd = mmd.rename(columns={'mmd': 'value'})
-        emd = evaluate_emd(self.adata, pred_adata, condition_key=condition_key)
-        emd['metric'] = 'emd'
-        emd = emd.rename(columns={'emd': 'value'})
-        # concatenate
-        metrics = pd.concat([mmd, emd])
-        # save metrics
-        metrics.to_csv(
-            f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            f't_generative/T_perturb/T_perturb/plt/res/Cora/'
-            f'generate_mmd_emd_{condition_key}_metrics.csv'
-        )
+        if self.generate:
+            # create anndata for mmd
+            pred_counts = torch.cat(self.test_pred_counts_list).detach().cpu().numpy()
+            pred_adata = ad.AnnData(
+                X=pred_counts, obs=self.adata.obs, var=self.adata.var
+            )
+            # calculate MMD and EMD
+            condition_key = 'Cell_type'
+            mmd = evaluate_mmd(self.adata, pred_adata, condition_key=condition_key)
+            mmd['metric'] = 'mmd'
+            # rename column called mmd
+            mmd = mmd.rename(columns={'mmd': 'value'})
+            emd = evaluate_emd(self.adata, pred_adata, condition_key=condition_key)
+            emd['metric'] = 'emd'
+            emd = emd.rename(columns={'emd': 'value'})
+            # concatenate
+            metrics = pd.concat([mmd, emd])
+            # save metrics
+            metrics.to_csv(
+                f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+                f't_generative/T_perturb/T_perturb/plt/res/Cora/'
+                f'generate_mmd_emd_{condition_key}_metrics.csv'
+            )
+        else:
+            # return Pearson correlation coefficient
+            true_counts = torch.cat(self.test_true_counts_list)
+            pred_counts = torch.cat(self.test_pred_counts_list)
+            ctrl_counts = torch.cat(self.test_ctrl_counts_list)
+            # Pearson correlation coefficient
+            self.metric['pearson_test'] = PearsonCorrCoef(
+                num_outputs=true_counts.shape[0]
+            ).to(self.target_device)
+            pearson = self.metric['pearson_test'](pred_counts.T, true_counts.T)
+            mean_pearson = torch.mean(pearson)
+            self.log(
+                'test/pearson',
+                mean_pearson,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+            )
+            # Pearson delta
+            true_delta = true_counts - ctrl_counts
+            pred_delta = pred_counts - ctrl_counts
+            pearson_delta = self.metric['pearson_test'](pred_delta.T, true_delta.T)
+            mean_pearson_delta = torch.mean(pearson_delta)
+            self.log(
+                'test/pearson_delta',
+                mean_pearson_delta,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+            )
+            # set to status quo
+            self.test_true_counts_list = []
+            self.test_ctrl_counts_list = []
+            self.test_pred_counts_list = []
 
     def configure_optimizers(self):
         parameters = [{'params': self.decoder.parameters(), 'lr': self.lr}]
