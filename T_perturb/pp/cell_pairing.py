@@ -2,9 +2,7 @@ import os
 from pathlib import Path
 from typing import Dict, List
 
-import anndata
 import numpy as np
-import pandas as pd
 import scanpy as sc
 import tqdm
 from datasets import load_from_disk
@@ -129,14 +127,3 @@ adata_40h.write_h5ad(
 adata_5d.write_h5ad(
     f'./res/h5ad_data/cytoimmgen_tokenisation_degs_{pairing_mode}_5d.h5ad'
 )
-
-df = pd.DataFrame(
-    adata_subset_.X.A, index=adata_subset_.obs.index, columns=adata_subset_.var.index
-)
-# use row index instead of index
-df.reset_index(drop=True, inplace=True)
-subset_df = df.loc[cell_pairings['16h']]
-obs = adata_subset_.obs.loc[cell_pairings['16h']]
-obs.index = obs['level_0']
-var = adata.var.loc[df.columns]
-subset_adata = anndata.AnnData(X=subset_df.values, obs=obs, var=var)

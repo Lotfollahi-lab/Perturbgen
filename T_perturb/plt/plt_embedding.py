@@ -31,7 +31,7 @@ time_point = '5d'
 
 adata = sc.read_h5ad(
     f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-    f'T_perturb/plt/res/scConformer/'
+    f'T_perturb/plt/res/Cora/'
     f'cls_embeddings_stratified_pairing_{time_point}_cosine_similarity.h5ad'
 )
 
@@ -111,14 +111,14 @@ sc.pl.embedding(
     show=False,
 )
 plt.savefig(
-    f'./res/scConformer/cls_embeddings_umap_{time_point}.pdf',
+    f'./res/Cora/cls_embeddings_umap_{time_point}.pdf',
     bbox_inches='tight',
 )
 plt.close()
 
 adata = sc.read_h5ad(
     f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-    f'T_perturb/plt/res/scConformer/'
+    f'T_perturb/plt/res/Cora/'
     f'cls_embeddings_stratified_pairing_{time_point}_cosine_similarity.h5ad'
 )
 var_names = adata.obsm['cosine_similarity'].columns
@@ -142,7 +142,7 @@ sc.pl.dotplot(
 
 # save figure
 plt.savefig(
-    f'./res/scConformer/cosine_similarity_{time_point}.pdf',
+    f'./res/Cora/cosine_similarity_{time_point}.pdf',
     bbox_inches='tight',
 )
 plt.close()

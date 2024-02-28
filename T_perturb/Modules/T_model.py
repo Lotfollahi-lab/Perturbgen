@@ -96,16 +96,7 @@ class CrossAttention(nn.Module):
             mask = rearrange(mask, 'b ... -> b (...)')
             max_neg_value = -torch.finfo(sim.dtype).max
             mask = repeat(mask, 'b j -> (b h) () j', h=h)
-            # print('Shape of mask:')
-            # print(mask.shape)
-            # print(mask[0])
-            # print(mask[1])
-            # print(mask[0]==mask[1])
             sim.masked_fill_(mask, max_neg_value)
-            # print('Sim:')
-            # print(sim.shape)
-            # print(sim[0][0])
-            # print(sim[1])
 
         # attention, what we cannot get enough of
         attn = sim.softmax(dim=-1)
@@ -226,8 +217,6 @@ class Geneformerwrapper(nn.Module):
 
     def forward(self, src_input_id, src_attention_mask):
         with torch.no_grad():
-            # print('src_input_id', src_input_id.device)
-            # print('src_attention_mask', src_attention_mask.device)
             outputs = self.model.forward(
                 input_ids=src_input_id, attention_mask=src_attention_mask
             )
@@ -299,8 +288,9 @@ class scConformer(nn.Module):
         )  # start at 25426, because of 0 Python indexing
         total_vocab_size = tgt_vocab_size + 1
         if add_mask_id:
-            total_vocab_size = total_vocab_size + 1
             self.mask_token = total_vocab_size
+            total_vocab_size = total_vocab_size + 1
+
             self.masked_embed = nn.Parameter(torch.zeros(1, self.embed_dim))
 
         self.token_embedding = nn.Embedding(
@@ -323,7 +313,8 @@ class scConformer(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def generate_pad(self, tgt):
-        tgt_pad = torch.tensor((tgt == 0), dtype=bool).cpu().detach()
+        tgt_ = tgt.clone().detach()
+        tgt_pad = tgt_ == 0
 
         return tgt_pad
 
@@ -345,7 +336,9 @@ class scConformer(nn.Module):
 
     def generate_mask(self, tgt, tgt_pad, mlm_probability=0.15):
         labels = tgt.clone()
-        probability_matrix = torch.full(tgt_pad.shape, mlm_probability)
+        probability_matrix = torch.full(
+            tgt_pad.shape, mlm_probability, device=self.device
+        )
         cls_tgt_pad = tgt_pad.clone()
         cls_tgt_pad[:, 0] = True
         probability_matrix = probability_matrix.masked_fill(
@@ -429,9 +422,7 @@ class scConformer(nn.Module):
         else:
             tgt_mask = tgt_input_id == (self.mask_token)
             tgt_mask = tgt_mask | (tgt_input_id == 0)
-        if self.generate:
-            # mask CLS token from prediction
-            tgt_mask[:, 0] = False
+
         src_embedded = self.encoder_layers(src_input_id, src_attention_mask)
         # overwrite with tgt input id with masked token
         tgt_embedded_mask = self.token_embedding(tgt_input_id)
@@ -444,119 +435,25 @@ class scConformer(nn.Module):
                 dec_embedding, src_attention_mask, tgt_mask, enc_output
             )
         logits = self.fc(dec_embedding)
-
         outputs = {}
         if self.training:
             outputs['logits'] = logits
             outputs['labels'] = labels
             outputs['dec_embedding'] = dec_embedding
 
-        # # create dictionnary to store the output
-        # if self.eval:
-        #     if return_embeddings:
-        #         outputs['embeddings'] = dec_embedding
-        #     if generate:
-        #         if self.loss_mode == 'mse':
-        #             outputs['logits'] = logits[:, 1:, :]
-        #             # output['count_lognorm'] = count_lognorm
-        #             # output['count_dropout'] = None
-        #         elif self.loss_mode == 'zinb':
-        #             outputs['logits'] = logits[:, 1:, :]
-        #             # output['count_mean'] = count_mean
-        #             # output['count_dropout'] = count_dropout
-        #         elif self.loss_mode == 'nb':
-        #             outputs['logits'] = logits[:, 1:, :]
-        #             # output['count_mean'] = count_mean
-        #             # output['count_dropout'] = None
+        # create dictionnary to store the output
+
+        if return_embeddings:
+            outputs['embeddings'] = dec_embedding
+        if generate:
+            outputs['cls_embedding'] = dec_embedding[:, 0, :]
+            outputs['logits'] = logits[:, 1:, :]  # ignore CLS token
         return outputs
-
-    def generate(
-        self,
-        src_input_id,
-        noise_schedule,
-        tgt_vocab_size,
-        tgt_input_id,
-        seq_length,
-        can_remask_prev_masked=False,
-        topk_filter_thres=0.9,
-        # steps=18,
-        temperature=2.0,  # keep in range 2.0-3.0
-        # self_cond_prob=0.9,
-        timesteps=18,  # optimal iterations found in maskgit paper
-    ):
-        tgt_pad = self.generate_pad(tgt_input_id)
-        batch_size = tgt_input_id.shape[0]
-        seq_len = tgt_input_id.shape[1]
-        shape = (batch_size, seq_len)
-        # create ids and scores matrix for each batch
-        # exclude CLS token from token
-        ids = torch.full(shape, self.mask_token, dtype=torch.long, device=self.device)
-        # pad ids
-        scores = torch.zeros(shape, dtype=torch.float, device=self.device)
-        tgt_pad = tgt_pad
-        starting_temperature = temperature
-        demask_fn = self.forward
-
-        for timestep, steps_until_x0 in tqdm(
-            zip(
-                torch.linspace(0, 1, timesteps, device=self.device),
-                reversed(range(timesteps)),
-            ),
-            total=timesteps,
-        ):
-            # mask scheduler function, gamma
-            rand_mask_prob = noise_schedule(timestep)
-            # pad scores and ids
-            scores = scores.masked_fill(tgt_pad, -torch.finfo().max)
-            ids = ids.masked_fill(tgt_pad, 0)
-            ids_to_keep = torch.zeros_like(ids, dtype=torch.long)
-            for i, score in enumerate(scores):
-                # count zeros in each row
-                unpadded = len(score) - sum(score == -torch.finfo().max)
-                num_token_masked = int(unpadded * rand_mask_prob)
-                masked_indices = score.topk(num_token_masked, dim=-1).indices
-                mask = torch.zeros_like(ids[i], dtype=torch.bool)
-                mask[masked_indices] = True
-                ids[i, masked_indices] = self.mask_token
-                # keep indices which are not masked
-
-                ids_to_keep[i, ~mask] = ids[i, ~mask]
-            logits = demask_fn(
-                src_input_id=src_input_id,  # target
-                # self_cond_embed = self_cond_embed,
-                tgt_input_id=ids,  # change to token id
-                return_embed=False,
-            )
-            # Create a mask of already predicted tokens
-            for sample in range(batch_size):
-                unique_ids = torch.unique(ids_to_keep[sample])
-                logits[sample, :, unique_ids] = -float('inf')
-            filtered_logits = top_k(logits, topk_filter_thres)
-            temperature = starting_temperature * (
-                steps_until_x0 / timesteps
-            )  # temperature is annealed
-            pred_ids = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
-
-            is_mask = ids == self.mask_token
-
-            ids = torch.where(is_mask, pred_ids, ids)
-            probs_without_temperature = logits.softmax(dim=-1)
-            # avoid predicting the same token
-            scores = 1 - probs_without_temperature.gather(2, pred_ids[..., None])
-            scores = rearrange(scores, '... 1 -> ...')
-
-            if not can_remask_prev_masked:
-                scores = scores.masked_fill(~is_mask, -torch.finfo().max)
-
-        return ids, tgt_input_id, logits
 
 
 class CountHead(nn.Module):
     def __init__(
-        self,
-        loss_mode: str = 'zinb',
-        tgt_vocab_size: int = 25426,
-        d_model: int = 256,
+        self, loss_mode: str = 'zinb', tgt_vocab_size: int = 25426, d_model: int = 256
     ):
         super(CountHead, self).__init__()
         self.loss_mode = loss_mode
@@ -597,14 +494,26 @@ class CountDecoder(nn.Module):
         loss_mode: str = 'zinb',
         tgt_vocab_size: int = 25426,
         d_model: int = 256,
+        add_mask_id: bool = True,
     ):
         super(CountDecoder, self).__init__()
         self.pretrained_model = pretrained_model
         # for _, param in self.pretrained_model.named_parameters():
         #     param.requires_grad = False
-
+        self.embed_dim = d_model
+        if add_mask_id:
+            total_vocab_size = tgt_vocab_size + 1  # CLS and masked token
+            self.mask_token = total_vocab_size
         self.loss_mode = loss_mode
         self.decoder = CountHead(loss_mode, tgt_vocab_size, d_model)
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.cls_embedding = None
+
+    def generate_pad(self, tgt):
+        tgt_ = tgt.clone().detach()
+        tgt_pad = tgt_ == 0
+
+        return tgt_pad
 
     def forward(
         self,
@@ -614,26 +523,28 @@ class CountDecoder(nn.Module):
         return_embeddings=False,
         generate=False,
     ):
-        # call the forward method of the parent class
-        outputs = self.pretrained_model.forward(
-            src_input_id=src_input_id,
-            tgt_input_id=tgt_input_id,
-            original_lens=original_lens,
-            return_embeddings=return_embeddings,
-            generate=generate,
-        )
-        cls_embedding = outputs['dec_embedding'][:, 0, :]
-        # use cls token for count prediction
-        count_outpus = self.decoder.forward(cls_embedding)
-        return count_outpus
+        if self.training:
+            # call the forward method of the parent class
+            outputs = self.pretrained_model.forward(
+                src_input_id=src_input_id,
+                tgt_input_id=tgt_input_id,
+                original_lens=original_lens,
+                return_embeddings=return_embeddings,
+                generate=generate,
+            )
+            cls_embedding = outputs['dec_embedding'][:, 0, :]
+
+            # use cls token for count prediction
+            count_outputs = self.decoder.forward(cls_embedding)
+
+        return count_outputs
 
     def generate(
         self,
         src_input_id,
         noise_schedule,
-        tgt_vocab_size,
         tgt_input_id,
-        seq_length,
+        original_lens,
         can_remask_prev_masked=False,
         topk_filter_thres=0.9,
         # steps=18,
@@ -642,17 +553,18 @@ class CountDecoder(nn.Module):
         timesteps=18,  # optimal iterations found in maskgit paper
     ):
         tgt_pad = self.generate_pad(tgt_input_id)
+
         batch_size = tgt_input_id.shape[0]
         seq_len = tgt_input_id.shape[1]
         shape = (batch_size, seq_len)
         # create ids and scores matrix for each batch
         # exclude CLS token from token
         ids = torch.full(shape, self.mask_token, dtype=torch.long, device=self.device)
+
         # pad ids
         scores = torch.zeros(shape, dtype=torch.float, device=self.device)
-        tgt_pad = tgt_pad
         starting_temperature = temperature
-        demask_fn = self.pretrained_model.forward()
+        demask_fn = self.pretrained_model
 
         for timestep, steps_until_x0 in tqdm(
             zip(
@@ -665,8 +577,10 @@ class CountDecoder(nn.Module):
             rand_mask_prob = noise_schedule(timestep)
             # pad scores and ids
             scores = scores.masked_fill(tgt_pad, -torch.finfo().max)
+
             ids = ids.masked_fill(tgt_pad, 0)
             ids_to_keep = torch.zeros_like(ids, dtype=torch.long)
+
             for i, score in enumerate(scores):
                 # count zeros in each row
                 unpadded = len(score) - sum(score == -torch.finfo().max)
@@ -678,12 +592,14 @@ class CountDecoder(nn.Module):
                 # keep indices which are not masked
 
                 ids_to_keep[i, ~mask] = ids[i, ~mask]
-            logits = demask_fn(
+            outputs = demask_fn.forward(
                 src_input_id=src_input_id,  # target
                 # self_cond_embed = self_cond_embed,
                 tgt_input_id=ids,  # change to token id
-                return_embed=False,
+                original_lens=original_lens,
+                generate=True,
             )
+            logits = outputs['logits']
             # Create a mask of already predicted tokens
             for sample in range(batch_size):
                 unique_ids = torch.unique(ids_to_keep[sample])
@@ -704,8 +620,8 @@ class CountDecoder(nn.Module):
 
             if not can_remask_prev_masked:
                 scores = scores.masked_fill(~is_mask, -torch.finfo().max)
-
-        return ids, tgt_input_id, logits
+        count_outputs = self.decoder.forward(outputs['cls_embedding'])
+        return count_outputs
 
 
 if __name__ == '__main__':

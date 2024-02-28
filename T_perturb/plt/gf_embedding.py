@@ -141,7 +141,7 @@ embs_embeddings = embs.select_dtypes(include='number')
 # load adata
 adata = sc.read_h5ad(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-    'T_perturb/plt/res/scConformer/cls_embeddings_stratified_pairing_16h.h5ad'
+    'T_perturb/plt/res/Cora/cls_embeddings_stratified_pairing_16h.h5ad'
 )
 # check if Cell_population in adata.obs and embs_embeddings Cell_population are the same
 
@@ -153,7 +153,7 @@ adata.obsm['X_GF_zero_shot'] = embs_embeddings
 # save adata
 adata.write_h5ad(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-    'T_perturb/plt/res/scConformer/cls_embeddings_stratified_pairing_16h.h5ad'
+    'T_perturb/plt/res/Cora/cls_embeddings_stratified_pairing_16h.h5ad'
 )
 
 sc.pp.neighbors(adata, use_rep='X_GF_zero_shot', n_neighbors=50)
