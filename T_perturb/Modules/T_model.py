@@ -1,16 +1,14 @@
-"""
+'''
 Mostly copy-paste from timm library.
 https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
-"""
-
+'''
 import math
 
 import torch
 from einops import rearrange, repeat
 from torch import einsum, nn
+from tqdm import tqdm
 from transformers import BertForMaskedLM
-
-from T_perturb.Dataloaders.datamodule import GeneformerDataModule
 
 # def drop_path(x, drop_prob: float = 0.0, training: bool = False):
 #     if drop_prob == 0.0 or not training:
@@ -26,10 +24,10 @@ from T_perturb.Dataloaders.datamodule import GeneformerDataModule
 
 
 # class DropPath(nn.Module):
-#     """
+#     '''
 #     Drop paths (Stochastic Depth) per sample
 #     (when applied in main path of residual blocks).
-#     """
+#     '''
 
 #     def __init__(self, drop_prob=None):
 #         super(DropPath, self).__init__()
@@ -39,6 +37,10 @@ from T_perturb.Dataloaders.datamodule import GeneformerDataModule
 #         return drop_path(x, self.drop_prob, self.training)
 
 
+# use mlp with out feature = 1 for count decoder
+# predict mask token or on everything (whole sequence length)
+# use MSE (log norm)
+# use ZINB
 class Mlp(nn.Module):
     def __init__(
         self,
@@ -86,42 +88,26 @@ class CrossAttention(nn.Module):
         q = self.to_q(x)
         if context is None:
             context = x
-            print('SelfAttention')
-        else:
-            print('CrossAttention')
         k = self.to_k(context)
         v = self.to_v(context)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
-        # b = batch size, n = sequence length
-        # h = number of heads, d = dimension of each hea[d
         sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
         if mask is not None:
-            # print(mask.shape)
-            mask = rearrange(mask, 'b ... -> b (...)')  # flattening mask
+            mask = rearrange(mask, 'b ... -> b (...)')
             max_neg_value = -torch.finfo(sim.dtype).max
-            # print(mask.shape)
-            mask = repeat(mask, 'b j -> (b h) () j', h=h)  # repeat mask for each head
-            # #mask shape is off and is not broadcasted correctly
-            mask = mask.view(sim.shape)
-            sim = sim.masked_fill(mask == 0, max_neg_value)
-
-            # sim.masked_fill_(mask.to(device), max_neg_value)
-        else:
-            raise ValueError('mask is None')
+            mask = repeat(mask, 'b j -> (b h) () j', h=h)
+            sim.masked_fill_(mask, max_neg_value)
 
         # attention, what we cannot get enough of
         attn = sim.softmax(dim=-1)
-        print(attn[:, :10, :10])
-        print(attn[0, -30:, -30:])
         out = einsum('b i j, b j d -> b i d', attn, v)
         out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
-
         return self.to_out(out)
 
 
-# class Block(nn.Module):q
+# class Block(nn.Module):
 #     def __init__(
-#         self,q
+#         self,
 #         dim,
 #         num_heads,
 #         mlp_ratio=4.0,
@@ -188,9 +174,7 @@ class DecoderLayer(nn.Module):
     def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None):
         attn_output = self.self_attn(x, mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
-        attn_output = self.cross_attn(
-            x, context=enc_output, mask=src_mask
-        )  # change this back
+        attn_output = self.cross_attn(x, context=enc_output, mask=None)
         x = self.norm2(x + self.dropout(attn_output))
         ff_output = self.feed_forward(x)
         x = self.norm3(x + self.dropout(ff_output))
@@ -217,8 +201,8 @@ class PositionalEncoding(nn.Module):
 class Geneformerwrapper(nn.Module):
     def __init__(
         self,
-        model_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/generative_modelling_omic/Geneformer',
+        model_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        'generative_modelling_omic/Geneformer/',
         output_attentions=False,
         output_hidden_states=True,
     ):
@@ -241,110 +225,397 @@ class Geneformerwrapper(nn.Module):
         return embs
 
 
-class TTransformer(nn.Module):
+# noise schedule
+def cosine_schedule(t):
+    return torch.cos(t * math.pi * 0.5)
+
+
+def uniform(shape, min=0, max=1, device=None):
+    return torch.zeros(shape, device=device).float().uniform_(0, 1)
+
+
+def prob_mask_like(shape, prob, device=None):
+    if prob == 1:
+        return torch.ones(shape, device=device, dtype=torch.bool)
+    elif prob == 0:
+        return torch.zeros(shape, device=device, dtype=torch.bool)
+    else:
+        return uniform(shape, device=device) < prob
+
+
+def top_k(logits, thres=0.9):
+    k = math.ceil((1 - thres) * logits.shape[-1])
+    val, ind = logits.topk(k, dim=-1)
+    probs = torch.full_like(logits, float('-inf'))
+    probs.scatter_(2, ind, val)
+    return probs
+
+
+# sampling helper
+def log(t, eps=1e-20):
+    return torch.log(t.clamp(min=eps))
+
+
+def gumbel_noise(t):
+    noise = torch.zeros_like(t).uniform_(0, 1)
+    return -log(-log(noise))
+
+
+def gumbel_sample(t, temperature=1.0, dim=-1):
+    return ((t / max(temperature, 1e-10)) + gumbel_noise(t)).argmax(dim=dim)
+
+
+class scConformer(nn.Module):
     def __init__(
         self,
-        tgt_vocab_size=25426,
-        d_model=256,
-        num_heads=8,
-        num_layers=1,
-        d_ff=2048,
-        max_seq_length=2048,
-        dropout=0.0,
-        mlm_probability=0.15,
+        tgt_vocab_size: int = 25426,
+        d_model: int = 256,
+        num_heads: int = 8,
+        num_layers: int = 1,
+        d_ff: int = 2048,
+        max_seq_length: int = 2048,
+        dropout: float = 0.0,
+        mlm_probability: float = 0.3,
+        add_mask_id: bool = True,
     ):
-        super(TTransformer, self).__init__()
-        if torch.cuda.is_available():
-            self.device = torch.device('cuda')
-        else:
-            self.device = torch.device('cpu')
-
+        super(scConformer, self).__init__()
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
-        # initialize tensor for CLS token
+
         self.cls_token = torch.tensor(
-            [tgt_vocab_size], dtype=torch.long
+            [tgt_vocab_size], dtype=torch.long, device=self.device
         )  # start at 25426, because of 0 Python indexing
-        self.decoder_embedding = nn.Embedding(
-            tgt_vocab_size + 1, d_model, padding_idx=0
+        total_vocab_size = tgt_vocab_size + 1
+        if add_mask_id:
+            self.mask_token = total_vocab_size
+            total_vocab_size = total_vocab_size + 1
+
+            self.masked_embed = nn.Parameter(torch.zeros(1, self.embed_dim))
+
+        self.token_embedding = nn.Embedding(
+            total_vocab_size, d_model, padding_idx=0, device=self.device
         )
+
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
+        self.positional_encoding = self.positional_encoding.to(self.device)
 
         self.encoder_layers = Geneformerwrapper()
-        self.encoder_layers.eval()
+        self.encoder_layers = self.encoder_layers.to(self.device)
+
         self.decoder_layers = nn.ModuleList(
             [DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)]
         )
+        self.decoder_layers = self.decoder_layers.to(self.device)
 
         self.fc = nn.Linear(d_model, tgt_vocab_size)
+        self.fc = self.fc.to(self.device)
         self.dropout = nn.Dropout(dropout)
 
     def generate_pad(self, tgt):
-        tgt_pad = torch.tensor((tgt != 0), dtype=bool)
+        tgt_ = tgt.clone().detach()
+        tgt_pad = tgt_ == 0
+
         return tgt_pad
 
-    def generate_mask(self, src_attention_mask, tgt, tgt_pad):
-        src_mask = src_attention_mask.unsqueeze(1).unsqueeze(2)
-        # repeat src mask
-        src_mask = src_mask.repeat(1, 1, tgt.size(1), 1)
-        tgt_pad = tgt_pad.unsqueeze(1).unsqueeze(3)
+    # def generate_mask(self, src_attention_mask, tgt, tgt_pad):
+    #     src_mask = src_attention_mask.unsqueeze(1).unsqueeze(2)
+    #     # # repeat src mask
+    #     # src_mask = src_mask.repeat(1, 1, tgt.size(1), 1)
+    #     tgt_pad = tgt_pad.unsqueeze(1).unsqueeze(3)
+    #     seq_length = tgt.size(1)
+    #     nopeak_mask = (
+    #         1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)
+    #     ).bool()
+    #     # Set the first element of the diagonal to False
+    #     # nopeak_mask[0, 0, 0] = True
+    #     nopeak_mask = nopeak_mask.to(self.device)
+    #     tgt_pad = tgt_pad.to(self.device)
+    #     tgt_mask = tgt_pad & nopeak_mask
+    #     return src_mask, tgt_mask
 
-        seq_length = tgt.size(1)
-        nopeak_mask = (
-            1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)
-        ).bool()
-        nopeak_mask = nopeak_mask.to(self.device)
-        tgt_mask = tgt_pad & nopeak_mask
-        return src_mask, tgt_mask
+    def generate_mask(self, tgt, tgt_pad, mlm_probability=0.15):
+        labels = tgt.clone()
+        probability_matrix = torch.full(
+            tgt_pad.shape, mlm_probability, device=self.device
+        )
+        cls_tgt_pad = tgt_pad.clone()
+        cls_tgt_pad[:, 0] = True
+        probability_matrix = probability_matrix.masked_fill(
+            cls_tgt_pad, 0
+        )  # add CLS token to the tokens
+        tgt_mask = torch.bernoulli(probability_matrix).bool()
 
-    def prepare_tokens(self, x, mask=None):
+        # seq_length = tgt.size(1)
+        # nopeak_mask = (
+        #     1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)
+        #     ).bool()
+        # tgt_mask = tgt_mask & nopeak_mask
+        labels[~tgt_mask] = -100
+        tgt_mask = tgt_mask.masked_fill(tgt_pad, True)
+        # labels = torch.cat((self.cls_label.expand(labels.shape[0],1), labels), dim=1)
+        return tgt_mask.to('cuda'), labels
+
+    def prepare_tokens(self, x):
         # B, nc, d = x.shape
-        x = x + self.positional_encoding(
-            x
-        )  # add positional encoding to eagit fetch origin
+        # add positional encoding to each token
+        x = x + self.positional_encoding(x)
+
         return x
 
-    def forward(self, src_input_id, src_attention_mask, tgt_input_id):
-        device = tgt_input_id.device
+    # def forward_with_cond_scale(
+    #     self,
+    #     *args,
+    #     cond_scale = 3.,
+    #     return_embed = False,
+    #     generate = False,
+    #     **kwargs
+    # ):
+    # if cond_scale == 1:
+    #     return self.forward(
+    #         *args,
+    #         return_embed = return_embed,
+    #         cond_drop_prob = 0., **kwargs
+    #         )
+
+    # logits, embed = self.forward(
+    #     *args,
+    #     return_embed = True,
+    #     cond_drop_prob = 0., **kwargs
+    #     )
+
+    #     null_logits = self.forward(*args, cond_drop_prob = 1., **kwargs)
+
+    #     scaled_logits = null_logits + (logits - null_logits) * cond_scale
+
+    #     if return_embed:
+    #         return scaled_logits, embed
+
+    #     return scaled_logits
+
+    def forward(
+        self,
+        src_input_id,
+        tgt_input_id,
+        original_lens,
+        generate=False,
+    ):
         tgt_input_id = torch.cat(
-            (self.cls_token.expand(tgt_input_id.shape[0], -1).to(device), tgt_input_id),
+            (
+                self.cls_token.expand(tgt_input_id.shape[0], -1),
+                tgt_input_id,
+            ),
             dim=1,
         )
-        src_attention_mask = src_attention_mask.bool()
+        src_attention_mask = src_input_id == 0
+        # convert to numeric type
+        src_attention_mask = src_attention_mask.int()
         tgt_pad = self.generate_pad(tgt_input_id)
-        if self.training:
-            src_attention_mask_reshaped, tgt_mask = self.generate_mask(
-                src_attention_mask, tgt_input_id, tgt_pad
-            )
-        else:
-            tgt_mask, _ = (tgt_pad, None)
 
-        # print(tgt_mask.shape)
-        # print(src_attention_mask.shape)
-        # print(src_attention_mask)
+        if generate:
+            tgt_mask = tgt_input_id == (self.mask_token)
+            tgt_mask = tgt_mask | (tgt_input_id == 0)
+        else:
+            tgt_mask, labels = self.generate_mask(
+                tgt_input_id, tgt_pad, self.mlm_probability
+            )
+
         src_embedded = self.encoder_layers(src_input_id, src_attention_mask)
-        src_embedded[~src_attention_mask] = 0
-        tgt_embedded = self.prepare_tokens(
-            self.decoder_embedding(tgt_input_id), tgt_mask
-        )
+        # overwrite with tgt input id with masked token
+        tgt_embedded_mask = self.token_embedding(tgt_input_id)
+        tgt_embedded_mask[tgt_mask, :] = self.masked_embed
+        tgt_embedded_mask = self.prepare_tokens(tgt_embedded_mask)
         enc_output = src_embedded
-        dec_output = tgt_embedded
+        dec_embedding = tgt_embedded_mask
         for dec_layer in self.decoder_layers:
-            dec_output = dec_layer(
-                dec_output, src_attention_mask_reshaped, tgt_mask, enc_output
+            dec_embedding = dec_layer(
+                dec_embedding, src_attention_mask, tgt_mask, enc_output
+            )
+        logits = self.fc(dec_embedding)
+
+        outputs = {}
+        if generate:
+            outputs['cls_embedding'] = dec_embedding[:, 0, :]
+            outputs['logits'] = logits[:, 1:, :]  # ignore CLS token
+        else:
+            outputs['logits'] = logits
+            outputs['labels'] = labels
+            outputs['dec_embedding'] = dec_embedding
+
+        return outputs
+
+
+class CountHead(nn.Module):
+    def __init__(
+        self, loss_mode: str = 'zinb', tgt_vocab_size: int = 25426, d_model: int = 256
+    ):
+        super(CountHead, self).__init__()
+        self.loss_mode = loss_mode
+
+        self.mlp = Mlp(d_model, d_model)
+        n_genes = tgt_vocab_size - 1
+        if self.loss_mode == 'mse':
+            self.relu_output = nn.Sequential(nn.Linear(d_model, n_genes), nn.ReLU())
+        elif self.loss_mode == 'zinb':
+            self.linear_output = nn.Linear(d_model, n_genes)
+            self.softmax_output = nn.Sequential(
+                nn.Linear(d_model, n_genes), nn.Softmax(dim=-1)
+            )
+        elif self.loss_mode == 'nb':
+            self.softmax_output = nn.Sequential(
+                nn.Linear(d_model, n_genes), nn.Softmax(dim=-1)
             )
 
-        output = self.fc(dec_output)
-        # mask cls
-        tgt_input_id_ = tgt_input_id.clone()
-        tgt_input_id_[:, 0] = 0
-        if self.training:
-            return output, tgt_input_id_
-        else:
-            return output, dec_output
+    def forward(self, x):
+        # use cls token for count prediction
+        count_outpus = {}
+        mlp_output = self.mlp(x)
+        mlp_output = nn.functional.normalize(mlp_output, dim=-1, p=2)
+        if self.loss_mode == 'mse':
+            count_outpus['count_lognorm'] = self.relu_output(mlp_output)
+        elif self.loss_mode == 'zinb':
+            count_outpus['count_mean'] = self.softmax_output(mlp_output)
+            count_outpus['count_dropout'] = self.linear_output(mlp_output)
+        elif self.loss_mode == 'nb':
+            count_outpus['count_mean'] = self.softmax_output(mlp_output)
+        return count_outpus
+
+
+class CountDecoder(nn.Module):
+    def __init__(
+        self,
+        pretrained_model: nn.Module = None,
+        loss_mode: str = 'zinb',
+        tgt_vocab_size: int = 25426,
+        d_model: int = 256,
+        add_mask_id: bool = True,
+    ):
+        super(CountDecoder, self).__init__()
+        self.pretrained_model = pretrained_model
+        # for _, param in self.pretrained_model.named_parameters():
+        #     param.requires_grad = False
+        self.embed_dim = d_model
+        if add_mask_id:
+            total_vocab_size = tgt_vocab_size + 1  # CLS and masked token
+            self.mask_token = total_vocab_size
+        self.loss_mode = loss_mode
+        self.decoder = CountHead(loss_mode, tgt_vocab_size, d_model)
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.cls_embedding = None
+
+    def generate_pad(self, tgt):
+        tgt_ = tgt.clone().detach()
+        tgt_pad = tgt_ == 0
+
+        return tgt_pad
+
+    def forward(
+        self,
+        src_input_id,
+        tgt_input_id,
+        original_lens,
+        generate=False,
+    ):
+        outputs = self.pretrained_model.forward(
+            src_input_id=src_input_id,
+            tgt_input_id=tgt_input_id,
+            original_lens=original_lens,
+            generate=generate,
+        )
+        cls_embedding = outputs['dec_embedding'][:, 0, :]
+
+        # use cls token for count prediction
+        count_outputs = self.decoder.forward(cls_embedding)
+
+        return count_outputs
+
+    def generate(
+        self,
+        src_input_id,
+        noise_schedule,
+        tgt_input_id,
+        original_lens,
+        can_remask_prev_masked=False,
+        topk_filter_thres=0.9,
+        # steps=18,
+        temperature=2.0,  # keep in range 2.0-3.0
+        # self_cond_prob=0.9,
+        timesteps=18,  # optimal iterations found in maskgit paper
+    ):
+        tgt_pad = self.generate_pad(tgt_input_id)
+
+        batch_size = tgt_input_id.shape[0]
+        seq_len = tgt_input_id.shape[1]
+        shape = (batch_size, seq_len)
+        # create ids and scores matrix for each batch
+        # exclude CLS token from token
+        ids = torch.full(shape, self.mask_token, dtype=torch.long, device=self.device)
+
+        # pad ids
+        scores = torch.zeros(shape, dtype=torch.float, device=self.device)
+        starting_temperature = temperature
+        demask_fn = self.pretrained_model
+
+        for timestep, steps_until_x0 in tqdm(
+            zip(
+                torch.linspace(0, 1, timesteps, device=self.device),
+                reversed(range(timesteps)),
+            ),
+            total=timesteps,
+        ):
+            # mask scheduler function, gamma
+            rand_mask_prob = noise_schedule(timestep)
+            # pad scores and ids
+            scores = scores.masked_fill(tgt_pad, -torch.finfo().max)
+
+            ids = ids.masked_fill(tgt_pad, 0)
+            ids_to_keep = torch.zeros_like(ids, dtype=torch.long)
+
+            for i, score in enumerate(scores):
+                # count zeros in each row
+                unpadded = len(score) - sum(score == -torch.finfo().max)
+                num_token_masked = int(unpadded * rand_mask_prob)
+                masked_indices = score.topk(num_token_masked, dim=-1).indices
+                mask = torch.zeros_like(ids[i], dtype=torch.bool)
+                mask[masked_indices] = True
+                ids[i, masked_indices] = self.mask_token
+                # keep indices which are not masked
+
+                ids_to_keep[i, ~mask] = ids[i, ~mask]
+            outputs = demask_fn.forward(
+                src_input_id=src_input_id,  # target
+                # self_cond_embed = self_cond_embed,
+                tgt_input_id=ids,  # change to token id
+                original_lens=original_lens,
+                generate=True,
+            )
+            logits = outputs['logits']
+            # Create a mask of already predicted tokens
+            for sample in range(batch_size):
+                unique_ids = torch.unique(ids_to_keep[sample])
+                logits[sample, :, unique_ids] = -float('inf')
+            filtered_logits = top_k(logits, topk_filter_thres)
+            temperature = starting_temperature * (
+                steps_until_x0 / timesteps
+            )  # temperature is annealed
+            pred_ids = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
+
+            is_mask = ids == self.mask_token
+
+            ids = torch.where(is_mask, pred_ids, ids)
+            probs_without_temperature = logits.softmax(dim=-1)
+            # avoid predicting the same token
+            scores = 1 - probs_without_temperature.gather(2, pred_ids[..., None])
+            scores = rearrange(scores, '... 1 -> ...')
+
+            if not can_remask_prev_masked:
+                scores = scores.masked_fill(~is_mask, -torch.finfo().max)
+        count_outputs = self.decoder.forward(outputs['cls_embedding'])
+        return count_outputs
 
 
 if __name__ == '__main__':
+    # from T_perturb.Dataloaders.datamodule import GeneformerDataModule
     src_vocab_size = 5000
     tgt_vocab_size = 5000
     d_model = 256
@@ -362,31 +633,31 @@ if __name__ == '__main__':
         d_head=64,
         context_dim=d_model,
     )
-    transformer = TTransformer()
+    transformer = scConformer(tgt_vocab_size=13)
 
-    # test dataloader
-    data_module = GeneformerDataModule(
-        src_folder='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_0h.dataset',
-        tgt_folder='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_16h.dataset',
-        max_len=334,
-    )
-    data_module.setup()
-    dataloader = data_module.train_dataloader()
+    # # test dataloader
+    # data_module = GeneformerDataModule(
+    #     src_folder='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+    #     'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_0h.dataset',
+    #     tgt_folder='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+    #     'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_16h.dataset',
+    #     max_len=334,
+    # )
+    # data_module.setup()
+    # dataloader = data_module.train_dataloader()
     # # iterate through batches
-    src_train_iterator = iter(dataloader['src'])
-    tgt_train_iterator = iter(dataloader['tgt'])
-    src_batch = next(src_train_iterator)
-    tgt_batch = next(tgt_train_iterator)
+    # src_train_iterator = iter(dataloader['src'])
+    # tgt_train_iterator = iter(dataloader['tgt'])
+    # src_batch = next(src_train_iterator)
+    # tgt_batch = next(tgt_train_iterator)
 
     # (batch_size, seq_length)
     # position = PositionalEncoding(d_model, max_seq_length)
     # print(position(tgt_data).shape)
     # print(decoder(tgt_data, enc_output=src_data).shape)
-    out, label = transformer(
-        src_batch['input_id'], src_batch['attention_mask'], tgt_batch['input_id']
-    )
+    # out, label = transformer(
+    #     src_batch['input_id'], src_batch['attention_mask'], tgt_batch['input_id']
+    # )
 
     # src_data = torch.randint(20000,(10, 500))
     # src_attn_mask = torch.ones((10, 500))
@@ -395,3 +666,69 @@ if __name__ == '__main__':
     # #pad
     # tgt_data[:, 100:] = 0
     # out, label = transformer(src_data, src_attn_mask, tgt_data)
+    # set seed
+    torch.manual_seed(42)
+    src_input_id = torch.tensor(
+        [
+            [1, 2, 2, 5, 7, 6, 9, 8, 9, 6, 0, 0],
+            [1, 3, 2, 4, 7, 4, 9, 3, 9, 6, 0, 0],
+        ]
+    )
+    label_tensor = torch.tensor(
+        [[1, 2, 2, 4, 5, 6, 9, 8, 9, 6, 0, 0], [1, 2, 2, 4, 5, 6, 9, 8, 9, 6, 0, 0]]
+    )
+    label_prob = torch.tensor(
+        [
+            [0.1, 0.25, 0.2, 0.4, 0.5, 0.6, 0.6, 0.8, 0.9, 1.0, 0.95, 0.92],
+            [0.1, 0.2, 0.25, 0.4, 0.5, 0.6, 0.6, 0.8, 0.9, 1.0, 0.95, 0.92],
+        ]
+    )
+    # create logits with random probabilities adding up to 1 for each row
+    # (B, seq_length, vocab_size)
+    logits = torch.rand((2, 12, 10))
+    logits = logits / logits.sum(dim=-1, keepdim=True)
+    tgt_pad = torch.tensor(
+        [
+            [
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                True,
+                True,
+            ],
+            [
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                True,
+                True,
+            ],
+        ]
+    )
+    # generate probability matrix
+    probability_matrix = (~tgt_pad).long()
+    threshold = 0.5
+    # TTransformer.select_unique_topk
+    # (label_tensor, label_prob, tgt_pad, probability_matrix)
+    transformer.eval()
+    transformer.generate(
+        src_input_id=src_input_id.to('cuda'),
+        noise_schedule=cosine_schedule,
+        tgt_input_id=label_tensor.to('cuda'),
+        tgt_vocab_size=10,
+        seq_length=12,
+    )
