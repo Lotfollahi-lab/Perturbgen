@@ -9,14 +9,16 @@ import pytorch_lightning as pl
 import scanpy as sc
 import torch
 import wandb
+from datasets import load_from_disk
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 
 from T_perturb.Dataloaders.datamodule import scConformerDataModule
-from T_perturb.Model.trainer import CountDecodertrainer
+from T_perturb.Model.trainer import CountDecodertrainer, scConformertrainer
+from T_perturb.src.utils import subset_adata_dataset
 
 RANDOM_SEED = 42
-test_dataset = 'cytoimmgen_tokenised_degs_stratified_pairing_5d.dataset'
+test_dataset = 'cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset'
 # use regex to find condition between degs and .dataset
 dataset_info = re.findall(r'(?<=degs_).*(?=.dataset)', test_dataset)[0]
 
@@ -31,12 +33,24 @@ def get_args():
         help='Mode [masking, count]',
     )
     parser.add_argument(
+        '--generate',
+        type=bool,
+        default=True,
+        help='generate data',
+    )
+    parser.add_argument(
+        '--num_cells',
+        type=int,
+        default=0,
+        help='number of cells to use for testing',
+    )
+    parser.add_argument(
         '--ckpt_masking_path',
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
         't_generative/T_perturb/T_perturb/Model/checkpoints/'
-        '20240222_0939_ttransformer_lr_0.001_wd_0_'
-        'batchsize_512_mlmprob_0.3_stratified_pairing_16h.ckpt',
+        '20240228_0113_cora_lr_0.001_wd_0_'
+        'batch_512_mlm_0.3_stratified_pairing_16h_mode_masking.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -44,8 +58,8 @@ def get_args():
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
         't_generative/T_perturb/T_perturb/Model/checkpoints/'
-        '20240220_1948_ttransformer_lr_0.001_wd_0.001_'
-        'batchsize_64_mlmprob_0.3_stratified_pairing_5d.ckpt',
+        '20240228_0929_cora_lr_0.001_wd_0'
+        '_batch_512_mlm_0.3_stratified_pairing_16h_mode_count.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -65,6 +79,16 @@ def get_args():
         help='path to tokenised activated data',
     )
     parser.add_argument(
+        '--src_adata_folder',
+        type=str,
+        default=(
+            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+            'T_perturb/T_perturb/pp/res/h5ad_pairing/'
+            'cytoimmgen_tokenisation_degs_stratified_pairing_0h.h5ad'
+        ),
+        help='path to src',
+    )
+    parser.add_argument(
         '--tgt_adata_folder',
         type=str,
         default=(
@@ -74,7 +98,7 @@ def get_args():
         ),
         help='path to tgt',
     )
-    parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
+    parser.add_argument('--batch_size', type=int, default=512, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=False, help='shuffle')
     parser.add_argument(
         '--epochs', type=int, default=5, help='number of training epochs'
@@ -88,9 +112,9 @@ def get_args():
     parser.add_argument('--max_len', type=int, default=246, help='max sequence length')
     parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
     parser.add_argument('--wd', type=float, default=1e-3, help='weight decay')
-    parser.add_argument('--n_workers', type=int, default=1, help='number of workers')
+    parser.add_argument('--num_workers', type=int, default=4, help='number of workers')
     parser.add_argument(
-        '--loss_mode', type=str, default='mse', help='loss mode [zinb, nb, mse]'
+        '--loss_mode', type=str, default='zinb', help='loss mode [zinb, nb, mse]'
     )
     parser.add_argument(
         '--condition_keys',
@@ -103,7 +127,6 @@ def get_args():
     parser.add_argument(
         '--conditions_combined', type=list, default=None, help='conditions combined'
     )
-    parser.add_argument('--alpha', type=float, default=0.1, help='alpha')
     args = parser.parse_args()
     return args
 
@@ -115,13 +138,27 @@ def main() -> None:
     # PyTorch Lightning allows to set all necessary seeds in one function call.
     pl.seed_everything(RANDOM_SEED)
     torch.manual_seed(RANDOM_SEED)
+    # Load and preprocess data
+    print('Loading and preprocessing data...')
+    src_dataset = load_from_disk(args.src_dataset_folder)
+    tgt_dataset = load_from_disk(args.tgt_dataset_folder)
+    src_adata = sc.read_h5ad(args.src_adata_folder)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
     if tgt_adata.X.__class__.__name__ == 'csr_matrix':
         tgt_adata.X = tgt_adata.X.A
+    if src_adata.X.__class__.__name__ == 'csr_matrix':
+        src_adata.X = src_adata.X.A
     if args.loss_mode == 'mse':
         # log normalize data only for mse loss
+        sc.pp.normalize_total(src_adata, target_sum=1e4)
+        sc.pp.log1p(src_adata)
         sc.pp.normalize_total(tgt_adata, target_sum=1e4)
         sc.pp.log1p(tgt_adata)
+    if args.num_cells != 0:
+        src_adata, tgt_adata, src_dataset, tgt_dataset = subset_adata_dataset(
+            src_adata, tgt_adata, src_dataset, tgt_dataset, args.num_cells, RANDOM_SEED
+        )
+
     if isinstance(args.condition_keys, str):
         condition_keys_ = [args.condition_keys]
     else:
@@ -147,60 +184,90 @@ def main() -> None:
         conditions_combined_ = tgt_adata.obs['conditions_combined'].unique().tolist()
     else:
         conditions_combined_ = args.conditions_combined
+    print('Data loaded and preprocessed.')
     # Initialize model module
     # ----------------------------------------------------------------------------------
-    model_module = CountDecodertrainer(
-        tgt_vocab_size=704,
-        d_model=256,
-        num_heads=8,
-        num_layers=1,
-        d_ff=32,
-        max_seq_length=2000,
-        dropout=0.0,
-        mlm_probability=args.mlm_probability,
-        weight_decay=args.wd,
-        lr=args.lr,
-        lr_scheduler_patience=1.0,
-        lr_scheduler_factor=0.8,
-        loss_mode=args.loss_mode,
-        alpha=args.alpha,
-        conditions=conditions_,
-        conditions_combined=conditions_combined_,
-        return_embeddings=True,
-        generate=False,
-        adata=tgt_adata,
-        dataset_info=dataset_info,
-    )
-    if args.loss_mode == 'mse':
-        condition_encodings = None
-        conditions_combined_encodings = None
+    if args.test_mode == 'masking':
+        pretrained_module = scConformertrainer(
+            tgt_vocab_size=704,
+            d_model=256,
+            num_heads=8,
+            num_layers=1,
+            d_ff=32,
+            max_seq_length=2000,
+            dropout=0.0,
+            mlm_probability=args.mlm_probability,
+            weight_decay=args.wd,
+            lr=args.lr,
+            lr_scheduler_patience=1.0,
+            lr_scheduler_factor=0.8,
+            batch_size=args.batch_size,
+            adata=tgt_adata,
+            dataset_info=dataset_info,
+            generate=args.generate,
+        )
+    elif args.test_mode == 'count':
+        decoder_module = CountDecodertrainer(
+            ckpt_path=args.ckpt_masking_path,
+            loss_mode=args.loss_mode,
+            lr=args.lr,
+            weight_decay=args.wd,
+            lr_scheduler_patience=1.0,
+            lr_scheduler_factor=0.8,
+            conditions=conditions_,
+            conditions_combined=conditions_combined_,
+            tgt_vocab_size=704,
+            d_model=256,
+            cell_number=tgt_adata.shape[0],
+            generate=True,
+            tgt_adata=tgt_adata,
+        )
+        if args.loss_mode == 'mse':
+            condition_encodings = None
+            conditions_combined_encodings = None
+        else:
+            condition_encodings = decoder_module.condition_encodings
+            conditions_combined_encodings = decoder_module.conditions_combined_encodings
     else:
-        condition_encodings = model_module.condition_encodings
-        conditions_combined_encodings = model_module.conditions_combined_encodings
+        raise ValueError('test_mode not recognised, needs to be masking or count')
+
     # Initialize data module
     # ----------------------------------------------------------------------------------
 
     # While there is a wide variety of different augmentation strategies, we simply
     # resort to the supposedly optimal AutoAugment policy.
     # change dataloader and input
-    data_module = scConformerDataModule(
-        src_dataset_folder=args.src_dataset_folder,
-        tgt_dataset_folder=args.tgt_dataset_folder,
-        tgt_adata=tgt_adata,
-        batch_size=args.batch_size,
-        num_workers=args.n_workers,
-        shuffle=args.shuffle,
-        max_len=args.max_len,
-        condition_keys=condition_keys_,
-        condition_encodings=condition_encodings,
-        conditions_combined_encodings=conditions_combined_encodings,
-    )
+    if args.test_mode == 'masking':
+        data_module = scConformerDataModule(
+            src_dataset=src_dataset,
+            tgt_dataset=tgt_dataset,
+            src_adata=src_adata,
+            tgt_adata=tgt_adata,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            shuffle=args.shuffle,
+            max_len=args.max_len,
+            drop_last=False,
+        )
+    elif args.test_mode == 'count':
+        data_module = scConformerDataModule(
+            src_dataset=src_dataset,
+            tgt_dataset=tgt_dataset,
+            src_adata=src_adata,
+            tgt_adata=tgt_adata,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            shuffle=args.shuffle,
+            max_len=args.max_len,
+            condition_keys=condition_keys_,
+            condition_encodings=condition_encodings,
+            conditions_combined_encodings=conditions_combined_encodings,
+            drop_last=False,
+        )
 
     # Setup trainer
     # ----------------------------------------------------------------------------------
-    run_id = datetime.now().strftime(
-        f'%Y%m%d_%H%M_ttransformer_{args.batch_size}_{args.lr}_{args.wd}'
-    )
+    run_id = datetime.now().strftime('%Y%m%d_%H%M_ttransformer')
     log_path = os.path.join(args.log_dir, run_id)
     os.makedirs(os.path.join(os.getcwd(), log_path), exist_ok=True)
 
@@ -260,14 +327,20 @@ def main() -> None:
         accelerator=accelerator,
     )
     # Finally, kick of the training process.
-    trainer.test(
-        model_module,
-        data_module,
-        ckpt_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/Model/checkpoints/'
-        '20240220_1948_ttransformer_lr_0.001_wd_0.001_'
-        'batchsize_64_mlmprob_0.3_stratified_pairing_5d.ckpt',
-    )
+    if args.test_mode == 'masking':
+        trainer.test(
+            pretrained_module,
+            data_module,
+            ckpt_path=args.ckpt_masking_path,
+        )
+    elif args.test_mode == 'count':
+        trainer.test(
+            decoder_module,
+            data_module,
+            args.ckpt_count_path,
+        )
+    else:
+        raise ValueError('test_mode not recognised, needs to be masking or count')
 
 
 if __name__ == '__main__':

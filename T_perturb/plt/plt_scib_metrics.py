@@ -3,7 +3,7 @@ from scib_metrics.benchmark import Benchmarker
 
 adata = sc.read_h5ad(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-    'T_perturb/plt/res/scConformer/cls_embeddings_stratified_pairing_16h.h5ad'
+    'T_perturb/plt/res/Cora/cls_embeddings_stratified_pairing_16h.h5ad'
 )
 sc.tl.pca(adata, svd_solver='arpack', n_comps=50)
 adata.obsm['Unintergrated'] = adata.obsm['X_pca']
