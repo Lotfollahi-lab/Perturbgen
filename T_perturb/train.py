@@ -275,7 +275,7 @@ def main() -> None:
         ),
         save_top_k=1,
         verbose=True,
-        monitor='val/loss',
+        monitor='val/pearson',
         mode='min',
     )
 
@@ -313,7 +313,7 @@ def main() -> None:
     # Lightning allows for simple multi-gpu training, gradient accumulation, half
     # precision training, etc. using the trainer class.
     early_stop_callback = pl.callbacks.EarlyStopping(
-        monitor='train/loss',
+        monitor='val/pearson',
         min_delta=0.00,
         patience=3,
         verbose=False,

@@ -715,63 +715,59 @@ class CountDecodertrainer(LightningModule):
             self.test_ctrl_counts_list.append(batch['src_counts'])
 
     def on_test_epoch_end(self):
-        if self.generate:
-            # create anndata for mmd
-            pred_counts = torch.cat(self.test_pred_counts_list).detach().cpu().numpy()
-            pred_adata = ad.AnnData(
-                X=pred_counts, obs=self.adata.obs, var=self.adata.var
-            )
-            # calculate MMD and EMD
-            condition_key = 'Cell_type'
-            mmd = evaluate_mmd(self.adata, pred_adata, condition_key=condition_key)
-            mmd['metric'] = 'mmd'
-            # rename column called mmd
-            mmd = mmd.rename(columns={'mmd': 'value'})
-            emd = evaluate_emd(self.adata, pred_adata, condition_key=condition_key)
-            emd['metric'] = 'emd'
-            emd = emd.rename(columns={'emd': 'value'})
-            # concatenate
-            metrics = pd.concat([mmd, emd])
-            # save metrics
-            metrics.to_csv(
-                f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-                f't_generative/T_perturb/T_perturb/plt/res/Cora/'
-                f'generate_mmd_emd_{condition_key}_metrics.csv'
-            )
-        else:
-            # return Pearson correlation coefficient
-            true_counts = torch.cat(self.test_true_counts_list)
-            pred_counts = torch.cat(self.test_pred_counts_list)
-            ctrl_counts = torch.cat(self.test_ctrl_counts_list)
-            # Pearson correlation coefficient
-            self.metric['pearson_test'] = PearsonCorrCoef(
-                num_outputs=true_counts.shape[0]
-            ).to(self.target_device)
-            pearson = self.metric['pearson_test'](pred_counts.T, true_counts.T)
-            mean_pearson = torch.mean(pearson)
-            self.log(
-                'test/pearson',
-                mean_pearson,
-                on_epoch=True,
-                prog_bar=True,
-                logger=True,
-            )
-            # Pearson delta
-            true_delta = true_counts - ctrl_counts
-            pred_delta = pred_counts - ctrl_counts
-            pearson_delta = self.metric['pearson_test'](pred_delta.T, true_delta.T)
-            mean_pearson_delta = torch.mean(pearson_delta)
-            self.log(
-                'test/pearson_delta',
-                mean_pearson_delta,
-                on_epoch=True,
-                prog_bar=True,
-                logger=True,
-            )
-            # set to status quo
-            self.test_true_counts_list = []
-            self.test_ctrl_counts_list = []
-            self.test_pred_counts_list = []
+        pred_counts = torch.cat(self.test_pred_counts_list).detach().cpu().numpy()
+        pred_adata = ad.AnnData(X=pred_counts, obs=self.adata.obs, var=self.adata.var)
+
+        # return Pearson correlation coefficient
+        true_counts = torch.cat(self.test_true_counts_list)
+        pred_counts = torch.cat(self.test_pred_counts_list)
+        ctrl_counts = torch.cat(self.test_ctrl_counts_list)
+        # Pearson correlation coefficient
+        self.metric['pearson_test'] = PearsonCorrCoef(
+            num_outputs=true_counts.shape[0]
+        ).to(self.target_device)
+        pearson = self.metric['pearson_test'](pred_counts.T, true_counts.T)
+        mean_pearson = torch.mean(pearson)
+        self.log(
+            'test/pearson',
+            mean_pearson,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
+        # Pearson delta
+        true_delta = true_counts - ctrl_counts
+        pred_delta = pred_counts - ctrl_counts
+        pearson_delta = self.metric['pearson_test'](pred_delta.T, true_delta.T)
+        mean_pearson_delta = torch.mean(pearson_delta)
+        self.log(
+            'test/pearson_delta',
+            mean_pearson_delta,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
+        # calculate MMD and EMD
+        condition_key = 'Cell_type'
+        mmd = evaluate_mmd(self.adata, pred_adata, condition_key=condition_key)
+        mmd['metric'] = 'mmd'
+        # rename column called mmd
+        mmd = mmd.rename(columns={'mmd': 'value'})
+        emd = evaluate_emd(self.adata, pred_adata, condition_key=condition_key)
+        emd['metric'] = 'emd'
+        emd = emd.rename(columns={'emd': 'value'})
+        # concatenate
+        metrics = pd.concat([mmd, emd])
+        # save metrics
+        metrics.to_csv(
+            f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+            f't_generative/T_perturb/T_perturb/plt/res/Cora/'
+            f'generate_mmd_emd_{condition_key}_metrics.csv'
+        )
+        # set to status quo
+        self.test_true_counts_list = []
+        self.test_ctrl_counts_list = []
+        self.test_pred_counts_list = []
 
     def configure_optimizers(self):
         parameters = [{'params': self.decoder.parameters(), 'lr': self.lr}]

@@ -11,6 +11,7 @@ import tqdm
 from datasets import DatasetDict
 from scipy.sparse import csr_matrix, issparse
 from scipy.stats import wasserstein_distance
+from torch.utils.data import Subset, random_split
 
 
 def map_ensembl_to_genename(
@@ -441,3 +442,91 @@ def label_encoder(adata, encoder, condition_key=None):
         labels[adata.obs[condition_key] == condition] = label
     labels = [int(x) for x in labels]
     return labels
+
+
+def randomised_split(
+    train_prop: float, test_prop: float, seed: int, dataset: ad.AnnData
+):
+    # define train, val and test size
+    train_size = np.round(train_prop * dataset.__len__()).astype(int)
+    test_size = np.round(test_prop * dataset.__len__()).astype(int)
+    val_size = dataset.__len__() - train_size - test_size
+    generator = torch.Generator().manual_seed(seed)
+    train, val, test = random_split(
+        dataset, [train_size, val_size, test_size], generator=generator
+    )
+
+    return train, val, test
+
+
+def stratified_split(
+    tgt_adata: ad.AnnData,
+    train_prop: float,
+    test_prop: float,
+    groups: List[str],
+    seed: int = 42,
+):
+    """
+    Description:
+    ------------
+    Stratified split of dataset based on cell type.
+    """
+    np.random.seed(seed)
+    # define train, val and test size based on unique groups
+    # extract unique groups and counts
+    # groups =
+    groups_df = tgt_adata.obs[groups].copy()
+    if len(groups) > 1:
+        groups_df.loc[:, 'stratified'] = groups_df.loc[:, groups].apply(
+            lambda x: '_'.join(x), axis=1
+        )
+    else:
+        groups_df.loc[:, 'stratified'] = groups_df.loc[:, groups]
+    groups_df.reset_index(drop=True, inplace=True)
+    unique_groups = groups_df['stratified'].unique()
+    group_indices = [np.where(groups_df['stratified'] == i)[0] for i in unique_groups]
+    train_indices, test_indices, val_indices = [], [], []
+
+    for indices in group_indices:
+        assert (
+            len(np.unique(groups_df.iloc[indices].stratified)) == 1
+        ), 'groups are not stratified'
+        # split indices into train, val and test set
+        np.random.shuffle(indices)
+        train_size = np.round(train_prop * len(indices)).astype(int)
+        test_size = np.round(test_prop * len(indices)).astype(int)
+        # val_size = len(indices) - train_size - test_size
+        train_indices.extend(indices[:train_size])
+        test_indices.extend(indices[train_size : train_size + test_size])
+        val_indices.extend(indices[train_size + test_size :])
+    return train_indices, val_indices, test_indices
+
+
+def unseen_donor_split(
+    adata: ad.AnnData,
+    train_prop: float,
+    test_prop: float,
+):
+    # define groups for stratified split by Time_point and Cell_type
+    groups = adata.obs[['Donor']]
+    # define train, val and test size based on unique donors
+    train_size = np.round(train_prop * len(groups['Donor'].unique())).astype(int)
+    test_size = np.round(test_prop * len(groups['Donor'].unique())).astype(int)
+    val_size = len(groups['Donor'].unique()) - train_size - test_size
+    # sample from groups based on unique donors using numpy random choice
+    test_donors = np.random.choice(
+        groups['Donor'].unique(), size=test_size, replace=False
+    )
+    # exclude test donors from train and val set
+    train_val_donors = np.setdiff1d(groups['Donor'].unique(), test_donors)
+    # sample from remaining donors based on unique donors using numpy random choice
+    val_donors = np.random.choice(train_val_donors, size=val_size, replace=False)
+    # use remaining donors as train set
+    train_donors = np.setdiff1d(train_val_donors, val_donors)
+    # split dataset to create dataset subset not tuple
+    # get indices of train, val and test set
+    train = Subset(adata, np.where(groups['Donor'].isin(train_donors))[0])
+    val = Subset(adata, np.where(groups['Donor'].isin(val_donors))[0])
+    test = Subset(adata, np.where(groups['Donor'].isin(test_donors))[0])
+
+    return train, val, test
