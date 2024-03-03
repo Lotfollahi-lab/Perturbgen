@@ -1,5 +1,6 @@
 import pickle
 from typing import Optional
+from warnings import warn
 
 import anndata as ad
 import numpy as np
@@ -42,23 +43,15 @@ class scConformerDataset(Dataset):
         self,
         src_dataset: DatasetDict,
         tgt_dataset: DatasetDict,
+        src_adata: ad.AnnData,
+        tgt_adata: ad.AnnData,
         shuffle: bool = False,
-        src_adata: Optional[ad.AnnData] = None,
-        tgt_adata: Optional[ad.AnnData] = None,
         split_indices: Optional[list] = None,
         conditions: Optional[torch.Tensor] = None,
         conditions_combined: Optional[torch.Tensor] = None,
         condition_encodings: Optional[dict] = None,
     ):
         super().__init__()
-        """
-                Description:
-                ------------
-                This class load tokenised data from disk and
-                extract the following information:
-                - input_ids: tokenised gene expression data, padded to the same length
-                - length: length of each cell
-                """
         self.shuffle = shuffle
         if split_indices is None:
             self.src_dataset = src_dataset
@@ -72,17 +65,11 @@ class scConformerDataset(Dataset):
                 self.src_adata = src_adata[split_indices, :]
             if tgt_adata is not None:
                 self.tgt_adata = tgt_adata[split_indices, :]
-            # check if the index is the same
-        if tgt_adata is not None and tgt_adata.obs is not None:
-            if not all(
-                tgt_adata.obs['cell_pairing_index'] == tgt_dataset['cell_pairing_index']
-            ):
-                raise ValueError('Index of adata and tokenized data do not match')
-
-            self.size_factor = np.ravel(tgt_adata.X.sum(axis=1))
-            self.conditions = conditions
-            self.conditions_combined = conditions_combined
-            self.condition_encodings = condition_encodings
+        if tgt_adata is not None:
+            self.size_factor = np.ravel(self.tgt_adata.X.sum(axis=1))
+        self.conditions = conditions
+        self.conditions_combined = conditions_combined
+        self.condition_encodings = condition_encodings
 
     def __getitem__(self, ind):
         return {
@@ -99,9 +86,8 @@ class scConformerDataset(Dataset):
 
     def __len__(self):
         if len(self.src_dataset) != len(self.tgt_dataset):
-            Warning('src and tgt dataset have different length')
+            warn('src and tgt dataset have different length')
         return min(len(self.src_dataset), len(self.tgt_dataset))
-        # return self.num_samples
 
 
 # two dataloader vs one dataloader
@@ -115,13 +101,14 @@ class scConformerDataModule(LightningDataModule):
         shuffle: bool = False,
         max_len: int = 2048,
         seed: int = 42,
-        split: str = 'stratified',  # 'random', 'stratified', 'unseen_donor
+        splitting_mode: str = 'stratified',  # 'random', 'stratified', 'unseen_donor
         src_adata: ad.AnnData = None,
         tgt_adata: ad.AnnData = None,
         condition_keys: Optional[list] = None,
         condition_encodings: Optional[dict] = None,
         conditions_combined_encodings: Optional[dict] = None,
         drop_last: bool = False,
+        split: bool = False,
     ):
         """
         Description:
@@ -149,6 +136,7 @@ class scConformerDataModule(LightningDataModule):
         self.drop_last = drop_last
         # train test split
         self.split = split
+        self.splitting_mode = splitting_mode
         self.train_indices = None
         self.val_indices = None
         self.test_indices = None
@@ -202,16 +190,22 @@ class scConformerDataModule(LightningDataModule):
         #         tgt_adata=self.tgt_adata,
         #         shuffle=self.shuffle,
         #     )
-        if (
-            self.train_indices is None
-            and self.val_indices is None
-            and self.test_indices is None
-        ):
-            (
-                self.train_indices,
-                self.val_indices,
-                self.test_indices,
-            ) = self.train_test_val_split()
+        if self.split:
+            if (
+                self.train_indices is None
+                and self.val_indices is None
+                and self.test_indices is None
+            ):
+                (
+                    self.train_indices,
+                    self.val_indices,
+                    self.test_indices,
+                ) = self.train_test_val_split()
+            else:
+                # return all the indices
+                self.train_indices = list(range(len(self.src_dataset)))
+                self.val_indices = None
+                self.test_indices = list(range(len(self.tgt_dataset)))
 
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
@@ -230,20 +224,23 @@ class scConformerDataModule(LightningDataModule):
                     if self.condition_keys is not None
                     else None,
                 )
-                self.val_dataset = scConformerDataset(
-                    src_dataset=self.src_dataset,
-                    tgt_dataset=self.tgt_dataset,
-                    split_indices=self.val_indices,
-                    src_adata=self.src_adata,
-                    tgt_adata=self.tgt_adata,
-                    shuffle=self.shuffle,
-                    conditions=self.conditions
-                    if self.condition_keys is not None
-                    else None,
-                    conditions_combined=self.conditions_combined
-                    if self.condition_keys is not None
-                    else None,
-                )
+                if self.val_indices is not None:
+                    self.val_dataset = scConformerDataset(
+                        src_dataset=self.src_dataset,
+                        tgt_dataset=self.tgt_dataset,
+                        split_indices=self.val_indices,
+                        src_adata=self.src_adata,
+                        tgt_adata=self.tgt_adata,
+                        shuffle=self.shuffle,
+                        conditions=self.conditions
+                        if self.condition_keys is not None
+                        else None,
+                        conditions_combined=self.conditions_combined
+                        if self.condition_keys is not None
+                        else None,
+                    )
+                else:
+                    self.val_dataset = None
             else:
                 self.train_dataset = scConformerDataset(
                     src_dataset=self.src_dataset,
@@ -253,14 +250,17 @@ class scConformerDataModule(LightningDataModule):
                     tgt_adata=self.tgt_adata,
                     shuffle=self.shuffle,
                 )
-                self.val_dataset = scConformerDataset(
-                    src_dataset=self.src_dataset,
-                    tgt_dataset=self.tgt_dataset,
-                    split_indices=self.val_indices,
-                    src_adata=self.src_adata,
-                    tgt_adata=self.tgt_adata,
-                    shuffle=self.shuffle,
-                )
+                if self.val_indices is not None:
+                    self.val_dataset = scConformerDataset(
+                        src_dataset=self.src_dataset,
+                        tgt_dataset=self.tgt_dataset,
+                        split_indices=self.val_indices,
+                        src_adata=self.src_adata,
+                        tgt_adata=self.tgt_adata,
+                        shuffle=self.shuffle,
+                    )
+                else:
+                    self.val_dataset = None
         if stage == 'test' or stage is None:
             if self.condition_encodings is not None:
                 self.test_dataset = scConformerDataset(
@@ -290,7 +290,7 @@ class scConformerDataModule(LightningDataModule):
     def train_test_val_split(self):
         np.random.seed(self.seed)  # reproducibility
 
-        if self.split == 'stratified':
+        if self.splitting_mode == 'stratified':
             train_indices, val_indices, test_indices = stratified_split(
                 self.tgt_adata,
                 self.train_prop,
@@ -331,16 +331,18 @@ class scConformerDataModule(LightningDataModule):
         return data
 
     def val_dataloader(self):
-        data = DataLoader(
-            self.val_dataset,
-            # self.dataset,
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=self.num_workers,
-            collate_fn=self.collate,
-            drop_last=self.drop_last,
-        )
-        return data
+        if self.split:
+            data = DataLoader(
+                self.val_dataset,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=self.num_workers,
+                collate_fn=self.collate,
+                drop_last=self.drop_last,
+            )
+            return data
+        else:
+            return []
 
     def test_dataloader(self):
         data = DataLoader(
@@ -386,8 +388,8 @@ class scConformerDataModule(LightningDataModule):
             model_input_size = torch.max(tgt_length)
             tgt_cell_type = [d['tgt_dataset']['Cell_type'] for d in batch]
             tgt_cell_population = [d['tgt_dataset']['Cell_population'] for d in batch]
-            tgt_time_point = ([d['tgt_dataset']['Time_point'] for d in batch],)
-            tgt_donor = ([d['tgt_dataset']['Donor'] for d in batch],)
+            tgt_time_point = [d['tgt_dataset']['Cell_population'] for d in batch]
+            tgt_donor = [d['tgt_dataset']['Cell_population'] for d in batch]
             tgt_input_batch_id = pad_tensor_list(
                 tgt_input_batch_id, self.max_len, self.pad_token_id, model_input_size
             )

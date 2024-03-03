@@ -1,0 +1,26 @@
+method: grid
+metric:
+  goal: maximize
+  name: val/pearson
+name: tune_count
+parameters:
+  train_mode:
+    value: 'count'
+  split:
+    value: True
+  loss_mode:
+    value: 'zinb'
+  num_cells:
+    value: 0
+  epochs:
+   value: 100
+  lr:
+    values: [0.0001, 0.0005, 0.001]
+  wd:
+    values: [0.001, 0.01, 0.1]
+  dropout:
+    value: 0.25
+  batch_size:
+    value: 256
+program: /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/train.py
+project: ttransformer_sweep

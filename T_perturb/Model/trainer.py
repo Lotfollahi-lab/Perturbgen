@@ -14,17 +14,20 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import wandb
 from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningModule
 from torchmetrics import (
     CosineSimilarity,
     MeanSquaredError,
-    PearsonCorrCoef,
     SpearmanCorrCoef,
 )
 from torchmetrics.text import Perplexity
 
+from T_perturb.Model.metric import (
+    evaluate_emd,
+    evaluate_mmd,
+    pearson,
+)
 from T_perturb.Modules.T_model import (
     CountDecoder,
     cosine_schedule,
@@ -35,18 +38,14 @@ from T_perturb.src.losses import (
     nb,
     zinb,
 )
-from T_perturb.src.utils import (
-    evaluate_emd,
-    evaluate_mmd,
-    one_hot_encoder,
-)
+from T_perturb.src.utils import one_hot_encoder
 
-wandb.init(
-    entity='k-ly',
-    project='ttransformer',
-    dir='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-    't_generative/T_perturb/T_perturb',
-)
+if torch.cuda.is_available():
+    cuda_device_name = torch.cuda.get_device_name()
+    # If the device is an A100, set the precision for matrix multiplication
+    if 'A100' in cuda_device_name:
+        torch.set_float32_matmul_precision('medium')
+
 sc.settings.set_figure_params(dpi=500)
 
 
@@ -88,8 +87,7 @@ class scConformertrainer(LightningModule):
         mlm_probability: float = 0.15,
         weight_decay: float = 0.0,
         lr: float = 1e-3,
-        lr_scheduler_patience: float = 1.0,
-        lr_scheduler_factor: float = 0.8,
+        lr_scheduler_patience: float = 5.0,
         return_embeddings: bool = False,
         generate: bool = False,
         batch_size: int = 32,
@@ -117,7 +115,7 @@ class scConformertrainer(LightningModule):
         self.weight_decay = weight_decay
         self.lr = lr
         self.lr_scheduler_patience = lr_scheduler_patience
-        self.lr_scheduler_factor = lr_scheduler_factor
+        # self.lr_scheduler_factor = lr_scheduler_factor
         self.metric = nn.ModuleDict(
             {
                 'perplexity': Perplexity(ignore_index=-100),
@@ -158,15 +156,15 @@ class scConformertrainer(LightningModule):
     def configure_optimizers(self):
         parameters = [{'params': self.transformer.parameters(), 'lr': self.lr}]
         optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
-        # lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        #     optimizer,
-        #     mode='min',
-        #     patience=self.lr_scheduler_patience,
-        # )
+        lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode='min',
+            patience=self.lr_scheduler_patience,
+        )
         return {
             'optimizer': optimizer,
-            # "lr_scheduler": lr_scheduler,
-            # "monitor": "train/loss",
+            'lr_scheduler': lr_scheduler,
+            'monitor': 'train/loss',
         }
 
     def training_step(self, batch, *args, **kwargs):
@@ -193,7 +191,7 @@ class scConformertrainer(LightningModule):
         )
 
         self.log(
-            'train/Perplexity',
+            'train/perplexity',
             perp.compute(),
             on_step=True,
             on_epoch=True,
@@ -226,7 +224,7 @@ class scConformertrainer(LightningModule):
             batch_size=batch['tgt_input_ids'].shape[0],
         )
         self.log(
-            'val/Perplexity',
+            'val/perplexity',
             perp.compute(),
             on_step=True,
             on_epoch=True,
@@ -359,7 +357,7 @@ class CountDecodertrainer(LightningModule):
         lr: float = 1e-3,
         weight_decay: float = 0.0,
         lr_scheduler_patience: float = 1.0,
-        lr_scheduler_factor: float = 0.8,
+        # lr_scheduler_factor: float = 0.8,
         conditions: Optional[Dict[Any, Any]] = None,
         conditions_combined: Optional[List[Any]] = None,
         tgt_vocab_size: int = 25000,
@@ -390,9 +388,6 @@ class CountDecodertrainer(LightningModule):
             k = k.replace('transformer.', '')
             new_state_dict[k] = v
         state_dict = new_state_dict
-        # model = model.cuda()
-        # classifier = classifier.cuda()
-        # criterion = criterion.cuda()
 
         pretrained_model.load_state_dict(new_state_dict, strict=False)
 
@@ -406,7 +401,7 @@ class CountDecodertrainer(LightningModule):
         self.weight_decay = weight_decay
         self.lr = lr
         self.lr_scheduler_patience = lr_scheduler_patience
-        self.lr_scheduler_factor = lr_scheduler_factor
+        # self.lr_scheduler_factor = lr_scheduler_factor
         self.loss_mode = loss_mode
 
         if (
@@ -437,17 +432,19 @@ class CountDecodertrainer(LightningModule):
         self.metric = nn.ModuleDict(
             {
                 'mse': MeanSquaredError(),
-                'pearson': PearsonCorrCoef(),
             }
         )
         self.generate = generate
         self.adata = tgt_adata
         # initiate lists to store true, ctrl and pred counts
         self.train_true_counts_list: List[int] = []
-        self.train_ctrl_counts_list: List[int] = []
         self.train_pred_counts_list: List[int] = []
         self.val_true_counts_list: List[int] = []
+        self.val_ctrl_counts_list: List[int] = []
         self.val_pred_counts_list: List[int] = []
+        self.val_tgt_cell_type_list: List[str] = []
+        self.val_tgt_cell_population_list: List[str] = []
+        self.val_tgt_donor_list: List[str] = []
         self.test_true_counts_list: List[int] = []
         self.test_ctrl_counts_list: List[int] = []
         self.test_pred_counts_list: List[int] = []
@@ -565,22 +562,16 @@ class CountDecodertrainer(LightningModule):
         #     logger=True,
         # )
         self.train_true_counts_list.append(batch['tgt_counts'])
-        self.train_ctrl_counts_list.append(batch['src_counts'])
         self.train_pred_counts_list.append(pred_count)
 
         return count_loss
 
     def on_train_epoch_end(self):
         # return Pearson correlation coefficient
-        true_counts = torch.cat(self.train_true_counts_list)
-        pred_counts = torch.cat(self.train_pred_counts_list)
-        ctrl_counts = torch.cat(self.train_ctrl_counts_list)
+        true_counts = torch.cat(self.train_true_counts_list).detach().cpu()
+        pred_counts = torch.cat(self.train_pred_counts_list).detach().cpu()
         # Pearson correlation coefficient
-        self.metric['pearson_train'] = PearsonCorrCoef(
-            num_outputs=true_counts.shape[0]
-        ).to(self.target_device)
-        pearson = self.metric['pearson_train'](pred_counts.T, true_counts.T)
-        mean_pearson = torch.mean(pearson)
+        mean_pearson = pearson(pred_counts=pred_counts, true_counts=true_counts)
         self.log(
             'train/pearson',
             mean_pearson,
@@ -588,21 +579,8 @@ class CountDecodertrainer(LightningModule):
             prog_bar=True,
             logger=True,
         )
-        # Pearson delta
-        true_delta = true_counts - ctrl_counts
-        pred_delta = pred_counts - ctrl_counts
-        pearson_delta = self.metric['pearson_train'](pred_delta.T, true_delta.T)
-        mean_pearson_delta = torch.mean(pearson_delta)
-        self.log(
-            'train/pearson_delta',
-            mean_pearson_delta,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-        )
         # set to status quo
         self.train_true_counts_list = []
-        self.train_ctrl_counts_list = []
         self.train_pred_counts_list = []
 
     def validation_step(self, batch, *args, **kwargs):
@@ -629,19 +607,31 @@ class CountDecodertrainer(LightningModule):
         )
         self.val_true_counts_list.append(batch['tgt_counts'])
         self.val_pred_counts_list.append(pred_count)
+        self.val_ctrl_counts_list.append(batch['src_counts'])
+        self.val_tgt_cell_type_list.append(batch['tgt_cell_type'])
+        self.val_tgt_cell_population_list.append(batch['tgt_cell_population'])
+        self.val_tgt_donor_list.append(batch['tgt_donor'])
         return count_loss
 
     def on_validation_epoch_end(self):
         # return Pearson correlation coefficient
-        true_counts = torch.cat(self.val_true_counts_list)
-        pred_counts = torch.cat(self.val_pred_counts_list)
+        true_counts = torch.cat(self.val_true_counts_list).detach().cpu()
+        pred_counts = torch.cat(self.val_pred_counts_list).detach().cpu()
+        ctrl_counts = torch.cat(self.val_ctrl_counts_list).detach().cpu()
+        # tgt_cell_type = np.concatenate(self.val_tgt_cell_type_list)
+        # tgt_cell_population = np.concatenate(self.val_tgt_cell_population_list)
+        # tgt_donor = np.concatenate(self.val_tgt_donor_list)
+        # val_obs = pd.DataFrame(
+        #     np.array([tgt_cell_type, tgt_cell_population, tgt_donor]).T,
+        #     columns=['Cell_type', 'Cell_population', 'Donor'],
+        # )
+        # pred_adata = ad.AnnData(
+        #     X=pred_counts.numpy(),
+        #     obs=val_obs,
+        #     var=self.adata.var
+        #     )
         # Pearson correlation coefficient
-
-        self.metric['pearson_val'] = PearsonCorrCoef(
-            num_outputs=true_counts.shape[0]
-        ).to(self.target_device)
-        pearson = self.metric['pearson_val'](pred_counts.T, true_counts.T)
-        mean_pearson = torch.mean(pearson)
+        mean_pearson = pearson(pred_counts=pred_counts, true_counts=true_counts)
         self.log(
             'val/pearson',
             mean_pearson,
@@ -649,9 +639,29 @@ class CountDecodertrainer(LightningModule):
             prog_bar=True,
             logger=True,
         )
+        mean_pearson_delta = pearson(
+            pred_counts=pred_counts, true_counts=true_counts, ctrl_counts=ctrl_counts
+        )
+        self.log(
+            'val/pearson_delta',
+            mean_pearson_delta,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
+
+        # mmd = evaluate_mmd(self.adata, pred_adata, condition_key='Cell_type')
+        # print('MMD:', mmd)
+
+        # emd = evaluate_emd(self.adata, pred_adata, condition_key='Cell_type')
+        # print('EMD: ', emd)
         # set to status quo
         self.val_true_counts_list = []
+        self.val_ctrl_counts_list = []
         self.val_pred_counts_list = []
+        self.val_tgt_cell_type_list = []
+        self.val_tgt_cell_population_list = []
+        self.val_tgt_donor_list = []
 
     def test_step(self, batch, *args, **kwargs):
         if self.generate:
@@ -715,19 +725,15 @@ class CountDecodertrainer(LightningModule):
             self.test_ctrl_counts_list.append(batch['src_counts'])
 
     def on_test_epoch_end(self):
-        pred_counts = torch.cat(self.test_pred_counts_list).detach().cpu().numpy()
-        pred_adata = ad.AnnData(X=pred_counts, obs=self.adata.obs, var=self.adata.var)
-
         # return Pearson correlation coefficient
-        true_counts = torch.cat(self.test_true_counts_list)
-        pred_counts = torch.cat(self.test_pred_counts_list)
-        ctrl_counts = torch.cat(self.test_ctrl_counts_list)
+        true_counts = torch.cat(self.test_true_counts_list).detach().cpu()
+        pred_counts = torch.cat(self.test_pred_counts_list).detach().cpu()
+        ctrl_counts = torch.cat(self.test_ctrl_counts_list).detach().cpu()
+        pred_adata = ad.AnnData(
+            X=pred_counts.numpy(), obs=self.adata.obs, var=self.adata.var
+        )
+        mean_pearson = pearson(pred_counts, true_counts, true_counts.shape[0])
         # Pearson correlation coefficient
-        self.metric['pearson_test'] = PearsonCorrCoef(
-            num_outputs=true_counts.shape[0]
-        ).to(self.target_device)
-        pearson = self.metric['pearson_test'](pred_counts.T, true_counts.T)
-        mean_pearson = torch.mean(pearson)
         self.log(
             'test/pearson',
             mean_pearson,
@@ -736,10 +742,9 @@ class CountDecodertrainer(LightningModule):
             logger=True,
         )
         # Pearson delta
-        true_delta = true_counts - ctrl_counts
-        pred_delta = pred_counts - ctrl_counts
-        pearson_delta = self.metric['pearson_test'](pred_delta.T, true_delta.T)
-        mean_pearson_delta = torch.mean(pearson_delta)
+        mean_pearson_delta = pearson(
+            pred_counts, true_counts, ctrl_counts, true_counts.shape[0]
+        )
         self.log(
             'test/pearson_delta',
             mean_pearson_delta,
@@ -772,13 +777,13 @@ class CountDecodertrainer(LightningModule):
     def configure_optimizers(self):
         parameters = [{'params': self.decoder.parameters(), 'lr': self.lr}]
         optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
-        # lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        #     optimizer,
-        #     mode='min',
-        #     patience=self.lr_scheduler_patience,
-        # )
+        lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode='min',
+            patience=self.lr_scheduler_patience,
+        )
         return {
             'optimizer': optimizer,
-            # "lr_scheduler": lr_scheduler,
-            # "monitor": "train/loss",
+            'lr_scheduler': lr_scheduler,
+            'monitor': 'train/loss',
         }
