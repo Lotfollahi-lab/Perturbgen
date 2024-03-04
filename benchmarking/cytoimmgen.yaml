@@ -1,0 +1,16 @@
+data:
+  type: cell
+  source: control
+  condition: drug
+  path: /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/pp/res/h5ad_pairing/cytoimmgen_tokenised_degs.h5ad
+
+dataloader:
+  batch_size: 256
+  shuffle: true
+
+datasplit:
+  groupby: drug
+  name: train_test_eval
+  test_size: 1000
+  eval_size: 1000
+  random_state: 0
