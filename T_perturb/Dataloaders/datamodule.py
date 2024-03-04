@@ -38,7 +38,7 @@ class DummyDataset(torch.utils.data.Dataset):
         }
 
 
-class scConformerDataset(Dataset):
+class PetraDataset(Dataset):
     def __init__(
         self,
         src_dataset: DatasetDict,
@@ -60,6 +60,7 @@ class scConformerDataset(Dataset):
             self.tgt_adata = tgt_adata
         else:
             self.src_dataset = src_dataset.select(split_indices)
+            # for dataset in tgt_dataset
             self.tgt_dataset = tgt_dataset.select(split_indices)
             if src_adata is not None:
                 self.src_adata = src_adata[split_indices, :]
@@ -91,7 +92,7 @@ class scConformerDataset(Dataset):
 
 
 # two dataloader vs one dataloader
-class scConformerDataModule(LightningDataModule):
+class PetraDataModule(LightningDataModule):
     def __init__(
         self,
         src_dataset: DatasetDict,
@@ -113,7 +114,7 @@ class scConformerDataModule(LightningDataModule):
         """
         Description:
         ------------
-        Custom datamodule for scConformer tokenised data.
+        Custom datamodule for Petra tokenised data.
         """
         super().__init__()
         self.src_dataset = src_dataset
@@ -167,29 +168,6 @@ class scConformerDataModule(LightningDataModule):
             )
 
     def setup(self, stage=None):
-        # if self.condition_encodings is not None:
-        #     self.dataset = scConformerDataset(
-        #         src_dataset=self.src_dataset,
-        #         tgt_dataset=self.tgt_dataset,
-        #         split_indices=self.train_indices,
-        #         src_adata=self.src_adata,
-        #         tgt_adata=self.tgt_adata,
-        #         shuffle=self.shuffle,
-        #         conditions=self.conditions if
-        #         self.condition_keys is not None else None,
-        #         conditions_combined=self.conditions_combined
-        #         if self.condition_keys is not None
-        #         else None,
-        #     )
-        # else:
-        #     self.dataset = scConformerDataset(
-        #         src_dataset=self.src_dataset,
-        #         tgt_dataset=self.tgt_dataset,
-        #         split_indices=self.test_indices,
-        #         src_adata=self.src_adata,
-        #         tgt_adata=self.tgt_adata,
-        #         shuffle=self.shuffle,
-        #     )
         if self.split:
             if (
                 self.train_indices is None
@@ -210,7 +188,7 @@ class scConformerDataModule(LightningDataModule):
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
             if self.condition_encodings is not None:
-                self.train_dataset = scConformerDataset(
+                self.train_dataset = PetraDataset(
                     src_dataset=self.src_dataset,
                     tgt_dataset=self.tgt_dataset,
                     split_indices=self.train_indices,
@@ -225,7 +203,7 @@ class scConformerDataModule(LightningDataModule):
                     else None,
                 )
                 if self.val_indices is not None:
-                    self.val_dataset = scConformerDataset(
+                    self.val_dataset = PetraDataset(
                         src_dataset=self.src_dataset,
                         tgt_dataset=self.tgt_dataset,
                         split_indices=self.val_indices,
@@ -242,7 +220,7 @@ class scConformerDataModule(LightningDataModule):
                 else:
                     self.val_dataset = None
             else:
-                self.train_dataset = scConformerDataset(
+                self.train_dataset = PetraDataset(
                     src_dataset=self.src_dataset,
                     tgt_dataset=self.tgt_dataset,
                     split_indices=self.train_indices,
@@ -251,7 +229,7 @@ class scConformerDataModule(LightningDataModule):
                     shuffle=self.shuffle,
                 )
                 if self.val_indices is not None:
-                    self.val_dataset = scConformerDataset(
+                    self.val_dataset = PetraDataset(
                         src_dataset=self.src_dataset,
                         tgt_dataset=self.tgt_dataset,
                         split_indices=self.val_indices,
@@ -263,7 +241,7 @@ class scConformerDataModule(LightningDataModule):
                     self.val_dataset = None
         if stage == 'test' or stage is None:
             if self.condition_encodings is not None:
-                self.test_dataset = scConformerDataset(
+                self.test_dataset = PetraDataset(
                     src_dataset=self.src_dataset,
                     tgt_dataset=self.tgt_dataset,
                     split_indices=self.test_indices,
@@ -278,7 +256,7 @@ class scConformerDataModule(LightningDataModule):
                     else None,
                 )
             else:
-                self.test_dataset = scConformerDataset(
+                self.test_dataset = PetraDataset(
                     src_dataset=self.src_dataset,
                     tgt_dataset=self.tgt_dataset,
                     split_indices=self.test_indices,
@@ -455,7 +433,7 @@ class scConformerDataModule(LightningDataModule):
 
 if __name__ == '__main__':
     # test dataloader
-    data_module = scConformerDataModule(
+    data_module = PetraDataModule(
         src_dataset=(
             '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
             'T_perturb/T_perturb/pp/res/dataset/'

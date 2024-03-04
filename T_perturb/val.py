@@ -13,8 +13,8 @@ from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 
 import wandb
-from T_perturb.Dataloaders.datamodule import scConformerDataModule
-from T_perturb.Model.trainer import CountDecodertrainer, scConformertrainer
+from T_perturb.Dataloaders.datamodule import PetraDataModule
+from T_perturb.Model.trainer import CountDecodertrainer, Petratrainer
 from T_perturb.src.utils import subset_adata_dataset
 
 RANDOM_SEED = 42
@@ -200,7 +200,7 @@ def main() -> None:
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.test_mode == 'masking':
-        pretrained_module = scConformertrainer(
+        pretrained_module = Petratrainer(
             tgt_vocab_size=704,
             d_model=256,
             num_heads=8,
@@ -250,7 +250,7 @@ def main() -> None:
     # resort to the supposedly optimal AutoAugment policy.
     # change dataloader and input
     if args.test_mode == 'masking':
-        data_module = scConformerDataModule(
+        data_module = PetraDataModule(
             src_dataset=src_dataset,
             tgt_dataset=tgt_dataset,
             src_adata=src_adata,
@@ -263,7 +263,7 @@ def main() -> None:
             drop_last=False,
         )
     elif args.test_mode == 'count':
-        data_module = scConformerDataModule(
+        data_module = PetraDataModule(
             src_dataset=src_dataset,
             tgt_dataset=tgt_dataset,
             src_adata=src_adata,

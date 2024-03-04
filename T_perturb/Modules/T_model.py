@@ -265,7 +265,7 @@ def gumbel_sample(t, temperature=1.0, dim=-1):
     return ((t / max(temperature, 1e-10)) + gumbel_noise(t)).argmax(dim=dim)
 
 
-class scConformer(nn.Module):
+class Petra(nn.Module):
     def __init__(
         self,
         tgt_vocab_size: int = 25426,
@@ -278,7 +278,7 @@ class scConformer(nn.Module):
         mlm_probability: float = 0.3,
         add_mask_id: bool = True,
     ):
-        super(scConformer, self).__init__()
+        super(Petra, self).__init__()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
@@ -447,12 +447,20 @@ class scConformer(nn.Module):
 
 class CountHead(nn.Module):
     def __init__(
-        self, loss_mode: str = 'zinb', tgt_vocab_size: int = 25426, d_model: int = 256
+        self,
+        loss_mode: str = 'zinb',
+        tgt_vocab_size: int = 25426,
+        d_model: int = 256,
+        dropout: float = 0.0,
     ):
         super(CountHead, self).__init__()
         self.loss_mode = loss_mode
 
-        self.mlp = Mlp(d_model, d_model)
+        self.mlp = Mlp(
+            in_features=d_model,
+            hidden_features=d_model,
+            drop=dropout,
+        )
         n_genes = tgt_vocab_size - 1
         if self.loss_mode == 'mse':
             self.relu_output = nn.Sequential(nn.Linear(d_model, n_genes), nn.ReLU())
@@ -489,6 +497,7 @@ class CountDecoder(nn.Module):
         tgt_vocab_size: int = 25426,
         d_model: int = 256,
         add_mask_id: bool = True,
+        dropout: float = 0.0,
     ):
         super(CountDecoder, self).__init__()
         self.pretrained_model = pretrained_model
@@ -499,7 +508,7 @@ class CountDecoder(nn.Module):
             total_vocab_size = tgt_vocab_size + 1  # CLS and masked token
             self.mask_token = total_vocab_size
         self.loss_mode = loss_mode
-        self.decoder = CountHead(loss_mode, tgt_vocab_size, d_model)
+        self.decoder = CountHead(loss_mode, tgt_vocab_size, d_model, dropout)
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.cls_embedding = None
 
@@ -633,7 +642,7 @@ if __name__ == '__main__':
         d_head=64,
         context_dim=d_model,
     )
-    transformer = scConformer(tgt_vocab_size=13)
+    transformer = Petra(tgt_vocab_size=13)
 
     # # test dataloader
     # data_module = GeneformerDataModule(
