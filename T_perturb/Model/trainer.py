@@ -246,6 +246,7 @@ class scConformertrainer(LightningModule):
     def on_test_epoch_end(self):
         # return F1 score and accuracy
         if self.return_embeddings:
+            print('Start saving embeddings -------------------')
             self.cls_embeddings_list = torch.cat(self.cls_embeddings_list)
             self.gene_embeddings_list = torch.cat(self.gene_embeddings_list)
             self.token_id_list = torch.cat(self.token_id_list)
@@ -344,9 +345,10 @@ class scConformertrainer(LightningModule):
             self.adata.write_h5ad(
                 f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
                 f't_generative/T_perturb/T_perturb/'
-                f'plt/res/scConformer/'
+                f'plt/res/Cora/'
                 f'cls_embeddings_{self.dataset_info}_cosine_similarity.h5ad'
             )
+            print('End saving embeddings -------------------')
 
 
 class CountDecodertrainer(LightningModule):

@@ -1,0 +1,30 @@
+method: random
+metric:
+  goal: minimize
+  name: val/perplexity
+name: tune_masking
+parameters:
+  train_mode:
+    value: 'masking'
+  split:
+    value: True
+  num_cells:
+    value: 0
+  epochs:
+   value: 100
+  lr:
+    distribution: loguniform
+    low: 0.0001
+    high: 0.001
+  wd:
+    distribution: loguniform_values
+    low: 0.001
+    high: 0.1
+  dropout:
+    distribution: uniform
+    low: 0.1
+    high: 0.5
+  batch_size:
+    value: 256
+program: /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/train.py
+project: ttransformer_sweep
