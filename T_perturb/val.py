@@ -8,11 +8,11 @@ from datetime import datetime
 import pytorch_lightning as pl
 import scanpy as sc
 import torch
-import wandb
 from datasets import load_from_disk
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 
+import wandb
 from T_perturb.Dataloaders.datamodule import scConformerDataModule
 from T_perturb.Model.trainer import CountDecodertrainer, scConformertrainer
 from T_perturb.src.utils import subset_adata_dataset
@@ -29,8 +29,14 @@ def get_args():
     parser.add_argument(
         '--test_mode',
         type=str,
-        default='count',
+        default='masking',
         help='Mode [masking, count]',
+    )
+    parser.add_argument(
+        '--split',
+        type=bool,
+        default=False,
+        help='split data for extrapolation',
     )
     parser.add_argument(
         '--generate',
@@ -39,18 +45,24 @@ def get_args():
         help='generate data',
     )
     parser.add_argument(
+        '--return_embeddings',
+        type=bool,
+        default=True,
+        help='return embedding',
+    )
+    parser.add_argument(
         '--num_cells',
         type=int,
-        default=10000,
+        default=0,
         help='number of cells to use for testing',
     )
     parser.add_argument(
         '--ckpt_masking_path',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/T_perturb/T_perturb/Model/checkpoints/'
-        '20240228_1822_cora_lr_0.001_wd_0_batch_512_mlmp'
-        '_0.3_stratified_pairing_16h_mode_masking.ckpt',
+        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        'T_perturb/T_perturb/Model/checkpoints/'
+        '20240303_2224_cora_lr_0.001_wd_0_batch_64_'
+        'mlmp_0.3_stratified_pairing_16h_mode_masking.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -199,8 +211,9 @@ def main() -> None:
             mlm_probability=args.mlm_probability,
             weight_decay=args.wd,
             lr=args.lr,
-            lr_scheduler_patience=1.0,
-            lr_scheduler_factor=0.8,
+            lr_scheduler_patience=5.0,
+            # lr_scheduler_factor=0.8,
+            return_embeddings=args.return_embeddings,
             batch_size=args.batch_size,
             adata=tgt_adata,
             dataset_info=dataset_info,
@@ -212,8 +225,8 @@ def main() -> None:
             loss_mode=args.loss_mode,
             lr=args.lr,
             weight_decay=args.wd,
-            lr_scheduler_patience=1.0,
-            lr_scheduler_factor=0.8,
+            lr_scheduler_patience=5.0,
+            # lr_scheduler_factor=0.8,
             conditions=conditions_,
             conditions_combined=conditions_combined_,
             tgt_vocab_size=704,
@@ -246,7 +259,7 @@ def main() -> None:
             num_workers=args.num_workers,
             shuffle=args.shuffle,
             max_len=args.max_len,
-            split='stratified',
+            split=args.split,
             drop_last=False,
         )
     elif args.test_mode == 'count':
@@ -259,7 +272,7 @@ def main() -> None:
             num_workers=args.num_workers,
             shuffle=args.shuffle,
             max_len=args.max_len,
-            split='stratified',
+            split=args.split,
             condition_keys=condition_keys_,
             condition_encodings=condition_encodings,
             conditions_combined_encodings=conditions_combined_encodings,
@@ -291,7 +304,7 @@ def main() -> None:
     # The tensorboard logger allows for monitoring the progress of training
     if torch.cuda.device_count() > 1:
         # multi gpu training with group logging
-        wandb.init(
+        wandb.init(  # type: ignore
             entity='k-ly',
             project='ttransformer',
             # id=unique_id,  # specify id to log to same run
@@ -300,7 +313,7 @@ def main() -> None:
             't_generative/T_perturb/T_perturb',
         )
     else:
-        wandb.init(
+        wandb.init(  # type: ignore
             entity='k-ly',
             project='ttransformer',
             id=run_id,
