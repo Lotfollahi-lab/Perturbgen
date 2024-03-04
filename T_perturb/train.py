@@ -8,7 +8,6 @@ from datetime import datetime
 import pytorch_lightning as pl
 import scanpy as sc
 import torch
-import wandb
 from datasets import load_from_disk
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
@@ -16,6 +15,7 @@ from pytorch_lightning.loggers import WandbLogger
 from T_perturb.Dataloaders.datamodule import scConformerDataModule
 from T_perturb.Model.trainer import CountDecodertrainer, scConformertrainer
 from T_perturb.src.utils import subset_adata_dataset
+from wandb import init  # type: ignore
 
 RANDOM_SEED = 42
 
@@ -30,8 +30,14 @@ def get_args():
     parser.add_argument(
         '--train_mode',
         type=str,
-        default='count',
+        default='masking',
         help='Mode [masking, count]',
+    )
+    parser.add_argument(
+        '--split',
+        type=bool,
+        default=False,
+        help='split data for extrapolation',
     )
     parser.add_argument(
         '--generate',
@@ -91,10 +97,10 @@ def get_args():
         ),
         help='path to tgt',
     )
-    parser.add_argument('--batch_size', type=int, default=512, help='batch_size')
+    parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=True, help='shuffle')
     parser.add_argument(
-        '--epochs', type=int, default=5, help='number of training epochs'
+        '--epochs', type=int, default=50, help='number of training epochs'
     )
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
@@ -105,10 +111,11 @@ def get_args():
     parser.add_argument(
         '--mlm_probability', type=float, default=0.3, help='mlm probability'
     )
-    parser.add_argument('--n_workers', type=int, default=4, help='number of workers')
+    parser.add_argument('--n_workers', type=int, default=8, help='number of workers')
     parser.add_argument(
         '--loss_mode', type=str, default='zinb', help='loss mode [zinb, nb, mse]'
     )
+    parser.add_argument('--dropout', type=float, default=0.0, help='dropout')
     parser.add_argument(
         '--condition_keys',
         nargs='+',
@@ -187,12 +194,12 @@ def main() -> None:
             num_layers=1,
             d_ff=32,
             max_seq_length=2000,
-            dropout=0.0,
+            dropout=args.dropout,
             mlm_probability=args.mlm_probability,
             weight_decay=args.wd,
             lr=args.lr,
-            lr_scheduler_patience=1.0,
-            lr_scheduler_factor=0.8,
+            lr_scheduler_patience=5.0,
+            # lr_scheduler_factor=0.8,
             batch_size=args.batch_size,
             adata=tgt_adata,
             dataset_info=dataset_info,
@@ -204,12 +211,14 @@ def main() -> None:
             loss_mode=args.loss_mode,
             lr=args.lr,
             weight_decay=args.wd,
-            lr_scheduler_patience=1.0,
-            lr_scheduler_factor=0.8,
+            lr_scheduler_patience=5.0,
+            # lr_scheduler_factor=0.8,
             conditions=conditions_,
             conditions_combined=conditions_combined_,
             tgt_vocab_size=704,
             d_model=256,
+            generate=args.generate,
+            tgt_adata=tgt_adata,
         )
 
         # # Assume `model` is your model
@@ -227,6 +236,10 @@ def main() -> None:
     # While there is a wide variety of different augmentation strategies, we simply
     # resort to the supposedly optimal AutoAugment policy.
     # change dataloader and input
+    if not all(
+        tgt_adata.obs['cell_pairing_index'] == tgt_dataset['cell_pairing_index']
+    ):
+        raise ValueError('Index of adata and tokenized data do not match')
     if args.train_mode == 'masking':
         data_module = scConformerDataModule(
             src_dataset=src_dataset,
@@ -239,6 +252,7 @@ def main() -> None:
             max_len=args.max_len,
             seed=RANDOM_SEED,
             drop_last=False,
+            split=args.split,
         )
     elif args.train_mode == 'count':
         data_module = scConformerDataModule(
@@ -255,6 +269,7 @@ def main() -> None:
             conditions_combined_encodings=conditions_combined_encodings,
             seed=RANDOM_SEED,
             drop_last=False,
+            split=args.split,
         )
     # Setup trainer
     # ----------------------------------------------------------------------------------
@@ -265,39 +280,54 @@ def main() -> None:
     # Define Callbacks
     # This callback always keeps a checkpoint of the best model according to
     # validation accuracy.
-    checkpoint_callback = ModelCheckpoint(
-        dirpath='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/T_perturb/T_perturb/Model/checkpoints',
-        filename=(
-            f'{run_id}_lr_{args.lr}_wd_{args.wd}_batch_'
-            f'{args.batch_size}_mlmp_{args.mlm_probability}_'
-            f'{dataset_info}_mode_{args.train_mode}'
-        ),
-        save_top_k=1,
-        verbose=True,
-        monitor='val/loss',
-        mode='min',
-    )
+    if args.train_mode == 'masking':
+        checkpoint_callback = ModelCheckpoint(
+            dirpath='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+            't_generative/T_perturb/T_perturb/Model/checkpoints',
+            filename=(
+                f'{run_id}_lr_{args.lr}_wd_{args.wd}_batch_'
+                f'{args.batch_size}_mlmp_{args.mlm_probability}_'
+                f'{dataset_info}_mode_{args.train_mode}'
+            ),
+            save_top_k=1,
+            verbose=True,
+            monitor='train/perplexity',
+            mode='min',
+        )
+    elif args.train_mode == 'count':
+        checkpoint_callback = ModelCheckpoint(
+            dirpath='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+            't_generative/T_perturb/T_perturb/Model/checkpoints',
+            filename=(
+                f'{run_id}_lr_{args.lr}_wd_{args.wd}_batch_'
+                f'{args.batch_size}_loss_{args.loss_mode}_'
+                f'{dataset_info}_mode_{args.train_mode}'
+            ),
+            save_top_k=1,
+            verbose=True,
+            monitor='val/pearson',
+            mode='max',
+        )
 
     # The tensorboard logger allows for monitoring the progress of training
     if torch.cuda.device_count() > 1:
         # multi gpu training with group logging
-        wandb.init(
+        init(
             entity='k-ly',
             project='ttransformer',
             # id=unique_id,  # specify id to log to same run
             group=log_path,  # all runs are saved in one group for multi gpu training
             dir='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
             't_generative/T_perturb/T_perturb',
-        )
+        )  # noqa
     else:
-        wandb.init(
+        init(
             entity='k-ly',
             project='ttransformer',
             id=run_id,
             dir='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
             't_generative/T_perturb/T_perturb',
-        )
+        )  # noqa
 
     wandb_logger = WandbLogger(log_model='all')
 
@@ -312,13 +342,22 @@ def main() -> None:
     # further information.
     # Lightning allows for simple multi-gpu training, gradient accumulation, half
     # precision training, etc. using the trainer class.
-    early_stop_callback = pl.callbacks.EarlyStopping(
-        monitor='train/loss',
-        min_delta=0.00,
-        patience=3,
-        verbose=False,
-        mode='min',
-    )
+    if args.train_mode == 'masking':
+        early_stop_callback = pl.callbacks.EarlyStopping(
+            monitor='train/perplexity',
+            min_delta=0.00,
+            patience=5,
+            verbose=False,
+            mode='min',
+        )
+    elif args.train_mode == 'count':
+        early_stop_callback = pl.callbacks.EarlyStopping(
+            monitor='val/pearson',
+            min_delta=0.00,
+            patience=5,
+            verbose=False,
+            mode='max',
+        )
     accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
     trainer = pl.Trainer(
         logger=wandb_logger,

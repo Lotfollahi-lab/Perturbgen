@@ -9,8 +9,8 @@ import scanpy as sc
 import torch
 import tqdm
 from datasets import DatasetDict
-from scipy.sparse import csr_matrix, issparse
-from scipy.stats import wasserstein_distance
+from scipy.sparse import csr_matrix
+from torch.utils.data import Subset, random_split
 
 
 def map_ensembl_to_genename(
@@ -232,164 +232,6 @@ def pairing_resting_to_activated_cells(
     return cell_pairings
 
 
-def pairwise_distance(x, y):
-    x = x.view(x.shape[0], x.shape[1], 1)
-    y = torch.transpose(y, 0, 1)
-    output = torch.sum((x - y) ** 2, 1)
-    output = torch.transpose(output, 0, 1)
-    return output
-
-
-def gaussian_kernel_matrix(x, y, alphas):
-    """Computes multiscale-RBF kernel between x and y.
-    Parameters
-    ----------
-    x: torch.Tensor
-         Tensor with shape [batch_size, z_dim].
-    y: torch.Tensor
-         Tensor with shape [batch_size, z_dim].
-    alphas: Tensor
-    Returns
-    -------
-    Returns the computed multiscale-RBF kernel between x and y.
-    """
-
-    dist = pairwise_distance(x, y).contiguous()
-    dist_ = dist.view(1, -1)
-
-    alphas = alphas.view(alphas.shape[0], 1)
-    beta = 1.0 / (2.0 * alphas)
-
-    s = torch.matmul(beta, dist_)
-
-    return torch.sum(torch.exp(-s), 0).view_as(dist)
-
-
-def mmd_loss_calc(source_features, target_features):
-    """Initializes Maximum Mean Discrepancy(MMD)
-    between source_features and target_features.
-    - Gretton, Arthur, et al. "A Kernel Two-Sample Test". 2012.
-    Parameters
-    ----------
-    source_features: torch.Tensor
-         Tensor with shape [batch_size, z_dim]
-    target_features: torch.Tensor
-         Tensor with shape [batch_size, z_dim]
-    Returns
-    -------
-    Returns the computed MMD between x and y.
-    """
-    alphas = [
-        1e-6,
-        1e-5,
-        1e-4,
-        1e-3,
-        1e-2,
-        1e-1,
-        1,
-        5,
-        10,
-        15,
-        20,
-        25,
-        30,
-        35,
-        100,
-        1e3,
-        1e4,
-        1e5,
-        1e6,
-    ]
-    alphas = torch.autograd.Variable(torch.FloatTensor(alphas)).to(
-        device=source_features.device
-    )
-
-    cost = torch.mean(gaussian_kernel_matrix(source_features, source_features, alphas))
-    cost += torch.mean(gaussian_kernel_matrix(target_features, target_features, alphas))
-    cost -= 2 * torch.mean(
-        gaussian_kernel_matrix(source_features, target_features, alphas)
-    )
-
-    return cost
-
-
-# Metrics below were taken from:
-# https://github.com/facebookresearch/CPA/blob/main/cpa/helper.py
-# Date of access: 2024.01.08
-
-
-def evaluate_mmd(adata, pred_adata, condition_key, de_genes_dict=None):
-    mmd_list = []
-    for cond in pred_adata.obs[condition_key].unique():
-        adata_ = adata[adata.obs[condition_key] == cond].copy()
-        pred_adata_ = pred_adata[pred_adata.obs[condition_key] == cond].copy()
-        if issparse(adata_.X):
-            adata_.X = adata_.X.A
-        if issparse(pred_adata_.X):
-            pred_adata_.X = pred_adata_.X.A
-
-        mmd = mmd_loss_calc(torch.Tensor(adata_.X), torch.Tensor(pred_adata_.X))
-        mmd_list.append({'condition': cond, 'mmd': mmd.detach().cpu().numpy()})
-        if de_genes_dict:
-            de_genes = de_genes_dict[cond]
-            sub_adata_ = adata_[:, de_genes]
-            sub_pred_adata_ = pred_adata_[:, de_genes]
-            mmd_deg = mmd_loss_calc(
-                torch.Tensor(sub_adata_.X), torch.Tensor(sub_pred_adata_.X)
-            )
-            mmd_list[-1]['mmd_deg'] = mmd_deg.detach().cpu().numpy()
-    mmd_df = pd.DataFrame(mmd_list).set_index('condition')
-    return mmd_df
-
-
-def evaluate_emd(
-    true_data: np.ndarray, pred_data: np.ndarray, condition_key=None, de_genes_dict=None
-):
-    emd_list = []
-    if condition_key:  # instead of condition have it per timepoint
-        for cond in pred_data.obs[condition_key].unique():
-            adata_ = true_data[true_data.obs[condition_key] == cond].copy()
-            pred_adata_ = pred_data[pred_data.obs[condition_key] == cond].copy()
-            if issparse(adata_.X):
-                adata_.X = adata_.X.A
-            if issparse(pred_adata_.X):
-                pred_adata_.X = pred_adata_.X.A
-            wd = []
-            for i, _ in enumerate(adata_.var_names):
-                wd.append(
-                    wasserstein_distance(
-                        torch.Tensor(adata_.X[:, i]), torch.Tensor(pred_adata_.X[:, i])
-                    )
-                )
-            emd_list.append({'condition': cond, 'emd': np.mean(wd)})
-            if de_genes_dict:
-                de_genes = de_genes_dict[cond]
-                sub_adata_ = adata_[:, de_genes]
-                sub_pred_adata_ = pred_adata_[:, de_genes]
-                wd_deg = []
-                for i, _ in enumerate(sub_adata_.var_names):
-                    wd_deg.append(
-                        wasserstein_distance(
-                            torch.Tensor(sub_adata_.X[:, i]),
-                            torch.Tensor(sub_pred_adata_.X[:, i]),
-                        )
-                    )
-                emd_list[-1]['emd_deg'] = np.mean(wd_deg)
-        emd_df = pd.DataFrame(emd_list).set_index('condition')
-    else:
-        true_data_ = true_data.copy()
-        pred_data_ = pred_data.copy()
-        wd = []
-        for i, _ in enumerate(true_data_.var_names):
-            wd.append(
-                wasserstein_distance(
-                    torch.Tensor(true_data_.X[:, i]), torch.Tensor(pred_data_.X[:, i])
-                )
-            )
-        emd_list.append({'emd': np.mean(wd)})
-    return emd_df
-
-
 def one_hot_encoder(idx, n_cls):
     assert torch.max(idx).item() < n_cls
     if idx.dim() == 1:
@@ -441,3 +283,91 @@ def label_encoder(adata, encoder, condition_key=None):
         labels[adata.obs[condition_key] == condition] = label
     labels = [int(x) for x in labels]
     return labels
+
+
+def randomised_split(
+    train_prop: float, test_prop: float, seed: int, dataset: ad.AnnData
+):
+    # define train, val and test size
+    train_size = np.round(train_prop * dataset.__len__()).astype(int)
+    test_size = np.round(test_prop * dataset.__len__()).astype(int)
+    val_size = dataset.__len__() - train_size - test_size
+    generator = torch.Generator().manual_seed(seed)
+    train, val, test = random_split(
+        dataset, [train_size, val_size, test_size], generator=generator
+    )
+
+    return train, val, test
+
+
+def stratified_split(
+    tgt_adata: ad.AnnData,
+    train_prop: float,
+    test_prop: float,
+    groups: List[str],
+    seed: int = 42,
+):
+    """
+    Description:
+    ------------
+    Stratified split of dataset based on cell type.
+    """
+    np.random.seed(seed)
+    # define train, val and test size based on unique groups
+    # extract unique groups and counts
+    # groups =
+    groups_df = tgt_adata.obs[groups].copy()
+    if len(groups) > 1:
+        groups_df.loc[:, 'stratified'] = groups_df.loc[:, groups].apply(
+            lambda x: '_'.join(x), axis=1
+        )
+    else:
+        groups_df.loc[:, 'stratified'] = groups_df.loc[:, groups]
+    groups_df.reset_index(drop=True, inplace=True)
+    unique_groups = groups_df['stratified'].unique()
+    group_indices = [np.where(groups_df['stratified'] == i)[0] for i in unique_groups]
+    train_indices, test_indices, val_indices = [], [], []
+
+    for indices in group_indices:
+        assert (
+            len(np.unique(groups_df.iloc[indices].stratified)) == 1
+        ), 'groups are not stratified'
+        # split indices into train, val and test set
+        np.random.shuffle(indices)
+        train_size = np.round(train_prop * len(indices)).astype(int)
+        test_size = np.round(test_prop * len(indices)).astype(int)
+        # val_size = len(indices) - train_size - test_size
+        train_indices.extend(indices[:train_size])
+        test_indices.extend(indices[train_size : train_size + test_size])
+        val_indices.extend(indices[train_size + test_size :])
+    return train_indices, val_indices, test_indices
+
+
+def unseen_donor_split(
+    adata: ad.AnnData,
+    train_prop: float,
+    test_prop: float,
+):
+    # define groups for stratified split by Time_point and Cell_type
+    groups = adata.obs[['Donor']]
+    # define train, val and test size based on unique donors
+    train_size = np.round(train_prop * len(groups['Donor'].unique())).astype(int)
+    test_size = np.round(test_prop * len(groups['Donor'].unique())).astype(int)
+    val_size = len(groups['Donor'].unique()) - train_size - test_size
+    # sample from groups based on unique donors using numpy random choice
+    test_donors = np.random.choice(
+        groups['Donor'].unique(), size=test_size, replace=False
+    )
+    # exclude test donors from train and val set
+    train_val_donors = np.setdiff1d(groups['Donor'].unique(), test_donors)
+    # sample from remaining donors based on unique donors using numpy random choice
+    val_donors = np.random.choice(train_val_donors, size=val_size, replace=False)
+    # use remaining donors as train set
+    train_donors = np.setdiff1d(train_val_donors, val_donors)
+    # split dataset to create dataset subset not tuple
+    # get indices of train, val and test set
+    train = Subset(adata, np.where(groups['Donor'].isin(train_donors))[0])
+    val = Subset(adata, np.where(groups['Donor'].isin(val_donors))[0])
+    test = Subset(adata, np.where(groups['Donor'].isin(test_donors))[0])
+
+    return train, val, test

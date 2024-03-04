@@ -35,7 +35,7 @@ def get_args():
     parser.add_argument(
         '--generate',
         type=bool,
-        default=True,
+        default=False,
         help='generate data',
     )
     parser.add_argument(
@@ -49,8 +49,8 @@ def get_args():
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
         't_generative/T_perturb/T_perturb/Model/checkpoints/'
-        '20240228_0113_cora_lr_0.001_wd_0_'
-        'batch_512_mlm_0.3_stratified_pairing_16h_mode_masking.ckpt',
+        '20240228_1822_cora_lr_0.001_wd_0_batch_512_mlmp'
+        '_0.3_stratified_pairing_16h_mode_masking.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -58,8 +58,8 @@ def get_args():
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
         't_generative/T_perturb/T_perturb/Model/checkpoints/'
-        '20240228_0929_cora_lr_0.001_wd_0'
-        '_batch_512_mlm_0.3_stratified_pairing_16h_mode_count.ckpt',
+        '20240228_2230_cora_lr_0.001_wd_0_batch_512_mlmp'
+        '_0.3_stratified_pairing_16h_mode_count.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -218,8 +218,7 @@ def main() -> None:
             conditions_combined=conditions_combined_,
             tgt_vocab_size=704,
             d_model=256,
-            cell_number=tgt_adata.shape[0],
-            generate=True,
+            generate=args.generate,
             tgt_adata=tgt_adata,
         )
         if args.loss_mode == 'mse':

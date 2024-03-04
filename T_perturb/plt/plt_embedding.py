@@ -24,7 +24,7 @@ style.use(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
     'T_perturb/T_perturb/pp/mpl_style.mplstyle'
 )
-time_point = '5d'
+time_point = '16h'
 
 # Plotting CLS embeddings
 # --------------------------------
