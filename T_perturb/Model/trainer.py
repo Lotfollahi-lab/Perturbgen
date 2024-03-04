@@ -30,8 +30,8 @@ from T_perturb.Model.metric import (
 )
 from T_perturb.Modules.T_model import (
     CountDecoder,
+    Petra,
     cosine_schedule,
-    scConformer,
 )
 from T_perturb.src.losses import (
     mse_loss,
@@ -74,7 +74,7 @@ def batch_token_ranking(tokenised_cells: torch.tensor, vocab_size: int):
     return first_occurrence_indices
 
 
-class scConformertrainer(LightningModule):
+class Petratrainer(LightningModule):
     def __init__(
         self,
         tgt_vocab_size: int = 25000,
@@ -97,7 +97,7 @@ class scConformertrainer(LightningModule):
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
-        self.transformer = scConformer(
+        self.transformer = Petra(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
             num_heads=num_heads,
@@ -345,7 +345,7 @@ class scConformertrainer(LightningModule):
             self.adata.write_h5ad(
                 f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
                 f't_generative/T_perturb/T_perturb/'
-                f'plt/res/Cora/'
+                f'plt/res/Petra/'
                 f'cls_embeddings_{self.dataset_info}_cosine_similarity.h5ad'
             )
             print('End saving embeddings -------------------')
@@ -363,6 +363,7 @@ class CountDecodertrainer(LightningModule):
         conditions: Optional[Dict[Any, Any]] = None,
         conditions_combined: Optional[List[Any]] = None,
         tgt_vocab_size: int = 25000,
+        dropout: float = 0.0,
         d_model: int = 256,
         generate: bool = True,
         tgt_adata: Optional[ad.AnnData] = None,
@@ -377,7 +378,7 @@ class CountDecodertrainer(LightningModule):
         checkpoint = torch.load(ckpt_path, map_location='cpu')
         self.tgt_vocab_size = checkpoint['hyper_parameters']['tgt_vocab_size']
         self.d_model = checkpoint['hyper_parameters']['d_model']
-        pretrained_model = scConformer(
+        pretrained_model = Petra(
             tgt_vocab_size=self.tgt_vocab_size,
             d_model=self.d_model,
             d_ff=checkpoint['hyper_parameters']['d_ff'],
@@ -398,6 +399,7 @@ class CountDecodertrainer(LightningModule):
             loss_mode=loss_mode,
             tgt_vocab_size=self.tgt_vocab_size,
             d_model=self.d_model,
+            dropout=dropout,
         )
         self.save_hyperparameters()
         self.weight_decay = weight_decay
@@ -768,7 +770,7 @@ class CountDecodertrainer(LightningModule):
         # save metrics
         metrics.to_csv(
             f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            f't_generative/T_perturb/T_perturb/plt/res/Cora/'
+            f't_generative/T_perturb/T_perturb/plt/res/Petra/'
             f'generate_mmd_emd_{condition_key}_metrics.csv'
         )
         # set to status quo
