@@ -64,7 +64,6 @@ class PetraDataset(Dataset):
             for key, dataset in tgt_datasets.items():
                 tgt_datasets[key] = dataset.select(split_indices)
             self.tgt_datasets = tgt_datasets
-            print(self.tgt_datasets)
 
             if src_adata is not None:
                 self.src_adata = src_adata[split_indices, :]
@@ -72,7 +71,6 @@ class PetraDataset(Dataset):
                 self.tgt_adata = tgt_adata[split_indices, :]
         if tgt_adata is not None:
             self.size_factor = np.ravel(self.tgt_adata.X.sum(axis=1))
-        raise
         self.conditions = conditions
         self.conditions_combined = conditions_combined
         self.condition_encodings = condition_encodings
@@ -362,27 +360,48 @@ class PetraDataModule(LightningDataModule):
             src_time_point = None
             src_donor = None
 
-        if any('tgt_dataset' in item for item in batch):
-            # return counts
-            tgt_input_batch_id = [
-                torch.tensor(d['tgt_dataset']['input_ids']) for d in batch
-            ]
-            tgt_length = torch.stack(
-                [torch.tensor(d['tgt_dataset']['length']) for d in batch]
-            )
-            model_input_size = torch.max(tgt_length)
-            tgt_cell_type = [d['tgt_dataset']['Cell_type'] for d in batch]
-            tgt_cell_population = [d['tgt_dataset']['Cell_population'] for d in batch]
-            tgt_time_point = [d['tgt_dataset']['Cell_population'] for d in batch]
-            tgt_donor = [d['tgt_dataset']['Donor'] for d in batch]
-            tgt_input_batch_id = pad_tensor_list(
-                tgt_input_batch_id, self.max_len, self.pad_token_id, model_input_size
-            )
+        @staticmethod
+        def return_tgt_dataset(dataset_name):
+            if any(dataset_name in item for item in batch):
+                tgt_input_batch_id = [
+                    torch.tensor(d[dataset_name]['input_ids']) for d in batch
+                ]
+                tgt_length = torch.stack(
+                    [torch.tensor(d[dataset_name]['length']) for d in batch]
+                )
+                model_input_size = torch.max(tgt_length)
+                tgt_cell_population = [
+                    d[dataset_name]['Cell_population'] for d in batch
+                ]
+                tgt_input_batch_id = pad_tensor_list(
+                    tgt_input_batch_id,
+                    self.max_len,
+                    self.pad_token_id,
+                    model_input_size,
+                )
+            else:
+                tgt_input_batch_id = None
+                tgt_length = None
+                tgt_cell_population = None
+            return tgt_input_batch_id, tgt_length, tgt_cell_population
+
+        (
+            tgt_input_batch_id_t1,
+            tgt_length_t1,
+            tgt_cell_population_t1,
+        ) = return_tgt_dataset('tgt_dataset_t1')
+        (
+            tgt_input_batch_id_t2,
+            tgt_length_t2,
+            tgt_cell_population_t2,
+        ) = return_tgt_dataset('tgt_dataset_t2')
+
+        if any('tgt_dataset_t1' in item for item in batch):
+            tgt_cell_type = [d['tgt_dataset_t1']['Cell_type'] for d in batch]
+            tgt_donor = [d['tgt_dataset_t1']['Donor'] for d in batch]
+            tgt_time_point = [d['tgt_dataset_t1']['Time_point'] for d in batch]
         else:
-            tgt_input_batch_id = None
-            tgt_length = None
             tgt_cell_type = None
-            tgt_cell_population = None
             tgt_time_point = None
             tgt_donor = None
 
@@ -413,10 +432,13 @@ class PetraDataModule(LightningDataModule):
             'src_time_point': src_time_point,
             'src_donor': src_donor,
             'src_counts': src_counts,
-            'tgt_input_ids': tgt_input_batch_id,
-            'tgt_length': tgt_length,
+            'tgt_input_ids_t1': tgt_input_batch_id_t1,
+            'tgt_input_ids_t2': tgt_input_batch_id_t2,
+            'tgt_length_t1': tgt_length_t1,
+            'tgt_length_t2': tgt_length_t2,
+            'tgt_cell_population_t1': tgt_cell_population_t1,
+            'tgt_cell_population_t2': tgt_cell_population_t2,
             'tgt_cell_type': tgt_cell_type,
-            'tgt_cell_population': tgt_cell_population,
             'tgt_time_point': tgt_time_point,
             'tgt_donor': tgt_donor,
             'tgt_counts': tgt_counts,

@@ -41,7 +41,7 @@ def get_args():
     parser.add_argument(
         '--generate',
         type=bool,
-        default=False,
+        default=True,
         help='generate data',
     )
     parser.add_argument(
@@ -70,8 +70,8 @@ def get_args():
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
         'T_perturb/T_perturb/Model/checkpoints/'
-        '20240304_1926_petra_mode_count_lr_0.0005_wd_'
-        '0.001_batch_256_zinb_stratified_pairing_16h.ckpt',
+        '20240304_1926_petra_mode_count_lr_0.0005_'
+        'wd_0.001_batch_256_zinb_stratified_pairing_16h.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -88,6 +88,20 @@ def get_args():
         default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
         f'T_perturb/T_perturb/pp/res/dataset/'
         f'{test_dataset}',
+        help='path to tokenised activated data',
+    )
+    parser.add_argument(
+        '--tgt_dataset_t1',
+        type=str,
+        default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        f'T_perturb/T_perturb/pp/res/dataset/{test_dataset}',
+        help='path to tokenised activated data',
+    )
+    parser.add_argument(
+        '--tgt_dataset_t2',
+        type=str,
+        default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        f'T_perturb/T_perturb/pp/res/dataset/{test_dataset}',
         help='path to tokenised activated data',
     )
     parser.add_argument(
@@ -174,7 +188,12 @@ def main() -> None:
         src_adata, tgt_adata, src_dataset, tgt_dataset = subset_adata_dataset(
             src_adata, tgt_adata, src_dataset, tgt_dataset, args.num_cells, RANDOM_SEED
         )
+    # tgt_dataset = load_from_disk(args.tgt_dataset)
+    tgt_dataset_t1 = load_from_disk(args.tgt_dataset_t1)
+    tgt_dataset_t2 = load_from_disk(args.tgt_dataset_t2)
 
+    # create dictionary for dataset
+    tgt_datasets = {'t1': tgt_dataset_t1, 't2': tgt_dataset_t2}
     if isinstance(args.condition_keys, str):
         condition_keys_ = [args.condition_keys]
     else:
@@ -257,7 +276,7 @@ def main() -> None:
     if args.test_mode == 'masking':
         data_module = PetraDataModule(
             src_dataset=src_dataset,
-            tgt_dataset=tgt_dataset,
+            tgt_datasets=tgt_datasets,
             src_adata=src_adata,
             tgt_adata=tgt_adata,
             batch_size=args.batch_size,
@@ -271,7 +290,7 @@ def main() -> None:
     elif args.test_mode == 'count':
         data_module = PetraDataModule(
             src_dataset=src_dataset,
-            tgt_dataset=tgt_dataset,
+            tgt_datasets=tgt_datasets,
             src_adata=src_adata,
             tgt_adata=tgt_adata,
             batch_size=args.batch_size,

@@ -707,6 +707,7 @@ class CountDecodertrainer(LightningModule):
 
             self.test_pred_counts_list.append(pred_count)
             self.test_true_counts_list.append(batch['tgt_counts'])
+            print(len(self.test_true_counts_list))
             self.test_ctrl_counts_list.append(batch['src_counts'])
             self.test_tgt_cell_type_list.append(batch['tgt_cell_type'])
             self.test_tgt_cell_population_list.append(batch['tgt_cell_population'])
