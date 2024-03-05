@@ -14,7 +14,8 @@ from pytorch_lightning.loggers import WandbLogger
 
 from T_perturb.Dataloaders.datamodule import PetraDataModule
 from T_perturb.Model.trainer import CountDecodertrainer, Petratrainer
-from T_perturb.src.utils import subset_adata_dataset
+
+# from T_perturb.src.utils import subset_adata_dataset
 from wandb import init  # type: ignore
 
 RANDOM_SEED = 42
@@ -77,6 +78,13 @@ def get_args():
         f'T_perturb/T_perturb/pp/res/dataset/{train_dataset}',
         help='path to tokenised activated data',
     )
+    # parser.add_argument(
+    #     '--tgt_dataset_t1',
+    #     type=str,
+    #     default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+    #     f'T_perturb/T_perturb/pp/res/dataset/{train_dataset}',
+    #     help='path to tokenised activated data',
+    # )
     # parser.add_argument(
     #     '--tgt_dataset_t2',
     #     type=str,
@@ -155,8 +163,8 @@ def main() -> None:
     # tgt_dataset_t1 = load_from_disk(args.tgt_dataset_t1)
     # tgt_dataset_t2 = load_from_disk(args.tgt_dataset_t2)
 
-    # create dictionary for dataset
-    # tgt_dataset = {'t1': tgt_dataset_t1, 't2': tgt_dataset_t2}
+    # # create dictionary for dataset
+    # tgt_datasets = {'t1': tgt_dataset_t1, 't2': tgt_dataset_t2}
 
     src_adata = sc.read_h5ad(args.src_adata_folder)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
@@ -170,10 +178,11 @@ def main() -> None:
         sc.pp.log1p(src_adata)
         sc.pp.normalize_total(tgt_adata, target_sum=1e4)
         sc.pp.log1p(tgt_adata)
-    if args.num_cells != 0:
-        src_adata, tgt_adata, src_dataset, tgt_dataset = subset_adata_dataset(
-            src_adata, tgt_adata, src_dataset, tgt_dataset, args.num_cells, RANDOM_SEED
-        )
+    # if args.num_cells != 0:
+    #     src_adata, tgt_adata, src_dataset, tgt_dataset = subset_adata_dataset(
+    #         src_adata, tgt_adata, src_dataset,
+    #         tgt_dataset, args.num_cells, RANDOM_SEED
+    #     )
 
     if isinstance(args.condition_keys, str):
         condition_keys_ = [args.condition_keys]
@@ -315,7 +324,8 @@ def main() -> None:
         monitor_metric = 'val/pearson'
         mode = 'max'
     checkpoint_callback = ModelCheckpoint(
-        dirpath=os.path.join(os.getcwd(), log_path),
+        dirpath='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+        't_generative/T_perturb/T_perturb/Model/checkpoints',
         filename=filename,
         save_top_k=1,
         verbose=True,

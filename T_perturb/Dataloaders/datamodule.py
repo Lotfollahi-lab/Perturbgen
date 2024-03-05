@@ -60,8 +60,10 @@ class PetraDataset(Dataset):
             self.tgt_adata = tgt_adata
         else:
             self.src_dataset = src_dataset.select(split_indices)
-            # for dataset in tgt_dataset
             self.tgt_dataset = tgt_dataset.select(split_indices)
+            # for key, dataset in tgt_datasets.items():
+            #     tgt_datasets[key] = dataset.select(split_indices)
+            # self.tgt_datasets = tgt_datasets
             if src_adata is not None:
                 self.src_adata = src_adata[split_indices, :]
             if tgt_adata is not None:
@@ -76,6 +78,8 @@ class PetraDataset(Dataset):
         return {
             'src_dataset': self.src_dataset[ind],
             'tgt_dataset': self.tgt_dataset[ind],
+            # 'tgt_dataset_t1': self.tgt_datasets['t1'][ind],
+            # 'tgt_dataset_t2': self.tgt_datasets['t2'][ind],
             'tgt_adata': self.tgt_adata[ind],
             'src_adata': self.src_adata[ind],
             'tgt_size_factor': self.size_factor[ind],
@@ -367,7 +371,7 @@ class PetraDataModule(LightningDataModule):
             tgt_cell_type = [d['tgt_dataset']['Cell_type'] for d in batch]
             tgt_cell_population = [d['tgt_dataset']['Cell_population'] for d in batch]
             tgt_time_point = [d['tgt_dataset']['Cell_population'] for d in batch]
-            tgt_donor = [d['tgt_dataset']['Cell_population'] for d in batch]
+            tgt_donor = [d['tgt_dataset']['Donor'] for d in batch]
             tgt_input_batch_id = pad_tensor_list(
                 tgt_input_batch_id, self.max_len, self.pad_token_id, model_input_size
             )

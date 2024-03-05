@@ -29,13 +29,13 @@ def get_args():
     parser.add_argument(
         '--test_mode',
         type=str,
-        default='masking',
+        default='count',
         help='Mode [masking, count]',
     )
     parser.add_argument(
         '--split',
         type=bool,
-        default=False,
+        default=True,
         help='split data for extrapolation',
     )
     parser.add_argument(
@@ -47,7 +47,7 @@ def get_args():
     parser.add_argument(
         '--return_embeddings',
         type=bool,
-        default=True,
+        default=False,
         help='return embedding',
     )
     parser.add_argument(
@@ -68,10 +68,10 @@ def get_args():
     parser.add_argument(
         '--ckpt_count_path',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/T_perturb/T_perturb/Model/checkpoints/'
-        '20240228_2230_cora_lr_0.001_wd_0_batch_512_mlmp'
-        '_0.3_stratified_pairing_16h_mode_count.ckpt',
+        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        'T_perturb/T_perturb/Model/checkpoints/'
+        '20240304_1926_petra_mode_count_lr_0.0005_wd_'
+        '0.001_batch_256_zinb_stratified_pairing_16h.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -122,12 +122,16 @@ def get_args():
         '--mlm_probability', type=float, default=0.5, help='mlm probability'
     )
     parser.add_argument('--max_len', type=int, default=246, help='max sequence length')
-    parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
-    parser.add_argument('--wd', type=float, default=1e-3, help='weight decay')
-    parser.add_argument('--num_workers', type=int, default=4, help='number of workers')
+    parser.add_argument('--petra_lr', type=float, default=1e-3, help='learning rate')
+    parser.add_argument('--count_lr', type=float, default=0.0005, help='learning rate')
+    parser.add_argument('--petra_wd', type=float, default=0.0, help='weight decay')
+    parser.add_argument('--count_wd', type=float, default=0.001, help='weight decay')
+    parser.add_argument('--n_workers', type=int, default=4, help='number of workers')
     parser.add_argument(
         '--loss_mode', type=str, default='zinb', help='loss mode [zinb, nb, mse]'
     )
+    parser.add_argument('--petra_dropout', type=float, default=0.0, help='dropout')
+    parser.add_argument('--count_dropout', type=float, default=0.0, help='dropout')
     parser.add_argument(
         '--condition_keys',
         nargs='+',
@@ -207,10 +211,10 @@ def main() -> None:
             num_layers=1,
             d_ff=32,
             max_seq_length=2000,
-            dropout=0.0,
+            dropout=args.petra_dropout,
             mlm_probability=args.mlm_probability,
-            weight_decay=args.wd,
-            lr=args.lr,
+            weight_decay=args.petra_wd,
+            lr=args.petra_lr,
             lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             return_embeddings=args.return_embeddings,
@@ -223,13 +227,14 @@ def main() -> None:
         decoder_module = CountDecodertrainer(
             ckpt_path=args.ckpt_masking_path,
             loss_mode=args.loss_mode,
-            lr=args.lr,
-            weight_decay=args.wd,
+            lr=args.count_lr,
+            weight_decay=args.count_wd,
             lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             conditions=conditions_,
             conditions_combined=conditions_combined_,
             tgt_vocab_size=704,
+            dropout=args.count_dropout,
             d_model=256,
             generate=args.generate,
             tgt_adata=tgt_adata,
@@ -256,9 +261,10 @@ def main() -> None:
             src_adata=src_adata,
             tgt_adata=tgt_adata,
             batch_size=args.batch_size,
-            num_workers=args.num_workers,
+            num_workers=args.n_workers,
             shuffle=args.shuffle,
             max_len=args.max_len,
+            seed=RANDOM_SEED,
             split=args.split,
             drop_last=False,
         )
@@ -269,13 +275,14 @@ def main() -> None:
             src_adata=src_adata,
             tgt_adata=tgt_adata,
             batch_size=args.batch_size,
-            num_workers=args.num_workers,
+            num_workers=args.n_workers,
             shuffle=args.shuffle,
             max_len=args.max_len,
             split=args.split,
             condition_keys=condition_keys_,
             condition_encodings=condition_encodings,
             conditions_combined_encodings=conditions_combined_encodings,
+            seed=RANDOM_SEED,
             drop_last=False,
         )
 
@@ -288,17 +295,30 @@ def main() -> None:
     # Define Callbacks
     # This callback always keeps a checkpoint of the best model according to
     # validation accuracy.
+    if args.test_mode == 'masking':
+        filename = (
+            f'{run_id}_mode_{args.test_mode}_lr_{args.petra_lr}_wd_{args.petra_wd}_'
+            f'batch_{args.batch_size}_'
+            f'mlmp_{args.mlm_probability}_{dataset_info}'
+        )
+        monitor_metric = 'train/perplexity'
+        mode = 'min'
+    elif args.test_mode == 'count':
+        filename = (
+            f'{run_id}_mode_{args.test_mode}_lr_{args.count_lr}_wd_{args.count_wd}_'
+            f'batch_{args.batch_size}_'
+            f'{args.loss_mode}_{dataset_info}'
+        )
+        monitor_metric = 'val/pearson'
+        mode = 'max'
     checkpoint_callback = ModelCheckpoint(
         dirpath='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
         't_generative/T_perturb/T_perturb/Model/checkpoints',
-        filename=(
-            f'{run_id}_lr_{args.lr}_wd_{args.wd}_batchsize_'
-            f'{args.batch_size}_mlmprob_{args.mlm_probability}_{dataset_info}'
-        ),
+        filename=filename,
         save_top_k=1,
         verbose=True,
-        monitor='train/loss',
-        mode='min',
+        monitor=monitor_metric,
+        mode=mode,
     )
 
     # The tensorboard logger allows for monitoring the progress of training
