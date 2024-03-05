@@ -360,12 +360,13 @@ class CountDecodertrainer(LightningModule):
         weight_decay: float = 0.0,
         lr_scheduler_patience: float = 1.0,
         # lr_scheduler_factor: float = 0.8,
-        conditions: Optional[Dict[Any, Any]] = None,
-        conditions_combined: Optional[List[Any]] = None,
         tgt_vocab_size: int = 25000,
         dropout: float = 0.0,
         d_model: int = 256,
         generate: bool = True,
+        conditions: Optional[Dict[Any, Any]] = None,
+        conditions_combined: Optional[List[Any]] = None,
+        dataset_info: Optional[str] = None,
         tgt_adata: Optional[ad.AnnData] = None,
         *args,
         **kwargs,
@@ -438,6 +439,7 @@ class CountDecodertrainer(LightningModule):
                 'mse': MeanSquaredError(),
             }
         )
+        self.dataset_info = dataset_info
         self.generate = generate
         self.adata = tgt_adata
         # initiate lists to store true, ctrl and pred counts
@@ -705,12 +707,13 @@ class CountDecodertrainer(LightningModule):
                 batch_size=batch['tgt_input_ids'].shape[0],
             )
 
-            self.test_pred_counts_list.append(pred_count)
-            self.test_true_counts_list.append(batch['tgt_counts'])
-            self.test_ctrl_counts_list.append(batch['src_counts'])
-            self.test_tgt_cell_type_list.append(batch['tgt_cell_type'])
-            self.test_tgt_cell_population_list.append(batch['tgt_cell_population'])
-            self.test_tgt_donor_list.append(batch['tgt_donor'])
+        self.test_pred_counts_list.append(pred_count)
+        self.test_true_counts_list.append(batch['tgt_counts'])
+        print('test true counts:', batch['tgt_counts'])
+        self.test_ctrl_counts_list.append(batch['src_counts'])
+        self.test_tgt_cell_type_list.append(batch['tgt_cell_type'])
+        self.test_tgt_cell_population_list.append(batch['tgt_cell_population'])
+        self.test_tgt_donor_list.append(batch['tgt_donor'])
 
     def on_test_epoch_end(self):
         # return Pearson correlation coefficient
@@ -728,14 +731,16 @@ class CountDecodertrainer(LightningModule):
         pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs, var=self.adata.var)
         pred_adata.layers['counts'] = true_counts.numpy()
         # save adata
+        if self.generate:
+            name_prefix = 'generate'
+        else:
+            name_prefix = 'test'
         pred_adata.write_h5ad(
             f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
             f't_generative/T_perturb/T_perturb/'
             f'plt/res/Petra/'
-            f'pred_adata_{self.dataset_info}.h5ad'
+            f'{name_prefix}_pred_adata_{self.dataset_info}.h5ad'
         )
-
-        print(pred_adata)
         mean_pearson = pearson(pred_counts, true_counts)
         # Pearson correlation coefficient
         self.log(
@@ -771,10 +776,11 @@ class CountDecodertrainer(LightningModule):
                 'mse': [mean_mse.cpu().detach().numpy()],
             }
         )
+
         metrics.to_csv(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            't_generative/T_perturb/T_perturb/plt/res/Petra/'
-            'test_count_metrics.csv'
+            f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+            f't_generative/T_perturb/T_perturb/plt/res/Petra/'
+            f'{name_prefix}_count_metrics.csv'
         )
         # calculate MMD and EMD
         condition_key = 'Cell_population'
@@ -791,7 +797,7 @@ class CountDecodertrainer(LightningModule):
         metrics.to_csv(
             f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
             f't_generative/T_perturb/T_perturb/plt/res/Petra/'
-            f'test_mmd_emd_{condition_key}_metrics.csv'
+            f'{name_prefix}_mmd_emd_{condition_key}_metrics.csv'
         )
         # set to status quo
         self.test_true_counts_list = []

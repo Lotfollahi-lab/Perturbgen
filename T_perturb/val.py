@@ -237,6 +237,7 @@ def main() -> None:
             dropout=args.count_dropout,
             d_model=256,
             generate=args.generate,
+            dataset_info=dataset_info,
             tgt_adata=tgt_adata,
         )
         if args.loss_mode == 'mse':
