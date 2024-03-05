@@ -6,9 +6,10 @@ import pandas as pd
 import scanpy as sc
 import scgen
 import torch
-from torchmetrics import PearsonCorrCoef
 
-if os.getcwd().split('/')[-1] != 'T_perturb':
+# from torchmetrics import PearsonCorrCoef
+
+if os.getcwd().split('/')[-2] != 'T_perturb':
     # set working directory to root of repository
     os.chdir(
         '/lustre/scratch123/hgi/projects/healthy_imm_expr/' 't_generative/T_perturb/'
@@ -16,20 +17,15 @@ if os.getcwd().split('/')[-1] != 'T_perturb':
     print('Changed working directory to root of repository')
 
 
-from T_perturb.src.utils import stratified_split
+from Model.metric import pearson
+from src.utils import stratified_split
 
 sys.path.append(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
     't_generative/T_perturb//benchmarking/scgen'
 )
 RANDOM_SEED = 42
-adata = sc.read_h5ad(
-    '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-    'T_perturb/pp/res/h5ad_pairing/'
-    'cytoimmgen_tokenised_degs.h5ad'
-)
-sc.pp.normalize_total(adata)
-sc.pp.log1p(adata)
+
 adata_0h = sc.read_h5ad(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
     'T_perturb/pp/res/h5ad_pairing/'
@@ -82,44 +78,22 @@ model.train(
     max_epochs=100, batch_size=32, early_stopping=True, early_stopping_patience=25
 )
 pred, delta = model.predict(ctrl_key='0h', stim_key='16h', adata_to_predict=test)
-
-
-# compute pearson correlation
-def compute_pearson(pred, test, time_point):
-    pred_activated = pred[test.obs['Time_point'] == time_point]
-    pred_activated_counts = torch.tensor(pred_activated.X)
-    test_activated = test[test.obs['Time_point'] == time_point]
-    test_activated_counts = torch.tensor(test_activated.X.A)
-    pearson = PearsonCorrCoef(num_outputs=pred_activated.shape[0])
-    pearson = pearson(pred_activated_counts.T, test_activated_counts.T)
-    pearson_non_nan = pearson[~torch.isnan(pearson)]
-    pearson_mean = torch.mean(pearson_non_nan)
-    return pearson_mean
-
-
-def compute_pearson_delta(pred, test, time_point, ctrl):
-    pred_delta_act = pred[pred.obs['Time_point'] == time_point].X - ctrl
-    pred_delta_act = torch.tensor(pred_delta_act)
-    test_delta_act = test[test.obs['Time_point'] == time_point].X.A - ctrl
-    test_delta_act = torch.tensor(test_delta_act)
-    pearson_delta = PearsonCorrCoef(num_outputs=pred_delta_act.shape[0])
-    pearson_delta = pearson_delta(pred_delta_act.T, test_delta_act.T)
-    pearson_delta_na = pearson_delta[~torch.isnan(pearson_delta)]
-    pearson_delta_mean = torch.mean(pearson_delta_na)
-    return pearson_delta_mean
-
-
+# save pred
+pred.write('./benchmarking/res/saved_models/pred_perturbation_prediction.h5ad')
 # subset for only perturbed cells
+pred_counts = torch.tensor(pred[test.obs['Time_point'] == '16h'].X)
+test_counts = torch.tensor(test[test.obs['Time_point'] == '16h'].X.A)
 
-pearson_mean = compute_pearson(pred, test, '16h')
+pearson_mean = pearson(pred_counts, test_counts)
 # pearson delta
-ctrl = torch.tensor(adata_0h.X.A)
-pearson_delta_mean = compute_pearson_delta(pred, test, '16h', ctrl)
+ctrl = torch.tensor(adata_0h_test.X.A)
+pearson_delta_mean = pearson(pred_counts, test_counts, ctrl)
 
 # random baseline
-adata_random = sc.pp.subsample(adata, n_obs=pred.shape[0], copy=True)
-random_pearson_mean = compute_pearson(adata_random, test, '16h')
-random_pearson_delta_mean = compute_pearson_delta(adata_random, test, '16h', ctrl)
+adata_random = sc.pp.subsample(adata_full, n_obs=pred.shape[0], copy=True)
+pred_random = torch.tensor(adata_random[test.obs['Time_point'] == '16h'].X.A)
+random_pearson_mean = pearson(pred_random, test_counts)
+random_pearson_delta_mean = pearson(pred_random, test_counts, ctrl)
 results = pd.DataFrame(
     {
         'pearson': [pearson_mean.item(), random_pearson_mean.item()],
