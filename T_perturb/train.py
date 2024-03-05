@@ -12,9 +12,10 @@ from datasets import load_from_disk
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 
-from T_perturb.Dataloaders.datamodule import scConformerDataModule
-from T_perturb.Model.trainer import CountDecodertrainer, scConformertrainer
-from T_perturb.src.utils import subset_adata_dataset
+from T_perturb.Dataloaders.datamodule import PetraDataModule
+from T_perturb.Model.trainer import CountDecodertrainer, Petratrainer
+
+# from T_perturb.src.utils import subset_adata_dataset
 from wandb import init  # type: ignore
 
 RANDOM_SEED = 42
@@ -30,13 +31,13 @@ def get_args():
     parser.add_argument(
         '--train_mode',
         type=str,
-        default='masking',
+        default='count',
         help='Mode [masking, count]',
     )
     parser.add_argument(
         '--split',
         type=bool,
-        default=False,
+        default=True,
         help='split data for extrapolation',
     )
     parser.add_argument(
@@ -77,6 +78,20 @@ def get_args():
         f'T_perturb/T_perturb/pp/res/dataset/{train_dataset}',
         help='path to tokenised activated data',
     )
+    # parser.add_argument(
+    #     '--tgt_dataset_t1',
+    #     type=str,
+    #     default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+    #     f'T_perturb/T_perturb/pp/res/dataset/{train_dataset}',
+    #     help='path to tokenised activated data',
+    # )
+    # parser.add_argument(
+    #     '--tgt_dataset_t2',
+    #     type=str,
+    #     default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+    #     f'T_perturb/T_perturb/pp/res/dataset/{train_dataset}',
+    #     help='path to tokenised activated data',
+    # )
     parser.add_argument(
         '--src_adata_folder',
         type=str,
@@ -97,7 +112,7 @@ def get_args():
         ),
         help='path to tgt',
     )
-    parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
+    parser.add_argument('--batch_size', type=int, default=256, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=True, help='shuffle')
     parser.add_argument(
         '--epochs', type=int, default=50, help='number of training epochs'
@@ -106,8 +121,10 @@ def get_args():
         '--log_dir', type=str, default='logs', help='path to data directory'
     )
     parser.add_argument('--max_len', type=int, default=246, help='max sequence length')
-    parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
-    parser.add_argument('--wd', type=float, default=0, help='weight decay')
+    parser.add_argument('--petra_lr', type=float, default=1e-3, help='learning rate')
+    parser.add_argument('--count_lr', type=float, default=0.0005, help='learning rate')
+    parser.add_argument('--petra_wd', type=float, default=0.0, help='weight decay')
+    parser.add_argument('--count_wd', type=float, default=0.001, help='weight decay')
     parser.add_argument(
         '--mlm_probability', type=float, default=0.3, help='mlm probability'
     )
@@ -115,7 +132,8 @@ def get_args():
     parser.add_argument(
         '--loss_mode', type=str, default='zinb', help='loss mode [zinb, nb, mse]'
     )
-    parser.add_argument('--dropout', type=float, default=0.0, help='dropout')
+    parser.add_argument('--petra_dropout', type=float, default=0.0, help='dropout')
+    parser.add_argument('--count_dropout', type=float, default=0.0, help='dropout')
     parser.add_argument(
         '--condition_keys',
         nargs='+',
@@ -142,6 +160,12 @@ def main() -> None:
     print('Loading and preprocessing data...')
     src_dataset = load_from_disk(args.src_dataset)
     tgt_dataset = load_from_disk(args.tgt_dataset)
+    # tgt_dataset_t1 = load_from_disk(args.tgt_dataset_t1)
+    # tgt_dataset_t2 = load_from_disk(args.tgt_dataset_t2)
+
+    # # create dictionary for dataset
+    # tgt_datasets = {'t1': tgt_dataset_t1, 't2': tgt_dataset_t2}
+
     src_adata = sc.read_h5ad(args.src_adata_folder)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
     if tgt_adata.X.__class__.__name__ == 'csr_matrix':
@@ -154,10 +178,12 @@ def main() -> None:
         sc.pp.log1p(src_adata)
         sc.pp.normalize_total(tgt_adata, target_sum=1e4)
         sc.pp.log1p(tgt_adata)
-    if args.num_cells != 0:
-        src_adata, tgt_adata, src_dataset, tgt_dataset = subset_adata_dataset(
-            src_adata, tgt_adata, src_dataset, tgt_dataset, args.num_cells, RANDOM_SEED
-        )
+    # if args.num_cells != 0:
+    #     src_adata, tgt_adata, src_dataset, tgt_dataset = subset_adata_dataset(
+    #         src_adata, tgt_adata, src_dataset,
+    #         tgt_dataset, args.num_cells, RANDOM_SEED
+    #     )
+
     if isinstance(args.condition_keys, str):
         condition_keys_ = [args.condition_keys]
     else:
@@ -187,17 +213,17 @@ def main() -> None:
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.train_mode == 'masking':
-        pretrained_module = scConformertrainer(
+        pretrained_module = Petratrainer(
             tgt_vocab_size=704,
             d_model=256,
             num_heads=8,
             num_layers=1,
             d_ff=32,
             max_seq_length=2000,
-            dropout=args.dropout,
+            dropout=args.petra_dropout,
             mlm_probability=args.mlm_probability,
-            weight_decay=args.wd,
-            lr=args.lr,
+            weight_decay=args.petra_wd,
+            lr=args.petra_lr,
             lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             batch_size=args.batch_size,
@@ -209,13 +235,14 @@ def main() -> None:
         decoder_module = CountDecodertrainer(
             ckpt_path=args.ckpt_path,
             loss_mode=args.loss_mode,
-            lr=args.lr,
-            weight_decay=args.wd,
+            lr=args.count_lr,
+            weight_decay=args.count_wd,
             lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             conditions=conditions_,
             conditions_combined=conditions_combined_,
             tgt_vocab_size=704,
+            dropout=args.count_dropout,
             d_model=256,
             generate=args.generate,
             tgt_adata=tgt_adata,
@@ -241,7 +268,7 @@ def main() -> None:
     ):
         raise ValueError('Index of adata and tokenized data do not match')
     if args.train_mode == 'masking':
-        data_module = scConformerDataModule(
+        data_module = PetraDataModule(
             src_dataset=src_dataset,
             tgt_dataset=tgt_dataset,
             src_adata=src_adata,
@@ -255,7 +282,7 @@ def main() -> None:
             split=args.split,
         )
     elif args.train_mode == 'count':
-        data_module = scConformerDataModule(
+        data_module = PetraDataModule(
             src_dataset=src_dataset,
             tgt_dataset=tgt_dataset,
             src_adata=src_adata,
@@ -273,7 +300,7 @@ def main() -> None:
         )
     # Setup trainer
     # ----------------------------------------------------------------------------------
-    run_id = datetime.now().strftime('%Y%m%d_%H%M_cora')
+    run_id = datetime.now().strftime('%Y%m%d_%H%M_petra')
     log_path = os.path.join(args.log_dir, run_id)
     os.makedirs(os.path.join(os.getcwd(), log_path), exist_ok=True)
 
@@ -281,34 +308,30 @@ def main() -> None:
     # This callback always keeps a checkpoint of the best model according to
     # validation accuracy.
     if args.train_mode == 'masking':
-        checkpoint_callback = ModelCheckpoint(
-            dirpath='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            't_generative/T_perturb/T_perturb/Model/checkpoints',
-            filename=(
-                f'{run_id}_lr_{args.lr}_wd_{args.wd}_batch_'
-                f'{args.batch_size}_mlmp_{args.mlm_probability}_'
-                f'{dataset_info}_mode_{args.train_mode}'
-            ),
-            save_top_k=1,
-            verbose=True,
-            monitor='train/perplexity',
-            mode='min',
+        filename = (
+            f'{run_id}_mode_{args.train_mode}_lr_{args.petra_lr}_wd_{args.petra_wd}_'
+            f'batch_{args.batch_size}_'
+            f'mlmp_{args.mlm_probability}_{dataset_info}'
         )
+        monitor_metric = 'train/perplexity'
+        mode = 'min'
     elif args.train_mode == 'count':
-        checkpoint_callback = ModelCheckpoint(
-            dirpath='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            't_generative/T_perturb/T_perturb/Model/checkpoints',
-            filename=(
-                f'{run_id}_lr_{args.lr}_wd_{args.wd}_batch_'
-                f'{args.batch_size}_loss_{args.loss_mode}_'
-                f'{dataset_info}_mode_{args.train_mode}'
-            ),
-            save_top_k=1,
-            verbose=True,
-            monitor='val/pearson',
-            mode='max',
+        filename = (
+            f'{run_id}_mode_{args.train_mode}_lr_{args.count_lr}_wd_{args.count_wd}_'
+            f'batch_{args.batch_size}_'
+            f'{args.loss_mode}_{dataset_info}'
         )
-
+        monitor_metric = 'val/pearson'
+        mode = 'max'
+    checkpoint_callback = ModelCheckpoint(
+        dirpath='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+        't_generative/T_perturb/T_perturb/Model/checkpoints',
+        filename=filename,
+        save_top_k=1,
+        verbose=True,
+        monitor=monitor_metric,
+        mode=mode,
+    )
     # The tensorboard logger allows for monitoring the progress of training
     if torch.cuda.device_count() > 1:
         # multi gpu training with group logging
@@ -342,22 +365,13 @@ def main() -> None:
     # further information.
     # Lightning allows for simple multi-gpu training, gradient accumulation, half
     # precision training, etc. using the trainer class.
-    if args.train_mode == 'masking':
-        early_stop_callback = pl.callbacks.EarlyStopping(
-            monitor='train/perplexity',
-            min_delta=0.00,
-            patience=5,
-            verbose=False,
-            mode='min',
-        )
-    elif args.train_mode == 'count':
-        early_stop_callback = pl.callbacks.EarlyStopping(
-            monitor='val/pearson',
-            min_delta=0.00,
-            patience=5,
-            verbose=False,
-            mode='max',
-        )
+    early_stop_callback = pl.callbacks.EarlyStopping(
+        monitor=monitor_metric,
+        min_delta=0.00,
+        patience=5,
+        verbose=False,
+        mode=mode,
+    )
     accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
     trainer = pl.Trainer(
         logger=wandb_logger,

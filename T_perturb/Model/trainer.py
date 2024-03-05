@@ -30,8 +30,8 @@ from T_perturb.Model.metric import (
 )
 from T_perturb.Modules.T_model import (
     CountDecoder,
+    Petra,
     cosine_schedule,
-    scConformer,
 )
 from T_perturb.src.losses import (
     mse_loss,
@@ -74,7 +74,7 @@ def batch_token_ranking(tokenised_cells: torch.tensor, vocab_size: int):
     return first_occurrence_indices
 
 
-class scConformertrainer(LightningModule):
+class Petratrainer(LightningModule):
     def __init__(
         self,
         tgt_vocab_size: int = 25000,
@@ -97,7 +97,7 @@ class scConformertrainer(LightningModule):
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
-        self.transformer = scConformer(
+        self.transformer = Petra(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
             num_heads=num_heads,
@@ -345,7 +345,7 @@ class scConformertrainer(LightningModule):
             self.adata.write_h5ad(
                 f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
                 f't_generative/T_perturb/T_perturb/'
-                f'plt/res/Cora/'
+                f'plt/res/Petra/'
                 f'cls_embeddings_{self.dataset_info}_cosine_similarity.h5ad'
             )
             print('End saving embeddings -------------------')
@@ -363,6 +363,7 @@ class CountDecodertrainer(LightningModule):
         conditions: Optional[Dict[Any, Any]] = None,
         conditions_combined: Optional[List[Any]] = None,
         tgt_vocab_size: int = 25000,
+        dropout: float = 0.0,
         d_model: int = 256,
         generate: bool = True,
         tgt_adata: Optional[ad.AnnData] = None,
@@ -377,7 +378,7 @@ class CountDecodertrainer(LightningModule):
         checkpoint = torch.load(ckpt_path, map_location='cpu')
         self.tgt_vocab_size = checkpoint['hyper_parameters']['tgt_vocab_size']
         self.d_model = checkpoint['hyper_parameters']['d_model']
-        pretrained_model = scConformer(
+        pretrained_model = Petra(
             tgt_vocab_size=self.tgt_vocab_size,
             d_model=self.d_model,
             d_ff=checkpoint['hyper_parameters']['d_ff'],
@@ -398,6 +399,7 @@ class CountDecodertrainer(LightningModule):
             loss_mode=loss_mode,
             tgt_vocab_size=self.tgt_vocab_size,
             d_model=self.d_model,
+            dropout=dropout,
         )
         self.save_hyperparameters()
         self.weight_decay = weight_decay
@@ -450,6 +452,9 @@ class CountDecodertrainer(LightningModule):
         self.test_true_counts_list: List[int] = []
         self.test_ctrl_counts_list: List[int] = []
         self.test_pred_counts_list: List[int] = []
+        self.test_tgt_cell_type_list: List[str] = []
+        self.test_tgt_cell_population_list: List[str] = []
+        self.test_tgt_donor_list: List[str] = []
 
     def forward(self, batch):
         outputs = self.decoder(
@@ -687,18 +692,6 @@ class CountDecodertrainer(LightningModule):
                 logger=True,
                 batch_size=batch['tgt_input_ids'].shape[0],
             )
-            # MSE
-            mse = self.metric['mse'](pred_count, batch['tgt_counts'])
-            mean_mse = torch.mean(mse)
-            self.log(
-                'test/mse',
-                mean_mse,
-                on_epoch=True,
-                on_step=True,
-                prog_bar=True,
-                logger=True,
-            )
-            self.test_pred_counts_list.append(pred_count)
         else:
             outputs = self.forward(batch)
             count_loss, pred_count = self.compute_count_loss(outputs, batch)
@@ -711,30 +704,39 @@ class CountDecodertrainer(LightningModule):
                 logger=True,
                 batch_size=batch['tgt_input_ids'].shape[0],
             )
-            # MSE
-            mse = self.metric['mse'](pred_count, batch['tgt_counts'])
-            mean_mse = torch.mean(mse)
-            self.log(
-                'test/mse',
-                mean_mse,
-                on_epoch=True,
-                on_step=True,
-                prog_bar=True,
-                logger=True,
-            )
+
             self.test_pred_counts_list.append(pred_count)
             self.test_true_counts_list.append(batch['tgt_counts'])
             self.test_ctrl_counts_list.append(batch['src_counts'])
+            self.test_tgt_cell_type_list.append(batch['tgt_cell_type'])
+            self.test_tgt_cell_population_list.append(batch['tgt_cell_population'])
+            self.test_tgt_donor_list.append(batch['tgt_donor'])
 
     def on_test_epoch_end(self):
         # return Pearson correlation coefficient
         true_counts = torch.cat(self.test_true_counts_list).detach().cpu()
         pred_counts = torch.cat(self.test_pred_counts_list).detach().cpu()
         ctrl_counts = torch.cat(self.test_ctrl_counts_list).detach().cpu()
-        pred_adata = ad.AnnData(
-            X=pred_counts.numpy(), obs=self.adata.obs, var=self.adata.var
+        tgt_cell_type = np.concatenate(self.test_tgt_cell_type_list)
+        tgt_cell_population = np.concatenate(self.test_tgt_cell_population_list)
+        tgt_donor = np.concatenate(self.test_tgt_donor_list)
+        test_obs = pd.DataFrame(
+            np.array([tgt_cell_type, tgt_cell_population, tgt_donor]).T,
+            columns=['Cell_type', 'Cell_population', 'Donor'],
         )
-        mean_pearson = pearson(pred_counts, true_counts, true_counts.shape[0])
+        print(test_obs)
+        pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs, var=self.adata.var)
+        pred_adata.layers['counts'] = true_counts.numpy()
+        # save adata
+        pred_adata.write_h5ad(
+            f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+            f't_generative/T_perturb/T_perturb/'
+            f'plt/res/Petra/'
+            f'pred_adata_{self.dataset_info}.h5ad'
+        )
+
+        print(pred_adata)
+        mean_pearson = pearson(pred_counts, true_counts)
         # Pearson correlation coefficient
         self.log(
             'test/pearson',
@@ -744,9 +746,7 @@ class CountDecodertrainer(LightningModule):
             logger=True,
         )
         # Pearson delta
-        mean_pearson_delta = pearson(
-            pred_counts, true_counts, ctrl_counts, true_counts.shape[0]
-        )
+        mean_pearson_delta = pearson(pred_counts, true_counts, ctrl_counts)
         self.log(
             'test/pearson_delta',
             mean_pearson_delta,
@@ -754,8 +754,30 @@ class CountDecodertrainer(LightningModule):
             prog_bar=True,
             logger=True,
         )
+        # MSE
+        mse = self.metric['mse'](pred_counts, true_counts)
+        mean_mse = torch.mean(mse)
+        self.log(
+            'test/mse',
+            mean_mse,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
+        metrics = pd.DataFrame(
+            {
+                'pearson': [mean_pearson.cpu().detach().numpy()],
+                'pearson_delta': [mean_pearson_delta.cpu().detach().numpy()],
+                'mse': [mean_mse.cpu().detach().numpy()],
+            }
+        )
+        metrics.to_csv(
+            '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+            't_generative/T_perturb/T_perturb/plt/res/Petra/'
+            'test_count_metrics.csv'
+        )
         # calculate MMD and EMD
-        condition_key = 'Cell_type'
+        condition_key = 'Cell_population'
         mmd = evaluate_mmd(self.adata, pred_adata, condition_key=condition_key)
         mmd['metric'] = 'mmd'
         # rename column called mmd
@@ -768,8 +790,8 @@ class CountDecodertrainer(LightningModule):
         # save metrics
         metrics.to_csv(
             f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            f't_generative/T_perturb/T_perturb/plt/res/Cora/'
-            f'generate_mmd_emd_{condition_key}_metrics.csv'
+            f't_generative/T_perturb/T_perturb/plt/res/Petra/'
+            f'test_mmd_emd_{condition_key}_metrics.csv'
         )
         # set to status quo
         self.test_true_counts_list = []

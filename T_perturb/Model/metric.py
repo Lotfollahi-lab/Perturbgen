@@ -3,6 +3,7 @@ import pandas as pd
 import torch
 from scipy.sparse import issparse
 from scipy.stats import wasserstein_distance
+from sklearn.metrics.pairwise import rbf_kernel
 from torchmetrics import PearsonCorrCoef
 
 
@@ -59,7 +60,7 @@ def gaussian_kernel_matrix(x, y, alphas):
     return torch.sum(torch.exp(-s), 0).view_as(dist)
 
 
-def mmd_loss_calc(source_features, target_features):
+def mmd_loss_calc(source_features, target_features, gamma):
     """Initializes Maximum Mean Discrepancy(MMD)
     between source_features and target_features.
     - Gretton, Arthur, et al. "A Kernel Two-Sample Test". 2012.
@@ -73,38 +74,45 @@ def mmd_loss_calc(source_features, target_features):
     -------
     Returns the computed MMD between x and y.
     """
-    alphas = [
-        1e-6,
-        1e-5,
-        1e-4,
-        1e-3,
-        1e-2,
-        1e-1,
-        1,
-        5,
-        10,
-        15,
-        20,
-        25,
-        30,
-        35,
-        100,
-        1e3,
-        1e4,
-        1e5,
-        1e6,
-    ]
-    alphas = torch.autograd.Variable(torch.FloatTensor(alphas)).to(
-        device=source_features.device
-    )
+    # alphas = [
+    #     1e-6,
+    #     1e-5,
+    #     1e-4,
+    #     1e-3,
+    #     1e-2,
+    #     1e-1,
+    #     1,
+    #     5,
+    #     10,
+    #     15,
+    #     20,
+    #     25,
+    #     30,
+    #     35,
+    #     100,
+    #     1e3,
+    #     1e4,
+    #     1e5,
+    #     1e6,
+    # ]
+    # alphas = torch.autograd.Variable(torch.FloatTensor(alphas)).to(
+    #     device=source_features.device
+    # )
 
-    cost = torch.mean(gaussian_kernel_matrix(source_features, source_features, alphas))
-    cost += torch.mean(gaussian_kernel_matrix(target_features, target_features, alphas))
-    cost -= 2 * torch.mean(
-        gaussian_kernel_matrix(source_features, target_features, alphas)
-    )
+    # cost = torch.mean(
+    #     gaussian_kernel_matrix(source_features, source_features, alphas)
+    #     )
+    # cost += torch.mean(
+    #     gaussian_kernel_matrix(target_features, target_features, alphas)
+    #     )
+    # cost -= 2 * torch.mean(
+    #     gaussian_kernel_matrix(source_features, target_features, alphas)
+    # )
+    xx = rbf_kernel(source_features, source_features, gamma)
+    xy = rbf_kernel(source_features, target_features, gamma)
+    yy = rbf_kernel(target_features, target_features, gamma)
 
-    return cost
+    return xx.mean() + yy.mean() - 2 * xy.mean()
 
 
 # Metrics below were taken from:
@@ -122,8 +130,14 @@ def evaluate_mmd(adata, pred_adata, condition_key, de_genes_dict=None):
         if issparse(pred_adata_.X):
             pred_adata_.X = pred_adata_.X.A
 
-        mmd = mmd_loss_calc(torch.Tensor(adata_.X), torch.Tensor(pred_adata_.X))
-        mmd_list.append({'condition': cond, 'mmd': mmd.detach().cpu().numpy()})
+        gammas = [2, 1, 0.5, 0.1, 0.01, 0.005]
+        print('start mmd calculation')
+        mmd = np.mean(
+            list(map(lambda x: mmd_loss_calc(adata_.X, pred_adata_.X, x), gammas))
+        )
+        print('end mmd calculation')
+        # mmd = mmd_loss_calc(torch.Tensor(), torch.Tensor())
+        mmd_list.append({'condition': cond, 'mmd': mmd})
         if de_genes_dict:
             de_genes = de_genes_dict[cond]
             sub_adata_ = adata_[:, de_genes]
@@ -131,7 +145,7 @@ def evaluate_mmd(adata, pred_adata, condition_key, de_genes_dict=None):
             mmd_deg = mmd_loss_calc(
                 torch.Tensor(sub_adata_.X), torch.Tensor(sub_pred_adata_.X)
             )
-            mmd_list[-1]['mmd_deg'] = mmd_deg.detach().cpu().numpy()
+            mmd_list[-1]['mmd_deg'] = mmd_deg
     mmd_df = pd.DataFrame(mmd_list).set_index('condition')
     return mmd_df
 
