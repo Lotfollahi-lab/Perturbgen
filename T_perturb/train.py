@@ -31,7 +31,7 @@ def get_args():
     parser.add_argument(
         '--train_mode',
         type=str,
-        default='count',
+        default='masking',
         help='Mode [masking, count]',
     )
     parser.add_argument(
@@ -71,27 +71,27 @@ def get_args():
         ),
         help='path to tokenised resting data',
     )
+    # parser.add_argument(
+    #     '--tgt_dataset',
+    #     type=str,
+    #     default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+    #     f'T_perturb/T_perturb/pp/res/dataset/{train_dataset}',
+    #     help='path to tokenised activated data',
+    # )
     parser.add_argument(
-        '--tgt_dataset',
+        '--tgt_dataset_t1',
         type=str,
         default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
         f'T_perturb/T_perturb/pp/res/dataset/{train_dataset}',
         help='path to tokenised activated data',
     )
-    # parser.add_argument(
-    #     '--tgt_dataset_t1',
-    #     type=str,
-    #     default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    #     f'T_perturb/T_perturb/pp/res/dataset/{train_dataset}',
-    #     help='path to tokenised activated data',
-    # )
-    # parser.add_argument(
-    #     '--tgt_dataset_t2',
-    #     type=str,
-    #     default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    #     f'T_perturb/T_perturb/pp/res/dataset/{train_dataset}',
-    #     help='path to tokenised activated data',
-    # )
+    parser.add_argument(
+        '--tgt_dataset_t2',
+        type=str,
+        default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        f'T_perturb/T_perturb/pp/res/dataset/{train_dataset}',
+        help='path to tokenised activated data',
+    )
     parser.add_argument(
         '--src_adata_folder',
         type=str,
@@ -159,12 +159,12 @@ def main() -> None:
     # Load and preprocess data
     print('Loading and preprocessing data...')
     src_dataset = load_from_disk(args.src_dataset)
-    tgt_dataset = load_from_disk(args.tgt_dataset)
-    # tgt_dataset_t1 = load_from_disk(args.tgt_dataset_t1)
-    # tgt_dataset_t2 = load_from_disk(args.tgt_dataset_t2)
+    # tgt_dataset = load_from_disk(args.tgt_dataset)
+    tgt_dataset_t1 = load_from_disk(args.tgt_dataset_t1)
+    tgt_dataset_t2 = load_from_disk(args.tgt_dataset_t2)
 
-    # # create dictionary for dataset
-    # tgt_datasets = {'t1': tgt_dataset_t1, 't2': tgt_dataset_t2}
+    # create dictionary for dataset
+    tgt_datasets = {'t1': tgt_dataset_t1, 't2': tgt_dataset_t2}
 
     src_adata = sc.read_h5ad(args.src_adata_folder)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
@@ -264,13 +264,13 @@ def main() -> None:
     # resort to the supposedly optimal AutoAugment policy.
     # change dataloader and input
     if not all(
-        tgt_adata.obs['cell_pairing_index'] == tgt_dataset['cell_pairing_index']
+        tgt_adata.obs['cell_pairing_index'] == tgt_datasets['t1']['cell_pairing_index']
     ):
         raise ValueError('Index of adata and tokenized data do not match')
     if args.train_mode == 'masking':
         data_module = PetraDataModule(
             src_dataset=src_dataset,
-            tgt_dataset=tgt_dataset,
+            tgt_datasets=tgt_datasets,
             src_adata=src_adata,
             tgt_adata=tgt_adata,
             batch_size=args.batch_size,
@@ -284,7 +284,7 @@ def main() -> None:
     elif args.train_mode == 'count':
         data_module = PetraDataModule(
             src_dataset=src_dataset,
-            tgt_dataset=tgt_dataset,
+            tgt_datasets=tgt_datasets,
             src_adata=src_adata,
             tgt_adata=tgt_adata,
             batch_size=args.batch_size,

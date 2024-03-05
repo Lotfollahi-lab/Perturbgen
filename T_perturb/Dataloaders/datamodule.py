@@ -42,7 +42,7 @@ class PetraDataset(Dataset):
     def __init__(
         self,
         src_dataset: DatasetDict,
-        tgt_dataset: DatasetDict,
+        tgt_datasets: DatasetDict,
         src_adata: ad.AnnData,
         tgt_adata: ad.AnnData,
         shuffle: bool = False,
@@ -55,21 +55,24 @@ class PetraDataset(Dataset):
         self.shuffle = shuffle
         if split_indices is None:
             self.src_dataset = src_dataset
-            self.tgt_dataset = tgt_dataset
+            self.tgt_datasets = tgt_datasets
             self.src_adata = src_adata
             self.tgt_adata = tgt_adata
         else:
             self.src_dataset = src_dataset.select(split_indices)
-            self.tgt_dataset = tgt_dataset.select(split_indices)
-            # for key, dataset in tgt_datasets.items():
-            #     tgt_datasets[key] = dataset.select(split_indices)
-            # self.tgt_datasets = tgt_datasets
+            # self.tgt_dataset = tgt_dataset.select(split_indices)
+            for key, dataset in tgt_datasets.items():
+                tgt_datasets[key] = dataset.select(split_indices)
+            self.tgt_datasets = tgt_datasets
+            print(self.tgt_datasets)
+
             if src_adata is not None:
                 self.src_adata = src_adata[split_indices, :]
             if tgt_adata is not None:
                 self.tgt_adata = tgt_adata[split_indices, :]
         if tgt_adata is not None:
             self.size_factor = np.ravel(self.tgt_adata.X.sum(axis=1))
+        raise
         self.conditions = conditions
         self.conditions_combined = conditions_combined
         self.condition_encodings = condition_encodings
@@ -77,9 +80,9 @@ class PetraDataset(Dataset):
     def __getitem__(self, ind):
         return {
             'src_dataset': self.src_dataset[ind],
-            'tgt_dataset': self.tgt_dataset[ind],
-            # 'tgt_dataset_t1': self.tgt_datasets['t1'][ind],
-            # 'tgt_dataset_t2': self.tgt_datasets['t2'][ind],
+            # 'tgt_dataset': self.tgt_datasets[ind],
+            'tgt_dataset_t1': self.tgt_datasets['t1'][ind],
+            'tgt_dataset_t2': self.tgt_datasets['t2'][ind],
             'tgt_adata': self.tgt_adata[ind],
             'src_adata': self.src_adata[ind],
             'tgt_size_factor': self.size_factor[ind],
@@ -90,9 +93,9 @@ class PetraDataset(Dataset):
         }
 
     def __len__(self):
-        if len(self.src_dataset) != len(self.tgt_dataset):
+        if len(self.src_dataset) != len(self.tgt_datasets['t1']):
             warn('src and tgt dataset have different length')
-        return min(len(self.src_dataset), len(self.tgt_dataset))
+        return min(len(self.src_dataset), len(self.tgt_datasets['t1']))
 
 
 # two dataloader vs one dataloader
@@ -100,7 +103,7 @@ class PetraDataModule(LightningDataModule):
     def __init__(
         self,
         src_dataset: DatasetDict,
-        tgt_dataset: DatasetDict,
+        tgt_datasets: DatasetDict,
         batch_size: int = 64,
         num_workers: int = 8,
         shuffle: bool = False,
@@ -122,7 +125,7 @@ class PetraDataModule(LightningDataModule):
         """
         super().__init__()
         self.src_dataset = src_dataset
-        self.tgt_dataset = tgt_dataset
+        self.tgt_datasets = tgt_datasets
         self.src_adata = src_adata
         self.tgt_adata = tgt_adata
         self.batch_size = batch_size
@@ -187,14 +190,14 @@ class PetraDataModule(LightningDataModule):
                 # return all the indices
                 self.train_indices = list(range(len(self.src_dataset)))
                 self.val_indices = None
-                self.test_indices = list(range(len(self.tgt_dataset)))
+                self.test_indices = list(range(len(self.tgt_datasets)))
 
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
             if self.condition_encodings is not None:
                 self.train_dataset = PetraDataset(
                     src_dataset=self.src_dataset,
-                    tgt_dataset=self.tgt_dataset,
+                    tgt_datasets=self.tgt_datasets,
                     split_indices=self.train_indices,
                     src_adata=self.src_adata,
                     tgt_adata=self.tgt_adata,
@@ -209,7 +212,7 @@ class PetraDataModule(LightningDataModule):
                 if self.val_indices is not None:
                     self.val_dataset = PetraDataset(
                         src_dataset=self.src_dataset,
-                        tgt_dataset=self.tgt_dataset,
+                        tgt_datasets=self.tgt_datasets,
                         split_indices=self.val_indices,
                         src_adata=self.src_adata,
                         tgt_adata=self.tgt_adata,
@@ -226,7 +229,7 @@ class PetraDataModule(LightningDataModule):
             else:
                 self.train_dataset = PetraDataset(
                     src_dataset=self.src_dataset,
-                    tgt_dataset=self.tgt_dataset,
+                    tgt_datasets=self.tgt_datasets,
                     split_indices=self.train_indices,
                     src_adata=self.src_adata,
                     tgt_adata=self.tgt_adata,
@@ -235,7 +238,7 @@ class PetraDataModule(LightningDataModule):
                 if self.val_indices is not None:
                     self.val_dataset = PetraDataset(
                         src_dataset=self.src_dataset,
-                        tgt_dataset=self.tgt_dataset,
+                        tgt_datasets=self.tgt_datasets,
                         split_indices=self.val_indices,
                         src_adata=self.src_adata,
                         tgt_adata=self.tgt_adata,
@@ -247,7 +250,7 @@ class PetraDataModule(LightningDataModule):
             if self.condition_encodings is not None:
                 self.test_dataset = PetraDataset(
                     src_dataset=self.src_dataset,
-                    tgt_dataset=self.tgt_dataset,
+                    tgt_datasets=self.tgt_datasets,
                     split_indices=self.test_indices,
                     src_adata=self.src_adata,
                     tgt_adata=self.tgt_adata,
@@ -262,7 +265,7 @@ class PetraDataModule(LightningDataModule):
             else:
                 self.test_dataset = PetraDataset(
                     src_dataset=self.src_dataset,
-                    tgt_dataset=self.tgt_dataset,
+                    tgt_datasets=self.tgt_datasets,
                     split_indices=self.test_indices,
                     src_adata=self.src_adata,
                     tgt_adata=self.tgt_adata,
@@ -443,7 +446,7 @@ if __name__ == '__main__':
             'T_perturb/T_perturb/pp/res/dataset/'
             'cytoimmgen_tokenised_degs_stratified_pairing_0h.dataset'
         ),
-        tgt_dataset=(
+        tgt_datasets=(
             '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
             'T_perturb/T_perturb/pp/res/dataset/'
             'cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset'
