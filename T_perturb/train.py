@@ -20,9 +20,9 @@ from wandb import init  # type: ignore
 
 RANDOM_SEED = 42
 
-train_dataset = 'cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset'
+train_dataset = 'cytoimmgen_tokenised_stratified_pairing_16h.dataset'
 # use regex to find condition between degs and .dataset
-dataset_info = re.findall(r'(?<=degs_).*(?=.dataset)', train_dataset)[0]
+dataset_info = re.findall(r'(?<=tokenised_).*(?=.dataset)', train_dataset)[0]
 
 
 def get_args():
@@ -66,8 +66,8 @@ def get_args():
         type=str,
         default=(
             '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-            'T_perturb/T_perturb/pp/res/dataset/'
-            'cytoimmgen_tokenised_degs_stratified_pairing_0h.dataset'
+            'T_perturb/T_perturb/pp/res/dataset_degs/'
+            'cytoimmgen_tokenised_stratified_pairing_16h.dataset'
         ),
         help='path to tokenised resting data',
     )
@@ -81,15 +81,17 @@ def get_args():
     parser.add_argument(
         '--tgt_dataset_t1',
         type=str,
-        default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        f'T_perturb/T_perturb/pp/res/dataset/{train_dataset}',
+        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        'T_perturb/T_perturb/pp/res/dataset_degs/'
+        'cytoimmgen_tokenised_stratified_pairing_16h.dataset',
         help='path to tokenised activated data',
     )
     parser.add_argument(
         '--tgt_dataset_t2',
         type=str,
-        default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        f'T_perturb/T_perturb/pp/res/dataset/{train_dataset}',
+        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        'T_perturb/T_perturb/pp/res/dataset_degs/'
+        'cytoimmgen_tokenised_stratified_pairing_40h.dataset',
         help='path to tokenised activated data',
     )
     parser.add_argument(
@@ -97,8 +99,8 @@ def get_args():
         type=str,
         default=(
             '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-            'T_perturb/T_perturb/pp/res/h5ad_pairing/'
-            'cytoimmgen_tokenisation_degs_stratified_pairing_0h.h5ad'
+            'T_perturb/T_perturb/pp/res/h5ad_pairing_degs/'
+            'cytoimmgen_tokenisation_stratified_pairing_0h.h5ad'
         ),
         help='path to src',
     )
@@ -107,8 +109,8 @@ def get_args():
         type=str,
         default=(
             f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-            f'T_perturb/pp/res/h5ad_pairing/'
-            f'cytoimmgen_tokenisation_degs_{dataset_info}.h5ad'
+            f'T_perturb/pp/res/h5ad_pairing_degs/'
+            f'cytoimmgen_tokenisation_{dataset_info}.h5ad'
         ),
         help='path to tgt',
     )

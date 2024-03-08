@@ -131,7 +131,7 @@ class Petratrainer(LightningModule):
         self.gene_token_dict = {value: key for key, value in gene_token_dict.items()}
         with open(
             '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-            'T_perturb/pp/res/dataset/token_dictionary_for_subset_token_id.pkl',
+            'T_perturb/pp/res/token_dictionary_degs_for_subset_token_id.pkl',
             'rb',
         ) as f:
             self.subset_tokenid_to_deg = pickle.load(f)
