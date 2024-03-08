@@ -16,18 +16,10 @@ import torch.nn.functional as F
 import torch.optim as optim
 from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningModule
-from torchmetrics import (
-    CosineSimilarity,
-    MeanSquaredError,
-    SpearmanCorrCoef,
-)
+from torchmetrics import CosineSimilarity, MeanSquaredError  # SpearmanCorrCoef,
 from torchmetrics.text import Perplexity
 
-from T_perturb.Model.metric import (
-    evaluate_emd,
-    evaluate_mmd,
-    pearson,
-)
+from T_perturb.Model.metric import evaluate_emd, pearson  # evaluate_mmd,
 from T_perturb.Modules.T_model import (
     CountDecoder,
     Petra,
@@ -122,7 +114,7 @@ class Petratrainer(LightningModule):
                 'cosine_similarity': CosineSimilarity(reduction='mean'),
                 'mse': MeanSquaredError(),
                 # 'rmse': MeanSquaredError(squared=False),
-                'spearman': SpearmanCorrCoef(num_outputs=batch_size),
+                # 'spearman': SpearmanCorrCoef(num_outputs=batch_size),
             }
         )
 
@@ -130,8 +122,9 @@ class Petratrainer(LightningModule):
             gene_token_dict = pickle.load(f)
         self.gene_token_dict = {value: key for key, value in gene_token_dict.items()}
         with open(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-            'T_perturb/pp/res/dataset/token_dictionary_for_subset_token_id.pkl',
+            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+            'T_perturb/T_perturb/pp/res/dataset_hvg/'
+            'token_dictionary_for_subset_token_id.pkl',
             'rb',
         ) as f:
             self.subset_tokenid_to_deg = pickle.load(f)
@@ -709,7 +702,6 @@ class CountDecodertrainer(LightningModule):
 
         self.test_pred_counts_list.append(pred_count)
         self.test_true_counts_list.append(batch['tgt_counts'])
-        print('test true counts:', batch['tgt_counts'])
         self.test_ctrl_counts_list.append(batch['src_counts'])
         self.test_tgt_cell_type_list.append(batch['tgt_cell_type'])
         self.test_tgt_cell_population_list.append(batch['tgt_cell_population'])
@@ -727,7 +719,6 @@ class CountDecodertrainer(LightningModule):
             np.array([tgt_cell_type, tgt_cell_population, tgt_donor]).T,
             columns=['Cell_type', 'Cell_population', 'Donor'],
         )
-        print(test_obs)
         pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs, var=self.adata.var)
         pred_adata.layers['counts'] = true_counts.numpy()
         # save adata
@@ -769,6 +760,9 @@ class CountDecodertrainer(LightningModule):
             prog_bar=True,
             logger=True,
         )
+        # EMD
+        emd = evaluate_emd(self.adata, pred_adata)
+        print(emd)
         metrics = pd.DataFrame(
             {
                 'pearson': [mean_pearson.cpu().detach().numpy()],
@@ -784,17 +778,24 @@ class CountDecodertrainer(LightningModule):
         )
         # calculate MMD and EMD
         condition_key = 'Cell_population'
-        mmd = evaluate_mmd(self.adata, pred_adata, condition_key=condition_key)
-        mmd['metric'] = 'mmd'
+        # mmd = evaluate_mmd(self.adata, pred_adata, condition_key=condition_key)
+        # mmd['metric'] = 'mmd'
         # rename column called mmd
-        mmd = mmd.rename(columns={'mmd': 'value'})
-        emd = evaluate_emd(self.adata, pred_adata, condition_key=condition_key)
-        emd['metric'] = 'emd'
-        emd = emd.rename(columns={'emd': 'value'})
-        # concatenate
-        metrics = pd.concat([mmd, emd])
+        # mmd = mmd.rename(columns={'mmd': 'value'})
+        emd_condition = evaluate_emd(
+            self.adata, pred_adata, condition_key=condition_key
+        )
+        # count number of unique cell types in condition_key
+        # unique_cell_types = self.adata.obs[condition_key].unique()
+        # n_unique_cell_types = len(unique_cell_types)
+        emd_condition['metric'] = 'emd'
+
+        emd_condition = emd_condition.rename(columns={'emd': 'value'})
+
+        # # concatenate
+        # metrics = pd.concat([mmd, emd])
         # save metrics
-        metrics.to_csv(
+        emd_condition.to_csv(
             f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
             f't_generative/T_perturb/T_perturb/plt/res/Petra/'
             f'{name_prefix}_mmd_emd_{condition_key}_metrics.csv'

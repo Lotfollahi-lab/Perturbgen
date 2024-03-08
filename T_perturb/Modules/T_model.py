@@ -292,12 +292,15 @@ class Petra(nn.Module):
             total_vocab_size = total_vocab_size + 1
 
             self.masked_embed = nn.Parameter(torch.zeros(1, self.embed_dim))
+        print('embedding size problem')
 
         self.token_embedding = nn.Embedding(
             total_vocab_size, d_model, padding_idx=0, device=self.device
         )
+        print(self.token_embedding.weight.shape)
 
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
+
         self.positional_encoding = self.positional_encoding.to(self.device)
 
         self.encoder_layers = Geneformerwrapper()
@@ -308,8 +311,7 @@ class Petra(nn.Module):
         )
         self.decoder_layers = self.decoder_layers.to(self.device)
 
-        self.fc = nn.Linear(d_model, tgt_vocab_size)
-        self.fc = self.fc.to(self.device)
+        self.fc = nn.Linear(d_model, tgt_vocab_size, device=self.device)
         self.dropout = nn.Dropout(dropout)
 
     def generate_pad(self, tgt):
@@ -424,7 +426,9 @@ class Petra(nn.Module):
         # overwrite with tgt input id with masked token
         tgt_embedded_mask = self.token_embedding(tgt_input_id)
         tgt_embedded_mask[tgt_mask, :] = self.masked_embed
+
         tgt_embedded_mask = self.prepare_tokens(tgt_embedded_mask)
+
         enc_output = src_embedded
         dec_embedding = tgt_embedded_mask
         for dec_layer in self.decoder_layers:
@@ -546,7 +550,6 @@ class CountDecoder(nn.Module):
         original_lens,
         can_remask_prev_masked=False,
         topk_filter_thres=0.9,
-        # steps=18,
         temperature=2.0,  # keep in range 2.0-3.0
         # self_cond_prob=0.9,
         timesteps=18,  # optimal iterations found in maskgit paper

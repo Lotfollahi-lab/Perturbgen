@@ -151,7 +151,8 @@ def map_token_id_to_genename(adata_subset):
     )
     with open(
         '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/token_dictionary_for_subset_token_id.pkl',
+        'T_perturb/T_perturb/pp/res/dataset_hvg/'
+        'token_dictionary_for_subset_token_id.pkl',
         'wb',
     ) as f:
         pickle.dump(subset_tokenid_to_deg, f)

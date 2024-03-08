@@ -20,9 +20,9 @@ from wandb import init  # type: ignore
 
 RANDOM_SEED = 42
 
-train_dataset = 'cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset'
+train_dataset = 'cytoimmgen_tokenised_stratified_pairing_16h.dataset'
 # use regex to find condition between degs and .dataset
-dataset_info = re.findall(r'(?<=degs_).*(?=.dataset)', train_dataset)[0]
+dataset_info = re.findall(r'(?<=tokenised_).*(?=.dataset)', train_dataset)[0]
 
 
 def get_args():
@@ -55,27 +55,25 @@ def get_args():
     parser.add_argument(
         '--ckpt_path',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/T_perturb/T_perturb/Model/checkpoints/'
-        '20240228_0113_cora_lr_0.001_wd_0_batch_512_mlm_'
-        '0.3_stratified_pairing_16h_mode_masking.ckpt',
+        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        'T_perturb/T_perturb/Model/checkpoints/20240306_1831_petra_mode_masking'
+        '_lr_0.001_wd_0.0_batch_256_mlmp_0.3_stratified_pairing_16h.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
-        '--src_dataset',
+        '--src_dataset_folder',
         type=str,
-        default=(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-            'T_perturb/T_perturb/pp/res/dataset/'
-            'cytoimmgen_tokenised_degs_stratified_pairing_0h.dataset'
-        ),
+        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        'T_perturb/T_perturb/pp/res/dataset_hvg/'
+        'cytoimmgen_tokenised_stratified_pairing_0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
-        '--tgt_dataset',
+        '--tgt_dataset_folder',
         type=str,
         default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        f'T_perturb/T_perturb/pp/res/dataset/{train_dataset}',
+        f'T_perturb/T_perturb/pp/res/dataset_hvg/'
+        f'cytoimmgen_tokenised_{dataset_info}.dataset',
         help='path to tokenised activated data',
     )
     # parser.add_argument(
@@ -96,9 +94,9 @@ def get_args():
         '--src_adata_folder',
         type=str,
         default=(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-            'T_perturb/T_perturb/pp/res/h5ad_pairing/'
-            'cytoimmgen_tokenisation_degs_stratified_pairing_0h.h5ad'
+            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
+            'T_perturb/pp/res/h5ad_pairing_hvg/'
+            'cytoimmgen_tokenisation_stratified_pairing_0h.h5ad'
         ),
         help='path to src',
     )
@@ -107,8 +105,8 @@ def get_args():
         type=str,
         default=(
             f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-            f'T_perturb/pp/res/h5ad_pairing/'
-            f'cytoimmgen_tokenisation_degs_{dataset_info}.h5ad'
+            f'T_perturb/pp/res/h5ad_pairing_hvg/'
+            f'cytoimmgen_tokenisation_{dataset_info}.h5ad'
         ),
         help='path to tgt',
     )
@@ -158,8 +156,8 @@ def main() -> None:
     torch.manual_seed(RANDOM_SEED)
     # Load and preprocess data
     print('Loading and preprocessing data...')
-    src_dataset = load_from_disk(args.src_dataset)
-    tgt_dataset = load_from_disk(args.tgt_dataset)
+    src_dataset = load_from_disk(args.src_dataset_folder)
+    tgt_dataset = load_from_disk(args.tgt_dataset_folder)
     # tgt_dataset_t1 = load_from_disk(args.tgt_dataset_t1)
     # tgt_dataset_t2 = load_from_disk(args.tgt_dataset_t2)
 
@@ -214,7 +212,7 @@ def main() -> None:
     # ----------------------------------------------------------------------------------
     if args.train_mode == 'masking':
         pretrained_module = Petratrainer(
-            tgt_vocab_size=704,
+            tgt_vocab_size=1820,  # 704 for degs, 1819 for tokenised
             d_model=256,
             num_heads=8,
             num_layers=1,
@@ -241,7 +239,7 @@ def main() -> None:
             # lr_scheduler_factor=0.8,
             conditions=conditions_,
             conditions_combined=conditions_combined_,
-            tgt_vocab_size=704,
+            tgt_vocab_size=1820,  # 704 for degs, 1819 for tokenised
             dropout=args.count_dropout,
             d_model=256,
             generate=args.generate,

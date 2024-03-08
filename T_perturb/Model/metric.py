@@ -24,6 +24,10 @@ def pearson(
     true_counts_t = true_counts.transpose(0, 1).contiguous()
     pearson_output = pearson(pred_counts_t, true_counts_t)
     mean_pearson = torch.mean(pearson_output)
+    # pearson_gene = PearsonCorrCoef()
+    # pearson_gene_mean = pearson_gene(pred_counts.mean(0), true_counts.mean(0))
+    # pearson_var_mean = pearson_gene(pred_counts.var(0), true_counts.var(0))
+
     return mean_pearson
 
 
@@ -195,4 +199,5 @@ def evaluate_emd(
                 )
             )
         emd_list.append({'emd': np.mean(wd)})
+        emd_df = pd.DataFrame(emd_list).set_index(true_data_.var_names)
     return emd_df

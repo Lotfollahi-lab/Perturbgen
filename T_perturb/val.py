@@ -41,7 +41,7 @@ def get_args():
     parser.add_argument(
         '--generate',
         type=bool,
-        default=False,
+        default=True,
         help='generate data',
     )
     parser.add_argument(
@@ -60,9 +60,8 @@ def get_args():
         '--ckpt_masking_path',
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/Model/checkpoints/'
-        '20240303_2224_cora_lr_0.001_wd_0_batch_64_'
-        'mlmp_0.3_stratified_pairing_16h_mode_masking.ckpt',
+        'T_perturb/T_perturb/Model/checkpoints/20240306_1831_petra_mode_masking'
+        '_lr_0.001_wd_0.0_batch_256_mlmp_0.3_stratified_pairing_16h.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -70,33 +69,33 @@ def get_args():
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
         'T_perturb/T_perturb/Model/checkpoints/'
-        '20240304_1926_petra_mode_count_lr_0.0005_wd_'
-        '0.001_batch_256_zinb_stratified_pairing_16h.ckpt',
+        '20240306_2004_petra_mode_count_lr_0.0005_'
+        'wd_0.001_batch_256_zinb_stratified_pairing_16h.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
         '--src_dataset_folder',
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/'
-        'cytoimmgen_tokenised_degs_stratified_pairing_0h.dataset',
+        'T_perturb/T_perturb/pp/res/dataset_hvg/'
+        'cytoimmgen_tokenised_stratified_pairing_0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
         '--tgt_dataset_folder',
         type=str,
         default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        f'T_perturb/T_perturb/pp/res/dataset/'
-        f'{test_dataset}',
+        f'T_perturb/T_perturb/pp/res/dataset_hvg/'
+        f'cytoimmgen_tokenised_{dataset_info}.dataset',
         help='path to tokenised activated data',
     )
     parser.add_argument(
         '--src_adata_folder',
         type=str,
         default=(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-            'T_perturb/T_perturb/pp/res/h5ad_pairing/'
-            'cytoimmgen_tokenisation_degs_stratified_pairing_0h.h5ad'
+            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
+            'T_perturb/pp/res/h5ad_pairing_hvg/'
+            'cytoimmgen_tokenisation_stratified_pairing_0h.h5ad'
         ),
         help='path to src',
     )
@@ -105,12 +104,12 @@ def get_args():
         type=str,
         default=(
             f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-            f'T_perturb/pp/res/h5ad_pairing/'
-            f'cytoimmgen_tokenisation_degs_{dataset_info}.h5ad'
+            f'T_perturb/pp/res/h5ad_pairing_hvg/'
+            f'cytoimmgen_tokenisation_{dataset_info}.h5ad'
         ),
         help='path to tgt',
     )
-    parser.add_argument('--batch_size', type=int, default=512, help='batch_size')
+    parser.add_argument('--batch_size', type=int, default=256, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=False, help='shuffle')
     parser.add_argument(
         '--epochs', type=int, default=5, help='number of training epochs'
@@ -126,7 +125,7 @@ def get_args():
     parser.add_argument('--count_lr', type=float, default=0.0005, help='learning rate')
     parser.add_argument('--petra_wd', type=float, default=0.0, help='weight decay')
     parser.add_argument('--count_wd', type=float, default=0.001, help='weight decay')
-    parser.add_argument('--n_workers', type=int, default=4, help='number of workers')
+    parser.add_argument('--n_workers', type=int, default=16, help='number of workers')
     parser.add_argument(
         '--loss_mode', type=str, default='zinb', help='loss mode [zinb, nb, mse]'
     )
@@ -205,7 +204,7 @@ def main() -> None:
     # ----------------------------------------------------------------------------------
     if args.test_mode == 'masking':
         pretrained_module = Petratrainer(
-            tgt_vocab_size=704,
+            tgt_vocab_size=1820,  # 704 for degs, 1819 for tokenised
             d_model=256,
             num_heads=8,
             num_layers=1,
@@ -233,7 +232,7 @@ def main() -> None:
             # lr_scheduler_factor=0.8,
             conditions=conditions_,
             conditions_combined=conditions_combined_,
-            tgt_vocab_size=704,
+            tgt_vocab_size=1820,  # 704 for degs, 1819 for tokenised
             dropout=args.count_dropout,
             d_model=256,
             generate=args.generate,

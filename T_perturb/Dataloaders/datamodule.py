@@ -43,8 +43,8 @@ class PetraDataset(Dataset):
         self,
         src_dataset: DatasetDict,
         tgt_dataset: DatasetDict,
-        src_adata: ad.AnnData,
-        tgt_adata: ad.AnnData,
+        src_counts: ad.AnnData,
+        tgt_counts: ad.AnnData,
         shuffle: bool = False,
         split_indices: Optional[list] = None,
         conditions: Optional[torch.Tensor] = None,
@@ -56,20 +56,21 @@ class PetraDataset(Dataset):
         if split_indices is None:
             self.src_dataset = src_dataset
             self.tgt_dataset = tgt_dataset
-            self.src_adata = src_adata
-            self.tgt_adata = tgt_adata
+            self.src_counts = src_counts
+            self.tgt_counts = tgt_counts
         else:
             self.src_dataset = src_dataset.select(split_indices)
             self.tgt_dataset = tgt_dataset.select(split_indices)
             # for key, dataset in tgt_datasets.items():
             #     tgt_datasets[key] = dataset.select(split_indices)
             # self.tgt_datasets = tgt_datasets
-            if src_adata is not None:
-                self.src_adata = src_adata[split_indices, :]
-            if tgt_adata is not None:
-                self.tgt_adata = tgt_adata[split_indices, :]
-        if tgt_adata is not None:
-            self.size_factor = np.ravel(self.tgt_adata.X.sum(axis=1))
+            if src_counts is not None:
+                self.src_counts = src_counts[split_indices, :]
+            if tgt_counts is not None:
+                self.tgt_counts = tgt_counts[split_indices, :]
+
+        if tgt_counts is not None:
+            self.size_factor = np.ravel(self.tgt_counts.sum(axis=1))
         self.conditions = conditions
         self.conditions_combined = conditions_combined
         self.condition_encodings = condition_encodings
@@ -80,8 +81,8 @@ class PetraDataset(Dataset):
             'tgt_dataset': self.tgt_dataset[ind],
             # 'tgt_dataset_t1': self.tgt_datasets['t1'][ind],
             # 'tgt_dataset_t2': self.tgt_datasets['t2'][ind],
-            'tgt_adata': self.tgt_adata[ind],
-            'src_adata': self.src_adata[ind],
+            'tgt_counts': self.tgt_counts[ind, :],
+            'src_counts': self.src_counts[ind],
             'tgt_size_factor': self.size_factor[ind],
             'conditions': self.conditions[ind] if self.conditions is not None else None,
             'conditions_combined': self.conditions_combined[ind]
@@ -134,7 +135,6 @@ class PetraDataModule(LightningDataModule):
         self.pad_token_id = self.gene_token_dict.get('<pad>')
         self.max_len = max_len
         self.dataset = None
-        self.size_factor = np.ravel(tgt_adata.X.sum(axis=1))
         self.condition_keys = condition_keys
         self.condition_encodings = condition_encodings
         self.conditions_combined_encodings = conditions_combined_encodings
@@ -196,8 +196,8 @@ class PetraDataModule(LightningDataModule):
                     src_dataset=self.src_dataset,
                     tgt_dataset=self.tgt_dataset,
                     split_indices=self.train_indices,
-                    src_adata=self.src_adata,
-                    tgt_adata=self.tgt_adata,
+                    src_counts=self.src_adata.X,
+                    tgt_counts=self.tgt_adata.X,
                     shuffle=self.shuffle,
                     conditions=self.conditions
                     if self.condition_keys is not None
@@ -211,8 +211,8 @@ class PetraDataModule(LightningDataModule):
                         src_dataset=self.src_dataset,
                         tgt_dataset=self.tgt_dataset,
                         split_indices=self.val_indices,
-                        src_adata=self.src_adata,
-                        tgt_adata=self.tgt_adata,
+                        src_counts=self.src_adata.X,
+                        tgt_counts=self.tgt_adata.X,
                         shuffle=self.shuffle,
                         conditions=self.conditions
                         if self.condition_keys is not None
@@ -228,8 +228,8 @@ class PetraDataModule(LightningDataModule):
                     src_dataset=self.src_dataset,
                     tgt_dataset=self.tgt_dataset,
                     split_indices=self.train_indices,
-                    src_adata=self.src_adata,
-                    tgt_adata=self.tgt_adata,
+                    src_counts=self.src_adata.X,
+                    tgt_counts=self.tgt_adata.X,
                     shuffle=self.shuffle,
                 )
                 if self.val_indices is not None:
@@ -237,8 +237,8 @@ class PetraDataModule(LightningDataModule):
                         src_dataset=self.src_dataset,
                         tgt_dataset=self.tgt_dataset,
                         split_indices=self.val_indices,
-                        src_adata=self.src_adata,
-                        tgt_adata=self.tgt_adata,
+                        src_counts=self.src_adata.X,
+                        tgt_counts=self.tgt_adata.X,
                         shuffle=self.shuffle,
                     )
                 else:
@@ -249,8 +249,8 @@ class PetraDataModule(LightningDataModule):
                     src_dataset=self.src_dataset,
                     tgt_dataset=self.tgt_dataset,
                     split_indices=self.test_indices,
-                    src_adata=self.src_adata,
-                    tgt_adata=self.tgt_adata,
+                    src_counts=self.src_adata.X,
+                    tgt_counts=self.tgt_adata.X,
                     shuffle=self.shuffle,
                     conditions=self.conditions
                     if self.condition_keys is not None
@@ -264,8 +264,8 @@ class PetraDataModule(LightningDataModule):
                     src_dataset=self.src_dataset,
                     tgt_dataset=self.tgt_dataset,
                     split_indices=self.test_indices,
-                    src_adata=self.src_adata,
-                    tgt_adata=self.tgt_adata,
+                    src_counts=self.src_adata.X,
+                    tgt_counts=self.tgt_adata.X,
                     shuffle=self.shuffle,
                 )
 
@@ -383,15 +383,15 @@ class PetraDataModule(LightningDataModule):
             tgt_time_point = None
             tgt_donor = None
 
-        if any('src_adata' in item for item in batch):
-            src_counts = [torch.tensor(d['src_adata'].X) for d in batch]
-            src_counts = torch.cat(src_counts, dim=0)
+        if any('src_counts' in item for item in batch):
+            src_counts = [torch.tensor(d['src_counts']) for d in batch]
+            src_counts = torch.stack(src_counts)
         else:
             src_counts = None
 
-        if any('tgt_adata' in item for item in batch):
-            tgt_counts = [torch.tensor(d['tgt_adata'].X) for d in batch]
-            tgt_counts = torch.cat(tgt_counts, dim=0)
+        if any('tgt_counts' in item for item in batch):
+            tgt_counts = [torch.tensor(d['tgt_counts']) for d in batch]
+            tgt_counts = torch.stack(tgt_counts)
             tgt_size_factor = [d['tgt_size_factor'] for d in batch]
             if self.condition_encodings is not None:
                 condition = [d['conditions'] for d in batch]
