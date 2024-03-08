@@ -283,10 +283,14 @@ class Petra(nn.Module):
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
 
-        self.cls_token = torch.tensor(
+        self.cls_token_1 = torch.tensor(
             [tgt_vocab_size], dtype=torch.long, device=self.device
         )  # start at 25426, because of 0 Python indexing
         total_vocab_size = tgt_vocab_size + 1
+        self.cls_token_2 = torch.tensor(
+            [tgt_vocab_size], dtype=torch.long, device=self.device
+        )  # start at 25426, because of 0 Python indexing
+        total_vocab_size = total_vocab_size + 1
         if add_mask_id:
             self.mask_token = total_vocab_size
             total_vocab_size = total_vocab_size + 1
@@ -318,24 +322,30 @@ class Petra(nn.Module):
 
         return tgt_pad
 
-    # def generate_mask(self, src_attention_mask, tgt, tgt_pad):
-    #     src_mask = src_attention_mask.unsqueeze(1).unsqueeze(2)
-    #     # # repeat src mask
-    #     # src_mask = src_mask.repeat(1, 1, tgt.size(1), 1)
-    #     tgt_pad = tgt_pad.unsqueeze(1).unsqueeze(3)
-    #     seq_length = tgt.size(1)
-    #     nopeak_mask = (
-    #         1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)
-    #     ).bool()
-    #     # Set the first element of the diagonal to False
-    #     # nopeak_mask[0, 0, 0] = True
-    #     nopeak_mask = nopeak_mask.to(self.device)
-    #     tgt_pad = tgt_pad.to(self.device)
-    #     tgt_mask = tgt_pad & nopeak_mask
-    #     return src_mask, tgt_mask
+    def generate_mask(
+        self, tgt_input_id_dict, tgt_pad_dict, mlm_probability=0.15, time_step=2
+    ):
+        time_random = torch.randint(1, time_step, (1,))
+        tgt_pad = tgt_pad_dict[f'tgt_pad_{time_random}']
 
-    def generate_mask(self, tgt, tgt_pad, mlm_probability=0.15):
-        labels = tgt.clone()
+        # mask the subsequent timestep
+        while time_random != max(time_step):
+            all_pad = torch.ones_like(tgt_pad).bool()
+            tgt_pad_dict[f'tgt_pad_{time_random+1}'] = all_pad
+            time_random = time_random + 1
+        tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_random}']
+        # initialize the dictionary with all -100 and overwrite it
+        labels_dict = {}
+        tgt_mask = {}
+        for i in range(1, time_step):
+            labels_dict[f'labels_{i}'] = torch.full(
+                tgt_input_id.shape, -100, dtype=torch.long, device=self.device
+            )
+            tgt_mask[f'tgt_mask_{i}'] = torch.full(
+                tgt_pad.shape, False, device=self.device
+            )
+
+        labels = tgt_input_id.clone()
         probability_matrix = torch.full(
             tgt_pad.shape, mlm_probability, device=self.device
         )
@@ -345,15 +355,13 @@ class Petra(nn.Module):
             cls_tgt_pad, 0
         )  # add CLS token to the tokens
         tgt_mask = torch.bernoulli(probability_matrix).bool()
-
-        # seq_length = tgt.size(1)
-        # nopeak_mask = (
-        #     1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)
-        #     ).bool()
-        # tgt_mask = tgt_mask & nopeak_mask
         labels[~tgt_mask] = -100
+        labels_dict[f'labels_{time_random}'] = labels
         tgt_mask = tgt_mask.masked_fill(tgt_pad, True)
-        # labels = torch.cat((self.cls_label.expand(labels.shape[0],1), labels), dim=1)
+        # concatenate the labels
+        labels = torch.cat(
+            [labels_dict[f'labels_{i}'] for i in range(1, time_step)], dim=1
+        )
         return tgt_mask.to('cuda'), labels
 
     def prepare_tokens(self, x):
@@ -396,28 +404,47 @@ class Petra(nn.Module):
     def forward(
         self,
         src_input_id,
-        tgt_input_id,
+        tgt_input_id_t1,
+        tgt_input_id_t2,
         original_lens,
         generate=False,
     ):
-        tgt_input_id = torch.cat(
+        tgt_input_id_t1 = torch.cat(
             (
-                self.cls_token.expand(tgt_input_id.shape[0], -1),
-                tgt_input_id,
+                self.cls_token_1.expand(tgt_input_id_t1.shape[0], -1),
+                tgt_input_id_t1,
             ),
             dim=1,
         )
+        tgt_input_id_t2 = torch.cat(
+            (
+                self.cls_token_2.expand(tgt_input_id_t2.shape[0], -1),
+                tgt_input_id_t2,
+            ),
+            dim=1,
+        )
+        tgt_pad_1 = self.generate_pad(tgt_input_id_t1)
+        tgt_pad_2 = self.generate_pad(tgt_input_id_t2)
+        tgt_pad_dict = {
+            'tgt_pad_1': tgt_pad_1,
+            'tgt_pad_2': tgt_pad_2,
+        }
+        tgt_input_id_dict = {
+            'tgt_input_id_t1': tgt_input_id_t1,
+            'tgt_input_id_t2': tgt_input_id_t2,
+        }
         src_attention_mask = src_input_id == 0
         # convert to numeric type
         src_attention_mask = src_attention_mask.int()
-        tgt_pad = self.generate_pad(tgt_input_id)
-
         if generate:
+            tgt_pad = torch.cat((tgt_pad_1, tgt_pad_2), dim=1)
+            print(tgt_pad.shape)
+            tgt_input_id = torch.cat((tgt_input_id_t1, tgt_input_id_t2), dim=1)
             tgt_mask = tgt_input_id == (self.mask_token)
             tgt_mask = tgt_mask | (tgt_input_id == 0)
         else:
             tgt_mask, labels = self.generate_mask(
-                tgt_input_id, tgt_pad, self.mlm_probability
+                tgt_input_id_dict, tgt_pad_dict, self.mlm_probability
             )
 
         src_embedded = self.encoder_layers(src_input_id, src_attention_mask)

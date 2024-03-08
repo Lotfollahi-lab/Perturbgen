@@ -52,7 +52,6 @@ class PetraDataset(Dataset):
         condition_encodings: Optional[dict] = None,
     ):
         super().__init__()
-        print('call dataset')
         self.shuffle = shuffle
         if split_indices is None:
             self.src_dataset = src_dataset
@@ -64,8 +63,6 @@ class PetraDataset(Dataset):
             # self.tgt_dataset = tgt_dataset.select(split_indices)
             tmp_tgt_datasets = tgt_datasets.copy()
             for key, dataset in tmp_tgt_datasets.items():
-                print('len:', tgt_datasets[key])
-                print(key)
                 tmp_tgt_datasets[key] = dataset.select(split_indices)
             self.tgt_datasets = tmp_tgt_datasets
 
@@ -230,7 +227,6 @@ class PetraDataModule(LightningDataModule):
                 else:
                     self.val_dataset = None
             else:
-                print('subset training dataset')
                 self.train_dataset = PetraDataset(
                     src_dataset=self.src_dataset,
                     tgt_datasets=self.tgt_datasets,
@@ -239,7 +235,6 @@ class PetraDataModule(LightningDataModule):
                     tgt_adata=self.tgt_adata,
                     shuffle=self.shuffle,
                 )
-                print('subset validation dataset')
                 if self.val_indices is not None:
                     self.val_dataset = PetraDataset(
                         src_dataset=self.src_dataset,

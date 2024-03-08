@@ -147,7 +147,8 @@ class Petratrainer(LightningModule):
     def forward(self, batch):
         outputs = self.transformer(
             src_input_id=batch['src_input_ids'],
-            tgt_input_id=batch['tgt_input_ids'],
+            tgt_input_id_t1=batch['tgt_input_ids_t1'],
+            tgt_input_id_t2=batch['tgt_input_ids_t2'],
             original_lens=batch['src_length'],
             generate=self.generate,
         )
@@ -187,7 +188,7 @@ class Petratrainer(LightningModule):
             on_epoch=True,
             prog_bar=True,
             logger=True,
-            batch_size=batch['tgt_input_ids'].shape[0],
+            batch_size=batch['tgt_input_ids_t1'].shape[0],
         )
 
         self.log(
@@ -197,7 +198,7 @@ class Petratrainer(LightningModule):
             on_epoch=True,
             prog_bar=True,
             logger=True,
-            batch_size=batch['tgt_input_ids'].shape[0],
+            batch_size=batch['tgt_input_ids_t1'].shape[0],
         )
         return masking_loss
 
@@ -221,7 +222,7 @@ class Petratrainer(LightningModule):
             on_epoch=True,
             prog_bar=True,
             logger=True,
-            batch_size=batch['tgt_input_ids'].shape[0],
+            batch_size=batch['tgt_input_ids_t1'].shape[0],
         )
         self.log(
             'val/perplexity',
@@ -230,7 +231,7 @@ class Petratrainer(LightningModule):
             on_epoch=True,
             prog_bar=True,
             logger=True,
-            batch_size=batch['tgt_input_ids'].shape[0],
+            batch_size=batch['tgt_input_ids_t1'].shape[0],
         )
 
     def test_step(self, batch, *args, **kwargs):
