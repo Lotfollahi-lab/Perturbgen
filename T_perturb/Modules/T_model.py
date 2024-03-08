@@ -174,7 +174,7 @@ class DecoderLayer(nn.Module):
     def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None):
         attn_output = self.self_attn(x, mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
-        attn_output = self.cross_attn(x, context=enc_output, mask=None)
+        attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
         x = self.norm2(x + self.dropout(attn_output))
         ff_output = self.feed_forward(x)
         x = self.norm3(x + self.dropout(ff_output))
@@ -287,11 +287,11 @@ class Petra(nn.Module):
             [tgt_vocab_size], dtype=torch.long, device=self.device
         )  # start at 25426, because of 0 Python indexing
         total_vocab_size = tgt_vocab_size + 1
-        if add_mask_id:
-            self.mask_token = total_vocab_size
-            total_vocab_size = total_vocab_size + 1
 
-            self.masked_embed = nn.Parameter(torch.zeros(1, self.embed_dim))
+        self.mask_token = total_vocab_size
+        total_vocab_size = total_vocab_size + 1
+
+        # self.masked_embed = nn.Parameter(torch.zeros(1, self.embed_dim))
         print('embedding size problem')
 
         self.token_embedding = nn.Embedding(
@@ -315,26 +315,8 @@ class Petra(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def generate_pad(self, tgt):
-        tgt_ = tgt.clone().detach()
-        tgt_pad = tgt_ == 0
-
+        tgt_pad = tgt == 0
         return tgt_pad
-
-    # def generate_mask(self, src_attention_mask, tgt, tgt_pad):
-    #     src_mask = src_attention_mask.unsqueeze(1).unsqueeze(2)
-    #     # # repeat src mask
-    #     # src_mask = src_mask.repeat(1, 1, tgt.size(1), 1)
-    #     tgt_pad = tgt_pad.unsqueeze(1).unsqueeze(3)
-    #     seq_length = tgt.size(1)
-    #     nopeak_mask = (
-    #         1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)
-    #     ).bool()
-    #     # Set the first element of the diagonal to False
-    #     # nopeak_mask[0, 0, 0] = True
-    #     nopeak_mask = nopeak_mask.to(self.device)
-    #     tgt_pad = tgt_pad.to(self.device)
-    #     tgt_mask = tgt_pad & nopeak_mask
-    #     return src_mask, tgt_mask
 
     def generate_mask(self, tgt, tgt_pad, mlm_probability=0.15):
         labels = tgt.clone()
@@ -347,16 +329,8 @@ class Petra(nn.Module):
             cls_tgt_pad, 0
         )  # add CLS token to the tokens
         tgt_mask = torch.bernoulli(probability_matrix).bool()
-
-        # seq_length = tgt.size(1)
-        # nopeak_mask = (
-        #     1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)
-        #     ).bool()
-        # tgt_mask = tgt_mask & nopeak_mask
         labels[~tgt_mask] = -100
-        tgt_mask = tgt_mask.masked_fill(tgt_pad, True)
-        # labels = torch.cat((self.cls_label.expand(labels.shape[0],1), labels), dim=1)
-        return tgt_mask.to('cuda'), labels
+        return tgt_mask, labels
 
     def prepare_tokens(self, x):
         # B, nc, d = x.shape
@@ -411,7 +385,7 @@ class Petra(nn.Module):
         )
         src_attention_mask = src_input_id == 0
         # convert to numeric type
-        src_attention_mask = src_attention_mask.int()
+        src_attention_mask_int = src_attention_mask.int()
         tgt_pad = self.generate_pad(tgt_input_id)
 
         if generate:
@@ -422,10 +396,11 @@ class Petra(nn.Module):
                 tgt_input_id, tgt_pad, self.mlm_probability
             )
 
-        src_embedded = self.encoder_layers(src_input_id, src_attention_mask)
+        src_embedded = self.encoder_layers(src_input_id, src_attention_mask_int)
         # overwrite with tgt input id with masked token
+        tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
         tgt_embedded_mask = self.token_embedding(tgt_input_id)
-        tgt_embedded_mask[tgt_mask, :] = self.masked_embed
+        # tgt_embedded_mask[tgt_mask, :] = self.masked_embed
 
         tgt_embedded_mask = self.prepare_tokens(tgt_embedded_mask)
 
@@ -433,7 +408,7 @@ class Petra(nn.Module):
         dec_embedding = tgt_embedded_mask
         for dec_layer in self.decoder_layers:
             dec_embedding = dec_layer(
-                dec_embedding, src_attention_mask, tgt_mask, enc_output
+                dec_embedding, src_attention_mask, tgt_pad, enc_output
             )
         logits = self.fc(dec_embedding)
 
