@@ -84,6 +84,7 @@ class CrossAttention(nn.Module):
         )
 
     def forward(self, x, context=None, mask=None):
+        print(x.shape)
         h = self.heads
         q = self.to_q(x)
         if context is None:
@@ -93,13 +94,19 @@ class CrossAttention(nn.Module):
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
         sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
         if mask is not None:
+            print(mask.shape)
+            print(mask[:, 246:])
             mask = rearrange(mask, 'b ... -> b (...)')
             max_neg_value = -torch.finfo(sim.dtype).max
             mask = repeat(mask, 'b j -> (b h) () j', h=h)
+            print(mask.shape)
             sim.masked_fill_(mask, max_neg_value)
 
         # attention, what we cannot get enough of
         attn = sim.softmax(dim=-1)
+        print(attn.shape)
+        print(attn[:, 247:, 246:])
+
         out = einsum('b i j, b j d -> b i d', attn, v)
         out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
         return self.to_out(out)
@@ -172,8 +179,10 @@ class DecoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None):
+        print('Self Attention')
         attn_output = self.self_attn(x, mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
+        print('Cross Attention')
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
         x = self.norm2(x + self.dropout(attn_output))
         ff_output = self.feed_forward(x)
@@ -182,11 +191,13 @@ class DecoderLayer(nn.Module):
 
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_seq_length):
+    def __init__(self, d_model, max_seq_length, device=None):
         super(PositionalEncoding, self).__init__()
 
-        pe = torch.zeros(max_seq_length, d_model)
-        position = torch.arange(0, max_seq_length, dtype=torch.float).unsqueeze(1)
+        pe = torch.zeros(max_seq_length, d_model, device=device)
+        position = torch.arange(
+            0, max_seq_length, dtype=torch.float, device=device
+        ).unsqueeze(1)
         div_term = torch.exp(
             torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model)
         )
@@ -278,37 +289,41 @@ class Petra(nn.Module):
         mlm_probability: float = 0.3,
     ):
         super(Petra, self).__init__()
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
+        self.tgt_vocab_size = tgt_vocab_size
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.num_layers = num_layers
+        self.d_ff = d_ff
+        self.max_seq_length = max_seq_length
+        self.dropout = dropout
 
+    def setup(self, stage):
+        print('Load setup')
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.cls_token_1 = torch.tensor(
-            [tgt_vocab_size], dtype=torch.long, device=self.device
-        )  # start at 25426, because of 0 Python indexing
-        total_vocab_size = tgt_vocab_size + 1
-        self.cls_token_2 = torch.tensor(
-            [tgt_vocab_size], dtype=torch.long, device=self.device
-        )  # start at 25426, because of 0 Python indexing
-        total_vocab_size = total_vocab_size + 1
-        self.mask_token = total_vocab_size
-        total_vocab_size = total_vocab_size + 1
-        self.token_embedding = nn.Embedding(
-            total_vocab_size, d_model, padding_idx=0, device=self.device
+            [self.tgt_vocab_size], dtype=torch.long  # Specify the GPU device
         )
 
-        self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
-        self.positional_encoding = self.positional_encoding.to(self.device)
-
+        print('device is', self.device)
+        self.cls_token_2 = torch.tensor(
+            [self.tgt_vocab_size], dtype=torch.long  # Specify the GPU device
+        )
+        total_vocab_size = tgt_vocab_size + 1
+        self.mask_token = total_vocab_size
+        total_vocab_size = total_vocab_size + 1
+        self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
+        self.positional_encoding = PositionalEncoding(
+            d_model, max_seq_length, device=self.device  # Specify the GPU device
+        )
         self.encoder_layers = Geneformerwrapper()
-        self.encoder_layers = self.encoder_layers.to(self.device)
-
         self.decoder_layers = nn.ModuleList(
             [DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)]
         )
-        self.decoder_layers = self.decoder_layers.to(self.device)
-
-        self.fc = nn.Linear(d_model, tgt_vocab_size)
-        self.fc = self.fc.to(self.device)
+        self.fc = nn.Linear(
+            d_model, tgt_vocab_size, device=self.device
+        )  # Specify the GPU device)
         self.dropout = nn.Dropout(dropout)
 
     def generate_pad(self, tgt):
@@ -320,29 +335,31 @@ class Petra(nn.Module):
     def generate_mask(
         self, tgt_input_id_dict, tgt_pad_dict, mlm_probability=0.15, time_step=2
     ):
-        time_random = torch.randint(1, time_step, (1,)).int().item()
+        time_random = torch.randint(1, time_step + 1, (1,)).int().item()
+        print(time_random)
         tgt_pad = tgt_pad_dict[f'tgt_pad_{time_random}']
-
         # mask the subsequent timestep
-        while time_random != time_step:
+        count_time = time_random
+        while count_time != time_step:
             all_pad = torch.ones_like(tgt_pad).bool()
-            tgt_pad_dict[f'tgt_pad_{time_random+1}'] = all_pad
-            time_random = time_random + 1
+            tgt_pad_dict[f'tgt_pad_{count_time+1}'] = all_pad
+            count_time = count_time + 1
+        print(tgt_pad_dict)
         tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_random}']
         # initialize the dictionary with all -100 and overwrite it
         labels_dict = {}
         tgt_mask_dict = {}
         for i in range(1, time_step + 1):
             labels_dict[f'labels_{i}'] = torch.full(
-                tgt_input_id.shape, -100, dtype=torch.long, device=self.device
+                tgt_input_id.shape, -100, dtype=torch.long, device=tgt_input_id.device
             )
             tgt_mask_dict[f'tgt_mask_{i}'] = torch.full(
-                tgt_pad.shape, False, device=self.device
+                tgt_pad.shape, False, device=tgt_input_id.device
             )
 
         labels = tgt_input_id.clone()
         probability_matrix = torch.full(
-            tgt_pad.shape, mlm_probability, device=self.device
+            tgt_pad.shape, mlm_probability, device=tgt_pad.device
         )
         cls_tgt_pad = tgt_pad.clone()
         cls_tgt_pad[:, 0] = True
@@ -356,7 +373,9 @@ class Petra(nn.Module):
         # concatenate the labels
         labels_ = torch.cat([labels_dict[key] for key in labels_dict], dim=1)
         tgt_mask_ = torch.cat([tgt_mask_dict[key] for key in tgt_mask_dict], dim=1)
-        return tgt_mask_, labels_
+        tgt_pad_ = torch.cat([tgt_pad_dict[key] for key in tgt_pad_dict], dim=1)
+        print(tgt_pad_)
+        return tgt_mask_, labels_, tgt_pad_
 
     def prepare_tokens(self, x):
         # B, nc, d = x.shape
@@ -431,25 +450,24 @@ class Petra(nn.Module):
         # convert to numeric type
         src_attention_mask_int = src_attention_mask.int()
         tgt_input_id = torch.cat((tgt_input_id_t1, tgt_input_id_t2), dim=1)
-        tgt_pad = torch.cat((tgt_pad_1, tgt_pad_2), dim=1)
         if generate:
             tgt_mask = tgt_input_id == (self.mask_token)
             tgt_mask = tgt_mask | (tgt_input_id == 0)
         else:
-            tgt_mask, labels = self.generate_mask(
+            tgt_mask_, labels, tgt_padded_time = self.generate_mask(
                 tgt_input_id_dict, tgt_pad_dict, self.mlm_probability
             )
 
         src_embedded = self.encoder_layers(src_input_id, src_attention_mask_int)
         # overwrite with tgt input id with masked token
-        tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
+        tgt_input_id = tgt_input_id.masked_fill(tgt_mask_, self.mask_token)
         tgt_embedded_mask = self.token_embedding(tgt_input_id)
         tgt_embedded_mask = self.prepare_tokens(tgt_embedded_mask)
         enc_output = src_embedded
         dec_embedding = tgt_embedded_mask
         for dec_layer in self.decoder_layers:
             dec_embedding = dec_layer(
-                dec_embedding, src_attention_mask, tgt_pad, enc_output
+                dec_embedding, src_attention_mask, tgt_padded_time, enc_output
             )
         logits = self.fc(dec_embedding)
 
@@ -578,16 +596,16 @@ class CountDecoder(nn.Module):
         shape = (batch_size, seq_len)
         # create ids and scores matrix for each batch
         # exclude CLS token from token
-        ids = torch.full(shape, self.mask_token, dtype=torch.long, device=self.device)
+        ids = torch.full(shape, self.mask_token, dtype=torch.long)
 
         # pad ids
-        scores = torch.zeros(shape, dtype=torch.float, device=self.device)
+        scores = torch.zeros(shape, dtype=torch.float)
         starting_temperature = temperature
         demask_fn = self.pretrained_model
 
         for timestep, steps_until_x0 in tqdm(
             zip(
-                torch.linspace(0, 1, timesteps, device=self.device),
+                torch.linspace(0, 1, timesteps),
                 reversed(range(timesteps)),
             ),
             total=timesteps,

@@ -66,7 +66,7 @@ def get_args():
         type=str,
         default=(
             '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-            'T_perturb/T_perturb/pp/res/dataset_degs/'
+            'T_perturb/T_perturb/pp/res/dataset_hvg/'
             'cytoimmgen_tokenised_stratified_pairing_16h.dataset'
         ),
         help='path to tokenised resting data',
@@ -82,7 +82,7 @@ def get_args():
         '--tgt_dataset_t1',
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset_degs/'
+        'T_perturb/T_perturb/pp/res/dataset_hvg/'
         'cytoimmgen_tokenised_stratified_pairing_16h.dataset',
         help='path to tokenised activated data',
     )
@@ -90,7 +90,7 @@ def get_args():
         '--tgt_dataset_t2',
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset_degs/'
+        'T_perturb/T_perturb/pp/res/dataset_hvg/'
         'cytoimmgen_tokenised_stratified_pairing_40h.dataset',
         help='path to tokenised activated data',
     )
@@ -99,7 +99,7 @@ def get_args():
         type=str,
         default=(
             '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-            'T_perturb/T_perturb/pp/res/h5ad_pairing_degs/'
+            'T_perturb/T_perturb/pp/res/h5ad_pairing_hvg/'
             'cytoimmgen_tokenisation_stratified_pairing_0h.h5ad'
         ),
         help='path to src',
@@ -109,12 +109,12 @@ def get_args():
         type=str,
         default=(
             f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-            f'T_perturb/pp/res/h5ad_pairing_degs/'
+            f'T_perturb/pp/res/h5ad_pairing_hvg/'
             f'cytoimmgen_tokenisation_{dataset_info}.h5ad'
         ),
         help='path to tgt',
     )
-    parser.add_argument('--batch_size', type=int, default=256, help='batch_size')
+    parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=True, help='shuffle')
     parser.add_argument(
         '--epochs', type=int, default=50, help='number of training epochs'
@@ -170,6 +170,18 @@ def main() -> None:
 
     src_adata = sc.read_h5ad(args.src_adata_folder)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
+    obs_cols = [
+        'cell_pairing_index',
+        'Cell_type',
+        'Donor',
+        args.condition_keys,
+        'Cell_population',
+    ]
+    tgt_adata.obs = tgt_adata.obs[obs_cols]
+    tgt_adata.var = tgt_adata.var[['gene_name', 'ensembl_id']]
+    src_adata.obs = src_adata.obs[obs_cols]
+    src_adata.var = src_adata.var[['gene_name', 'ensembl_id']]
+    print(src_adata)
     if tgt_adata.X.__class__.__name__ == 'csr_matrix':
         tgt_adata.X = tgt_adata.X.A
     if src_adata.X.__class__.__name__ == 'csr_matrix':
@@ -216,7 +228,7 @@ def main() -> None:
     # ----------------------------------------------------------------------------------
     if args.train_mode == 'masking':
         pretrained_module = Petratrainer(
-            tgt_vocab_size=704,
+            tgt_vocab_size=1820,  # 704 for degs, 1819 for tokenised
             d_model=256,
             num_heads=8,
             num_layers=1,
@@ -243,7 +255,7 @@ def main() -> None:
             # lr_scheduler_factor=0.8,
             conditions=conditions_,
             conditions_combined=conditions_combined_,
-            tgt_vocab_size=704,
+            tgt_vocab_size=1820,  # 704 for degs, 1819 for tokenised
             dropout=args.count_dropout,
             d_model=256,
             generate=args.generate,
