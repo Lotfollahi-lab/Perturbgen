@@ -371,3 +371,14 @@ def unseen_donor_split(
     test = Subset(adata, np.where(groups['Donor'].isin(test_donors))[0])
 
     return train, val, test
+
+
+def gen_attention_mask(self, length, max_len=1000):
+    attention_mask = [
+        [1] * original_len + [0] * (max_len - original_len)
+        if original_len <= max_len
+        else [1] * max_len
+        for original_len in length
+    ]
+
+    return torch.tensor(attention_mask)

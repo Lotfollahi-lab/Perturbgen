@@ -143,12 +143,42 @@ class Petratrainer(LightningModule):
         self.tgt_vocab_size = tgt_vocab_size
         self.adata = adata
         self.dataset_info = dataset_info
+        # register buffer for CLS
+        self.register_buffer(
+            'cls_token_1',
+            torch.tensor(
+                [tgt_vocab_size],
+                dtype=torch.long,
+            ),
+        )
+        total_vocab_size = tgt_vocab_size + 1
+        self.register_buffer(
+            'cls_token_2',
+            torch.tensor(
+                [total_vocab_size],
+                dtype=torch.long,
+            ),
+        )
 
     def forward(self, batch):
+        tgt_input_id_t1 = torch.cat(
+            (
+                self.cls_token_1.expand(batch['tgt_input_ids_t1'].shape[0], -1),
+                batch['tgt_input_ids_t1'],
+            ),
+            dim=1,
+        )
+        tgt_input_id_t2 = torch.cat(
+            (
+                self.cls_token_2.expand(batch['tgt_input_ids_t2'].shape[0], -1),
+                batch['tgt_input_ids_t2'],
+            ),
+            dim=1,
+        )
         outputs = self.transformer(
             src_input_id=batch['src_input_ids'],
-            tgt_input_id_t1=batch['tgt_input_ids_t1'],
-            tgt_input_id_t2=batch['tgt_input_ids_t2'],
+            tgt_input_id_t1=tgt_input_id_t1,
+            tgt_input_id_t2=tgt_input_id_t2,
             original_lens=batch['src_length'],
             generate=self.generate,
         )
@@ -189,6 +219,7 @@ class Petratrainer(LightningModule):
             prog_bar=True,
             logger=True,
             batch_size=batch['tgt_input_ids_t1'].shape[0],
+            sync_dist=True,
         )
 
         self.log(
@@ -199,6 +230,7 @@ class Petratrainer(LightningModule):
             prog_bar=True,
             logger=True,
             batch_size=batch['tgt_input_ids_t1'].shape[0],
+            sync_dist=True,
         )
         return masking_loss
 
@@ -223,6 +255,7 @@ class Petratrainer(LightningModule):
             prog_bar=True,
             logger=True,
             batch_size=batch['tgt_input_ids_t1'].shape[0],
+            sync_dist=True,
         )
         self.log(
             'val/perplexity',
@@ -232,6 +265,7 @@ class Petratrainer(LightningModule):
             prog_bar=True,
             logger=True,
             batch_size=batch['tgt_input_ids_t1'].shape[0],
+            sync_dist=True,
         )
 
     def test_step(self, batch, *args, **kwargs):
@@ -415,19 +449,8 @@ class CountDecodertrainer(LightningModule):
             and (conditions_combined is not None)
         ):
             self.n_conditions = [len(conditions[cond]) for cond in conditions.keys()]
-            self.conditions = conditions
-            self.condition_encodings = {
-                cond: {
-                    k: v for k, v in zip(conditions[cond], range(len(conditions[cond])))
-                }
-                for cond in conditions.keys()
-            }
-            self.conditions_combined = conditions_combined
             self.n_conditions_combined = len(conditions_combined)
-            self.conditions_combined_encodings = {
-                k: v
-                for k, v in zip(conditions_combined, range(len(conditions_combined)))
-            }
+
             self.theta = torch.nn.Parameter(
                 torch.randn(tgt_vocab_size - 1, self.n_conditions_combined)
             )

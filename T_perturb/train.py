@@ -5,6 +5,7 @@ import os
 import re
 from datetime import datetime
 
+import numpy as np
 import pytorch_lightning as pl
 import scanpy as sc
 import torch
@@ -14,6 +15,7 @@ from pytorch_lightning.loggers import WandbLogger
 
 from T_perturb.Dataloaders.datamodule import PetraDataModule
 from T_perturb.Model.trainer import CountDecodertrainer, Petratrainer
+from T_perturb.src.utils import label_encoder, stratified_split
 
 # from T_perturb.src.utils import subset_adata_dataset
 from wandb import init  # type: ignore
@@ -130,7 +132,7 @@ def get_args():
     parser.add_argument(
         '--mlm_probability', type=float, default=0.3, help='mlm probability'
     )
-    parser.add_argument('--n_workers', type=int, default=8, help='number of workers')
+    parser.add_argument('--n_workers', type=int, default=32, help='number of workers')
     parser.add_argument(
         '--loss_mode', type=str, default='zinb', help='loss mode [zinb, nb, mse]'
     )
@@ -152,6 +154,8 @@ def get_args():
 
 
 def main() -> None:
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
     """Run training."""
     args = get_args()
 
@@ -159,45 +163,71 @@ def main() -> None:
     pl.seed_everything(RANDOM_SEED)
     torch.manual_seed(RANDOM_SEED)
     # Load and preprocess data
+    # ----------------------------------------------------------------------------------
     print('Loading and preprocessing data...')
     src_dataset = load_from_disk(args.src_dataset)
-    # tgt_dataset = load_from_disk(args.tgt_dataset)
     tgt_dataset_t1 = load_from_disk(args.tgt_dataset_t1)
     tgt_dataset_t2 = load_from_disk(args.tgt_dataset_t2)
-
-    # create dictionary for dataset
     tgt_datasets = {'t1': tgt_dataset_t1, 't2': tgt_dataset_t2}
 
     src_adata = sc.read_h5ad(args.src_adata_folder)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
-    obs_cols = [
-        'cell_pairing_index',
-        'Cell_type',
-        'Donor',
-        args.condition_keys,
-        'Cell_population',
-    ]
-    tgt_adata.obs = tgt_adata.obs[obs_cols]
-    tgt_adata.var = tgt_adata.var[['gene_name', 'ensembl_id']]
-    src_adata.obs = src_adata.obs[obs_cols]
-    src_adata.var = src_adata.var[['gene_name', 'ensembl_id']]
-    print(src_adata)
-    if tgt_adata.X.__class__.__name__ == 'csr_matrix':
-        tgt_adata.X = tgt_adata.X.A
-    if src_adata.X.__class__.__name__ == 'csr_matrix':
-        src_adata.X = src_adata.X.A
+
+    splitting_mode = 'stratified'  # 'random', 'stratified', 'unseen_donor'
+    if args.split:
+        if splitting_mode == 'stratified':
+            # start preprocessing to avoid loading anndata into datamodule
+            train_indices, val_indices, test_indices = stratified_split(
+                tgt_adata=tgt_adata,
+                train_prop=0.8,  # 0.8,0.1,0.1 train, val, test
+                test_prop=0.1,
+                groups=['Cell_type', 'Donor'],
+                seed=RANDOM_SEED,
+            )
+
+            # check that indices are unique to avoid data leakage
+            assert len(set(train_indices).intersection(val_indices)) == 0
+            assert len(set(train_indices).intersection(test_indices)) == 0
+            assert len(set(val_indices).intersection(test_indices)) == 0
+        # elif split == 'random':
+        #     train, val, test = random_split()
+        # elif split == 'unseen_donor':
+        #     train, val, test = unseen_donor_split()
+        else:
+            raise ValueError(
+                "split is not available, must be either '"
+                "random','stratified' or 'unseen_donor'"
+            )
+        print(
+            f'Number of samples in train set: {len(train_indices)}\n'
+            f'Number of samples in val set: {len(val_indices)}\n'
+            f'Number of samples in test set: {len(test_indices)}'
+        )
+    else:
+        # return all the indices
+        train_indices = list(range(len(src_dataset)))
+        val_indices = None
+        test_indices = list(range(len(tgt_datasets)))
+
+    # if tgt_adata.X.__class__.__name__ == 'csr_matrix':
+    #     tgt_adata.X = tgt_adata.X.A
+    # if src_adata.X.__class__.__name__ == 'csr_matrix':
+    #     src_adata.X = src_adata.X.A
     if args.loss_mode == 'mse':
         # log normalize data only for mse loss
         sc.pp.normalize_total(src_adata, target_sum=1e4)
         sc.pp.log1p(src_adata)
         sc.pp.normalize_total(tgt_adata, target_sum=1e4)
         sc.pp.log1p(tgt_adata)
+
     # if args.num_cells != 0:
     #     src_adata, tgt_adata, src_dataset, tgt_dataset = subset_adata_dataset(
     #         src_adata, tgt_adata, src_dataset,
     #         tgt_dataset, args.num_cells, RANDOM_SEED
     #     )
 
+    # count loss preprocessing
+    # ----------------------------------------------------------------------------------
     if isinstance(args.condition_keys, str):
         condition_keys_ = [args.condition_keys]
     else:
@@ -223,12 +253,38 @@ def main() -> None:
         conditions_combined_ = tgt_adata.obs['conditions_combined'].unique().tolist()
     else:
         conditions_combined_ = args.conditions_combined
+
+    condition_encodings = {
+        cond: {k: v for k, v in zip(conditions_[cond], range(len(conditions_[cond])))}
+        for cond in conditions_.keys()
+    }
+    conditions_combined_encodings = {
+        k: v for k, v in zip(conditions_combined_, range(len(conditions_combined_)))
+    }
+
+    if (condition_encodings is not None) and (condition_keys_ is not None):
+        conditions = [
+            label_encoder(
+                tgt_adata,
+                encoder=condition_encodings[condition_keys_[i]],
+                condition_key=condition_keys_[i],
+            )
+            for i in range(len(condition_encodings))
+        ]
+        conditions = torch.tensor(conditions, dtype=torch.long).T
+        conditions_combined = label_encoder(
+            tgt_adata,
+            encoder=conditions_combined_encodings,
+            condition_key='conditions_combined',
+        )
+        conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
+    tgt_size_factor = np.ravel(tgt_adata.X.A.sum(axis=1))
     print('Data loaded and preprocessed.')
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.train_mode == 'masking':
         pretrained_module = Petratrainer(
-            tgt_vocab_size=1820,  # 704 for degs, 1819 for tokenised
+            tgt_vocab_size=1820,  # 704 for degs, 1820 for tokenised
             d_model=256,
             num_heads=8,
             num_layers=1,
@@ -255,20 +311,12 @@ def main() -> None:
             # lr_scheduler_factor=0.8,
             conditions=conditions_,
             conditions_combined=conditions_combined_,
-            tgt_vocab_size=1820,  # 704 for degs, 1819 for tokenised
+            tgt_vocab_size=1820,  # 704 for degs, 1820 for tokenised
             dropout=args.count_dropout,
             d_model=256,
             generate=args.generate,
             tgt_adata=tgt_adata,
         )
-
-        # # Assume `model` is your model
-        if args.loss_mode == 'mse':
-            condition_encodings = None
-            conditions_combined_encodings = None
-        else:
-            condition_encodings = decoder_module.condition_encodings
-            conditions_combined_encodings = decoder_module.conditions_combined_encodings
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
     # Initialize data module
@@ -285,32 +333,37 @@ def main() -> None:
         data_module = PetraDataModule(
             src_dataset=src_dataset,
             tgt_datasets=tgt_datasets,
-            src_adata=src_adata,
-            tgt_adata=tgt_adata,
+            src_counts=src_adata.X,
+            tgt_counts=tgt_adata.X,
             batch_size=args.batch_size,
             num_workers=args.n_workers,
             shuffle=args.shuffle,
             max_len=args.max_len,
-            seed=RANDOM_SEED,
-            drop_last=False,
             split=args.split,
+            train_indices=train_indices,
+            val_indices=val_indices,
+            test_indices=test_indices,
+            tgt_size_factor=tgt_size_factor,
         )
     elif args.train_mode == 'count':
         data_module = PetraDataModule(
             src_dataset=src_dataset,
             tgt_datasets=tgt_datasets,
-            src_adata=src_adata,
-            tgt_adata=tgt_adata,
+            src_counts=src_adata.X,
+            tgt_counts=tgt_adata.X,
             batch_size=args.batch_size,
             num_workers=args.n_workers,
             shuffle=args.shuffle,
             max_len=args.max_len,
             condition_keys=condition_keys_,
             condition_encodings=condition_encodings,
-            conditions_combined_encodings=conditions_combined_encodings,
-            seed=RANDOM_SEED,
-            drop_last=False,
+            conditions=conditions,
+            conditions_combined=conditions_combined,
             split=args.split,
+            train_indices=train_indices,
+            val_indices=val_indices,
+            test_indices=test_indices,
+            tgt_size_factor=tgt_size_factor,
         )
     # Setup trainer
     # ----------------------------------------------------------------------------------
@@ -396,6 +449,7 @@ def main() -> None:
         ],
         max_epochs=args.epochs,
         accelerator=accelerator,
+        # strategy='ddp',
     )
 
     if args.train_mode == 'masking':

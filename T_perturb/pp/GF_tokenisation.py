@@ -108,6 +108,22 @@ adata_0h = subset_adata(adata_subset, cell_pairings['0h'])
 adata_16h = subset_adata(adata_subset, cell_pairings['16h'])
 adata_40h = subset_adata(adata_subset, cell_pairings['40h'])
 adata_5d = subset_adata(adata_subset, cell_pairings['5d'])
+obs_cols = [
+    'cell_pairing_index',
+    'Cell_type',
+    'Donor',
+    'Cell_culture_batch',
+    'Cell_population',
+    'Phase',
+    'Age',
+    'Sex',
+]
+
+
+def prune_adata(adata, obs_cols):
+    adata.obs = adata.obs[obs_cols]
+    adata.var = adata.var[['gene_name', 'ensembl_id']]
+    return adata
 
 
 adata_0h.write_h5ad(

@@ -84,7 +84,6 @@ class CrossAttention(nn.Module):
         )
 
     def forward(self, x, context=None, mask=None):
-        print(x.shape)
         h = self.heads
         q = self.to_q(x)
         if context is None:
@@ -94,19 +93,13 @@ class CrossAttention(nn.Module):
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
         sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
         if mask is not None:
-            print(mask.shape)
-            print(mask[:, 246:])
             mask = rearrange(mask, 'b ... -> b (...)')
             max_neg_value = -torch.finfo(sim.dtype).max
             mask = repeat(mask, 'b j -> (b h) () j', h=h)
-            print(mask.shape)
             sim.masked_fill_(mask, max_neg_value)
 
         # attention, what we cannot get enough of
         attn = sim.softmax(dim=-1)
-        print(attn.shape)
-        print(attn[:, 247:, 246:])
-
         out = einsum('b i j, b j d -> b i d', attn, v)
         out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
         return self.to_out(out)
@@ -298,32 +291,21 @@ class Petra(nn.Module):
         self.d_ff = d_ff
         self.max_seq_length = max_seq_length
         self.dropout = dropout
+        # self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.cls_token = tgt_vocab_size
 
-    def setup(self, stage):
-        print('Load setup')
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.cls_token_1 = torch.tensor(
-            [self.tgt_vocab_size], dtype=torch.long  # Specify the GPU device
-        )
-
-        print('device is', self.device)
-        self.cls_token_2 = torch.tensor(
-            [self.tgt_vocab_size], dtype=torch.long  # Specify the GPU device
-        )
-        total_vocab_size = tgt_vocab_size + 1
+        total_vocab_size = tgt_vocab_size + 2  # add one for cls token
         self.mask_token = total_vocab_size
         total_vocab_size = total_vocab_size + 1
         self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
         self.positional_encoding = PositionalEncoding(
-            d_model, max_seq_length, device=self.device  # Specify the GPU device
+            d_model, max_seq_length  # Specify the GPU device
         )
         self.encoder_layers = Geneformerwrapper()
         self.decoder_layers = nn.ModuleList(
             [DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)]
         )
-        self.fc = nn.Linear(
-            d_model, tgt_vocab_size, device=self.device
-        )  # Specify the GPU device)
+        self.fc = nn.Linear(d_model, tgt_vocab_size)  # Specify the GPU device)
         self.dropout = nn.Dropout(dropout)
 
     def generate_pad(self, tgt):
@@ -336,7 +318,6 @@ class Petra(nn.Module):
         self, tgt_input_id_dict, tgt_pad_dict, mlm_probability=0.15, time_step=2
     ):
         time_random = torch.randint(1, time_step + 1, (1,)).int().item()
-        print(time_random)
         tgt_pad = tgt_pad_dict[f'tgt_pad_{time_random}']
         # mask the subsequent timestep
         count_time = time_random
@@ -344,7 +325,6 @@ class Petra(nn.Module):
             all_pad = torch.ones_like(tgt_pad).bool()
             tgt_pad_dict[f'tgt_pad_{count_time+1}'] = all_pad
             count_time = count_time + 1
-        print(tgt_pad_dict)
         tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_random}']
         # initialize the dictionary with all -100 and overwrite it
         labels_dict = {}
@@ -374,7 +354,6 @@ class Petra(nn.Module):
         labels_ = torch.cat([labels_dict[key] for key in labels_dict], dim=1)
         tgt_mask_ = torch.cat([tgt_mask_dict[key] for key in tgt_mask_dict], dim=1)
         tgt_pad_ = torch.cat([tgt_pad_dict[key] for key in tgt_pad_dict], dim=1)
-        print(tgt_pad_)
         return tgt_mask_, labels_, tgt_pad_
 
     def prepare_tokens(self, x):
@@ -422,20 +401,6 @@ class Petra(nn.Module):
         original_lens,
         generate=False,
     ):
-        tgt_input_id_t1 = torch.cat(
-            (
-                self.cls_token_1.expand(tgt_input_id_t1.shape[0], -1),
-                tgt_input_id_t1,
-            ),
-            dim=1,
-        )
-        tgt_input_id_t2 = torch.cat(
-            (
-                self.cls_token_2.expand(tgt_input_id_t2.shape[0], -1),
-                tgt_input_id_t2,
-            ),
-            dim=1,
-        )
         tgt_pad_1 = self.generate_pad(tgt_input_id_t1)
         tgt_pad_2 = self.generate_pad(tgt_input_id_t2)
         tgt_pad_dict = {
