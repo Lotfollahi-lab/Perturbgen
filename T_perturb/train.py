@@ -13,12 +13,12 @@ from datasets import load_from_disk
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 
+# from T_perturb.src.utils import subset_adata_dataset
+from wandb import init  # type: ignore
+
 from T_perturb.Dataloaders.datamodule import PetraDataModule
 from T_perturb.Model.trainer import CountDecodertrainer, Petratrainer
 from T_perturb.src.utils import label_encoder, stratified_split
-
-# from T_perturb.src.utils import subset_adata_dataset
-from wandb import init  # type: ignore
 
 RANDOM_SEED = 42
 
@@ -69,7 +69,7 @@ def get_args():
         default=(
             '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
             'T_perturb/T_perturb/pp/res/dataset_hvg/'
-            'cytoimmgen_tokenised_stratified_pairing_16h.dataset'
+            'cytoimmgen_tokenised_stratified_pairing_0h.dataset'
         ),
         help='path to tokenised resting data',
     )
@@ -116,7 +116,7 @@ def get_args():
         ),
         help='path to tgt',
     )
-    parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
+    parser.add_argument('--batch_size', type=int, default=128, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=True, help='shuffle')
     parser.add_argument(
         '--epochs', type=int, default=50, help='number of training epochs'
@@ -132,7 +132,9 @@ def get_args():
     parser.add_argument(
         '--mlm_probability', type=float, default=0.3, help='mlm probability'
     )
-    parser.add_argument('--n_workers', type=int, default=32, help='number of workers')
+    parser.add_argument(
+        '--n_workers', type=int, default=64, help='number of workers'
+    )  # 64
     parser.add_argument(
         '--loss_mode', type=str, default='zinb', help='loss mode [zinb, nb, mse]'
     )
@@ -423,8 +425,6 @@ def main() -> None:
 
     # In this simple example we just check if a GPU is available.
     # For training larger models in a distributed settings, this needs more care.
-    accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
-    print('Using device {}.'.format(accelerator))
 
     # Instantiate trainer object.
     # The lightning trainer has a large number of parameters that can improve the
@@ -440,6 +440,7 @@ def main() -> None:
         mode=mode,
     )
     accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
+    print('Using device {}.'.format(accelerator))
     trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=[
@@ -449,7 +450,8 @@ def main() -> None:
         ],
         max_epochs=args.epochs,
         accelerator=accelerator,
-        # strategy='ddp',
+        devices=-1 if torch.cuda.is_available() else 0,
+        strategy='ddp' if torch.cuda.is_available() else None,
     )
 
     if args.train_mode == 'masking':

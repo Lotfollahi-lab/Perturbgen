@@ -241,7 +241,6 @@ class PetraDataModule(LightningDataModule):
             shuffle=self.shuffle,
             num_workers=self.num_workers,
             collate_fn=self.collate,
-            drop_last=False,
         )
         return data
 
@@ -253,7 +252,6 @@ class PetraDataModule(LightningDataModule):
                 shuffle=False,
                 num_workers=self.num_workers,
                 collate_fn=self.collate,
-                drop_last=False,
             )
             return data
         else:
@@ -266,17 +264,45 @@ class PetraDataModule(LightningDataModule):
             shuffle=self.shuffle,
             num_workers=self.num_workers,
             collate_fn=self.collate,
-            drop_last=False,
+            # persistent_workers=True,
         )
         return data
+
+    @staticmethod
+    def return_tgt_dataset(
+        dataset_name,
+        batch,
+        max_len,
+        pad_token_id,
+    ):
+        if any(dataset_name in item for item in batch):
+            tgt_input_batch_id = [
+                torch.tensor(d[dataset_name]['input_ids'], device='cpu') for d in batch
+            ]
+            tgt_length = torch.stack(
+                [torch.tensor(d[dataset_name]['length'], device='cpu') for d in batch]
+            )
+            model_input_size = torch.max(tgt_length)
+            tgt_cell_population = [d[dataset_name]['Cell_population'] for d in batch]
+            tgt_input_batch_id = pad_tensor_list(
+                tgt_input_batch_id,
+                max_len,
+                pad_token_id,
+                model_input_size,
+            )
+        else:
+            tgt_input_batch_id = None
+            tgt_length = None
+            tgt_cell_population = None
+        return tgt_input_batch_id, tgt_length, tgt_cell_population
 
     def collate(self, batch):
         if any('src_dataset' in item for item in batch):
             src_input_batch_id = [
-                torch.tensor(d['src_dataset']['input_ids']) for d in batch
+                torch.tensor(d['src_dataset']['input_ids'], device='cpu') for d in batch
             ]
             src_length = torch.stack(
-                [torch.tensor(d['src_dataset']['length']) for d in batch]
+                [torch.tensor(d['src_dataset']['length'], device='cpu') for d in batch]
             )
             model_input_size = torch.max(src_length)
             src_cell_type = [d['src_dataset']['Cell_type'] for d in batch]
@@ -292,41 +318,26 @@ class PetraDataModule(LightningDataModule):
             src_time_point = None
             src_donor = None
 
-        @staticmethod
-        def return_tgt_dataset(dataset_name):
-            if any(dataset_name in item for item in batch):
-                tgt_input_batch_id = [
-                    torch.tensor(d[dataset_name]['input_ids']) for d in batch
-                ]
-                tgt_length = torch.stack(
-                    [torch.tensor(d[dataset_name]['length']) for d in batch]
-                )
-                model_input_size = torch.max(tgt_length)
-                tgt_cell_population = [
-                    d[dataset_name]['Cell_population'] for d in batch
-                ]
-                tgt_input_batch_id = pad_tensor_list(
-                    tgt_input_batch_id,
-                    self.max_len,
-                    self.pad_token_id,
-                    model_input_size,
-                )
-            else:
-                tgt_input_batch_id = None
-                tgt_length = None
-                tgt_cell_population = None
-            return tgt_input_batch_id, tgt_length, tgt_cell_population
-
         (
             tgt_input_batch_id_t1,
             tgt_length_t1,
             tgt_cell_population_t1,
-        ) = return_tgt_dataset('tgt_dataset_t1')
+        ) = PetraDataModule.return_tgt_dataset(
+            'tgt_dataset_t1',
+            batch,
+            self.max_len,
+            self.pad_token_id,
+        )
         (
             tgt_input_batch_id_t2,
             tgt_length_t2,
             tgt_cell_population_t2,
-        ) = return_tgt_dataset('tgt_dataset_t2')
+        ) = PetraDataModule.return_tgt_dataset(
+            'tgt_dataset_t2',
+            batch,
+            self.max_len,
+            self.pad_token_id,
+        )
 
         if any('tgt_dataset_t1' in item for item in batch):
             tgt_cell_type = [d['tgt_dataset_t1']['Cell_type'] for d in batch]
@@ -338,6 +349,7 @@ class PetraDataModule(LightningDataModule):
             tgt_donor = None
 
         if any('src_counts' in item for item in batch):
+            src_counts = [torch.tensor(d['src_counts'], device='cpu') for d in batch]
             if isinstance(batch[0]['src_counts'], csr_matrix):
                 src_counts = [torch.tensor(d['src_counts'].A) for d in batch]
 
@@ -348,6 +360,7 @@ class PetraDataModule(LightningDataModule):
             src_counts = None
 
         if any('tgt_counts' in item for item in batch):
+            tgt_counts = [torch.tensor(d['tgt_counts'], device='cpu') for d in batch]
             if isinstance(batch[0]['tgt_counts'], csr_matrix):
                 tgt_counts = [torch.tensor(d['tgt_counts'].A) for d in batch]
             else:

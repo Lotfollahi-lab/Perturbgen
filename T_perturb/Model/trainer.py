@@ -116,9 +116,9 @@ class Petratrainer(LightningModule):
         self.lr = lr
         self.lr_scheduler_patience = lr_scheduler_patience
         # self.lr_scheduler_factor = lr_scheduler_factor
+        self.perplexity = Perplexity(ignore_index=-100)
         self.metric = nn.ModuleDict(
             {
-                'perplexity': Perplexity(ignore_index=-100),
                 'cosine_similarity': CosineSimilarity(reduction='mean'),
                 'mse': MeanSquaredError(),
                 # 'rmse': MeanSquaredError(squared=False),
@@ -204,8 +204,7 @@ class Petratrainer(LightningModule):
         logits = outputs['logits']
         labels = outputs['labels']
 
-        perp = Perplexity(ignore_index=-100).to('cuda')  # -100 = masked labels
-        perp.update(logits, labels)
+        perp = self.perplexity(logits, labels)
         logits = logits.contiguous().view(-1, logits.size(-1))
         labels = labels.contiguous().view(-1)
 
@@ -219,19 +218,22 @@ class Petratrainer(LightningModule):
             prog_bar=True,
             logger=True,
             batch_size=batch['tgt_input_ids_t1'].shape[0],
+            rank_zero_only=True,
             sync_dist=True,
         )
 
         self.log(
             'train/perplexity',
-            perp.compute(),
+            perp,
             on_step=True,
             on_epoch=True,
             prog_bar=True,
             logger=True,
             batch_size=batch['tgt_input_ids_t1'].shape[0],
+            rank_zero_only=True,
             sync_dist=True,
         )
+
         return masking_loss
 
     def on_train_epoch_end(self):
@@ -242,11 +244,11 @@ class Petratrainer(LightningModule):
         outputs = self.forward(batch)
         logits = outputs['logits']
         labels = outputs['labels']
-        perp = Perplexity(ignore_index=-100).to('cuda')
-        perp.update(logits, labels)
+        perp = self.perplexity(logits, labels)
         logits = logits.contiguous().view(-1, logits.size(-1))
         labels = labels.contiguous().view(-1)
         masking_loss = self.masking_loss(logits, labels)
+
         self.log(
             'val/loss',
             masking_loss,
@@ -255,16 +257,18 @@ class Petratrainer(LightningModule):
             prog_bar=True,
             logger=True,
             batch_size=batch['tgt_input_ids_t1'].shape[0],
+            rank_zero_only=True,
             sync_dist=True,
         )
         self.log(
             'val/perplexity',
-            perp.compute(),
+            perp,
             on_step=True,
             on_epoch=True,
             prog_bar=True,
             logger=True,
             batch_size=batch['tgt_input_ids_t1'].shape[0],
+            rank_zero_only=True,
             sync_dist=True,
         )
 
@@ -749,7 +753,6 @@ class CountDecodertrainer(LightningModule):
             np.array([tgt_cell_type, tgt_cell_population, tgt_donor]).T,
             columns=['Cell_type', 'Cell_population', 'Donor'],
         )
-        print(test_obs)
         pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs, var=self.adata.var)
         pred_adata.layers['counts'] = true_counts.numpy()
         # save adata
@@ -759,8 +762,6 @@ class CountDecodertrainer(LightningModule):
             f'plt/res/Petra/'
             f'pred_adata_{self.dataset_info}.h5ad'
         )
-
-        print(pred_adata)
         mean_pearson = pearson(pred_counts, true_counts)
         # Pearson correlation coefficient
         self.log(

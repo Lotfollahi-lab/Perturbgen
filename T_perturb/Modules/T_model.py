@@ -172,10 +172,8 @@ class DecoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None):
-        print('Self Attention')
         attn_output = self.self_attn(x, mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
-        print('Cross Attention')
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
         x = self.norm2(x + self.dropout(attn_output))
         ff_output = self.feed_forward(x)
@@ -184,13 +182,11 @@ class DecoderLayer(nn.Module):
 
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_seq_length, device=None):
+    def __init__(self, d_model, max_seq_length):
         super(PositionalEncoding, self).__init__()
 
-        pe = torch.zeros(max_seq_length, d_model, device=device)
-        position = torch.arange(
-            0, max_seq_length, dtype=torch.float, device=device
-        ).unsqueeze(1)
+        pe = torch.zeros(max_seq_length, d_model)
+        position = torch.arange(0, max_seq_length, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(
             torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model)
         )
@@ -330,16 +326,17 @@ class Petra(nn.Module):
         labels_dict = {}
         tgt_mask_dict = {}
         for i in range(1, time_step + 1):
-            labels_dict[f'labels_{i}'] = torch.full(
-                tgt_input_id.shape, -100, dtype=torch.long, device=tgt_input_id.device
+            labels_dict[f'labels_{i}'] = torch.full_like(
+                tgt_input_id, -100, dtype=torch.long
             )
-            tgt_mask_dict[f'tgt_mask_{i}'] = torch.full(
-                tgt_pad.shape, False, device=tgt_input_id.device
+            tgt_mask_dict[f'tgt_mask_{i}'] = torch.full_like(
+                tgt_pad, False, dtype=torch.bool
             )
 
         labels = tgt_input_id.clone()
-        probability_matrix = torch.full(
-            tgt_pad.shape, mlm_probability, device=tgt_pad.device
+        # Initialize probability_matrix tensor without specifying device
+        probability_matrix = torch.full_like(
+            tgt_pad, mlm_probability, dtype=torch.float
         )
         cls_tgt_pad = tgt_pad.clone()
         cls_tgt_pad[:, 0] = True
