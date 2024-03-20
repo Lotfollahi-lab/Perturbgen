@@ -91,6 +91,7 @@ class Petratrainer(LightningModule):
         return_embeddings: bool = False,
         generate: bool = False,
         batch_size: int = 32,
+        time_steps: list = [1, 2],
         dataset_info: Optional[str] = None,
         adata: Optional[ad.AnnData] = None,
         *args,
@@ -106,6 +107,7 @@ class Petratrainer(LightningModule):
             max_seq_length=max_seq_length,
             dropout=dropout,
             mlm_probability=mlm_probability,
+            time_steps=time_steps,
         )
         self.target_device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu'
@@ -131,7 +133,7 @@ class Petratrainer(LightningModule):
         self.gene_token_dict = {value: key for key, value in gene_token_dict.items()}
         with open(
             '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-            'T_perturb/pp/res/token_dictionary_degs_for_subset_token_id.pkl',
+            'T_perturb/pp/res/token_id_to_genename_hvg.pkl',
             'rb',
         ) as f:
             self.subset_tokenid_to_deg = pickle.load(f)
@@ -142,43 +144,51 @@ class Petratrainer(LightningModule):
         self.token_id_list: List[torch.tensor] = []
         self.tgt_vocab_size = tgt_vocab_size
         self.adata = adata
+        self.time_steps = time_steps
         self.dataset_info = dataset_info
         # register buffer for CLS
-        self.register_buffer(
-            'cls_token_1',
-            torch.tensor(
-                [tgt_vocab_size],
-                dtype=torch.long,
-            ),
-        )
-        total_vocab_size = tgt_vocab_size + 1
-        self.register_buffer(
-            'cls_token_2',
-            torch.tensor(
-                [total_vocab_size],
-                dtype=torch.long,
-            ),
-        )
+        total_vocab_size = tgt_vocab_size
+        for i in self.time_steps:
+            self.register_buffer(
+                f'cls_token_{str(i)}',
+                torch.tensor(
+                    [total_vocab_size + i],
+                    dtype=torch.long,
+                ),
+            )
+        # self.register_buffer(
+        #     'cls_token_1',
+        #     torch.tensor(
+        #         [tgt_vocab_size],
+        #         dtype=torch.long,
+        #     ),
+        # )
+        # total_vocab_size = tgt_vocab_size + 1
+        # self.register_buffer(
+        #     'cls_token_2',
+        #     torch.tensor(
+        #         [total_vocab_size],
+        #         dtype=torch.long,
+        #     ),
+        # )
 
     def forward(self, batch):
-        tgt_input_id_t1 = torch.cat(
-            (
-                self.cls_token_1.expand(batch['tgt_input_ids_t1'].shape[0], -1),
-                batch['tgt_input_ids_t1'],
-            ),
-            dim=1,
-        )
-        tgt_input_id_t2 = torch.cat(
-            (
-                self.cls_token_2.expand(batch['tgt_input_ids_t2'].shape[0], -1),
-                batch['tgt_input_ids_t2'],
-            ),
-            dim=1,
-        )
+        tgt_input_id_dict = {}
+        for i in self.time_steps:
+            tgt_input_id_ = torch.cat(
+                (
+                    getattr(self, f'cls_token_{str(i)}').expand(
+                        batch[f'tgt_input_ids_t{i}'].shape[0], -1
+                    ),
+                    batch[f'tgt_input_ids_t{i}'],
+                ),
+                dim=1,
+            )
+            tgt_input_id_dict[f'tgt_input_id_t{i}'] = tgt_input_id_
+
         outputs = self.transformer(
             src_input_id=batch['src_input_ids'],
-            tgt_input_id_t1=tgt_input_id_t1,
-            tgt_input_id_t2=tgt_input_id_t2,
+            tgt_input_id_dict=tgt_input_id_dict,
             original_lens=batch['src_length'],
             generate=self.generate,
         )
@@ -735,7 +745,6 @@ class CountDecodertrainer(LightningModule):
 
             self.test_pred_counts_list.append(pred_count)
             self.test_true_counts_list.append(batch['tgt_counts'])
-            print(len(self.test_true_counts_list))
             self.test_ctrl_counts_list.append(batch['src_counts'])
             self.test_tgt_cell_type_list.append(batch['tgt_cell_type'])
             self.test_tgt_cell_population_list.append(batch['tgt_cell_population'])
@@ -782,10 +791,9 @@ class CountDecodertrainer(LightningModule):
         )
         # MSE
         mse = self.metric['mse'](pred_counts, true_counts)
-        mean_mse = torch.mean(mse)
         self.log(
             'test/mse',
-            mean_mse,
+            mse,
             on_epoch=True,
             prog_bar=True,
             logger=True,
@@ -794,7 +802,7 @@ class CountDecodertrainer(LightningModule):
             {
                 'pearson': [mean_pearson.cpu().detach().numpy()],
                 'pearson_delta': [mean_pearson_delta.cpu().detach().numpy()],
-                'mse': [mean_mse.cpu().detach().numpy()],
+                'mse': [mse.cpu().detach().numpy()],
             }
         )
         metrics.to_csv(

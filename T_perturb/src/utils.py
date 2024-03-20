@@ -1,3 +1,4 @@
+import os
 import pickle
 from pathlib import Path
 from typing import Dict, List
@@ -8,9 +9,20 @@ import pandas as pd
 import scanpy as sc
 import torch
 import tqdm
-from datasets import DatasetDict
+from datasets import DatasetDict, load_from_disk
 from scipy.sparse import csr_matrix
 from torch.utils.data import Subset, random_split
+
+
+def read_dataset_files(directory, file_type):
+    dataset_dict = {}
+    for filename in os.listdir(directory):
+        if filename.endswith(f'.{file_type}'):
+            filename_ = os.path.join(directory, filename)
+            dataset_dict[f'tgt_{file_type}_t{filename[0]}'] = load_from_disk(
+                filename_
+            )  # Removing the '.dataset' extension from the key
+    return dataset_dict
 
 
 def map_ensembl_to_genename(
@@ -149,13 +161,7 @@ def map_token_id_to_genename(adata_subset):
     subset_tokenid_to_deg = dict(
         zip(adata_subset.var['subset_token_id'], adata_subset.var['gene_name'])
     )
-    with open(
-        '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/token_dictionary_for_subset_token_id.pkl',
-        'wb',
-    ) as f:
-        pickle.dump(subset_tokenid_to_deg, f)
-    return adata_subset
+    return adata_subset, subset_tokenid_to_deg
 
 
 def pairing_resting_to_activated_cells(

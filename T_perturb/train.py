@@ -18,7 +18,11 @@ from wandb import init  # type: ignore
 
 from T_perturb.Dataloaders.datamodule import PetraDataModule
 from T_perturb.Model.trainer import CountDecodertrainer, Petratrainer
-from T_perturb.src.utils import label_encoder, stratified_split
+from T_perturb.src.utils import (
+    label_encoder,
+    read_dataset_files,
+    stratified_split,
+)
 
 RANDOM_SEED = 42
 
@@ -67,9 +71,9 @@ def get_args():
         '--src_dataset',
         type=str,
         default=(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-            'T_perturb/T_perturb/pp/res/dataset_hvg/'
-            'cytoimmgen_tokenised_stratified_pairing_0h.dataset'
+            '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+            't_generative/T_perturb/T_perturb/pp/res/dataset_hvg_src'
+            '/cytoimmgen_tokenised_stratified_pairing_0h.dataset'
         ),
         help='path to tokenised resting data',
     )
@@ -81,38 +85,29 @@ def get_args():
     #     help='path to tokenised activated data',
     # )
     parser.add_argument(
-        '--tgt_dataset_t1',
+        '--tgt_dataset_folder',
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset_hvg/'
-        'cytoimmgen_tokenised_stratified_pairing_16h.dataset',
+        'T_perturb/T_perturb/pp/res/dataset_hvg_tgt',
         help='path to tokenised activated data',
     )
     parser.add_argument(
-        '--tgt_dataset_t2',
-        type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset_hvg/'
-        'cytoimmgen_tokenised_stratified_pairing_40h.dataset',
-        help='path to tokenised activated data',
-    )
-    parser.add_argument(
-        '--src_adata_folder',
+        '--src_adata',
         type=str,
         default=(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-            'T_perturb/T_perturb/pp/res/h5ad_pairing_hvg/'
+            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
+            'T_perturb/pp/res/h5ad_pairing_hvg_src/'
             'cytoimmgen_tokenisation_stratified_pairing_0h.h5ad'
         ),
         help='path to src',
     )
     parser.add_argument(
-        '--tgt_adata_folder',
+        '--tgt_adata',
         type=str,
         default=(
-            f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-            f'T_perturb/pp/res/h5ad_pairing_hvg/'
-            f'cytoimmgen_tokenisation_{dataset_info}.h5ad'
+            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
+            'T_perturb/pp/res/h5ad_pairing_hvg_tgt/'
+            '1_cytoimmgen_tokenisation_stratified_pairing_16h.h5ad'
         ),
         help='path to tgt',
     )
@@ -151,13 +146,20 @@ def get_args():
     parser.add_argument(
         '--conditions_combined', type=list, default=None, help='conditions combined'
     )
+    parser.add_argument(
+        '--time_steps',
+        type=list,
+        default=[1, 2, 3],
+        help='time steps to include during training',
+    )
     args = parser.parse_args()
     return args
 
 
 def main() -> None:
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
+    # for reproducible results
+    # torch.backends.cudnn.benchmark = False
+    # torch.backends.cudnn.deterministic = True
     """Run training."""
     args = get_args()
 
@@ -167,13 +169,11 @@ def main() -> None:
     # Load and preprocess data
     # ----------------------------------------------------------------------------------
     print('Loading and preprocessing data...')
+    tgt_datasets = read_dataset_files(args.tgt_dataset_folder, 'dataset')
     src_dataset = load_from_disk(args.src_dataset)
-    tgt_dataset_t1 = load_from_disk(args.tgt_dataset_t1)
-    tgt_dataset_t2 = load_from_disk(args.tgt_dataset_t2)
-    tgt_datasets = {'t1': tgt_dataset_t1, 't2': tgt_dataset_t2}
 
-    src_adata = sc.read_h5ad(args.src_adata_folder)
-    tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
+    src_adata = sc.read_h5ad(args.src_adata)
+    tgt_adata = sc.read_h5ad(args.tgt_adata)
 
     splitting_mode = 'stratified'  # 'random', 'stratified', 'unseen_donor'
     if args.split:
@@ -302,6 +302,7 @@ def main() -> None:
             adata=tgt_adata,
             dataset_info=dataset_info,
             generate=args.generate,
+            time_steps=args.time_steps,
         )
     elif args.train_mode == 'count':
         decoder_module = CountDecodertrainer(
@@ -328,7 +329,8 @@ def main() -> None:
     # resort to the supposedly optimal AutoAugment policy.
     # change dataloader and input
     if not all(
-        tgt_adata.obs['cell_pairing_index'] == tgt_datasets['t1']['cell_pairing_index']
+        tgt_adata.obs['cell_pairing_index']
+        == tgt_datasets['tgt_dataset_t1']['cell_pairing_index']
     ):
         raise ValueError('Index of adata and tokenized data do not match')
     if args.train_mode == 'masking':
@@ -346,6 +348,7 @@ def main() -> None:
             val_indices=val_indices,
             test_indices=test_indices,
             tgt_size_factor=tgt_size_factor,
+            time_steps=args.time_steps,
         )
     elif args.train_mode == 'count':
         data_module = PetraDataModule(
@@ -366,6 +369,7 @@ def main() -> None:
             val_indices=val_indices,
             test_indices=test_indices,
             tgt_size_factor=tgt_size_factor,
+            time_steps=args.time_steps,
         )
     # Setup trainer
     # ----------------------------------------------------------------------------------
@@ -451,7 +455,7 @@ def main() -> None:
         max_epochs=args.epochs,
         accelerator=accelerator,
         devices=-1 if torch.cuda.is_available() else 0,
-        strategy='ddp' if torch.cuda.is_available() else None,
+        strategy='ddp' if torch.cuda.device_count() > 1 else 'auto',
     )
 
     if args.train_mode == 'masking':
