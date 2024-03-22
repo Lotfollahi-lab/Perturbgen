@@ -19,9 +19,14 @@ def read_dataset_files(directory, file_type):
     for filename in os.listdir(directory):
         if filename.endswith(f'.{file_type}'):
             filename_ = os.path.join(directory, filename)
-            dataset_dict[f'tgt_{file_type}_t{filename[0]}'] = load_from_disk(
-                filename_
-            )  # Removing the '.dataset' extension from the key
+            if file_type == 'dataset':
+                dataset_dict[f'tgt_{file_type}_t{filename[0]}'] = load_from_disk(
+                    filename_
+                )  # Removing the '.dataset' extension from the key
+            elif file_type == 'h5ad':
+                dataset_dict[f'tgt_{file_type}_t{filename[0]}'] = sc.read_h5ad(
+                    filename_
+                )
     return dataset_dict
 
 

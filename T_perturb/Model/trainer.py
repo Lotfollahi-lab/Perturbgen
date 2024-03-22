@@ -19,15 +19,11 @@ from pytorch_lightning import LightningModule
 from torchmetrics import (
     CosineSimilarity,
     MeanSquaredError,
-    SpearmanCorrCoef,
+    PearsonCorrCoef,
 )
 from torchmetrics.text import Perplexity
 
-from T_perturb.Model.metric import (
-    evaluate_emd,
-    evaluate_mmd,
-    pearson,
-)
+from T_perturb.Model.metric import evaluate_emd, evaluate_mmd  # pearson,
 from T_perturb.Modules.T_model import (
     CountDecoder,
     Petra,
@@ -92,7 +88,6 @@ class Petratrainer(LightningModule):
         generate: bool = False,
         batch_size: int = 32,
         time_steps: list = [1, 2],
-        dataset_info: Optional[str] = None,
         adata: Optional[ad.AnnData] = None,
         *args,
         **kwargs,
@@ -109,9 +104,7 @@ class Petratrainer(LightningModule):
             mlm_probability=mlm_probability,
             time_steps=time_steps,
         )
-        self.target_device = torch.device(
-            'cuda' if torch.cuda.is_available() else 'cpu'
-        )
+
         self.masking_loss = nn.CrossEntropyLoss()
         self.save_hyperparameters()
         self.weight_decay = weight_decay
@@ -124,7 +117,7 @@ class Petratrainer(LightningModule):
                 'cosine_similarity': CosineSimilarity(reduction='mean'),
                 'mse': MeanSquaredError(),
                 # 'rmse': MeanSquaredError(squared=False),
-                'spearman': SpearmanCorrCoef(num_outputs=batch_size),
+                # 'spearman': SpearmanCorrCoef(num_outputs=batch_size),
             }
         )
 
@@ -145,7 +138,6 @@ class Petratrainer(LightningModule):
         self.tgt_vocab_size = tgt_vocab_size
         self.adata = adata
         self.time_steps = time_steps
-        self.dataset_info = dataset_info
         # register buffer for CLS
         total_vocab_size = tgt_vocab_size
         for i in self.time_steps:
@@ -156,21 +148,6 @@ class Petratrainer(LightningModule):
                     dtype=torch.long,
                 ),
             )
-        # self.register_buffer(
-        #     'cls_token_1',
-        #     torch.tensor(
-        #         [tgt_vocab_size],
-        #         dtype=torch.long,
-        #     ),
-        # )
-        # total_vocab_size = tgt_vocab_size + 1
-        # self.register_buffer(
-        #     'cls_token_2',
-        #     torch.tensor(
-        #         [total_vocab_size],
-        #         dtype=torch.long,
-        #     ),
-        # )
 
     def forward(self, batch):
         tgt_input_id_dict = {}
@@ -392,10 +369,10 @@ class Petratrainer(LightningModule):
             self.adata.obsm['X_CLS_embeddings'] = self.cls_embeddings_list
             # save anndata
             self.adata.write_h5ad(
-                f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-                f't_generative/T_perturb/T_perturb/'
-                f'plt/res/Petra/'
-                f'cls_embeddings_{self.dataset_info}_cosine_similarity.h5ad'
+                '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+                't_generative/T_perturb/T_perturb/'
+                'plt/res/Petra/'
+                'cls_embeddings_cosine_similarity.h5ad'
             )
             print('End saving embeddings -------------------')
 
@@ -416,13 +393,12 @@ class CountDecodertrainer(LightningModule):
         d_model: int = 256,
         generate: bool = True,
         tgt_adata: Optional[ad.AnnData] = None,
+        time_steps: list = [1, 2],
         *args,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        self.target_device = torch.device(
-            'cuda' if torch.cuda.is_available() else 'cpu'
-        )
+
         # Create an instance of your model
         checkpoint = torch.load(ckpt_path, map_location='cpu')
         self.tgt_vocab_size = checkpoint['hyper_parameters']['tgt_vocab_size']
@@ -432,6 +408,7 @@ class CountDecodertrainer(LightningModule):
             d_model=self.d_model,
             d_ff=checkpoint['hyper_parameters']['d_ff'],
             max_seq_length=checkpoint['hyper_parameters']['max_seq_length'],
+            time_steps=time_steps,
         )
         state_dict = checkpoint['state_dict']
 
@@ -449,6 +426,7 @@ class CountDecodertrainer(LightningModule):
             tgt_vocab_size=self.tgt_vocab_size,
             d_model=self.d_model,
             dropout=dropout,
+            time_steps=time_steps,
         )
         self.save_hyperparameters()
         self.weight_decay = weight_decay
@@ -471,18 +449,26 @@ class CountDecodertrainer(LightningModule):
         else:
             self.theta = None
 
-        self.metric = nn.ModuleDict(
-            {
-                'mse': MeanSquaredError(),
-            }
-        )
+        self.metric = nn.ModuleDict({'mse': MeanSquaredError()})
+        total_vocab_size = tgt_vocab_size
+        self.time_steps = time_steps
+        for i in self.time_steps:
+            self.register_buffer(
+                f'cls_token_{str(i)}',
+                torch.tensor(
+                    [total_vocab_size + i],
+                    dtype=torch.long,
+                ),
+            )
+
         self.generate = generate
         self.adata = tgt_adata
         # initiate lists to store true, ctrl and pred counts
         self.train_true_counts_list: List[int] = []
         self.train_pred_counts_list: List[int] = []
         self.val_true_counts_list: List[int] = []
-        self.val_ctrl_counts_list: List[int] = []
+        self.val_pred_delta_counts_list: List[int] = []
+        self.val_true_delta_counts_list: List[int] = []
         self.val_pred_counts_list: List[int] = []
         self.val_tgt_cell_type_list: List[str] = []
         self.val_tgt_cell_population_list: List[str] = []
@@ -495,10 +481,29 @@ class CountDecodertrainer(LightningModule):
         self.test_tgt_donor_list: List[str] = []
 
     def forward(self, batch):
+        tgt_input_id_dict = {}
+
+        for i in self.time_steps:
+            tgt_input_id_ = torch.cat(
+                (
+                    getattr(self, f'cls_token_{str(i)}').expand(
+                        batch[f'tgt_input_ids_t{i}'].shape[0], -1
+                    ),
+                    batch[f'tgt_input_ids_t{i}'],
+                ),
+                dim=1,
+            )
+            tgt_input_id_dict[f'tgt_input_id_t{i}'] = tgt_input_id_
+        interval = batch[f'tgt_input_ids_t{i}'].shape[1] + 1  # as 0 is cls token
+        num_steps = len(self.time_steps)
+        cls_positions = np.arange(0, num_steps * interval, interval)
+        # check if cls_positions is correct
+
         outputs = self.decoder(
             src_input_id=batch['src_input_ids'],
-            tgt_input_id=batch['tgt_input_ids'],
+            tgt_input_id_dict=tgt_input_id_dict,
             original_lens=batch['src_length'],
+            cls_positions=cls_positions,
         )
 
         return outputs
@@ -508,67 +513,97 @@ class CountDecodertrainer(LightningModule):
         outputs: Dict[str, torch.Tensor],
         batch: Dict[str, torch.Tensor],
     ):
-        true_counts = batch['tgt_counts'].float()
-        batch_size_factor = np.array(batch['size_factor'])
-        batch_size_factor = torch.tensor(batch_size_factor)
-        batch_size_factor = batch_size_factor.to(self.target_device)
+        loss_list = []
+        counts_list = []
+        for time_step in self.time_steps:
+            count_ouput = outputs[f'count_output_t{time_step}']
+            true_counts = batch[f'tgt_counts_dict_t{time_step}']
+            batch_size_factor = batch[f'tgt_size_factor_t{time_step}']
 
-        if self.loss_mode == 'mse':
-            loss = (
-                mse_loss(outputs['count_lognorm'], true_counts)
-                .sum(dim=-1)
-                .mean()
-                .float()
-            )
-            return loss, outputs['count_lognorm']
+            if self.loss_mode == 'mse':
+                loss = (
+                    mse_loss(count_ouput['count_lognorm'], true_counts)
+                    .sum(dim=-1)
+                    .mean()
+                    .float()
+                )
+                loss_list.append(loss)
+                counts_list.append(count_ouput['count_lognorm'])
 
-        elif self.loss_mode == 'zinb':
-            combined_batch = torch.tensor(batch['combined_batch'])
-            combined_batch = combined_batch.to(self.target_device)
-            dec_mean_gamma, dec_dropout = (
-                outputs['count_mean'],
-                outputs['count_dropout'],
-            )
-            size_factor_view = batch_size_factor.unsqueeze(1).expand(
-                dec_mean_gamma.size(0), dec_mean_gamma.size(1)
-            )
+            elif self.loss_mode == 'zinb':
+                dec_mean_gamma, dec_dropout = (
+                    count_ouput['count_mean'],
+                    count_ouput['count_dropout'],
+                )
+                size_factor_view = batch_size_factor.unsqueeze(1).expand(
+                    dec_mean_gamma.size(0), dec_mean_gamma.size(1)
+                )
 
-            dec_mean = dec_mean_gamma * size_factor_view
+                dec_mean = dec_mean_gamma * size_factor_view
 
-            dispersion = F.linear(
-                one_hot_encoder(combined_batch, self.n_conditions_combined), self.theta
-            )
-            dispersion = torch.exp(dispersion)
-            loss = (
-                -zinb(x=true_counts, mu=dec_mean, theta=dispersion, pi=dec_dropout)
-                .sum(dim=-1)
-                .mean()
-            )
-            return loss, dec_mean
+                dispersion = F.linear(
+                    one_hot_encoder(
+                        batch['combined_batch'], self.n_conditions_combined
+                    ),
+                    self.theta,
+                )
+                dispersion = torch.exp(dispersion)
+                loss = (
+                    -zinb(x=true_counts, mu=dec_mean, theta=dispersion, pi=dec_dropout)
+                    .sum(dim=-1)
+                    .mean()
+                )
+                loss_list.append(loss)
+                counts_list.append(dec_mean)
 
-        elif self.loss_mode == 'nb':
-            combined_batch = torch.tensor(batch['combined_batch'])
-            combined_batch = combined_batch.to(self.target_device)
-            dec_mean_gamma = outputs['count_mean']
+            elif self.loss_mode == 'nb':
+                combined_batch = torch.tensor(batch['combined_batch'])
+                combined_batch = combined_batch.to(self.target_device)
+                dec_mean_gamma = count_ouput['count_mean']
 
-            size_factor_view = batch_size_factor.unsqueeze(1).expand(
-                dec_mean_gamma.size(0), dec_mean_gamma.size(1)
-            )
-            dec_mean = dec_mean_gamma * size_factor_view
-            dispersion = F.linear(
-                one_hot_encoder(combined_batch, self.n_conditions_combined), self.theta
-            )
-            dispersion = torch.exp(dispersion)
-            loss = -nb(x=true_counts, mu=dec_mean, theta=dispersion).sum(dim=-1).mean()
-            return loss, dec_mean
+                size_factor_view = batch_size_factor.unsqueeze(1).expand(
+                    dec_mean_gamma.size(0), dec_mean_gamma.size(1)
+                )
+                dec_mean = dec_mean_gamma * size_factor_view
+                dispersion = F.linear(
+                    one_hot_encoder(combined_batch, self.n_conditions_combined),
+                    self.theta,
+                )
+                dispersion = torch.exp(dispersion)
+                loss = (
+                    -nb(x=true_counts, mu=dec_mean, theta=dispersion).sum(dim=-1).mean()
+                )
+                loss_list.append(loss)
+                counts_list.append(dec_mean)
 
-        else:
-            raise ValueError('Loss not supported, choose either mse or zinb')
+            else:
+                raise ValueError('Loss not supported, choose either mse or zinb')
+        loss = torch.sum(torch.stack(loss_list))
+        return loss, counts_list
+
+    @staticmethod
+    def pearson(
+        pred_counts: torch.Tensor,
+        true_counts: torch.Tensor,
+        ctrl_counts: torch.Tensor = None,
+    ) -> torch.Tensor:
+        """
+        Pearson correlation coefficient
+        """
+        if ctrl_counts is not None:
+            pred_counts = pred_counts - ctrl_counts
+            true_counts = true_counts - ctrl_counts
+        num_outputs = true_counts.shape[0]
+        pearson = PearsonCorrCoef(num_outputs=num_outputs).to('cuda')
+        pred_counts_t = pred_counts.transpose(0, 1)
+        true_counts_t = true_counts.transpose(0, 1)
+        pearson_output = pearson(pred_counts_t, true_counts_t)
+        mean_pearson = torch.mean(pearson_output)
+        return mean_pearson
 
     def training_step(self, batch, *args, **kwargs):
         outputs = self.forward(batch)
-        count_loss, pred_count = self.compute_count_loss(outputs, batch)
-
+        count_loss, pred_count_list = self.compute_count_loss(outputs, batch)
         self.log(
             'train/loss',
             count_loss,
@@ -576,25 +611,32 @@ class CountDecodertrainer(LightningModule):
             on_epoch=True,
             prog_bar=True,
             logger=True,
-            batch_size=batch['tgt_input_ids'].shape[0],
+            batch_size=batch['tgt_input_ids_t1'].shape[0],
+            sync_dist=True,
         )
-        # MSE
-        mse = self.metric['mse'](pred_count, batch['tgt_counts'])
-        mean_mse = torch.mean(mse)
+
+        mse_all = []
+        for time_step in self.time_steps:
+            pred_count = pred_count_list[time_step - 1]
+            true_count = batch[f'tgt_counts_dict_t{time_step}']
+            # MSE
+            mse = self.metric['mse'](pred_count, true_count)
+            mse_all.append(mse)
+            # gather for validation step
+            self.train_true_counts_list.append(batch[f'tgt_counts_dict_t{time_step}'])
+            self.train_pred_counts_list.append(pred_count)
+
+        mean_mse = torch.mean(torch.stack(mse_all))
+
         self.log(
             'train/mse',
             mean_mse,
+            on_step=True,
             on_epoch=True,
             prog_bar=True,
             logger=True,
+            sync_dist=True,
         )
-        # implement the split
-        # pearson delta
-
-        # pearson top20 deg
-        # random
-
-        # against random
 
         # RMSE
         # rmse=self.metric['rmse'](outputs['count_mean'], batch['tgt_counts'])
@@ -606,23 +648,22 @@ class CountDecodertrainer(LightningModule):
         #     prog_bar=True,
         #     logger=True,
         # )
-        self.train_true_counts_list.append(batch['tgt_counts'])
-        self.train_pred_counts_list.append(pred_count)
 
         return count_loss
 
     def on_train_epoch_end(self):
         # return Pearson correlation coefficient
-        true_counts = torch.cat(self.train_true_counts_list).detach().cpu()
-        pred_counts = torch.cat(self.train_pred_counts_list).detach().cpu()
+        true_counts = torch.cat(self.train_true_counts_list)
+        pred_counts = torch.cat(self.train_pred_counts_list)
         # Pearson correlation coefficient
-        mean_pearson = pearson(pred_counts=pred_counts, true_counts=true_counts)
+        mean_pearson = self.pearson(pred_counts=pred_counts, true_counts=true_counts)
         self.log(
             'train/pearson',
             mean_pearson,
             on_epoch=True,
             prog_bar=True,
             logger=True,
+            sync_dist=True,
         )
         # set to status quo
         self.train_true_counts_list = []
@@ -630,7 +671,7 @@ class CountDecodertrainer(LightningModule):
 
     def validation_step(self, batch, *args, **kwargs):
         outputs = self.forward(batch)
-        count_loss, pred_count = self.compute_count_loss(outputs, batch)
+        count_loss, pred_count_list = self.compute_count_loss(outputs, batch)
         self.log(
             'val/loss',
             count_loss,
@@ -638,54 +679,58 @@ class CountDecodertrainer(LightningModule):
             on_epoch=True,
             prog_bar=True,
             logger=True,
-            batch_size=batch['tgt_input_ids'].shape[0],
+            batch_size=batch['tgt_input_ids_t1'].shape[0],
+            sync_dist=True,
         )
         # MSE
-        mse = self.metric['mse'](pred_count, batch['tgt_counts'])
-        mean_mse = torch.mean(mse)
+        mse_all = []
+        for time_step in self.time_steps:
+            pred_count = pred_count_list[time_step - 1]
+            true_count = batch[f'tgt_counts_dict_t{time_step}']
+            # MSE
+            mse = self.metric['mse'](pred_count, true_count)
+            mse_all.append(mse)
+            # gather for validation step
+            self.val_true_counts_list.append(batch[f'tgt_counts_dict_t{time_step}'])
+            self.val_true_delta_counts_list.append(
+                (batch[f'tgt_counts_dict_t{time_step}'] - batch['src_counts'])
+            )
+            self.val_pred_delta_counts_list.append((pred_count - batch['src_counts']))
+            self.val_pred_counts_list.append(pred_count)
+
+        mean_mse = torch.mean(torch.stack(mse_all))
         self.log(
             'val/mse',
             mean_mse,
             on_epoch=True,
+            on_step=True,
             prog_bar=True,
             logger=True,
+            sync_dist=True,
         )
-        self.val_true_counts_list.append(batch['tgt_counts'])
-        self.val_pred_counts_list.append(pred_count)
-        self.val_ctrl_counts_list.append(batch['src_counts'])
+
         self.val_tgt_cell_type_list.append(batch['tgt_cell_type'])
-        self.val_tgt_cell_population_list.append(batch['tgt_cell_population'])
+        # self.val_tgt_cell_population_list.append(batch['tgt_cell_population'])
         self.val_tgt_donor_list.append(batch['tgt_donor'])
         return count_loss
 
     def on_validation_epoch_end(self):
         # return Pearson correlation coefficient
-        true_counts = torch.cat(self.val_true_counts_list).detach().cpu()
-        pred_counts = torch.cat(self.val_pred_counts_list).detach().cpu()
-        ctrl_counts = torch.cat(self.val_ctrl_counts_list).detach().cpu()
-        # tgt_cell_type = np.concatenate(self.val_tgt_cell_type_list)
-        # tgt_cell_population = np.concatenate(self.val_tgt_cell_population_list)
-        # tgt_donor = np.concatenate(self.val_tgt_donor_list)
-        # val_obs = pd.DataFrame(
-        #     np.array([tgt_cell_type, tgt_cell_population, tgt_donor]).T,
-        #     columns=['Cell_type', 'Cell_population', 'Donor'],
-        # )
-        # pred_adata = ad.AnnData(
-        #     X=pred_counts.numpy(),
-        #     obs=val_obs,
-        #     var=self.adata.var
-        #     )
-        # Pearson correlation coefficient
-        mean_pearson = pearson(pred_counts=pred_counts, true_counts=true_counts)
+        true_counts = torch.cat(self.val_true_counts_list)
+        pred_counts = torch.cat(self.val_pred_counts_list)
+        pred_delta_counts = torch.cat(self.val_pred_delta_counts_list)
+        true_delta_counts = torch.cat(self.val_true_delta_counts_list)
+        mean_pearson = self.pearson(pred_counts=pred_counts, true_counts=true_counts)
         self.log(
             'val/pearson',
             mean_pearson,
             on_epoch=True,
             prog_bar=True,
             logger=True,
+            sync_dist=True,
         )
-        mean_pearson_delta = pearson(
-            pred_counts=pred_counts, true_counts=true_counts, ctrl_counts=ctrl_counts
+        mean_pearson_delta = self.pearson(
+            pred_counts=pred_delta_counts, true_counts=true_delta_counts
         )
         self.log(
             'val/pearson_delta',
@@ -693,14 +738,8 @@ class CountDecodertrainer(LightningModule):
             on_epoch=True,
             prog_bar=True,
             logger=True,
+            sync_dist=True,
         )
-
-        # mmd = evaluate_mmd(self.adata, pred_adata, condition_key='Cell_type')
-        # print('MMD:', mmd)
-
-        # emd = evaluate_emd(self.adata, pred_adata, condition_key='Cell_type')
-        # print('EMD: ', emd)
-        # set to status quo
         self.val_true_counts_list = []
         self.val_ctrl_counts_list = []
         self.val_pred_counts_list = []
@@ -709,6 +748,18 @@ class CountDecodertrainer(LightningModule):
         self.val_tgt_donor_list = []
 
     def test_step(self, batch, *args, **kwargs):
+        tgt_input_id_dict = {}
+        for i in self.time_steps:
+            tgt_input_id_ = torch.cat(
+                (
+                    getattr(self, f'cls_token_{str(i)}').expand(
+                        batch[f'tgt_input_ids_t{i}'].shape[0], -1
+                    ),
+                    batch[f'tgt_input_ids_t{i}'],
+                ),
+                dim=1,
+            )
+            tgt_input_id_dict[f'tgt_input_id_t{i}'] = tgt_input_id_
         if self.generate:
             outputs = self.decoder.generate(
                 src_input_id=batch['src_input_ids'],
@@ -752,9 +803,9 @@ class CountDecodertrainer(LightningModule):
 
     def on_test_epoch_end(self):
         # return Pearson correlation coefficient
-        true_counts = torch.cat(self.test_true_counts_list).detach().cpu()
-        pred_counts = torch.cat(self.test_pred_counts_list).detach().cpu()
-        ctrl_counts = torch.cat(self.test_ctrl_counts_list).detach().cpu()
+        true_counts = torch.cat(self.test_true_counts_list)
+        pred_counts = torch.cat(self.test_pred_counts_list)
+        ctrl_counts = torch.cat(self.test_ctrl_counts_list)
         tgt_cell_type = np.concatenate(self.test_tgt_cell_type_list)
         tgt_cell_population = np.concatenate(self.test_tgt_cell_population_list)
         tgt_donor = np.concatenate(self.test_tgt_donor_list)
@@ -766,12 +817,12 @@ class CountDecodertrainer(LightningModule):
         pred_adata.layers['counts'] = true_counts.numpy()
         # save adata
         pred_adata.write_h5ad(
-            f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            f't_generative/T_perturb/T_perturb/'
-            f'plt/res/Petra/'
-            f'pred_adata_{self.dataset_info}.h5ad'
+            '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+            't_generative/T_perturb/T_perturb/'
+            'plt/res/Petra/'
+            'pred_adata.h5ad'
         )
-        mean_pearson = pearson(pred_counts, true_counts)
+        mean_pearson = self.pearson(pred_counts, true_counts)
         # Pearson correlation coefficient
         self.log(
             'test/pearson',
@@ -781,7 +832,7 @@ class CountDecodertrainer(LightningModule):
             logger=True,
         )
         # Pearson delta
-        mean_pearson_delta = pearson(pred_counts, true_counts, ctrl_counts)
+        mean_pearson_delta = self.pearson(pred_counts, true_counts, ctrl_counts)
         self.log(
             'test/pearson_delta',
             mean_pearson_delta,

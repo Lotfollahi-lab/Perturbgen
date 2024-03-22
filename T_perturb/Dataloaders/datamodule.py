@@ -42,10 +42,9 @@ class PetraDataset(Dataset):
         src_dataset: DatasetDict,
         tgt_datasets: DatasetDict,
         time_steps: list = [1, 2],
-        src_counts: Optional[np.ndarray] = None,
-        tgt_counts: Optional[np.ndarray] = None,
+        src_counts: np.ndarray = None,
+        tgt_counts_dict: np.ndarray = None,
         split_indices: Optional[list] = None,
-        tgt_size_factor: Optional[np.ndarray] = None,
         conditions: Optional[torch.Tensor] = None,
         conditions_combined: Optional[torch.Tensor] = None,
         condition_encodings: Optional[dict] = None,
@@ -54,11 +53,10 @@ class PetraDataset(Dataset):
         self.src_dataset = src_dataset
         self.tgt_datasets = tgt_datasets
         self.src_counts = src_counts
-        self.tgt_counts = tgt_counts
+        self.tgt_counts_dict = tgt_counts_dict
         self.conditions = conditions
         self.conditions_combined = conditions_combined
         self.condition_encodings = condition_encodings
-        self.tgt_size_factor = tgt_size_factor
         self.time_steps = time_steps
         if max(time_steps) > len(tgt_datasets):
             raise ValueError('Number of time steps is greater than number of datasets')
@@ -66,36 +64,49 @@ class PetraDataset(Dataset):
             self.src_dataset = src_dataset
             self.tgt_datasets = tgt_datasets
             self.src_counts = src_counts
-            self.tgt_counts = tgt_counts
+            self.tgt_counts_dict = tgt_counts_dict
         else:
             self.src_dataset = src_dataset.select(split_indices)
             # self.tgt_dataset = tgt_dataset.select(split_indices)
             tmp_tgt_datasets = tgt_datasets.copy()
-            keys = list(tmp_tgt_datasets.keys())
-            for time_step in range(len(time_steps)):
-                key = keys[time_step]
-                dataset = tmp_tgt_datasets[key]
-                tmp_tgt_datasets[key] = dataset.select(split_indices)
+            tmp_tgt_counts_dict = tgt_counts_dict.copy()
+            self.dataset_keys = list(tmp_tgt_datasets.keys())
+            self.counts_keys = list(tgt_counts_dict.keys())
+            self.time_steps = time_steps
+            for time_step in range(len(self.time_steps)):
+                # dataset split
+                dataset_keys_ = self.dataset_keys[time_step]
+                dataset = tmp_tgt_datasets[dataset_keys_]
+                tmp_tgt_datasets[dataset_keys_] = dataset.select(split_indices)
+                if tgt_counts_dict is not None:
+                    # time point split
+                    counts_keys_ = self.counts_keys[time_step]
+                    counts = tmp_tgt_counts_dict[counts_keys_]
+
+                    tmp_tgt_counts_dict[counts_keys_] = counts[split_indices, :]
             self.tgt_datasets = tmp_tgt_datasets
+            self.tgt_counts_dict = tmp_tgt_counts_dict
 
             if src_counts is not None:
                 self.src_counts = src_counts[split_indices, :]
-            if tgt_counts is not None:
-                self.tgt_counts = tgt_counts[split_indices, :]
 
     def __getitem__(self, ind):
         out = {
             'src_dataset': self.src_dataset[ind],
-            'tgt_counts': self.tgt_counts[ind],
             'src_counts': self.src_counts[ind],
-            'tgt_size_factor': self.tgt_size_factor[ind],
             'conditions': self.conditions[ind] if self.conditions is not None else None,
             'conditions_combined': self.conditions_combined[ind]
             if self.conditions_combined is not None
             else None,
         }
-        for key, dataset in self.tgt_datasets.items():
-            out[key] = dataset[ind]
+        for time_step in range(len(self.time_steps)):
+            dataset_keys_ = self.dataset_keys[time_step]
+            out[f'tgt_dataset_t{time_step+1}'] = self.tgt_datasets[dataset_keys_][ind]
+            counts_keys_ = self.counts_keys[time_step]
+            out[f'tgt_counts_dict_t{time_step+1}'] = self.tgt_counts_dict[counts_keys_][
+                ind
+            ]
+
         return out
 
     def __len__(self):
@@ -117,15 +128,14 @@ class PetraDataModule(LightningDataModule):
         split: bool = False,
         time_steps: list = [1, 2],
         src_counts: Optional[np.ndarray] = None,
-        tgt_counts: Optional[np.ndarray] = None,
+        tgt_counts_dict: Optional[np.ndarray] = None,
         condition_keys: Optional[list] = None,
         condition_encodings: Optional[dict] = None,
         conditions: Optional[torch.Tensor] = None,
         conditions_combined: Optional[torch.Tensor] = None,
-        train_indices: Optional[list] = None,
-        val_indices: Optional[list] = None,
-        test_indices: Optional[list] = None,
-        tgt_size_factor: Optional[np.ndarray] = None,
+        train_indices: Optional[list[int]] = None,
+        val_indices: Optional[list[int]] = None,
+        test_indices: Optional[list[int]] = None,
     ):
         """
         Description:
@@ -137,7 +147,7 @@ class PetraDataModule(LightningDataModule):
         self.src_dataset = src_dataset
         self.tgt_datasets = tgt_datasets
         self.src_counts = src_counts
-        self.tgt_counts = tgt_counts
+        self.tgt_counts_dict = tgt_counts_dict
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.shuffle = shuffle
@@ -156,7 +166,6 @@ class PetraDataModule(LightningDataModule):
         self.train_indices = train_indices
         self.val_indices = val_indices
         self.test_indices = test_indices
-        self.tgt_size_factor = tgt_size_factor
         self.time_steps = time_steps
 
         # create condition encoder for categorical variables in
@@ -169,10 +178,9 @@ class PetraDataModule(LightningDataModule):
                 self.train_dataset = PetraDataset(
                     src_dataset=self.src_dataset,
                     tgt_datasets=self.tgt_datasets,
-                    tgt_size_factor=self.tgt_size_factor,
                     split_indices=self.train_indices,
                     src_counts=self.src_counts,
-                    tgt_counts=self.tgt_counts,
+                    tgt_counts_dict=self.tgt_counts_dict,
                     time_steps=self.time_steps,
                     conditions=self.conditions
                     if self.condition_keys is not None
@@ -185,10 +193,9 @@ class PetraDataModule(LightningDataModule):
                     self.val_dataset = PetraDataset(
                         src_dataset=self.src_dataset,
                         tgt_datasets=self.tgt_datasets,
-                        tgt_size_factor=self.tgt_size_factor,
                         split_indices=self.val_indices,
                         src_counts=self.src_counts,
-                        tgt_counts=self.tgt_counts,
+                        tgt_counts_dict=self.tgt_counts_dict,
                         time_steps=self.time_steps,
                         conditions=self.conditions
                         if self.condition_keys is not None
@@ -203,20 +210,18 @@ class PetraDataModule(LightningDataModule):
                 self.train_dataset = PetraDataset(
                     src_dataset=self.src_dataset,
                     tgt_datasets=self.tgt_datasets,
-                    tgt_size_factor=self.tgt_size_factor,
                     split_indices=self.train_indices,
                     src_counts=self.src_counts,
-                    tgt_counts=self.tgt_counts,
+                    tgt_counts_dict=self.tgt_counts_dict,
                     time_steps=self.time_steps,
                 )
                 if self.val_indices is not None:
                     self.val_dataset = PetraDataset(
                         src_dataset=self.src_dataset,
                         tgt_datasets=self.tgt_datasets,
-                        tgt_size_factor=self.tgt_size_factor,
                         split_indices=self.val_indices,
                         src_counts=self.src_counts,
-                        tgt_counts=self.tgt_counts,
+                        tgt_counts_dict=self.tgt_counts_dict,
                         time_steps=self.time_steps,
                     )
                 else:
@@ -226,10 +231,9 @@ class PetraDataModule(LightningDataModule):
                 self.test_dataset = PetraDataset(
                     src_dataset=self.src_dataset,
                     tgt_datasets=self.tgt_datasets,
-                    tgt_size_factor=self.tgt_size_factor,
                     split_indices=self.test_indices,
                     src_counts=self.src_counts,
-                    tgt_counts=self.tgt_counts,
+                    tgt_counts_dict=self.tgt_counts_dict,
                     time_steps=self.time_steps,
                     conditions=self.conditions
                     if self.condition_keys is not None
@@ -242,10 +246,9 @@ class PetraDataModule(LightningDataModule):
                 self.test_dataset = PetraDataset(
                     src_dataset=self.src_dataset,
                     tgt_datasets=self.tgt_datasets,
-                    tgt_size_factor=self.tgt_size_factor,
                     split_indices=self.test_indices,
                     src_counts=self.src_counts,
-                    tgt_counts=self.tgt_counts,
+                    tgt_counts_dict=self.tgt_counts_dict,
                     time_steps=self.time_steps,
                 )
 
@@ -282,34 +285,6 @@ class PetraDataModule(LightningDataModule):
             # persistent_workers=True,
         )
         return data
-
-    @staticmethod
-    def return_tgt_dataset(
-        dataset_name,
-        batch,
-        max_len,
-        pad_token_id,
-    ):
-        if any(dataset_name in item for item in batch):
-            tgt_input_batch_id = [
-                torch.tensor(d[dataset_name]['input_ids'], device='cpu') for d in batch
-            ]
-            tgt_length = torch.stack(
-                [torch.tensor(d[dataset_name]['length'], device='cpu') for d in batch]
-            )
-            model_input_size = torch.max(tgt_length)
-            tgt_cell_population = [d[dataset_name]['Cell_population'] for d in batch]
-            tgt_input_batch_id = pad_tensor_list(
-                tgt_input_batch_id,
-                max_len,
-                pad_token_id,
-                model_input_size,
-            )
-        else:
-            tgt_input_batch_id = None
-            tgt_length = None
-            tgt_cell_population = None
-        return tgt_input_batch_id, tgt_length, tgt_cell_population
 
     def collate(self, batch):
         if any('src_dataset' in item for item in batch):
@@ -350,22 +325,14 @@ class PetraDataModule(LightningDataModule):
         else:
             src_counts = None
 
-        if any('tgt_counts' in item for item in batch):
-            if isinstance(batch[0]['tgt_counts'], csr_matrix):
-                tgt_counts = [torch.tensor(d['tgt_counts'].A) for d in batch]
-            else:
-                tgt_counts = [torch.tensor(d['tgt_counts']) for d in batch]
-            tgt_counts = torch.cat(tgt_counts, dim=0)
-            tgt_size_factor = [d['tgt_size_factor'] for d in batch]
-            if self.condition_encodings is not None:
-                condition = [d['conditions'] for d in batch]
-                condition_combined = [d['conditions_combined'] for d in batch]
-            else:
-                condition = None
-                condition_combined = None
+        if self.condition_encodings is not None:
+            condition = [d['conditions'] for d in batch]
+            condition_combined = [d['conditions_combined'] for d in batch]
+            condition_combined = torch.stack(condition_combined)
         else:
-            tgt_counts = None
-            tgt_size_factor = None
+            condition = None
+            condition_combined = None
+        # compute tgt size factor
         out = {
             'src_input_ids': src_input_batch_id,
             'src_length': src_length,
@@ -373,19 +340,40 @@ class PetraDataModule(LightningDataModule):
             'src_time_point': src_time_point,
             'src_donor': src_donor,
             'src_counts': src_counts,
-            # 'tgt_input_ids_t1': tgt_input_batch_id_t1,
-            # 'tgt_input_ids_t2': tgt_input_batch_id_t2,
-            # 'tgt_length_t1': tgt_length_t1,
-            # 'tgt_length_t2': tgt_length_t2,
-            # 'tgt_cell_population_t1': tgt_cell_population_t1,
-            # 'tgt_cell_population_t2': tgt_cell_population_t2,
             'tgt_cell_type': tgt_cell_type,
             'tgt_donor': tgt_donor,
-            'tgt_counts': tgt_counts,
-            'tgt_size_factor': tgt_size_factor,
             'batch': condition,
             'combined_batch': condition_combined,
         }
+        if any('tgt_counts_dict_t1' in item for item in batch):
+            for time_step in self.time_steps:
+                if isinstance(batch[0][f'tgt_counts_dict_t{time_step}'], csr_matrix):
+                    tgt_counts = [
+                        torch.tensor(d[f'tgt_counts_dict_t{time_step}'].A)
+                        for d in batch
+                    ]
+                    tgt_size_factor = [
+                        torch.tensor(
+                            np.ravel(d[f'tgt_counts_dict_t{time_step}'].A.sum(axis=1))
+                        )
+                        for d in batch
+                    ]
+                else:
+                    tgt_counts = [
+                        torch.tensor(d[f'tgt_counts_dict_t{time_step}']) for d in batch
+                    ]
+                    tgt_size_factor = [
+                        torch.tensor(
+                            np.ravel(d[f'tgt_counts_dict_t{time_step}'].sum(axis=1))
+                        )
+                        for d in batch
+                    ]
+                out[f'tgt_counts_dict_t{time_step}'] = torch.cat(tgt_counts, dim=0)
+                out[f'tgt_size_factor_t{time_step}'] = torch.cat(tgt_size_factor, dim=0)
+
+        else:
+            out['tgt_counts_dict_t1'] = None
+            out['tgt_size_factor_t1'] = None
 
         if any('tgt_dataset_t1' in item for item in batch):
             for time_step in self.time_steps:
@@ -437,4 +425,4 @@ if __name__ == '__main__':
     train_iterator = iter(dataloader)
     batch = next(train_iterator)
     print(batch['tgt_input_ids'][:20, :20])
-    print(len(batch['tgt_counts'][0]))
+    print(len(batch['tgt_counts_dict'][0]))

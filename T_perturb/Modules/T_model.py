@@ -288,7 +288,6 @@ class Petra(nn.Module):
         self.d_ff = d_ff
         self.max_seq_length = max_seq_length
         self.dropout = dropout
-        # self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         total_vocab_size = tgt_vocab_size + len(time_steps)  # add one for cls token
         self.mask_token = total_vocab_size
@@ -417,6 +416,7 @@ class Petra(nn.Module):
         src_attention_mask_int = src_attention_mask.int()
         tgt_input_id_list = [tensor for tensor in tgt_input_id_dict.values()]
         tgt_input_id = torch.cat((tgt_input_id_list), dim=1)
+
         if generate:
             tgt_mask = tgt_input_id == (self.mask_token)
             tgt_mask = tgt_mask | (tgt_input_id == 0)
@@ -484,17 +484,17 @@ class CountHead(nn.Module):
 
     def forward(self, x):
         # use cls token for count prediction
-        count_outpus = {}
+        count_outputs = {}
         mlp_output = self.mlp(x)
         mlp_output = nn.functional.normalize(mlp_output, dim=-1, p=2)
         if self.loss_mode == 'mse':
-            count_outpus['count_lognorm'] = self.relu_output(mlp_output)
+            count_outputs['count_lognorm'] = self.relu_output(mlp_output)
         elif self.loss_mode == 'zinb':
-            count_outpus['count_mean'] = self.softmax_output(mlp_output)
-            count_outpus['count_dropout'] = self.linear_output(mlp_output)
+            count_outputs['count_mean'] = self.softmax_output(mlp_output)
+            count_outputs['count_dropout'] = self.linear_output(mlp_output)
         elif self.loss_mode == 'nb':
-            count_outpus['count_mean'] = self.softmax_output(mlp_output)
-        return count_outpus
+            count_outputs['count_mean'] = self.softmax_output(mlp_output)
+        return count_outputs
 
 
 class CountDecoder(nn.Module):
@@ -504,20 +504,21 @@ class CountDecoder(nn.Module):
         loss_mode: str = 'zinb',
         tgt_vocab_size: int = 25426,
         d_model: int = 256,
-        add_mask_id: bool = True,
         dropout: float = 0.0,
+        time_steps: list = [1, 2],
     ):
         super(CountDecoder, self).__init__()
         self.pretrained_model = pretrained_model
         # for _, param in self.pretrained_model.named_parameters():
         #     param.requires_grad = False
         self.embed_dim = d_model
-        if add_mask_id:
-            total_vocab_size = tgt_vocab_size + 1  # CLS and masked token
-            self.mask_token = total_vocab_size
+
         self.loss_mode = loss_mode
-        self.decoder = CountHead(loss_mode, tgt_vocab_size, d_model, dropout)
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # self.decoder = CountHead(loss_mode, tgt_vocab_size, d_model, dropout)
+        # initialise multiple decoder for each time step
+        self.decoder_list = nn.ModuleList(
+            [CountHead(loss_mode, tgt_vocab_size, d_model, dropout) for _ in time_steps]
+        )
         self.cls_embedding = None
 
     def generate_pad(self, tgt):
@@ -529,28 +530,32 @@ class CountDecoder(nn.Module):
     def forward(
         self,
         src_input_id,
-        tgt_input_id,
+        tgt_input_id_dict,
         original_lens,
         generate=False,
+        cls_positions=[0, 247, 494],
     ):
+        # find length for a single time step
         outputs = self.pretrained_model.forward(
             src_input_id=src_input_id,
-            tgt_input_id=tgt_input_id,
+            tgt_input_id_dict=tgt_input_id_dict,
             original_lens=original_lens,
             generate=generate,
         )
-        cls_embedding = outputs['dec_embedding'][:, 0, :]
 
-        # use cls token for count prediction
-        count_outputs = self.decoder.forward(cls_embedding)
-
+        # -1 because of 0 indexing
+        count_outputs = {}
+        for i, cls_position in enumerate(cls_positions):
+            cls_embedding = outputs['dec_embedding'][:, cls_position, :]
+            count_outputs_tmp = self.decoder_list[i].forward(cls_embedding)
+            count_outputs[f'count_output_t{i+1}'] = count_outputs_tmp
         return count_outputs
 
     def generate(
         self,
         src_input_id,
         noise_schedule,
-        tgt_input_id,
+        tgt_input_id_dict,
         original_lens,
         can_remask_prev_masked=False,
         topk_filter_thres=0.9,
@@ -559,10 +564,10 @@ class CountDecoder(nn.Module):
         # self_cond_prob=0.9,
         timesteps=18,  # optimal iterations found in maskgit paper
     ):
-        tgt_pad = self.generate_pad(tgt_input_id)
+        tgt_pad = self.generate_pad(tgt_input_id_dict)
 
-        batch_size = tgt_input_id.shape[0]
-        seq_len = tgt_input_id.shape[1]
+        batch_size = tgt_input_id_dict.shape[0]
+        seq_len = tgt_input_id_dict.shape[1]
         shape = (batch_size, seq_len)
         # create ids and scores matrix for each batch
         # exclude CLS token from token
@@ -651,39 +656,6 @@ if __name__ == '__main__':
         context_dim=d_model,
     )
     transformer = Petra(tgt_vocab_size=13)
-
-    # # test dataloader
-    # data_module = GeneformerDataModule(
-    #     src_folder='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    #     'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_0h.dataset',
-    #     tgt_folder='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    #     'T_perturb/T_perturb/pp/res/dataset/cytoimmgen_tokenised_degs_16h.dataset',
-    #     max_len=334,
-    # )
-    # data_module.setup()
-    # dataloader = data_module.train_dataloader()
-    # # iterate through batches
-    # src_train_iterator = iter(dataloader['src'])
-    # tgt_train_iterator = iter(dataloader['tgt'])
-    # src_batch = next(src_train_iterator)
-    # tgt_batch = next(tgt_train_iterator)
-
-    # (batch_size, seq_length)
-    # position = PositionalEncoding(d_model, max_seq_length)
-    # print(position(tgt_data).shape)
-    # print(decoder(tgt_data, enc_output=src_data).shape)
-    # out, label = transformer(
-    #     src_batch['input_id'], src_batch['attention_mask'], tgt_batch['input_id']
-    # )
-
-    # src_data = torch.randint(20000,(10, 500))
-    # src_attn_mask = torch.ones((10, 500))
-    # src_attn_mask[:, 200:] = 0
-    # tgt_data = torch.randint(20000,(10, n_tokens))
-    # #pad
-    # tgt_data[:, 100:] = 0
-    # out, label = transformer(src_data, src_attn_mask, tgt_data)
-    # set seed
     torch.manual_seed(42)
     src_input_id = torch.tensor(
         [

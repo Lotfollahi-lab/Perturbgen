@@ -4,27 +4,6 @@ import torch
 from scipy.sparse import issparse
 from scipy.stats import wasserstein_distance
 from sklearn.metrics.pairwise import rbf_kernel
-from torchmetrics import PearsonCorrCoef
-
-
-def pearson(
-    pred_counts: torch.Tensor,
-    true_counts: torch.Tensor,
-    ctrl_counts: torch.Tensor = None,
-) -> torch.Tensor:
-    """
-    Pearson correlation coefficient
-    """
-    if ctrl_counts is not None:
-        pred_counts = pred_counts - ctrl_counts
-        true_counts = true_counts - ctrl_counts
-    num_outputs = true_counts.shape[0]
-    pearson = PearsonCorrCoef(num_outputs=num_outputs)
-    pred_counts_t = pred_counts.transpose(0, 1).contiguous()
-    true_counts_t = true_counts.transpose(0, 1).contiguous()
-    pearson_output = pearson(pred_counts_t, true_counts_t)
-    mean_pearson = torch.mean(pearson_output)
-    return mean_pearson
 
 
 def pairwise_distance(x, y):
