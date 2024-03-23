@@ -44,7 +44,7 @@ def get_args():
     parser.add_argument(
         '--generate',
         type=bool,
-        default=True,
+        default=False,
         help='generate data',
     )
     parser.add_argument(
@@ -58,8 +58,8 @@ def get_args():
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
         't_generative/T_perturb/T_perturb/Model/checkpoints/'
-        '20240320_2022_petra_mode_masking_lr_0.001_wd_'
-        '0.0_batch_128_mlmp_0.3_stratified_pairing_16h.ckpt',
+        '20240322_1802_petra_train_masking_lr_0.001_wd_0.0_'
+        'batch_128_mlmp_0.3_tp_1-2-3.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -311,7 +311,6 @@ def main() -> None:
             conditions_combined=conditions_combined_,
             tgt_vocab_size=1820,  # 704 for degs, 1820 for tokenised
             dropout=args.count_dropout,
-            d_model=256,
             generate=args.generate,
             tgt_adata=tgt_adatas,
             time_steps=args.time_steps,
@@ -380,12 +379,13 @@ def main() -> None:
     # Define Callbacks
     # This callback always keeps a checkpoint of the best model according to
     # validation accuracy.
-    time_point_str = '-'.join(args.time_steps)
+    time_steps_str_ = [str(i) for i in args.time_steps]
+    time_steps_str = '-'.join(time_steps_str_)
     if args.train_mode == 'masking':
         filename = (
             f'{run_id}_train_{args.train_mode}_lr_{args.petra_lr}_wd_{args.petra_wd}_'
             f'batch_{args.batch_size}_'
-            f'mlmp_{args.mlm_probability}_tp_{time_point_str}'
+            f'mlmp_{args.mlm_probability}_tp_{time_steps_str}'
         )
         monitor_metric = 'val/perplexity'
         mode = 'min'
@@ -393,7 +393,7 @@ def main() -> None:
         filename = (
             f'{run_id}_train_{args.train_mode}_lr_{args.count_lr}_wd_{args.count_wd}_'
             f'batch_{args.batch_size}_'
-            f'{args.loss_mode}_tp_{time_point_str}'
+            f'{args.loss_mode}_tp_{time_steps_str}'
         )
         monitor_metric = 'val/pearson'
         mode = 'max'

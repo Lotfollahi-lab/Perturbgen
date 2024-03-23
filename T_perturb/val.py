@@ -61,8 +61,8 @@ def get_args():
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
         'T_perturb/T_perturb/Model/checkpoints/'
-        '20240320_2022_petra_mode_masking_lr_0.001_'
-        'wd_0.0_batch_128_mlmp_0.3_stratified_pairing_16h.ckpt',
+        '20240322_1802_petra_train_masking_lr_0.001_'
+        'wd_0.0_batch_128_mlmp_0.3_tp_1-2-3.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -70,15 +70,15 @@ def get_args():
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
         'T_perturb/T_perturb/Model/checkpoints/'
-        '20240321_1453_petra_mode_count_lr_0.0005_'
-        'wd_0.001_batch_128_zinb_stratified_pairing_16h.ckpt',
+        '20240322_1900_petra_train_count_lr_0.0005_'
+        'wd_0.001_batch_128_zinb_tp_1-2-3.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
         '--src_dataset',
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset/'
+        'T_perturb/T_perturb/pp/res/dataset_hvg_src/'
         'cytoimmgen_tokenised_stratified_pairing_0h.dataset',
         help='path to tokenised resting data',
     )
@@ -165,7 +165,7 @@ def main() -> None:
 
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
-    tgt_adata_tmp = tgt_adatas['tgt_h5ad_t1']
+    tgt_adata_tmp = tgt_adatas['tgt_h5ad_t1'].copy()
     splitting_mode = 'stratified'  # 'random', 'stratified', 'unseen_donor'
     if args.split:
         if splitting_mode == 'stratified':
@@ -221,7 +221,7 @@ def main() -> None:
         if args.condition_keys is not None:
             conditions_ = {}
             for cond in condition_keys_:
-                conditions_[cond] = tgt_adata.obs[cond].unique().tolist()
+                conditions_[cond] = tgt_adata_tmp.obs[cond].unique().tolist()
         else:
             conditions_ = {}
     else:
@@ -229,12 +229,16 @@ def main() -> None:
 
     if args.conditions_combined is None:
         if len(condition_keys_) > 1:
-            tgt_adata.obs['conditions_combined'] = tgt_adata.obs[
+            tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[
                 args.condition_keys
             ].apply(lambda x: '_'.join(x), axis=1)
         else:
-            tgt_adata.obs['conditions_combined'] = tgt_adata.obs[args.condition_keys]
-        conditions_combined_ = tgt_adata.obs['conditions_combined'].unique().tolist()
+            tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[
+                args.condition_keys
+            ]
+        conditions_combined_ = (
+            tgt_adata_tmp.obs['conditions_combined'].unique().tolist()
+        )
     else:
         conditions_combined_ = args.conditions_combined
 
@@ -297,7 +301,6 @@ def main() -> None:
             conditions_combined=conditions_combined_,
             tgt_vocab_size=1820,
             dropout=args.count_dropout,
-            d_model=256,
             generate=args.generate,
             tgt_adata=tgt_adatas,
             time_steps=args.time_steps,
@@ -397,7 +400,7 @@ def main() -> None:
         logger=wandb_logger,
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
-        devices=1 if torch.cuda.is_available() else 0,  # infernce only on one gpu
+        devices=1 if torch.cuda.is_available() else 0,  # infernce only on one gpu\
     )
     # Finally, kick of the training process.
     if args.test_mode == 'masking':
