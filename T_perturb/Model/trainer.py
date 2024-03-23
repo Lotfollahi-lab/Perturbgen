@@ -139,12 +139,13 @@ class Petratrainer(LightningModule):
         self.adata = adata
         self.time_steps = time_steps
         # register buffer for CLS
-        total_vocab_size = tgt_vocab_size
+        total_vocab_size = self.tgt_vocab_size
         for i in self.time_steps:
+            # i-1, as first token is tgt_vocab_size
             self.register_buffer(
                 f'cls_token_{str(i)}',
                 torch.tensor(
-                    [total_vocab_size + i],
+                    [total_vocab_size + (i - 1)],
                     dtype=torch.long,
                 ),
             )
@@ -390,7 +391,6 @@ class CountDecodertrainer(LightningModule):
         conditions_combined: Optional[List[Any]] = None,
         tgt_vocab_size: int = 25000,
         dropout: float = 0.0,
-        d_model: int = 256,
         generate: bool = True,
         tgt_adata: Optional[ad.AnnData] = None,
         time_steps: list = [1, 2],
@@ -456,7 +456,7 @@ class CountDecodertrainer(LightningModule):
             self.register_buffer(
                 f'cls_token_{str(i)}',
                 torch.tensor(
-                    [total_vocab_size + i],
+                    [total_vocab_size + (i - 1)],
                     dtype=torch.long,
                 ),
             )
@@ -479,6 +479,7 @@ class CountDecodertrainer(LightningModule):
         self.test_tgt_cell_type_list: List[str] = []
         self.test_tgt_cell_population_list: List[str] = []
         self.test_tgt_donor_list: List[str] = []
+        self.test_tgt_time_point_list: List[str] = []
 
     def forward(self, batch):
         tgt_input_id_dict = {}
@@ -497,7 +498,6 @@ class CountDecodertrainer(LightningModule):
         interval = batch[f'tgt_input_ids_t{i}'].shape[1] + 1  # as 0 is cls token
         num_steps = len(self.time_steps)
         cls_positions = np.arange(0, num_steps * interval, interval)
-        # check if cls_positions is correct
 
         outputs = self.decoder(
             src_input_id=batch['src_input_ids'],
@@ -760,18 +760,24 @@ class CountDecodertrainer(LightningModule):
                 dim=1,
             )
             tgt_input_id_dict[f'tgt_input_id_t{i}'] = tgt_input_id_
+        interval = batch[f'tgt_input_ids_t{i}'].shape[1] + 1  # as 0 is cls token
+        num_steps = len(self.time_steps)
+        cls_positions = np.arange(0, num_steps * interval, interval)
         if self.generate:
             outputs = self.decoder.generate(
                 src_input_id=batch['src_input_ids'],
                 noise_schedule=cosine_schedule,
-                tgt_input_id=batch['tgt_input_ids'],
+                tgt_input_id_dict=tgt_input_id_dict,
                 original_lens=batch['src_length'],
                 can_remask_prev_masked=False,
                 topk_filter_thres=0.9,
+                time_steps=self.time_steps,
                 temperature=2.0,
-                timesteps=18,
+                iterations=18,
+                cls_positions=cls_positions,
             )
-            count_loss, pred_count = self.compute_count_loss(outputs, batch)
+            count_loss, pred_count_list = self.compute_count_loss(outputs, batch)
+            print('Test loss:', count_loss)
             self.log(
                 'test/loss',
                 count_loss,
@@ -779,8 +785,40 @@ class CountDecodertrainer(LightningModule):
                 on_epoch=True,
                 prog_bar=True,
                 logger=True,
-                batch_size=batch['tgt_input_ids'].shape[0],
+                batch_size=batch['tgt_input_ids_t1'].shape[0],
             )
+            mse_all = []
+            for time_step in self.time_steps:
+                pred_count = pred_count_list[time_step - 1]
+                true_count = batch[f'tgt_counts_dict_t{time_step}']
+                # MSE
+                mse = self.metric['mse'](pred_count, true_count)
+                mse_all.append(mse)
+                # gather for validation step
+                self.test_true_counts_list.append(
+                    batch[f'tgt_counts_dict_t{time_step}']
+                )
+                self.test_pred_counts_list.append(pred_count)
+                self.test_tgt_cell_population_list.append(
+                    batch[f'tgt_cell_population_t{time_step}']
+                )
+                self.test_tgt_time_point_list.append(
+                    batch[f'tgt_time_point_t{time_step}']
+                )
+                self.test_tgt_cell_type_list.append(batch['tgt_cell_type'])
+                self.test_tgt_donor_list.append(batch['tgt_donor'])
+
+            mean_mse = torch.mean(torch.stack(mse_all))
+            self.log(
+                'test/mse',
+                mean_mse,
+                on_epoch=True,
+                on_step=True,
+                prog_bar=True,
+                logger=True,
+                sync_dist=True,
+            )
+
         else:
             outputs = self.forward(batch)
             count_loss, pred_count = self.compute_count_loss(outputs, batch)
@@ -802,86 +840,111 @@ class CountDecodertrainer(LightningModule):
             self.test_tgt_donor_list.append(batch['tgt_donor'])
 
     def on_test_epoch_end(self):
-        # return Pearson correlation coefficient
-        true_counts = torch.cat(self.test_true_counts_list)
-        pred_counts = torch.cat(self.test_pred_counts_list)
-        ctrl_counts = torch.cat(self.test_ctrl_counts_list)
-        tgt_cell_type = np.concatenate(self.test_tgt_cell_type_list)
-        tgt_cell_population = np.concatenate(self.test_tgt_cell_population_list)
-        tgt_donor = np.concatenate(self.test_tgt_donor_list)
-        test_obs = pd.DataFrame(
-            np.array([tgt_cell_type, tgt_cell_population, tgt_donor]).T,
-            columns=['Cell_type', 'Cell_population', 'Donor'],
-        )
-        pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs, var=self.adata.var)
-        pred_adata.layers['counts'] = true_counts.numpy()
-        # save adata
-        pred_adata.write_h5ad(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            't_generative/T_perturb/T_perturb/'
-            'plt/res/Petra/'
-            'pred_adata.h5ad'
-        )
-        mean_pearson = self.pearson(pred_counts, true_counts)
-        # Pearson correlation coefficient
-        self.log(
-            'test/pearson',
-            mean_pearson,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-        )
-        # Pearson delta
-        mean_pearson_delta = self.pearson(pred_counts, true_counts, ctrl_counts)
-        self.log(
-            'test/pearson_delta',
-            mean_pearson_delta,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-        )
-        # MSE
-        mse = self.metric['mse'](pred_counts, true_counts)
-        self.log(
-            'test/mse',
-            mse,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-        )
-        metrics = pd.DataFrame(
-            {
-                'pearson': [mean_pearson.cpu().detach().numpy()],
-                'pearson_delta': [mean_pearson_delta.cpu().detach().numpy()],
-                'mse': [mse.cpu().detach().numpy()],
-            }
-        )
-        metrics.to_csv(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            't_generative/T_perturb/T_perturb/plt/res/Petra/'
-            'test_count_metrics.csv'
-        )
-        # calculate MMD and EMD
-        condition_key = 'Cell_population'
-        mmd = evaluate_mmd(self.adata, pred_adata, condition_key=condition_key)
-        mmd['metric'] = 'mmd'
-        # rename column called mmd
-        mmd = mmd.rename(columns={'mmd': 'value'})
-        emd = evaluate_emd(self.adata, pred_adata, condition_key=condition_key)
-        emd['metric'] = 'emd'
-        emd = emd.rename(columns={'emd': 'value'})
-        # concatenate
-        metrics = pd.concat([mmd, emd])
-        # save metrics
-        metrics.to_csv(
-            f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            f't_generative/T_perturb/T_perturb/plt/res/Petra/'
-            f'test_mmd_emd_{condition_key}_metrics.csv'
-        )
-        # set to status quo
-        self.test_true_counts_list = []
-        self.test_ctrl_counts_list = []
-        self.test_pred_counts_list = []
+        if self.generate:
+            true_counts = torch.cat(self.test_true_counts_list).detach().cpu()
+            pred_counts = torch.cat(self.test_pred_counts_list).detach().cpu()
+            tgt_cell_population = np.concatenate(self.test_tgt_cell_population_list)
+            tgt_time_point = np.concatenate(self.test_tgt_time_point_list)
+            tgt_cell_type = np.concatenate(self.test_tgt_cell_type_list)
+            tgt_donor = np.concatenate(self.test_tgt_donor_list)
+            test_obs = pd.DataFrame(
+                np.array(
+                    [tgt_cell_type, tgt_cell_population, tgt_time_point, tgt_donor]
+                ).T,
+                columns=['Cell_type', 'Cell_population', 'Time_point', 'Donor'],
+            )
+            pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs)
+            pred_adata.layers['counts'] = true_counts.numpy()
+            # save adata
+            pred_adata.write_h5ad(
+                '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+                't_generative/T_perturb/T_perturb/'
+                'plt/res/Petra/'
+                'generate_adata.h5ad'
+            )
+        else:
+            # return Pearson correlation coefficient
+            true_counts = torch.cat(self.test_true_counts_list)
+            pred_counts = torch.cat(self.test_pred_counts_list)
+            ctrl_counts = torch.cat(self.test_ctrl_counts_list)
+            tgt_cell_type = np.concatenate(self.test_tgt_cell_type_list)
+            tgt_cell_population = np.concatenate(self.test_tgt_cell_population_list)
+            tgt_donor = np.concatenate(self.test_tgt_donor_list)
+            test_obs = pd.DataFrame(
+                np.array([tgt_cell_type, tgt_cell_population, tgt_donor]).T,
+                columns=['Cell_type', 'Cell_population', 'Donor'],
+            )
+            pred_adata = ad.AnnData(
+                X=pred_counts.numpy(), obs=test_obs, var=self.adata.var
+            )
+            pred_adata.layers['counts'] = true_counts.numpy()
+            # save adata
+            pred_adata.write_h5ad(
+                '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+                't_generative/T_perturb/T_perturb/'
+                'plt/res/Petra/'
+                'pred_adata.h5ad'
+            )
+            mean_pearson = self.pearson(pred_counts, true_counts)
+            # Pearson correlation coefficient
+            self.log(
+                'test/pearson',
+                mean_pearson,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+            )
+            # Pearson delta
+            mean_pearson_delta = self.pearson(pred_counts, true_counts, ctrl_counts)
+            self.log(
+                'test/pearson_delta',
+                mean_pearson_delta,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+            )
+            # MSE
+            mse = self.metric['mse'](pred_counts, true_counts)
+            self.log(
+                'test/mse',
+                mse,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+            )
+            metrics = pd.DataFrame(
+                {
+                    'pearson': [mean_pearson.cpu().detach().numpy()],
+                    'pearson_delta': [mean_pearson_delta.cpu().detach().numpy()],
+                    'mse': [mse.cpu().detach().numpy()],
+                }
+            )
+            metrics.to_csv(
+                '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+                't_generative/T_perturb/T_perturb/plt/res/Petra/'
+                'test_count_metrics.csv'
+            )
+            # calculate MMD and EMD
+            condition_key = 'Cell_population'
+            mmd = evaluate_mmd(self.adata, pred_adata, condition_key=condition_key)
+            mmd['metric'] = 'mmd'
+            # rename column called mmd
+            mmd = mmd.rename(columns={'mmd': 'value'})
+            emd = evaluate_emd(self.adata, pred_adata, condition_key=condition_key)
+            emd['metric'] = 'emd'
+            emd = emd.rename(columns={'emd': 'value'})
+            # concatenate
+            metrics = pd.concat([mmd, emd])
+            # save metrics
+            metrics.to_csv(
+                f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+                f't_generative/T_perturb/T_perturb/plt/res/Petra/'
+                f'test_mmd_emd_{condition_key}_metrics.csv'
+            )
+            # set to status quo
+            self.test_true_counts_list = []
+            self.test_ctrl_counts_list = []
+            self.test_pred_counts_list = []
 
     def configure_optimizers(self):
         parameters = [{'params': self.decoder.parameters(), 'lr': self.lr}]

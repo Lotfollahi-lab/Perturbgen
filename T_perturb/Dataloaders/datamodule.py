@@ -385,10 +385,10 @@ class PetraDataModule(LightningDataModule):
                     [torch.tensor(d[dataset]['length'], device='cpu') for d in batch]
                 )
                 model_input_size = torch.max(out[f'tgt_length_t{time_step}'])
-                out['tgt_cell_population_t{time_step}'] = [
+                out[f'tgt_cell_population_t{time_step}'] = [
                     d[dataset]['Cell_population'] for d in batch
                 ]
-                out['tgt_time_point_t{time_step}'] = [
+                out[f'tgt_time_point_t{time_step}'] = [
                     d[dataset]['Time_point'] for d in batch
                 ]
                 out[f'tgt_input_ids_t{time_step}'] = pad_tensor_list(
