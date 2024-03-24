@@ -174,4 +174,5 @@ def evaluate_emd(
                 )
             )
         emd_list.append({'emd': np.mean(wd)})
-    return emd_df
+        emd_df = pd.DataFrame(emd_list)
+        return emd_df

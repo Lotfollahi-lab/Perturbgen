@@ -10,6 +10,30 @@ from torch import einsum, nn
 from tqdm import tqdm
 from transformers import BertForMaskedLM
 
+
+# noise schedule
+def noise_schedule(ratio, total_tokens, method, exponent=2.0):
+    '''
+    Noise schedule from Google MaskGIT paper
+    URL: https://github.com/google-research/maskgit/blob/
+    1db23594e1bd328ee78eadcd148a19281cd0f5b8/maskgit/libml/mask_schedule.py#L21
+    Last accessed: 2024-03-23
+    '''
+    if method == 'uniform':
+        mask_ratio = 1.0 - ratio
+    elif 'pow' in method:
+        mask_ratio = 1.0 - ratio**exponent
+    elif method == 'cosine':
+        mask_ratio = torch.cos(ratio * math.pi * 0.5)
+    elif method == 'log':
+        mask_ratio = -torch.log2(ratio) / torch.log2(total_tokens)
+    elif method == 'exp':
+        mask_ratio = 1 - torch.exp2(-torch.log2(total_tokens) * (1 - ratio))
+    # Clamps mask into [epsilon, 1)
+    mask_ratio = torch.clamp(mask_ratio, 1e-6, 1.0)
+    return mask_ratio
+
+
 # def drop_path(x, drop_prob: float = 0.0, training: bool = False):
 #     if drop_prob == 0.0 or not training:
 #         return x
@@ -225,13 +249,8 @@ class Geneformerwrapper(nn.Module):
         return embs
 
 
-# noise schedule
-def cosine_schedule(t):
-    return torch.cos(t * math.pi * 0.5)
-
-
 def uniform(shape, min=0, max=1, device=None):
-    return torch.zeros(shape, device=device).float().uniform_(0, 1)
+    return torch.zeros(shape, device=device).float().uniform_(min, max)
 
 
 def prob_mask_like(shape, prob, device=None):
@@ -395,22 +414,24 @@ class Petra(nn.Module):
         context_len=None,
         generate_id=None,
         generate=False,
+        cls_positions=None,
     ):
         time_step = 1
         tgt_pad_dict = {}
-        if tgt_input_id_dict is not None:
+        if generate_id is not None:
+            tgt_pad = self.generate_pad(generate_id)
+        else:
             for _, tgt_input_id in tgt_input_id_dict.items():
                 tgt_pad_dict[f'tgt_pad_t{time_step}'] = self.generate_pad(tgt_input_id)
                 time_step = time_step + 1
             tgt_input_id_list = [tensor for tensor in tgt_input_id_dict.values()]
             tgt_input_id = torch.cat((tgt_input_id_list), dim=1)
-        else:
-            tgt_pad = self.generate_pad(generate_id)
+
         src_attention_mask = src_input_id == 0
         # convert to numeric type
         src_attention_mask_int = src_attention_mask.int()
 
-        if generate:
+        if generate_id is not None:
             tgt_mask = generate_id == (self.mask_token)
             tgt_mask = tgt_mask | (generate_id == 0)
             tgt_input_id = generate_id.clone()
@@ -437,13 +458,15 @@ class Petra(nn.Module):
         logits = self.fc(dec_embedding)
 
         outputs = {}
-        if generate:
+        if (generate is True) and (context_len is not None):
             outputs['dec_embedding'] = dec_embedding
             outputs['logits'] = logits[:, context_len + 1 :, :]
         else:
             outputs['logits'] = logits
             outputs['labels'] = labels
             outputs['dec_embedding'] = dec_embedding
+            if cls_positions is not None:
+                outputs['cls_positions'] = cls_positions
 
         return outputs
 
@@ -550,7 +573,6 @@ class CountDecoder(nn.Module):
     def generate(
         self,
         src_input_id,
-        noise_schedule,
         tgt_input_id_dict,
         original_lens,
         can_remask_prev_masked=False,
@@ -560,6 +582,7 @@ class CountDecoder(nn.Module):
         temperature=2.0,  # keep in range 2.0-3.0
         # self_cond_prob=0.9,
         iterations=18,  # optimal iterations found in maskgit paper
+        mask_scheduler='cosine',
         cls_positions=[0, 247, 494],
     ):
         starting_temperature = temperature
@@ -586,7 +609,7 @@ class CountDecoder(nn.Module):
                 src_input_id=src_input_id,
                 original_lens=original_lens,
                 demask_fn=demask_fn,
-                noise_schedule=noise_schedule,
+                mask_scheduler=mask_scheduler,
                 can_remask_prev_masked=can_remask_prev_masked,
                 topk_filter_thres=topk_filter_thres,
                 starting_temperature=starting_temperature,
@@ -610,7 +633,7 @@ class CountDecoder(nn.Module):
         src_input_id,
         original_lens,
         demask_fn,
-        noise_schedule,
+        mask_scheduler,
         can_remask_prev_masked=False,
         topk_filter_thres=0.9,
         starting_temperature=2.0,
@@ -627,7 +650,11 @@ class CountDecoder(nn.Module):
         ):
             cls_token = ids[:, 0]
             # mask scheduler function, gamma
-            rand_mask_prob = noise_schedule(iteration)
+            rand_mask_prob = noise_schedule(
+                ratio=iteration,
+                total_tokens=ids.shape[1],
+                method=mask_scheduler,
+            )
             scores = scores.masked_fill(tgt_pad, -torch.finfo().max)
             ids = ids.masked_fill(tgt_pad, 0)
             ids_to_keep = torch.zeros_like(ids, dtype=torch.long)
@@ -771,7 +798,7 @@ if __name__ == '__main__':
     transformer.eval()
     transformer.generate(
         src_input_id=src_input_id.to('cuda'),
-        noise_schedule=cosine_schedule,
+        noise_schedule=noise_schedule,
         tgt_input_id=label_tensor.to('cuda'),
         tgt_vocab_size=10,
         seq_length=12,

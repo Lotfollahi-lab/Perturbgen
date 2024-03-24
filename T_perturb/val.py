@@ -29,25 +29,25 @@ def get_args():
     parser.add_argument(
         '--test_mode',
         type=str,
-        default='count',
+        default='masking',
         help='Mode [masking, count]',
     )
     parser.add_argument(
         '--split',
         type=bool,
-        default=True,
+        default=False,
         help='split data for extrapolation',
     )
     parser.add_argument(
         '--generate',
         type=bool,
-        default=True,
+        default=False,
         help='generate data',
     )
     parser.add_argument(
         '--return_embeddings',
         type=bool,
-        default=False,
+        default=True,
         help='return embedding',
     )
     parser.add_argument(
@@ -120,7 +120,7 @@ def get_args():
     parser.add_argument('--max_len', type=int, default=246, help='max sequence length')
     parser.add_argument('--petra_lr', type=float, default=1e-3, help='learning rate')
     parser.add_argument('--count_lr', type=float, default=0.0005, help='learning rate')
-    parser.add_argument('--petra_wd', type=float, default=0.0, help='weight decay')
+    parser.add_argument('--petra_wd', type=float, default=0.001, help='weight decay')
     parser.add_argument('--count_wd', type=float, default=0.001, help='weight decay')
     parser.add_argument('--n_workers', type=int, default=64, help='number of workers')
     parser.add_argument(
@@ -135,6 +135,14 @@ def get_args():
         type=str,
         help='Selection of condition keys to use for model',
     )
+    parser.add_argument(
+        '--mask_scheduler',
+        type=str,
+        default='pow',
+        help='mask scheduler [cosine, exp, pow]',
+    )
+    parser.add_argument('--temperature', type=float, default=1.5, help='temperature')
+    parser.add_argument('--iterations', type=int, default=19, help='iterations')
     parser.add_argument('--conditions', type=dict, default=None, help='conditions')
     parser.add_argument(
         '--conditions_combined', type=list, default=None, help='conditions combined'
@@ -200,7 +208,7 @@ def main() -> None:
         # return all the indices
         train_indices = list(range(len(src_dataset)))
         val_indices = None
-        test_indices = list(range(len(tgt_datasets)))
+        test_indices = list(range(len(tgt_datasets['tgt_dataset_t1'])))
 
     if args.loss_mode == 'mse':
         # log normalize data only for mse loss
@@ -267,6 +275,7 @@ def main() -> None:
         )
         conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
     print('Data loaded and preprocessed.')
+    print(tgt_adata_tmp.var['gene_name'])
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.test_mode == 'masking':
@@ -284,10 +293,9 @@ def main() -> None:
             lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             return_embeddings=args.return_embeddings,
-            batch_size=args.batch_size,
-            adata=tgt_adatas,
             generate=args.generate,
             time_steps=args.time_steps,
+            gene_names=tgt_adata_tmp.var['gene_name'],
         )
     elif args.test_mode == 'count':
         decoder_module = CountDecodertrainer(
@@ -304,6 +312,9 @@ def main() -> None:
             generate=args.generate,
             tgt_adata=tgt_adatas,
             time_steps=args.time_steps,
+            temperature=args.temperature,
+            iterations=args.iterations,
+            mask_scheduler=args.mask_scheduler,
         )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')
@@ -320,42 +331,25 @@ def main() -> None:
         tgt_counts_dict[keys] = tgt_adata.X
     src_counts = src_adata.X
 
-    if args.test_mode == 'masking':
-        data_module = PetraDataModule(
-            src_dataset=src_dataset,
-            tgt_datasets=tgt_datasets,
-            src_counts=src_counts,
-            tgt_counts_dict=tgt_counts_dict,
-            batch_size=args.batch_size,
-            num_workers=args.n_workers,
-            shuffle=args.shuffle,
-            max_len=args.max_len,
-            split=args.split,
-            train_indices=train_indices,
-            val_indices=val_indices,
-            test_indices=test_indices,
-            time_steps=args.time_steps,
-        )
-    elif args.test_mode == 'count':
-        data_module = PetraDataModule(
-            src_dataset=src_dataset,
-            tgt_datasets=tgt_datasets,
-            src_counts=src_counts,
-            tgt_counts_dict=tgt_counts_dict,
-            batch_size=args.batch_size,
-            num_workers=args.n_workers,
-            shuffle=args.shuffle,
-            max_len=args.max_len,
-            condition_keys=condition_keys_,
-            condition_encodings=condition_encodings,
-            conditions=conditions,
-            conditions_combined=conditions_combined,
-            split=args.split,
-            train_indices=train_indices,
-            val_indices=val_indices,
-            test_indices=test_indices,
-            time_steps=args.time_steps,
-        )
+    data_module = PetraDataModule(
+        src_dataset=src_dataset,
+        tgt_datasets=tgt_datasets,
+        src_counts=src_counts,
+        tgt_counts_dict=tgt_counts_dict,
+        batch_size=args.batch_size,
+        num_workers=args.n_workers,
+        shuffle=args.shuffle,
+        max_len=args.max_len,
+        condition_keys=condition_keys_,
+        condition_encodings=condition_encodings,
+        conditions=conditions,
+        conditions_combined=conditions_combined,
+        split=args.split,
+        train_indices=train_indices,
+        val_indices=val_indices,
+        test_indices=test_indices,
+        time_steps=args.time_steps,
+    )
 
     # Setup trainer
     # ----------------------------------------------------------------------------------
@@ -400,7 +394,8 @@ def main() -> None:
         logger=wandb_logger,
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
-        devices=1 if torch.cuda.is_available() else 0,  # infernce only on one gpu\
+        devices=1 if torch.cuda.is_available() else 0,  # infernce only on one gpu
+        limit_test_batches=1.0,
     )
     # Finally, kick of the training process.
     if args.test_mode == 'masking':

@@ -1,0 +1,29 @@
+method: random
+metric:
+  goal: minimize
+  name: val/emd
+name: tune_generate
+parameters:
+  train_mode:
+    value: 'count'
+  split:
+    value: True
+  generate:
+    value: True
+  num_cells:
+    value: 0
+  epochs:
+   value: 50
+  mask_scheduler:
+    values: ['pow', 'exp', 'cosine']
+  temperature:
+    distribution: uniform
+    min: 1.0
+    max: 5.0
+  iterations:
+    distribution: int_uniform
+
+    min: 5
+    max: 20
+program: /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/train.py
+project: ttransformer_sweep

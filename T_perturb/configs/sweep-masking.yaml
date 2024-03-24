@@ -1,4 +1,4 @@
-method: random
+method: grid #grid or random
 metric:
   goal: minimize
   name: val/perplexity
@@ -8,23 +8,35 @@ parameters:
     value: 'masking'
   split:
     value: True
+  generate:
+    value: False
   num_cells:
     value: 0
   epochs:
-   value: 100
-  lr:
-    distribution: loguniform
-    low: 0.0001
-    high: 0.001
-  wd:
-    distribution: loguniform_values
-    low: 0.001
-    high: 0.1
-  dropout:
-    distribution: uniform
-    low: 0.1
-    high: 0.5
+   value: 50
   batch_size:
-    value: 256
+    values: [64, 128]
+  petra_lr:
+    values: [0.0001, 0.001, 0.01]
+  petra_wd:
+    value: 0.001
+  mlm_probability:
+    values: [0.15, 0.3, 0.5]
+
+
+  # lr:
+  #   distribution: loguniform
+  #   low: 0.0001
+  #   high: 0.001
+  # wd:
+  #   distribution: loguniform_values
+  #   low: 0.001
+  #   high: 0.1
+  # dropout:
+  #   distribution: uniform
+  #   low: 0.1
+  #   high: 0.5
+  # batch_size:
+  #   value: 256
 program: /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/train.py
 project: ttransformer_sweep

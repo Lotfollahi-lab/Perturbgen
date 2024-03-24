@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import uuid
 from datetime import datetime
 
 import pytorch_lightning as pl
@@ -11,9 +12,6 @@ from datasets import load_from_disk
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy
-
-# from T_perturb.src.utils import subset_adata_dataset
-from wandb import init  # type: ignore
 
 from T_perturb.Dataloaders.datamodule import PetraDataModule
 from T_perturb.Model.trainer import CountDecodertrainer, Petratrainer
@@ -72,13 +70,6 @@ def get_args():
         ),
         help='path to tokenised resting data',
     )
-    # parser.add_argument(
-    #     '--tgt_dataset',
-    #     type=str,
-    #     default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    #     f'T_perturb/T_perturb/pp/res/dataset/{train_dataset}',
-    #     help='path to tokenised activated data',
-    # )
     parser.add_argument(
         '--tgt_dataset_folder',
         type=str,
@@ -116,7 +107,7 @@ def get_args():
     parser.add_argument('--max_len', type=int, default=246, help='max sequence length')
     parser.add_argument('--petra_lr', type=float, default=1e-3, help='learning rate')
     parser.add_argument('--count_lr', type=float, default=0.0005, help='learning rate')
-    parser.add_argument('--petra_wd', type=float, default=0.0, help='weight decay')
+    parser.add_argument('--petra_wd', type=float, default=0.001, help='weight decay')
     parser.add_argument('--count_wd', type=float, default=0.001, help='weight decay')
     parser.add_argument(
         '--mlm_probability', type=float, default=0.3, help='mlm probability'
@@ -136,6 +127,14 @@ def get_args():
         type=str,
         help='Selection of condition keys to use for model',
     )
+    parser.add_argument(
+        '--mask_scheduler',
+        type=str,
+        default='pow',
+        help='mask scheduler [cosine, exp, pow]',
+    )
+    parser.add_argument('--temperature', type=float, default=1.5, help='temperature')
+    parser.add_argument('--iterations', type=int, default=19, help='iterations')
     parser.add_argument('--conditions', type=dict, default=None, help='conditions')
     parser.add_argument(
         '--conditions_combined', type=list, default=None, help='conditions combined'
@@ -278,6 +277,7 @@ def main() -> None:
         conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
 
     print('Data loaded and preprocessed.')
+
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.train_mode == 'masking':
@@ -294,8 +294,6 @@ def main() -> None:
             lr=args.petra_lr,
             lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
-            batch_size=args.batch_size,
-            adata=tgt_adatas,
             generate=args.generate,
             time_steps=args.time_steps,
         )
@@ -314,6 +312,9 @@ def main() -> None:
             generate=args.generate,
             tgt_adata=tgt_adatas,
             time_steps=args.time_steps,
+            temperature=args.temperature,
+            iterations=args.iterations,
+            mask_scheduler=args.mask_scheduler,
         )
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
@@ -387,7 +388,10 @@ def main() -> None:
             f'batch_{args.batch_size}_'
             f'mlmp_{args.mlm_probability}_tp_{time_steps_str}'
         )
-        monitor_metric = 'val/perplexity'
+        if args.split:
+            monitor_metric = 'val/perplexity'
+        else:
+            monitor_metric = 'train/perplexity'
         mode = 'min'
     elif args.train_mode == 'count':
         filename = (
@@ -395,8 +399,13 @@ def main() -> None:
             f'batch_{args.batch_size}_'
             f'{args.loss_mode}_tp_{time_steps_str}'
         )
-        monitor_metric = 'val/pearson'
-        mode = 'max'
+        if args.generate:
+            monitor_metric = 'val/emd'
+            mode = 'min'
+        else:
+            monitor_metric = 'val/pearson'
+            mode = 'max'
+
     checkpoint_callback = ModelCheckpoint(
         dirpath='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
         't_generative/T_perturb/T_perturb/Model/checkpoints',
@@ -409,24 +418,19 @@ def main() -> None:
     # The tensorboard logger allows for monitoring the progress of training
     if torch.cuda.device_count() > 1:
         # multi gpu training with group logging
-        init(
-            entity='k-ly',
+        wandb_logger = WandbLogger(
             project='ttransformer',
-            # id=unique_id,  # specify id to log to same run
-            group=log_path,  # all runs are saved in one group for multi gpu training
-            dir='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            't_generative/T_perturb/T_perturb',
+            name=f'{run_id}_{str(uuid.uuid4())[:6]}',
+            save_dir=args.log_dir,
+            log_model='all',
         )  # noqa
     else:
-        init(
-            entity='k-ly',
+        wandb_logger = WandbLogger(
             project='ttransformer',
-            id=run_id,
-            dir='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            't_generative/T_perturb/T_perturb',
+            name=f'{run_id}',
+            save_dir=args.log_dir,
+            log_model='all',
         )  # noqa
-
-    wandb_logger = WandbLogger(log_model='all')
 
     # In this simple example we just check if a GPU is available.
     # For training larger models in a distributed settings, this needs more care.

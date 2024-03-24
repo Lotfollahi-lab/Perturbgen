@@ -11,12 +11,13 @@ from geneformer.emb_extractor import get_embs, label_cell_embs
 from matplotlib import pyplot as plt
 from matplotlib import style
 
-# from transformers import BertForSequenceClassification, BertForTokenClassification
-dataset_name = 'cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset'
 style.use(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
     'T_perturb/T_perturb/pp/mpl_style.mplstyle'
 )
+# from transformers import BertForSequenceClassification, BertForTokenClassification
+dataset_name = 'cytoimmgen_tokenised_hvg_paired.dataset'
+
 # Set default figure facecolor to white
 plt.rcParams['figure.facecolor'] = 'white'
 if os.getcwd().split('/')[-3] != 'T_perturb':
