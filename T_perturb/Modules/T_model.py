@@ -326,17 +326,36 @@ class Petra(nn.Module):
         tgt_pad = tgt_pad == 0
         return tgt_pad
 
-    def generate_mask(
+    def generate_pad_testing(
+        self, tgt_input_id_dict, tgt_pad, mlm_probability=0.15, time_step=2
+    ):
+        tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_step}']
+        labels = tgt_input_id.clone()
+        # Initialize probability_matrix tensor without specifying device
+        probability_matrix = torch.full_like(
+            tgt_pad, mlm_probability, dtype=torch.float
+        )
+        cls_tgt_pad = tgt_pad.clone()
+        cls_tgt_pad[:, 0] = True
+        probability_matrix = probability_matrix.masked_fill(
+            cls_tgt_pad, 0
+        )  # add CLS token to the tokens
+        tgt_mask = torch.bernoulli(probability_matrix).bool()
+        labels[~tgt_mask] = -100
+
+        return labels, tgt_mask
+
+    def generate_mask_train(
         self, tgt_input_id_dict, tgt_pad_dict, mlm_probability=0.15, time_step=2
     ):
         time_random = torch.randint(1, time_step + 1, (1,)).item()
         tgt_pad = tgt_pad_dict[f'tgt_pad_t{time_random}']
         # pad the subsequent timestep
-        count_time = time_random
-        while count_time != time_step:
-            all_pad = torch.ones_like(tgt_pad).bool()
-            tgt_pad_dict[f'tgt_pad_t{count_time+1}'] = all_pad
-            count_time = count_time + 1
+        # count_time = time_random
+        # while count_time != time_step:
+        #     all_pad = torch.ones_like(tgt_pad).bool()
+        #     tgt_pad_dict[f'tgt_pad_t{count_time+1}'] = all_pad
+        #     count_time = count_time + 1
         tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_random}']
         # initialize the dictionary with all -100 and overwrite it
         labels_dict = {}
@@ -347,6 +366,9 @@ class Petra(nn.Module):
             )
             tgt_mask_dict[f'tgt_mask_t{i}'] = torch.full_like(
                 tgt_pad, False, dtype=torch.bool
+            )
+            tgt_pad_dict[f'tgt_pad_t{i}'] = torch.full_like(
+                tgt_pad, True, dtype=torch.bool
             )
 
         labels = tgt_input_id.clone()
@@ -363,6 +385,7 @@ class Petra(nn.Module):
         labels[~tgt_mask] = -100
         labels_dict[f'labels_t{time_random}'] = labels
         tgt_mask_dict[f'tgt_mask_t{time_random}'] = tgt_mask
+        tgt_pad_dict[f'tgt_pad_t{time_random}'] = tgt_pad
         # concatenate the labels
         labels_ = torch.cat([labels_dict[key] for key in labels_dict], dim=1)
         tgt_mask_ = torch.cat([tgt_mask_dict[key] for key in tgt_mask_dict], dim=1)
@@ -415,17 +438,22 @@ class Petra(nn.Module):
         generate_id=None,
         generate=False,
         cls_positions=None,
+        test_time_step=2,
+        return_embeddings=False,
     ):
         time_step = 1
         tgt_pad_dict = {}
         if generate_id is not None:
             tgt_pad = self.generate_pad(generate_id)
-        else:
+        elif len(tgt_input_id_dict) > 1:
             for _, tgt_input_id in tgt_input_id_dict.items():
                 tgt_pad_dict[f'tgt_pad_t{time_step}'] = self.generate_pad(tgt_input_id)
                 time_step = time_step + 1
             tgt_input_id_list = [tensor for tensor in tgt_input_id_dict.values()]
             tgt_input_id = torch.cat((tgt_input_id_list), dim=1)
+        elif len(tgt_input_id_dict) == 1:
+            tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{test_time_step}']
+            tgt_pad = self.generate_pad(tgt_input_id)
 
         src_attention_mask = src_input_id == 0
         # convert to numeric type
@@ -436,21 +464,28 @@ class Petra(nn.Module):
             tgt_mask = tgt_mask | (generate_id == 0)
             tgt_input_id = generate_id.clone()
 
-        else:
-            tgt_mask, labels, tgt_pad = self.generate_mask(
+        if len(tgt_input_id_dict) > 1:
+            tgt_mask, labels, tgt_pad = self.generate_mask_train(
                 tgt_input_id_dict,
                 tgt_pad_dict,
                 self.mlm_probability,
                 len(tgt_input_id_dict),
             )
+            tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
+        elif (generate is not True) & (len(tgt_input_id_dict) == 1):
+            labels, tgt_mask = self.generate_pad_testing(
+                tgt_input_id_dict, tgt_pad, self.mlm_probability, test_time_step
+            )
+            tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
+        # else:
+        #     tgt_pad = torch.cat([tgt_pad_dict[key] for key in tgt_pad_dict], dim=1)
 
         src_embedded = self.encoder_layers(src_input_id, src_attention_mask_int)
-        # overwrite with tgt input id with masked token
-        tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
-        tgt_embedded_mask = self.token_embedding(tgt_input_id)
-        tgt_embedded_mask = self.prepare_tokens(tgt_embedded_mask)
+        tgt_input_id = tgt_input_id.masked_fill(tgt_pad, 0)
+        tgt_embedding = self.token_embedding(tgt_input_id)
+        tgt_embedded_position = self.prepare_tokens(tgt_embedding)
         enc_output = src_embedded
-        dec_embedding = tgt_embedded_mask
+        dec_embedding = tgt_embedded_position
         for dec_layer in self.decoder_layers:
             dec_embedding = dec_layer(
                 dec_embedding, src_attention_mask, tgt_pad, enc_output
@@ -461,12 +496,18 @@ class Petra(nn.Module):
         if (generate is True) and (context_len is not None):
             outputs['dec_embedding'] = dec_embedding
             outputs['logits'] = logits[:, context_len + 1 :, :]
-        else:
+        elif return_embeddings:
             outputs['logits'] = logits
-            outputs['labels'] = labels
             outputs['dec_embedding'] = dec_embedding
-            if cls_positions is not None:
-                outputs['cls_positions'] = cls_positions
+            print(outputs['dec_embedding'].shape)
+
+        else:
+            outputs['labels'] = labels
+            outputs['logits'] = logits
+            outputs['dec_embedding'] = dec_embedding
+
+        if cls_positions is not None:
+            outputs['cls_positions'] = cls_positions
 
         return outputs
 

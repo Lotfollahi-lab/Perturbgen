@@ -55,11 +55,12 @@ def get_args():
         '--ckpt_path',
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/T_perturb/T_perturb/Model/checkpoints/'
-        '20240322_1802_petra_train_masking_lr_0.001_wd_0.0_'
-        'batch_128_mlmp_0.3_tp_1-2-3.ckpt',
+        't_generative/T_perturb/T_perturb/Model/'
+        'checkpoints/20240326_1522_petra_train_masking_lr_0.001_'
+        'wd_0.001_batch_64_mlmp_0.15_tp_1-2-3.ckpt',
         help='path to checkpoint',
     )
+
     parser.add_argument(
         '--src_dataset',
         type=str,
@@ -96,21 +97,23 @@ def get_args():
         ),
         help='path to tgt',
     )
-    parser.add_argument('--batch_size', type=int, default=128, help='batch_size')
+    parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=True, help='shuffle')
     parser.add_argument(
-        '--epochs', type=int, default=50, help='number of training epochs'
+        '--epochs', type=int, default=100, help='number of training epochs'
     )
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
     )
-    parser.add_argument('--max_len', type=int, default=246, help='max sequence length')
-    parser.add_argument('--petra_lr', type=float, default=1e-3, help='learning rate')
+    parser.add_argument(
+        '--max_len', type=int, default=400, help='max sequence length'
+    )  # check how many genes there are
+    parser.add_argument('--petra_lr', type=float, default=0.001, help='learning rate')
     parser.add_argument('--count_lr', type=float, default=0.0005, help='learning rate')
     parser.add_argument('--petra_wd', type=float, default=0.001, help='weight decay')
     parser.add_argument('--count_wd', type=float, default=0.001, help='weight decay')
     parser.add_argument(
-        '--mlm_probability', type=float, default=0.3, help='mlm probability'
+        '--mlm_probability', type=float, default=0.15, help='mlm probability'
     )
     parser.add_argument(
         '--n_workers', type=int, default=64, help='number of workers'
@@ -339,7 +342,7 @@ def main() -> None:
         data_module = PetraDataModule(
             src_dataset=src_dataset,
             tgt_datasets=tgt_datasets,
-            src_counts=src_counts,
+            src_counts=src_counts,  # TODO: do not pass counts in datamodule
             tgt_counts_dict=tgt_counts_dict,
             batch_size=args.batch_size,
             num_workers=args.n_workers,
@@ -460,7 +463,7 @@ def main() -> None:
             early_stop_callback,
         ],
         max_epochs=args.epochs,
-        accelerator=accelerator,
+        accelerator='auto',
         devices=-1 if torch.cuda.is_available() else 0,
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
     )
