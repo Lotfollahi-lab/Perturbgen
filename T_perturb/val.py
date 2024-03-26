@@ -29,25 +29,25 @@ def get_args():
     parser.add_argument(
         '--test_mode',
         type=str,
-        default='masking',
+        default='count',
         help='Mode [masking, count]',
     )
     parser.add_argument(
         '--split',
         type=bool,
-        default=False,
+        default=True,
         help='split data for extrapolation',
     )
     parser.add_argument(
         '--generate',
         type=bool,
-        default=False,
+        default=True,
         help='generate data',
     )
     parser.add_argument(
         '--return_embeddings',
         type=bool,
-        default=True,
+        default=False,
         help='return embedding',
     )
     parser.add_argument(
@@ -59,10 +59,10 @@ def get_args():
     parser.add_argument(
         '--ckpt_masking_path',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/Model/checkpoints/'
-        '20240322_1802_petra_train_masking_lr_0.001_'
-        'wd_0.0_batch_128_mlmp_0.3_tp_1-2-3.ckpt',
+        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative'
+        '/T_perturb/T_perturb/Model/checkpoints/'
+        '20240326_1522_petra_train_masking_lr_0.001_'
+        'wd_0.001_batch_64_mlmp_0.15_tp_1-2-3.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -70,8 +70,8 @@ def get_args():
         type=str,
         default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
         'T_perturb/T_perturb/Model/checkpoints/'
-        '20240322_1900_petra_train_count_lr_0.0005_'
-        'wd_0.001_batch_128_zinb_tp_1-2-3.ckpt',
+        '20240326_1730_petra_train_count_lr_0.0005_'
+        'wd_0.001_batch_64_zinb_tp_1-2-3.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -105,7 +105,7 @@ def get_args():
         type=str,
         default=(
             '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-            'T_perturb/pp/res/h5ad_pairing_hvg_tgt'
+            'T_perturb/pp/res/h5ad_pairing_hvg_tgt/'
         ),
         help='path to tgt',
     )
@@ -115,10 +115,10 @@ def get_args():
         '--log_dir', type=str, default='logs', help='path to data directory'
     )
     parser.add_argument(
-        '--mlm_probability', type=float, default=0.5, help='mlm probability'
+        '--mlm_probability', type=float, default=0.15, help='mlm probability'
     )
-    parser.add_argument('--max_len', type=int, default=246, help='max sequence length')
-    parser.add_argument('--petra_lr', type=float, default=1e-3, help='learning rate')
+    parser.add_argument('--max_len', type=int, default=400, help='max sequence length')
+    parser.add_argument('--petra_lr', type=float, default=0.001, help='learning rate')
     parser.add_argument('--count_lr', type=float, default=0.0005, help='learning rate')
     parser.add_argument('--petra_wd', type=float, default=0.001, help='weight decay')
     parser.add_argument('--count_wd', type=float, default=0.001, help='weight decay')
@@ -275,7 +275,6 @@ def main() -> None:
         )
         conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
     print('Data loaded and preprocessed.')
-    print(tgt_adata_tmp.var['gene_name'])
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.test_mode == 'masking':

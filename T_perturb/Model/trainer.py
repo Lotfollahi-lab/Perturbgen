@@ -168,13 +168,44 @@ class Petratrainer(LightningModule):
         num_steps = len(self.time_steps)
         cls_positions = np.arange(0, num_steps * interval, interval)
 
-        outputs = self.transformer(
-            src_input_id=batch['src_input_ids'],
-            tgt_input_id_dict=tgt_input_id_dict,
-            original_lens=batch['src_length'],
-            generate=self.generate,
-            cls_positions=cls_positions,
-        )
+        if self.training:
+            outputs = self.transformer(
+                src_input_id=batch['src_input_ids'],
+                tgt_input_id_dict=tgt_input_id_dict,
+                original_lens=batch['src_length'],
+                generate=self.generate,
+                cls_positions=cls_positions,
+            )
+        else:
+            dec_embeddings = []
+            logits = []
+            labels = []
+            for i in self.time_steps:
+                tgt_input_id_dict_ = {
+                    f'tgt_input_id_t{i}': tgt_input_id_dict[f'tgt_input_id_t{i}']
+                }
+                outputs = self.transformer(
+                    src_input_id=batch['src_input_ids'],
+                    tgt_input_id_dict=tgt_input_id_dict_,
+                    original_lens=batch['src_length'],
+                    generate=self.generate,
+                    cls_positions=cls_positions,
+                    test_time_step=i,
+                    return_embeddings=self.return_embeddings,
+                )
+                if self.return_embeddings:
+                    dec_embeddings.append(outputs['dec_embedding'])
+                else:
+                    # validation
+                    logits.append(outputs['logits'])
+                    labels.append(outputs['labels'])
+
+            if self.return_embeddings:
+                outputs['dec_embedding'] = torch.cat(dec_embeddings, dim=1)
+            else:
+                outputs['logits'] = torch.cat(logits, dim=1)
+                outputs['labels'] = torch.cat(labels, dim=1)
+
         return outputs
 
     def configure_optimizers(self):
@@ -268,6 +299,7 @@ class Petratrainer(LightningModule):
     def test_step(self, batch, *args, **kwargs):
         if self.return_embeddings:
             outputs = self.forward(batch)
+            outputs
             for time_step in self.time_steps:
                 cls_position = outputs['cls_positions'][time_step - 1]
                 cls_embeddings = outputs['dec_embedding'][:, cls_position, :]
@@ -840,11 +872,12 @@ class CountDecodertrainer(LightningModule):
         pred_counts = torch.cat(self.val_pred_counts_list)
         pred_delta_counts = torch.cat(self.val_pred_delta_counts_list)
         true_delta_counts = torch.cat(self.val_true_delta_counts_list)
-        cell_type = np.concatenate(self.val_tgt_cell_type_list)
-        cell_population = np.concatenate(self.val_tgt_cell_population_list)
-        tgt_donor = np.concatenate(self.val_tgt_donor_list)
+
         # create adata for mmd and emd
         if self.generate:
+            cell_type = np.concatenate(self.val_tgt_cell_type_list)
+            cell_population = np.concatenate(self.val_tgt_cell_population_list)
+            tgt_donor = np.concatenate(self.val_tgt_donor_list)
             true_counts = true_counts.detach().cpu()
             pred_counts = pred_counts.detach().cpu()
             test_obs = pd.DataFrame(

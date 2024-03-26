@@ -32,14 +32,16 @@ style.use(
 
 adata = sc.read_h5ad('./res/Petra/cls_embeddings_cosine_similarity.h5ad')
 
+
 # Plotting log normalised embeddings
 # --------------------------------
 
 # plot log normalised embeddings
+
 sc.pp.normalize_total(adata, target_sum=1e4)
 sc.pp.log1p(adata)
 sc.tl.pca(adata, svd_solver='arpack', n_comps=50)
-sc.pp.neighbors(adata, n_neighbors=10, n_pcs=50)
+sc.pp.neighbors(adata, n_neighbors=15, n_pcs=50)
 sc.tl.umap(adata)
 adata.obsm['X_lognorm_umap'] = adata.obsm['X_umap']
 
@@ -62,28 +64,35 @@ plt.close()
 
 # plot umap of cls embeddings
 fig, ax = plt.subplots(figsize=(5, 5))
+# create umap for each time point separately
+for time_point in adata.obs['time_point'].cat.categories:
+    adata_time = adata[adata.obs['time_point'] == time_point]
+    sc.pp.neighbors(adata_time, n_neighbors=15, use_rep='cls_embeddings')
+    sc.tl.umap(adata_time)
+    sc.pl.embedding(
+        adata_time,
+        basis='X_umap',
+        color=[
+            'cell_type',
+            'batch',
+        ],
+        ncols=2,
+        wspace=0.3,
+        frameon=False,
+        show=False,
+    )
+    plt.savefig(
+        f'./res/Petra/cls_embeddings_umap_{time_point}.pdf',
+        bbox_inches='tight',
+    )
+    plt.close()
+
+# full umap
 sc.pp.neighbors(adata, n_neighbors=15, use_rep='cls_embeddings')
 sc.tl.umap(adata)
-adata.obsm['X_CLS_umap'] = adata.obsm['X_umap']
-# use colorblind friendly palette
-# sc.pl.umap(
-#     adata,
-#     color=[
-#         'Cell_type',
-#         'Cell_population',
-#         'Cell_culture_batch',
-#         'Activation_level',
-#     ],  # leave gap between cell type and cell population
-#     wspace=0.5,
-#     ncols=2,
-#     #plot 2x2 grid
-
-#     frameon=False,
-#     show=False,
-# )
 sc.pl.embedding(
     adata,
-    basis='cls_embeddings',
+    basis='X_umap',
     color=[
         'cell_type',
         'cell_population',
@@ -96,10 +105,48 @@ sc.pl.embedding(
     show=False,
 )
 plt.savefig(
-    './res/Petra/full_data_cls_embeddings_umap.pdf',
+    './res/Petra/cls_embeddings_umap.pdf',
     bbox_inches='tight',
 )
 plt.close()
+# sc.pp.neighbors(adata, n_neighbors=15, use_rep='cls_embeddings')
+# sc.tl.umap(adata)
+# adata.obsm['X_CLS_umap'] = adata.obsm['X_umap']
+# # use colorblind friendly palette
+# # sc.pl.umap(
+# #     adata,
+# #     color=[
+# #         'Cell_type',
+# #         'Cell_population',
+# #         'Cell_culture_batch',
+# #         'Activation_level',
+# #     ],  # leave gap between cell type and cell population
+# #     wspace=0.5,
+# #     ncols=2,
+# #     #plot 2x2 grid
+
+# #     frameon=False,
+# #     show=False,
+# # )
+# sc.pl.embedding(
+#     adata,
+#     basis='X_CLS_umap',
+#     color=[
+#         'cell_type',
+#         'cell_population',
+#         'time_point',
+#         'batch',
+#     ],
+#     ncols=2,
+#     wspace=0.3,
+#     frameon=False,
+#     show=False,
+# )
+# plt.savefig(
+#     './res/Petra/full_data_cls_embeddings_umap.pdf',
+#     bbox_inches='tight',
+# )
+# plt.close()
 
 
 var_names = adata.obsm['cosine_similarity'].columns
@@ -171,7 +218,7 @@ plt.close()
 # Plotting generate results
 # --------------------------------
 adata = sc.read_h5ad(
-    '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+    '/lustre/scratch123/hgi/projects/thy_imm_expr/t_generative/'
     'T_perturb/T_perturb/plt/res/Petra/generate_adata.h5ad'
 )
 # log normalised counts

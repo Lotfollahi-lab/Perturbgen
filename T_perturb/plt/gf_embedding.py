@@ -29,9 +29,9 @@ if os.getcwd().split('/')[-3] != 'T_perturb':
     print('Changed working directory to root of repository')
 
 tokenized_dir = (
-    '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    'T_perturb/T_perturb/pp/res/dataset/'
-    '{dataset_name}'
+    f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+    f'T_perturb/T_perturb/pp/res/dataset/'
+    f'{dataset_name}'
 )
 dataset = load_from_disk(tokenized_dir)
 num_labels = len(set(dataset['Cell_type']))
@@ -100,7 +100,6 @@ class non_sorted_EmbExtractor(EmbExtractor):
             embs_df = pd.DataFrame(
                 embs_df[0:255].median(axis='rows'), columns=[self.exact_summary_stat]
             ).T
-
         if cell_state is not None:
             return embs
         else:

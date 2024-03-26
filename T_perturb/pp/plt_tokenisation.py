@@ -21,23 +21,33 @@ style.use(
 
 seed_no = 42
 np.random.seed(seed_no)
+if os.getcwd().split('/')[-3] != 'T_perturb':
+    # set working directory to root of repository
+    os.chdir(
+        '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+        't_generative/T_perturb/T_perturb/pp'
+    )
+    print('Changed working directory to root of repository')
+
 
 # --- Explore tokenised data ---
 # Filter adata for only DEGs
-degs = pd.read_csv(
+# read pickle file
+with open(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    'generative_modelling_omic_notebooks/'
-    'pp/res/deg/significant_deg_1.5logfc_0.05padj_hvg_5k.csv'
-)
-unique_degs = degs['names'].unique()
-dataset = load_from_disk('./res/dataset/cytoimmgen_tokenised_degs.dataset')
+    'T_perturb/T_perturb/pp/res/token_id_to_genename_hvg.pkl',
+    'rb',
+) as f:
+    tokenid_to_hvg_genename = pickle.load(f)
+unique_hvg_genes = list(tokenid_to_hvg_genename.values())
+dataset = load_from_disk('./res/dataset/cytoimmgen_tokenised_hvg_paired.dataset')
 # extract length of tokenised data
 length = dataset['length']
 # plot histogram of length
 plt.hist(length, bins=100)
-plt.xlabel('DEG/cell')
+plt.xlabel('hvg/cell')
 plt.ylabel('Counts')
-plt.savefig('./res/tokenised_deg/length_histogram.pdf', dpi=300, bbox_inches='tight')
+plt.savefig('./res/tokenised_hvg/length_histogram.pdf', dpi=300, bbox_inches='tight')
 plt.close()
 
 # create pickle file with length
@@ -65,7 +75,7 @@ for i in tqdm(range(len(dataset))):
     ensembl_ids = [swapped_token_dictionary.get(i, None) for i in input_ids_tmp]
     ensembl_ids_list.append(ensembl_ids)
 # load adata
-adata = sc.read_h5ad('./res/h5ad_data/cytoimmgen_tokenisation_degs.h5ad')
+adata = sc.read_h5ad('./res/h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad')
 # use adata var to map ensembl ids to gene names
 ensembl_id_to_genename = dict(zip(adata.var_names, adata.var['gene_name']))
 gene_name_list = [
@@ -73,63 +83,99 @@ gene_name_list = [
     for ensembl_ids in ensembl_ids_list
 ]
 
-# in gene_name_list if gene name is in unique_degs then append idx to dictionnary
-degs_idx_dict: Dict[str, list] = {}
+# in gene_name_list if gene name is in unique_hvgs then append idx to dictionnary
+hvg_idx_dict: Dict[str, list] = {}
 
-for gene in tqdm(unique_degs):
-    degs_idx_dict[gene] = []
+for gene in tqdm(unique_hvg_genes):
+    hvg_idx_dict[gene] = []
     for gene_name in gene_name_list:
         if gene in gene_name:
             # append index of gene
-            degs_idx_dict[gene].append(gene_name.index(gene))
+            hvg_idx_dict[gene].append(gene_name.index(gene))
         else:
-            degs_idx_dict[gene].append(np.nan)
+            hvg_idx_dict[gene].append(np.nan)
 # save dictionary
-with open('./res/tokenised_deg/degs_tokenisation_overlap.pkl', 'wb') as f:
-    pickle.dump(degs_idx_dict, f)
+with open('./res/tokenised_hvg/hvgs_tokenisation_overlap.pkl', 'wb') as f:
+    pickle.dump(hvg_idx_dict, f)
+
 # create dataframe
-degs_idx_df = pd.DataFrame.from_dict(degs_idx_dict)
-degs_idx_df['Time_point'] = dataset['Time_point']
-degs_idx_df['Time_point'] = pd.Categorical(
-    degs_idx_df['Time_point'], ['0h', '16h', '40h', '5d']
+hvg_idx_df = pd.DataFrame.from_dict(hvg_idx_dict)
+hvg_idx_df['Time_point'] = dataset['Time_point']
+hvg_idx_df['Time_point'] = pd.Categorical(
+    hvg_idx_df['Time_point'], ['0h', '16h', '40h', '5d']
 )
 # ignore nan values
-degs_idx_df[~degs_idx_df['CD69'].isna()]['CD69'].plot(kind='hist', bins=100)
-plt.xlabel('rank of degs')
+hvg_idx_df[~hvg_idx_df['CD69'].isna()]['CD69'].plot(kind='hist', bins=100)
+plt.xlabel('rank of hvg')
 plt.ylabel('Counts')
 plt.savefig(
-    './res/tokenised_deg/deg_idx_histogram_CD69.pdf', dpi=300, bbox_inches='tight'
+    './res/tokenised_hvg/hvg_idx_histogram_CD69.pdf', dpi=300, bbox_inches='tight'
 )
 plt.close()
-sns.violinplot(data=degs_idx_df, y='CD69', hue='Time_point', orient='v')
+sns.violinplot(data=hvg_idx_df, y='CD69', hue='Time_point', orient='v')
 plt.xlabel('Timepoint')
 plt.ylabel('Ranks')
 plt.title('CD69')
-plt.savefig('./res/tokenised_deg/deg_idx_violin_CD69.pdf', dpi=300, bbox_inches='tight')
+plt.savefig('./res/tokenised_hvg/hvg_idx_violin_CD69.pdf', dpi=300, bbox_inches='tight')
 plt.close()
-degs_idx_df[~degs_idx_df['IL2RA'].isna()]['IL2RA'].plot(kind='hist', bins=100)
-plt.xlabel('rank of degs')
+hvg_idx_df[~hvg_idx_df['IL2RA'].isna()]['IL2RA'].plot(kind='hist', bins=100)
+plt.xlabel('rank of hvg')
 plt.ylabel('Counts')
 plt.title('IL2RA')
 plt.savefig(
-    './res/tokenised_deg/deg_idx_histogram_IL2RA.pdf', dpi=300, bbox_inches='tight'
+    './res/tokenised_hvg/hvg_idx_histogram_IL2RA.pdf', dpi=300, bbox_inches='tight'
 )
 plt.close()
-# plot violin plot of degs
-sns.violinplot(data=degs_idx_df, y='IL2RA', hue='Time_point', orient='v')
+# plot violin plot of hvgs
+sns.violinplot(data=hvg_idx_df, y='IL2RA', hue='Time_point', orient='v')
 plt.xlabel('Timepoint')
 plt.ylabel('Ranks')
 plt.title('IL2RA')
 plt.savefig(
-    './res/tokenised_deg/deg_idx_violin_IL2RA.pdf', dpi=300, bbox_inches='tight'
+    './res/tokenised_hvg/hvg_idx_violin_IL2RA.pdf', dpi=300, bbox_inches='tight'
 )
 plt.close()
-sns.violinplot(data=degs_idx_df, y='IL7R', hue='Time_point', orient='v')
+sns.violinplot(data=hvg_idx_df, y='IL7R', hue='Time_point', orient='v')
 plt.xlabel('Timepoint')
 plt.ylabel('Ranks')
 plt.title('IL7R')
-plt.savefig('./res/tokenised_deg/deg_idx_violin_IL7R.pdf', dpi=300, bbox_inches='tight')
+plt.savefig('./res/tokenised_hvg/hvg_idx_violin_IL7R.pdf', dpi=300, bbox_inches='tight')
 plt.close()
 # check for columns with only nan values
-nan_columns = degs_idx_df.columns[degs_idx_df.isna().all()].tolist()
+nan_columns = hvg_idx_df.columns[hvg_idx_df.isna().all()].tolist()
 print(f'Columns where all values are NaN: {nan_columns}')
+
+# calculate mean rank of hvgs
+mean_rank = hvg_idx_df.iloc[:, :-1].mean()
+# calculate mean expression of hvgs
+adata.var_names = adata.var['gene_name']
+expression = adata[:, hvg_idx_df.iloc[:, :-1].columns].X.A
+# calculate mean expression of hvgs
+median_expression = []
+non_zero = []
+for i in range(expression.shape[1]):
+    # non-zero median expression
+    tmp = expression[:, i]
+    tmp_ = tmp[tmp != 0]
+    median_expression.append(np.median(tmp_))
+    # count number of non-zero values
+    non_zero.append(len(tmp_))
+
+mean_df = pd.DataFrame(
+    {'Mean_rank': mean_rank, 'Mean_expression': median_expression, 'Non_zero': non_zero}
+)
+# create spearman correltion scatter plot
+fig = plt.figure()
+ax = fig.add_subplot(111)
+sc = ax.scatter(
+    mean_df['Mean_rank'], mean_df['Mean_expression'], s=5, c=mean_df['Non_zero']
+)
+plt.colorbar(sc)
+plt.xlabel('Mean rank')
+plt.ylabel('Non-zero median expression')
+plt.savefig(
+    './res/tokenised_hvg/mean_rank_vs_median_expression.pdf',
+    dpi=300,
+    bbox_inches='tight',
+)
+plt.close()
