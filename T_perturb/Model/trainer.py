@@ -556,6 +556,7 @@ class CountDecodertrainer(LightningModule):
         self.test_tgt_cell_population_list: List[str] = []
         self.test_tgt_donor_list: List[str] = []
         self.test_tgt_time_point_list: List[str] = []
+        self.test_cls_embeddings_list: List[torch.tensor] = []
 
     def forward(self, batch):
         tgt_input_id_dict = {}
@@ -972,6 +973,7 @@ class CountDecodertrainer(LightningModule):
                 iterations=self.iterations,
                 cls_positions=cls_positions,
             )
+            print(outputs)
             count_loss, pred_count_list = self.compute_count_loss(outputs, batch)
             print('Test loss:', count_loss)
             self.log(
@@ -1003,7 +1005,8 @@ class CountDecodertrainer(LightningModule):
                 )
                 self.test_tgt_cell_type_list.append(batch['tgt_cell_type'])
                 self.test_tgt_donor_list.append(batch['tgt_donor'])
-                self.test_cls_embeddings_list.append(batch['cls_embeddings'])
+                cls_embeddings = outputs[f'cls_embedding_t{time_step}']
+                self.test_cls_embeddings_list.append(cls_embeddings)
 
             mean_mse = torch.mean(torch.stack(mse_all))
             self.log(
@@ -1044,6 +1047,7 @@ class CountDecodertrainer(LightningModule):
             tgt_time_point = np.concatenate(self.test_tgt_time_point_list)
             tgt_cell_type = np.concatenate(self.test_tgt_cell_type_list)
             tgt_donor = np.concatenate(self.test_tgt_donor_list)
+            cls_embeddings = torch.cat(self.test_cls_embeddings_list).detach().cpu()
             test_obs = pd.DataFrame(
                 np.array(
                     [tgt_cell_type, tgt_cell_population, tgt_time_point, tgt_donor]
@@ -1052,6 +1056,7 @@ class CountDecodertrainer(LightningModule):
             )
             pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs)
             pred_adata.layers['counts'] = true_counts.numpy()
+            pred_adata.obsm['cls_embeddings'] = cls_embeddings.numpy()
             # save adata
             pred_adata.write_h5ad(
                 '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
