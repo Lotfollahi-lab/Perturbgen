@@ -445,15 +445,18 @@ class Petra(nn.Module):
         tgt_pad_dict = {}
         if generate_id is not None:
             tgt_pad = self.generate_pad(generate_id)
-        elif len(tgt_input_id_dict) > 1:
-            for _, tgt_input_id in tgt_input_id_dict.items():
-                tgt_pad_dict[f'tgt_pad_t{time_step}'] = self.generate_pad(tgt_input_id)
-                time_step = time_step + 1
-            tgt_input_id_list = [tensor for tensor in tgt_input_id_dict.values()]
-            tgt_input_id = torch.cat((tgt_input_id_list), dim=1)
-        elif len(tgt_input_id_dict) == 1:
-            tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{test_time_step}']
-            tgt_pad = self.generate_pad(tgt_input_id)
+        elif tgt_input_id_dict is not None:
+            if len(tgt_input_id_dict) > 1:
+                for _, tgt_input_id in tgt_input_id_dict.items():
+                    tgt_pad_dict[f'tgt_pad_t{time_step}'] = self.generate_pad(
+                        tgt_input_id
+                    )
+                    time_step = time_step + 1
+                tgt_input_id_list = [tensor for tensor in tgt_input_id_dict.values()]
+                tgt_input_id = torch.cat((tgt_input_id_list), dim=1)
+            elif len(tgt_input_id_dict) == 1:
+                tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{test_time_step}']
+                tgt_pad = self.generate_pad(tgt_input_id)
 
         src_attention_mask = src_input_id == 0
         # convert to numeric type
@@ -463,20 +466,20 @@ class Petra(nn.Module):
             tgt_mask = generate_id == (self.mask_token)
             tgt_mask = tgt_mask | (generate_id == 0)
             tgt_input_id = generate_id.clone()
-
-        if len(tgt_input_id_dict) > 1:
-            tgt_mask, labels, tgt_pad = self.generate_mask_train(
-                tgt_input_id_dict,
-                tgt_pad_dict,
-                self.mlm_probability,
-                len(tgt_input_id_dict),
-            )
-            tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
-        elif (generate is not True) & (len(tgt_input_id_dict) == 1):
-            labels, tgt_mask = self.generate_pad_testing(
-                tgt_input_id_dict, tgt_pad, self.mlm_probability, test_time_step
-            )
-            tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
+        else:
+            if len(tgt_input_id_dict) > 1:
+                tgt_mask, labels, tgt_pad = self.generate_mask_train(
+                    tgt_input_id_dict,
+                    tgt_pad_dict,
+                    self.mlm_probability,
+                    len(tgt_input_id_dict),
+                )
+                tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
+            elif (generate is not True) & (len(tgt_input_id_dict) == 1):
+                labels, tgt_mask = self.generate_pad_testing(
+                    tgt_input_id_dict, tgt_pad, self.mlm_probability, test_time_step
+                )
+                tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
         # else:
         #     tgt_pad = torch.cat([tgt_pad_dict[key] for key in tgt_pad_dict], dim=1)
 
@@ -499,7 +502,6 @@ class Petra(nn.Module):
         elif return_embeddings:
             outputs['logits'] = logits
             outputs['dec_embedding'] = dec_embedding
-            print(outputs['dec_embedding'].shape)
 
         else:
             outputs['labels'] = labels
@@ -665,6 +667,7 @@ class CountDecoder(nn.Module):
             cls_embedding = outputs['dec_embedding'][:, cls_position, :]
             count_outputs_tmp = self.decoder_list[i].forward(cls_embedding)
             count_outputs[f'count_output_t{i+1}'] = count_outputs_tmp
+            count_outputs[f'cls_embedding_t{i+1}'] = cls_embedding
         return count_outputs
 
     def generate_sequence(

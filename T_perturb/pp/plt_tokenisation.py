@@ -97,6 +97,9 @@ for gene in tqdm(unique_hvg_genes):
 # save dictionary
 with open('./res/tokenised_hvg/hvgs_tokenisation_overlap.pkl', 'wb') as f:
     pickle.dump(hvg_idx_dict, f)
+with open('./res/tokenised_hvg/hvgs_tokenisation_overlap.pkl', 'rb') as f:
+    hvg_idx_dict = pickle.load(f)
+
 
 # create dataframe
 hvg_idx_df = pd.DataFrame.from_dict(hvg_idx_dict)
@@ -112,7 +115,8 @@ plt.savefig(
     './res/tokenised_hvg/hvg_idx_histogram_CD69.pdf', dpi=300, bbox_inches='tight'
 )
 plt.close()
-sns.violinplot(data=hvg_idx_df, y='CD69', hue='Time_point', orient='v')
+plt_CD69 = sns.violinplot(data=hvg_idx_df, y='CD69', hue='Time_point', orient='v')
+plt_CD69.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
 plt.xlabel('Timepoint')
 plt.ylabel('Ranks')
 plt.title('CD69')
@@ -121,13 +125,12 @@ plt.close()
 hvg_idx_df[~hvg_idx_df['IL2RA'].isna()]['IL2RA'].plot(kind='hist', bins=100)
 plt.xlabel('rank of hvg')
 plt.ylabel('Counts')
-plt.title('IL2RA')
 plt.savefig(
     './res/tokenised_hvg/hvg_idx_histogram_IL2RA.pdf', dpi=300, bbox_inches='tight'
 )
 plt.close()
-# plot violin plot of hvgs
-sns.violinplot(data=hvg_idx_df, y='IL2RA', hue='Time_point', orient='v')
+plt_IL2RA = sns.violinplot(data=hvg_idx_df, y='IL2RA', hue='Time_point', orient='v')
+plt_IL2RA.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
 plt.xlabel('Timepoint')
 plt.ylabel('Ranks')
 plt.title('IL2RA')
@@ -135,7 +138,10 @@ plt.savefig(
     './res/tokenised_hvg/hvg_idx_violin_IL2RA.pdf', dpi=300, bbox_inches='tight'
 )
 plt.close()
-sns.violinplot(data=hvg_idx_df, y='IL7R', hue='Time_point', orient='v')
+# plot violin plot of hvgs
+
+plt_IL7R = sns.violinplot(data=hvg_idx_df, y='IL7R', hue='Time_point', orient='v')
+plt_IL7R.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
 plt.xlabel('Timepoint')
 plt.ylabel('Ranks')
 plt.title('IL7R')
@@ -145,36 +151,38 @@ plt.close()
 nan_columns = hvg_idx_df.columns[hvg_idx_df.isna().all()].tolist()
 print(f'Columns where all values are NaN: {nan_columns}')
 
-# calculate mean rank of hvgs
 mean_rank = hvg_idx_df.iloc[:, :-1].mean()
 # calculate mean expression of hvgs
 adata.var_names = adata.var['gene_name']
 expression = adata[:, hvg_idx_df.iloc[:, :-1].columns].X.A
+
 # calculate mean expression of hvgs
-median_expression = []
+mean_expression = []
 non_zero = []
 for i in range(expression.shape[1]):
     # non-zero median expression
     tmp = expression[:, i]
     tmp_ = tmp[tmp != 0]
-    median_expression.append(np.median(tmp_))
+    mean_expression.append(np.mean(tmp_))
     # count number of non-zero values
     non_zero.append(len(tmp_))
 
 mean_df = pd.DataFrame(
-    {'Mean_rank': mean_rank, 'Mean_expression': median_expression, 'Non_zero': non_zero}
+    {'Mean_rank': mean_rank, 'Mean_expression': mean_expression, 'Non_zero': non_zero}
 )
 # create spearman correltion scatter plot
+# compute spearman correlation
+pearson_corr = mean_df.corr(method='pearson')
 fig = plt.figure()
 ax = fig.add_subplot(111)
 sc = ax.scatter(
-    mean_df['Mean_rank'], mean_df['Mean_expression'], s=5, c=mean_df['Non_zero']
+    mean_df['Mean_rank'], mean_df['Mean_expression'], s=10, c=mean_df['Non_zero']
 )
 plt.colorbar(sc)
 plt.xlabel('Mean rank')
-plt.ylabel('Non-zero median expression')
+plt.ylabel('Non-zero mean expression')
 plt.savefig(
-    './res/tokenised_hvg/mean_rank_vs_median_expression.pdf',
+    './res/tokenised_hvg/mean_rank_vs_mean_expression.pdf',
     dpi=300,
     bbox_inches='tight',
 )

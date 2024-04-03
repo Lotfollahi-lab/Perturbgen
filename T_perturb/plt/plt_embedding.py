@@ -3,6 +3,7 @@ import random
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import scanpy as sc
 import seaborn as sns
 from matplotlib import style
@@ -30,23 +31,25 @@ style.use(
 # Plotting CLS embeddings
 # --------------------------------
 
-adata = sc.read_h5ad('./res/Petra/cls_embeddings_cosine_similarity.h5ad')
-
 
 # Plotting log normalised embeddings
 # --------------------------------
 
 # plot log normalised embeddings
+adata_full = sc.read_h5ad(
+    '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+    'T_perturb/T_perturb/pp/res/h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad'
+)
 
-sc.pp.normalize_total(adata, target_sum=1e4)
-sc.pp.log1p(adata)
-sc.tl.pca(adata, svd_solver='arpack', n_comps=50)
-sc.pp.neighbors(adata, n_neighbors=15, n_pcs=50)
-sc.tl.umap(adata)
-adata.obsm['X_lognorm_umap'] = adata.obsm['X_umap']
+sc.pp.normalize_total(adata_full, target_sum=1e4)
+sc.pp.log1p(adata_full)
+sc.tl.pca(adata_full, svd_solver='arpack', n_comps=50)
+sc.pp.neighbors(adata_full, n_neighbors=15, n_pcs=50)
+sc.tl.umap(adata_full)
+adata_full.obsm['X_lognorm_umap'] = adata_full.obsm['X_umap']
 
 sc.pl.embedding(
-    adata,
+    adata_full,
     basis='X_lognorm_umap',
     color=[
         'cell_type',
@@ -61,12 +64,12 @@ sc.pl.embedding(
 )
 plt.savefig('./res/full_data_umap_log_norm.pdf', dpi=300, bbox_inches='tight')
 plt.close()
-
+adata_cls = sc.read_h5ad('./res/Petra/cls_embeddings_cosine_similarity.h5ad')
 # plot umap of cls embeddings
 fig, ax = plt.subplots(figsize=(5, 5))
 # create umap for each time point separately
-for time_point in adata.obs['time_point'].cat.categories:
-    adata_time = adata[adata.obs['time_point'] == time_point]
+for time_point in adata_cls.obs['time_point'].cat.categories:
+    adata_time = adata_cls[adata_cls.obs['time_point'] == time_point]
     sc.pp.neighbors(adata_time, n_neighbors=15, use_rep='cls_embeddings')
     sc.tl.umap(adata_time)
     sc.pl.embedding(
@@ -82,16 +85,16 @@ for time_point in adata.obs['time_point'].cat.categories:
         show=False,
     )
     plt.savefig(
-        f'./res/Petra/cls_embeddings_umap_{time_point}.pdf',
+        f'./res/Petra/cls_embeddings_' f'umap_{time_point}.pdf',
         bbox_inches='tight',
     )
     plt.close()
 
 # full umap
-sc.pp.neighbors(adata, n_neighbors=15, use_rep='cls_embeddings')
-sc.tl.umap(adata)
+sc.pp.neighbors(adata_cls, n_neighbors=15, use_rep='cls_embeddings')
+sc.tl.umap(adata_cls)
 sc.pl.embedding(
-    adata,
+    adata_cls,
     basis='X_umap',
     color=[
         'cell_type',
@@ -149,15 +152,13 @@ plt.close()
 # plt.close()
 
 
-var_names = adata.obsm['cosine_similarity'].columns
+var_names = adata_cls.obsm['cosine_similarity'].columns
 # filter adata to only include genes in var_names
-adata = adata[:, var_names]
-adata.obs['Cell_type_activity'] = (
-    adata.obs['cell_type'].astype(str) + '_' + adata.obs['Activation_level'].astype(str)
-)
-adata.layers['cosine_similarity'] = adata.obsm['cosine_similarity']
+adata_cls = adata_cls[:, var_names]
+# create highly active and lowly active column
+adata_cls.layers['cosine_similarity'] = adata_cls.obsm['cosine_similarity']
 # categorise time points [16h, 40h, 5d]
-adata.obs['time_point'] = adata.obs['time_point'].cat.reorder_categories(
+adata_cls.obs['time_point'] = adata_cls.obs['time_point'].cat.reorder_categories(
     ['16h', '40h', '5d']
 )
 marker_genes = [
@@ -193,10 +194,11 @@ marker_genes = [
     'HLA-DRB1',
 ]
 # reorder genes based on marker genes
-adata.var
-adata = adata[:, marker_genes]
+adata_cls.var
+adata_cls = adata_cls[:, marker_genes]
+fig, ax = plt.subplots(figsize=(6, 10))
 sc.pl.dotplot(
-    adata,
+    adata_cls,
     marker_genes,
     use_raw=False,
     groupby=['time_point', 'cell_type'],
@@ -205,11 +207,43 @@ sc.pl.dotplot(
     show=False,
     swap_axes=True,
     var_group_rotation=60,
+    ax=ax,
 )
-
 # save figure
 plt.savefig(
     './res/Petra/cosine_similarity.pdf',
+    bbox_inches='tight',
+)
+plt.close()
+
+# creating plot for lowly active T cells
+adata_cls.obs['Activation_level'] = None
+# if .obs['cell_population'] endswith LA then
+# Activation_level = lowly active else highly active
+adata_cls.obs.loc[
+    adata_cls.obs['cell_population'].str.endswith('LA'), 'Activation_level'
+] = 'Lowly active'
+adata_cls.obs.loc[
+    ~adata_cls.obs['cell_population'].str.endswith('LA'), 'Activation_level'
+] = 'Highly active'
+# only for 16h time point
+adata_cls_16h = adata_cls[adata_cls.obs['time_point'] == '16h']
+fig, ax = plt.subplots(figsize=(4, 10))
+sc.pl.dotplot(
+    adata_cls_16h,
+    marker_genes,
+    use_raw=False,
+    groupby=['Activation_level'],
+    dendrogram=False,
+    layer='cosine_similarity',
+    show=False,
+    swap_axes=True,
+    var_group_rotation=60,
+    ax=ax,
+)
+# save figure
+plt.savefig(
+    './res/Petra/cosine_similarity_LA_HA_16h.pdf',
     bbox_inches='tight',
 )
 plt.close()
@@ -218,7 +252,7 @@ plt.close()
 # Plotting generate results
 # --------------------------------
 adata = sc.read_h5ad(
-    '/lustre/scratch123/hgi/projects/thy_imm_expr/t_generative/'
+    '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
     'T_perturb/T_perturb/plt/res/Petra/generate_adata.h5ad'
 )
 # log normalised counts
@@ -266,13 +300,82 @@ sc.pl.umap(
     show=False,
 )
 plt.savefig(f'./res/true_umap_{mode}.pdf', dpi=300, bbox_inches='tight')
-
+adata_full = sc.read_h5ad(
+    '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+    'T_perturb/T_perturb/pp/res/h5ad_pairing_hvg/'
+    'cytoimmgen_tokenised_hvg.h5ad'
+)
+adata_random = adata_full.copy()
+sc.pp.subsample(adata_random, n_obs=adata_true.n_obs)
 # calculate emd and mmd between true and generated data
-emd = evaluate_emd(adata_true, adata, 'Time_point')
-mmd = evaluate_mmd(adata_true, adata, 'Time_point')
-print(f'EMD: {emd}')
-print(f'MMD: {mmd}')
-# get random baseline
-permutation = np.random.permutation(adata_true.n_obs)
-adata_random = adata_true[permutation].copy()
-emd_random = evaluate_emd(adata_true, adata_random, 'Time_point')
+emd_list = []
+emd_random = []
+mmd_list = []
+mmd_random = []
+for time_point in adata_true.obs['Time_point'].cat.categories:
+    adata_time_true = adata_true[adata_true.obs['Time_point'] == time_point]
+    adata_time_pred = adata[adata.obs['Time_point'] == time_point]
+    emd_df = evaluate_emd(adata_time_true, adata_time_pred, 'Cell_type')
+    emd_df['Time_point'] = time_point
+    emd_list.append(emd_df)
+    emd_random_df = evaluate_emd(adata_time_true, adata_random, 'Cell_type')
+    emd_random_df['Time_point'] = time_point
+    emd_random.append(emd_random_df)
+    mmd_df = evaluate_mmd(adata_time_true, adata_time_pred, 'Cell_type')
+    mmd_df['Time_point'] = time_point
+    mmd_list.append(mmd_df)
+    mmd_random_df = evaluate_mmd(adata_time_true, adata_random, 'Cell_type')
+    mmd_random_df['Time_point'] = time_point
+    mmd_random.append(mmd_random_df)
+
+# create a dataframe to plot results as barplots the results are list of dictionnaries
+emd_random_df = pd.concat(emd_random)
+emd_random_df['Type'] = 'random'
+
+emd_df = pd.concat(emd_list)
+emd_df['Type'] = 'generated'
+mmd_df = pd.concat(mmd_list)
+mmd_df['Type'] = 'generated'
+mmd_random_df = pd.concat(mmd_random)
+mmd_random_df['Type'] = 'random'
+df = pd.concat([emd_df, emd_random_df, mmd_df, mmd_random_df])
+# create long df for plotting
+df['Condition'] = df.index
+df_long = pd.melt(
+    df,
+    id_vars=['Time_point', 'Type', 'Condition'],
+    var_name='Metric',
+    value_name='Value',
+)
+# drop nan values
+df_long = df_long.dropna()
+# plot emd and mmd per time point
+fig, ax = plt.subplots(1, 2, figsize=(12, 5))
+sns.barplot(
+    x='Time_point',
+    y='Value',
+    hue='Type',
+    data=df_long[df_long['Metric'] == 'emd'],
+    ax=ax[0],
+    errorbar=None,
+    legend=False,
+)
+ax[0].set_title('EMD')
+ax[0].set_ylabel('EMD')
+ax[0].set_xlabel('Time point')
+sns.barplot(
+    x='Time_point',
+    y='Value',
+    hue='Type',
+    data=df_long[df_long['Metric'] == 'mmd'],
+    ax=ax[1],
+    errorbar=None,
+)
+ax[1].set_title('MMD')
+ax[1].set_ylabel('MMD')
+ax[1].set_xlabel('Time point')
+plt.subplots_adjust(wspace=0.5)
+plt.savefig('./res/emd_mmd_timepoint.pdf', bbox_inches='tight')
+# save dataframe
+df_long.to_csv('./res/emd_mmd_timepoint.csv')
+df_long.groupby(['Metric', 'Type'])['Value'].mean()

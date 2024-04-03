@@ -163,11 +163,16 @@ def evaluate_emd(
                     )
                 emd_list[-1]['emd_deg'] = np.mean(wd_deg)
         emd_df = pd.DataFrame(emd_list).set_index('condition')
+
     else:
         true_data_ = true_data.copy()
         pred_data_ = pred_data.copy()
         wd = []
         for i, _ in enumerate(true_data_.var_names):
+            if issparse(true_data_.X):
+                true_data_.X = true_data_.X.A
+            if issparse(pred_data_.X):
+                pred_data_.X = pred_data_.X.A
             wd.append(
                 wasserstein_distance(
                     torch.Tensor(true_data_.X[:, i]), torch.Tensor(pred_data_.X[:, i])
@@ -175,4 +180,4 @@ def evaluate_emd(
             )
         emd_list.append({'emd': np.mean(wd)})
         emd_df = pd.DataFrame(emd_list)
-        return emd_df
+    return emd_df
