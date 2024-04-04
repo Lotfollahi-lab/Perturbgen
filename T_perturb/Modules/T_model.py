@@ -172,6 +172,41 @@ class CrossAttention(nn.Module):
 #         return x
 
 
+class Gating(nn.Module):
+    def __init__(self, dim, n_heads, d_head, dropout):
+        super().__init__()
+        self.gates = nn.ModuleList(
+            [nn.Sequential(nn.Linear(dim, dim), nn.Sigmoid()) for _ in range(3)]
+        )
+        self.attention_blocks = nn.ModuleList(
+            [
+                CrossAttention(
+                    query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout
+                )
+                for _ in range(3)
+            ]
+        )
+
+    def forward(self, x, disable_gates=None):
+        # disable_gates is a list of gate indices to be forced to zero
+        if disable_gates is None:
+            disable_gates = []
+
+        gated_outputs = []
+        for i, attention_block in enumerate(self.attention_blocks):
+            block_output = attention_block(x)
+            if i in disable_gates:
+                gated_output = block_output * 0  # Force the gated output to be zero
+            else:
+                gate = self.gates[i](block_output)
+                gated_output = block_output * gate
+            gated_outputs.append(gated_output)
+
+        # Combine gated outputs; this part remains unchanged
+        combined_output = torch.stack(gated_outputs, dim=-1).sum(dim=-1)
+        return combined_output
+
+
 class DecoderLayer(nn.Module):
     def __init__(
         self, dim, n_heads, d_head, hidden_size, dropout=0.0, context_dim=None
@@ -180,6 +215,8 @@ class DecoderLayer(nn.Module):
         self.self_attn = CrossAttention(
             query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout
         )
+        self.gating = Gating(dim, n_heads, d_head, dropout)
+
         self.cross_attn = CrossAttention(
             query_dim=dim,
             context_dim=context_dim,
@@ -193,15 +230,21 @@ class DecoderLayer(nn.Module):
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)
         self.norm3 = nn.LayerNorm(dim)
+        self.norm4 = nn.LayerNorm(dim)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None):
+    def forward(
+        self, x, src_mask=None, tgt_mask=None, enc_output=None, disable_gates=None
+    ):
         attn_output = self.self_attn(x, mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
-        attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
-        x = self.norm2(x + self.dropout(attn_output))
+        gating_output = self.gating(x, disable_gates=disable_gates)
+        x = self.norm2(x + self.dropout(gating_output))
+        # :TODO check gating tomorrow
+        attn_output = self.cross_attn(gating_output, context=enc_output, mask=src_mask)
+        x = self.norm3(x + self.dropout(attn_output))
         ff_output = self.feed_forward(x)
-        x = self.norm3(x + self.dropout(ff_output))
+        x = self.norm4(x + self.dropout(ff_output))
         return x
 
 
@@ -309,6 +352,7 @@ class Petra(nn.Module):
         self.dropout = dropout
 
         total_vocab_size = tgt_vocab_size + len(time_steps)  # add one for cls token
+        self.time_steps = time_steps
         self.mask_token = total_vocab_size
         total_vocab_size = total_vocab_size + 1
         self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
@@ -390,7 +434,7 @@ class Petra(nn.Module):
         labels_ = torch.cat([labels_dict[key] for key in labels_dict], dim=1)
         tgt_mask_ = torch.cat([tgt_mask_dict[key] for key in tgt_mask_dict], dim=1)
         tgt_pad_ = torch.cat([tgt_pad_dict[key] for key in tgt_pad_dict], dim=1)
-        return tgt_mask_, labels_, tgt_pad_
+        return tgt_mask_, labels_, tgt_pad_, time_random
 
     def prepare_tokens(self, x):
         # B, nc, d = x.shape
@@ -461,20 +505,22 @@ class Petra(nn.Module):
         src_attention_mask = src_input_id == 0
         # convert to numeric type
         src_attention_mask_int = src_attention_mask.int()
-
+        disabled_gates = None
         if generate_id is not None:
             tgt_mask = generate_id == (self.mask_token)
             tgt_mask = tgt_mask | (generate_id == 0)
             tgt_input_id = generate_id.clone()
         else:
             if len(tgt_input_id_dict) > 1:
-                tgt_mask, labels, tgt_pad = self.generate_mask_train(
+                tgt_mask, labels, tgt_pad, time_random = self.generate_mask_train(
                     tgt_input_id_dict,
                     tgt_pad_dict,
                     self.mlm_probability,
                     len(tgt_input_id_dict),
                 )
                 tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
+                filtered_list = filter(lambda x: x != time_random, self.time_steps)
+                disabled_gates = list(filtered_list)
             elif (generate is not True) & (len(tgt_input_id_dict) == 1):
                 labels, tgt_mask = self.generate_pad_testing(
                     tgt_input_id_dict, tgt_pad, self.mlm_probability, test_time_step
@@ -484,6 +530,11 @@ class Petra(nn.Module):
         #     tgt_pad = torch.cat([tgt_pad_dict[key] for key in tgt_pad_dict], dim=1)
 
         src_embedded = self.encoder_layers(src_input_id, src_attention_mask_int)
+        # create src padding mask
+
+        # concatenate with src_attention_mask
+        # src embedding
+
         tgt_input_id = tgt_input_id.masked_fill(tgt_pad, 0)
         tgt_embedding = self.token_embedding(tgt_input_id)
         tgt_embedded_position = self.prepare_tokens(tgt_embedding)
@@ -491,7 +542,7 @@ class Petra(nn.Module):
         dec_embedding = tgt_embedded_position
         for dec_layer in self.decoder_layers:
             dec_embedding = dec_layer(
-                dec_embedding, src_attention_mask, tgt_pad, enc_output
+                dec_embedding, src_attention_mask, tgt_pad, enc_output, disabled_gates
             )
         logits = self.fc(dec_embedding)
 
