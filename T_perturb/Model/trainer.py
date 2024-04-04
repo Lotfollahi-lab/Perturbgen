@@ -695,6 +695,7 @@ class CountDecodertrainer(LightningModule):
         mse_all = []
         for time_step in self.time_steps:
             pred_count = pred_count_list[time_step - 1]
+
             true_count = batch[f'tgt_counts_dict_t{time_step}']
             # MSE
             mse = self.metric['mse'](pred_count, true_count)
