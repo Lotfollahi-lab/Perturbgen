@@ -4,6 +4,7 @@ https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision
 '''
 import math
 
+import numpy as np
 import torch
 from einops import rearrange, repeat
 from torch import einsum, nn
@@ -172,50 +173,68 @@ class CrossAttention(nn.Module):
 #         return x
 
 
-class Gating(nn.Module):
-    def __init__(self, dim, n_heads, d_head, dropout):
-        super().__init__()
-        self.gates = nn.ModuleList(
-            [nn.Sequential(nn.Linear(dim, dim), nn.Sigmoid()) for _ in range(3)]
-        )
-        self.attention_blocks = nn.ModuleList(
-            [
-                CrossAttention(
-                    query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout
-                )
-                for _ in range(3)
-            ]
-        )
+# class Gating(nn.Module):
+#     def __init__(self, dim, n_heads, d_head, dropout):
+#         super().__init__()
+#         self.gates = nn.ModuleList(
+#             [nn.Sequential(nn.Linear(dim, dim), nn.Sigmoid()) for _ in range(3)]
+#         )
+#         self.attention_blocks = nn.ModuleList(
+#             [
+#                 CrossAttention(
+#                     query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout
+#                 )
+#                 for _ in range(3)
+#             ]
+#         )
 
-    def forward(self, x, disable_gates=None):
-        # disable_gates is a list of gate indices to be forced to zero
-        if disable_gates is None:
-            disable_gates = []
+#     def forward(self, x, disable_gates=None):
+#         # disable_gates is a list of gate indices to be forced to zero
+#         if disable_gates is None:
+#             disable_gates = []
 
-        gated_outputs = []
-        for i, attention_block in enumerate(self.attention_blocks):
-            block_output = attention_block(x)
-            if i in disable_gates:
-                gated_output = block_output * 0  # Force the gated output to be zero
-            else:
-                gate = self.gates[i](block_output)
-                gated_output = block_output * gate
-            gated_outputs.append(gated_output)
+#         gated_outputs = []
+#         for i, attention_block in enumerate(self.attention_blocks):
+#             block_output = attention_block(x)
+#             if i in disable_gates:
+#                 gated_output = block_output * 0  # Force the gated output to be zero
+#             else:
+#                 gate = self.gates[i](block_output)
+#                 gated_output = block_output * gate
+#             gated_outputs.append(gated_output)
 
-        # Combine gated outputs; this part remains unchanged
-        combined_output = torch.stack(gated_outputs, dim=-1).sum(dim=-1)
-        return combined_output
+#         # Combine gated outputs; this part remains unchanged
+#         combined_output = torch.stack(gated_outputs, dim=-1).sum(dim=-1)
+#         return combined_output
 
 
 class DecoderLayer(nn.Module):
     def __init__(
-        self, dim, n_heads, d_head, hidden_size, dropout=0.0, context_dim=None
+        self,
+        dim,
+        n_heads,
+        d_head,
+        hidden_size,
+        dropout=0.0,
+        context_dim=None,
+        num_blocks=3,
     ):
         super().__init__()
         self.self_attn = CrossAttention(
             query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout
         )
-        self.gating = Gating(dim, n_heads, d_head, dropout)
+
+        # Initialize attention blocks
+        self.attention_blocks = nn.ModuleList(
+            [
+                CrossAttention(
+                    query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout
+                )
+                for _ in range(num_blocks)
+            ]
+        )
+        # Initialize gates as zeros - indicating all blocks are initially inactive
+        self.gates = torch.nn.Parameter(torch.zeros(num_blocks), requires_grad=False)
 
         self.cross_attn = CrossAttention(
             query_dim=dim,
@@ -233,15 +252,31 @@ class DecoderLayer(nn.Module):
         self.norm4 = nn.LayerNorm(dim)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(
-        self, x, src_mask=None, tgt_mask=None, enc_output=None, disable_gates=None
-    ):
+    def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None, time_step=None):
         attn_output = self.self_attn(x, mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
-        gating_output = self.gating(x, disable_gates=disable_gates)
-        x = self.norm2(x + self.dropout(gating_output))
-        # :TODO check gating tomorrow
-        attn_output = self.cross_attn(gating_output, context=enc_output, mask=src_mask)
+        # Update gating mechanism based on provided gate_indices
+        self.gates.data.fill_(0)  # Ensure gates are reset to 0
+        if time_step is not None:
+            self.gates.data[
+                time_step - 1
+            ] = 1  # Activate selected gates based on gate_indices
+
+        for i, attention_block in enumerate(self.attention_blocks):
+            if self.gates[i] == 1:
+                # Process through the attention block if the gate is active
+                gated_output = attention_block(x, mask=tgt_mask)
+        # attn_time_ouput = []
+        # for i, attention_block in enumerate(self.attention_blocks):
+        #     if i == time_random:
+        #         block_output = attention_block(x)
+        #     else:
+        #         #skip the block
+        #         block_output = torch.zeros_like(x)
+        #     attn_time_ouput.append(block_output)
+        # aggregated_output = torch.stack(attn_time_ouput, dim=-1).sum(dim=-1)
+        x = self.norm2(x + self.dropout(gated_output))
+        attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
         x = self.norm3(x + self.dropout(attn_output))
         ff_output = self.feed_forward(x)
         x = self.norm4(x + self.dropout(ff_output))
@@ -370,12 +405,27 @@ class Petra(nn.Module):
         tgt_pad = tgt_pad == 0
         return tgt_pad
 
-    def generate_pad_testing(
-        self, tgt_input_id_dict, tgt_pad, mlm_probability=0.15, time_step=2
-    ):
-        tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_step}']
+    # def generate_pad_testing(
+    #     self, tgt_input_id_dict, tgt_pad, mlm_probability=0.15, time_step=2
+    # ):
+    #     tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_step}']
+    #     labels = tgt_input_id.clone()
+    #     # Initialize probability_matrix tensor without specifying device
+    #     probability_matrix = torch.full_like(
+    #         tgt_pad, mlm_probability, dtype=torch.float
+    #     )
+    #     cls_tgt_pad = tgt_pad.clone()
+    #     cls_tgt_pad[:, 0] = True
+    #     probability_matrix = probability_matrix.masked_fill(
+    #         cls_tgt_pad, 0
+    #     )  # add CLS token to the tokens
+    #     tgt_mask = torch.bernoulli(probability_matrix).bool()
+    #     labels[~tgt_mask] = -100
+
+    #     return labels, tgt_mask
+
+    def generate_mask(self, tgt_input_id, tgt_pad, mlm_probability=0.15):
         labels = tgt_input_id.clone()
-        # Initialize probability_matrix tensor without specifying device
         probability_matrix = torch.full_like(
             tgt_pad, mlm_probability, dtype=torch.float
         )
@@ -387,54 +437,7 @@ class Petra(nn.Module):
         tgt_mask = torch.bernoulli(probability_matrix).bool()
         labels[~tgt_mask] = -100
 
-        return labels, tgt_mask
-
-    def generate_mask_train(
-        self, tgt_input_id_dict, tgt_pad_dict, mlm_probability=0.15, time_step=2
-    ):
-        time_random = torch.randint(1, time_step + 1, (1,)).item()
-        tgt_pad = tgt_pad_dict[f'tgt_pad_t{time_random}']
-        # pad the subsequent timestep
-        # count_time = time_random
-        # while count_time != time_step:
-        #     all_pad = torch.ones_like(tgt_pad).bool()
-        #     tgt_pad_dict[f'tgt_pad_t{count_time+1}'] = all_pad
-        #     count_time = count_time + 1
-        tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_random}']
-        # initialize the dictionary with all -100 and overwrite it
-        labels_dict = {}
-        tgt_mask_dict = {}
-        for i in range(1, time_step + 1):
-            labels_dict[f'labels_t{i}'] = torch.full_like(
-                tgt_input_id, -100, dtype=torch.long
-            )
-            tgt_mask_dict[f'tgt_mask_t{i}'] = torch.full_like(
-                tgt_pad, False, dtype=torch.bool
-            )
-            tgt_pad_dict[f'tgt_pad_t{i}'] = torch.full_like(
-                tgt_pad, True, dtype=torch.bool
-            )
-
-        labels = tgt_input_id.clone()
-        # Initialize probability_matrix tensor without specifying device
-        probability_matrix = torch.full_like(
-            tgt_pad, mlm_probability, dtype=torch.float
-        )
-        cls_tgt_pad = tgt_pad.clone()
-        cls_tgt_pad[:, 0] = True
-        probability_matrix = probability_matrix.masked_fill(
-            cls_tgt_pad, 0
-        )  # add CLS token to the tokens
-        tgt_mask = torch.bernoulli(probability_matrix).bool()
-        labels[~tgt_mask] = -100
-        labels_dict[f'labels_t{time_random}'] = labels
-        tgt_mask_dict[f'tgt_mask_t{time_random}'] = tgt_mask
-        tgt_pad_dict[f'tgt_pad_t{time_random}'] = tgt_pad
-        # concatenate the labels
-        labels_ = torch.cat([labels_dict[key] for key in labels_dict], dim=1)
-        tgt_mask_ = torch.cat([tgt_mask_dict[key] for key in tgt_mask_dict], dim=1)
-        tgt_pad_ = torch.cat([tgt_pad_dict[key] for key in tgt_pad_dict], dim=1)
-        return tgt_mask_, labels_, tgt_pad_, time_random
+        return tgt_mask, labels
 
     def prepare_tokens(self, x):
         # B, nc, d = x.shape
@@ -472,19 +475,7 @@ class Petra(nn.Module):
     #         return scaled_logits, embed
 
     #     return scaled_logits
-
-    def forward(
-        self,
-        src_input_id,
-        original_lens,
-        tgt_input_id_dict=None,
-        context_len=None,
-        generate_id=None,
-        generate=False,
-        cls_positions=None,
-        test_time_step=2,
-        return_embeddings=False,
-    ):
+    def call_padding(self, tgt_input_id_dict, generate_id=None, test_time_step=1):
         time_step = 1
         tgt_pad_dict = {}
         if generate_id is not None:
@@ -498,70 +489,168 @@ class Petra(nn.Module):
                     time_step = time_step + 1
                 tgt_input_id_list = [tensor for tensor in tgt_input_id_dict.values()]
                 tgt_input_id = torch.cat((tgt_input_id_list), dim=1)
+                tgt_pad = None
+
             elif len(tgt_input_id_dict) == 1:
                 tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{test_time_step}']
                 tgt_pad = self.generate_pad(tgt_input_id)
 
+        return tgt_pad, tgt_pad_dict, tgt_input_id
+
+    def generate_src_mask(self, src_input_id):
         src_attention_mask = src_input_id == 0
-        # convert to numeric type
-        src_attention_mask_int = src_attention_mask.int()
-        disabled_gates = None
+        return src_attention_mask
+
+    def call_tgt_mask(
+        self,
+        tgt_input_id,
+        tgt_pad,
+        generate_id=None,
+    ):
         if generate_id is not None:
             tgt_mask = generate_id == (self.mask_token)
             tgt_mask = tgt_mask | (generate_id == 0)
             tgt_input_id = generate_id.clone()
         else:
-            if len(tgt_input_id_dict) > 1:
-                tgt_mask, labels, tgt_pad, time_random = self.generate_mask_train(
-                    tgt_input_id_dict,
-                    tgt_pad_dict,
-                    self.mlm_probability,
-                    len(tgt_input_id_dict),
-                )
-                tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
-                filtered_list = filter(lambda x: x != time_random, self.time_steps)
-                disabled_gates = list(filtered_list)
-            elif (generate is not True) & (len(tgt_input_id_dict) == 1):
-                labels, tgt_mask = self.generate_pad_testing(
-                    tgt_input_id_dict, tgt_pad, self.mlm_probability, test_time_step
-                )
-                tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
-        # else:
-        #     tgt_pad = torch.cat([tgt_pad_dict[key] for key in tgt_pad_dict], dim=1)
+            tgt_mask, labels = self.generate_mask(
+                tgt_input_id,
+                tgt_pad,
+                self.mlm_probability,
+            )
+            tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
 
-        src_embedded = self.encoder_layers(src_input_id, src_attention_mask_int)
-        # create src padding mask
+        return labels, tgt_input_id
 
-        # concatenate with src_attention_mask
-        # src embedding
+    def call_encoder(self, src_input_id, src_attention_mask):
+        enc_output = self.encoder_layers(src_input_id, src_attention_mask.int())
+        return enc_output
 
-        tgt_input_id = tgt_input_id.masked_fill(tgt_pad, 0)
-        tgt_embedding = self.token_embedding(tgt_input_id)
-        tgt_embedded_position = self.prepare_tokens(tgt_embedding)
-        enc_output = src_embedded
-        dec_embedding = tgt_embedded_position
+    def call_decoder(
+        self,
+        enc_output,
+        src_attention_mask,
+        dec_embedding,
+        tgt_pad,
+        time_random,
+        generate=False,
+        context_len=None,
+        return_embeddings=False,
+        labels=None,
+        cls_positions=None,
+    ):
         for dec_layer in self.decoder_layers:
             dec_embedding = dec_layer(
-                dec_embedding, src_attention_mask, tgt_pad, enc_output, disabled_gates
+                dec_embedding, src_attention_mask, tgt_pad, enc_output, time_random
             )
-        logits = self.fc(dec_embedding)
-
+        # :TODO rewrite this part logits not needed for running the other timepoints
         outputs = {}
+        if labels is not None:
+            logits = self.fc(dec_embedding)
+            outputs['logits'] = logits
+            outputs['labels'] = labels
         if (generate is True) and (context_len is not None):
             outputs['dec_embedding'] = dec_embedding
             outputs['logits'] = logits[:, context_len + 1 :, :]
         elif return_embeddings:
             outputs['logits'] = logits
             outputs['dec_embedding'] = dec_embedding
-
         else:
-            outputs['labels'] = labels
-            outputs['logits'] = logits
             outputs['dec_embedding'] = dec_embedding
-
         if cls_positions is not None:
             outputs['cls_positions'] = cls_positions
+        return outputs
 
+    def forward(
+        self,
+        src_input_id,
+        original_lens,
+        tgt_input_id_dict=None,
+        context_len=None,
+        generate_id=None,
+        generate=False,
+        cls_positions=None,
+        test_time_step=1,
+        return_embeddings=False,
+    ):
+        tgt_pad, tgt_pad_dict, tgt_input_id = self.call_padding(
+            tgt_input_id_dict, generate_id, test_time_step
+        )
+        src_attention_mask = self.generate_src_mask(src_input_id)
+        enc_output = self.call_encoder(src_input_id, src_attention_mask)
+        # distinction between selected time step and rest time steps
+        selected_time_step = np.random.choice(self.time_steps)
+        rest_time_steps = [
+            time_step
+            for time_step in self.time_steps
+            if time_step != selected_time_step
+        ]
+
+        # ---Initialise the decoder embeddings
+        # to provide as context for selected time step---
+        dec_embedding_list = []
+        tgt_pad_list = []
+        for time_step in rest_time_steps:
+            # pad all subsequent time steps from selected time step
+            tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_step}']
+            if time_step > selected_time_step:
+                # create all pads for tgt input id
+                tgt_pad = torch.ones_like(tgt_input_id).bool()
+            elif time_step < selected_time_step:
+                tgt_pad = tgt_pad_dict[f'tgt_pad_t{time_step}']
+            else:
+                raise ValueError('Time step should not be equal to selected time step')
+            tgt_input_id = tgt_input_id.masked_fill(tgt_pad, 0)
+
+            with torch.no_grad():
+                tgt_embedding = self.token_embedding(tgt_input_id)
+                # add positional embedding
+                dec_embedding = self.prepare_tokens(tgt_embedding)
+                dec_outputs = self.call_decoder(
+                    enc_output,
+                    src_attention_mask,
+                    dec_embedding,
+                    tgt_pad,
+                    time_step,
+                    generate,
+                    context_len,
+                    return_embeddings,
+                    None,
+                    cls_positions,
+                )
+                dec_embedding_list.append(dec_outputs['dec_embedding'])
+                tgt_pad_list.append(tgt_pad)
+        dec_embedding_output = torch.cat(dec_embedding_list, dim=1)
+        context_pad = torch.cat(tgt_pad_list, dim=1)
+
+        # only create maskings for the selected time step
+        selected_tgt_pad = tgt_pad_dict[f'tgt_pad_t{selected_time_step}']
+        selected_tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{selected_time_step}']
+        if not return_embeddings:
+            labels, masked_tgt_input_id = self.call_tgt_mask(
+                selected_tgt_input_id, selected_tgt_pad, generate_id
+            )
+            tgt_input_id = tgt_input_id.masked_fill(tgt_pad, 0)
+        else:
+            labels = None
+            tgt_input_id = selected_tgt_input_id
+        selected_tgt_embedding = self.token_embedding(masked_tgt_input_id)
+        selected_dec_embedding = self.prepare_tokens(selected_tgt_embedding)
+
+        # concatenate the embeddings
+        context = torch.cat([enc_output, dec_embedding_output], dim=1)
+        context_mask = torch.cat([src_attention_mask, context_pad], dim=1)
+        outputs = self.call_decoder(
+            context,
+            context_mask,
+            selected_dec_embedding,
+            selected_tgt_pad,
+            selected_time_step,
+            generate,
+            context_len,
+            return_embeddings,
+            labels,
+            cls_positions,
+        )
         return outputs
 
 
