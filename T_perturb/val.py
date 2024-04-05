@@ -29,7 +29,7 @@ def get_args():
     parser.add_argument(
         '--test_mode',
         type=str,
-        default='count',
+        default='masking',
         help='Mode [masking, count]',
     )
     parser.add_argument(
@@ -47,7 +47,7 @@ def get_args():
     parser.add_argument(
         '--return_embeddings',
         type=bool,
-        default=False,
+        default=True,
         help='return embedding',
     )
     parser.add_argument(
@@ -59,9 +59,9 @@ def get_args():
     parser.add_argument(
         '--ckpt_masking_path',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative'
-        '/T_perturb/T_perturb/Model/checkpoints/'
-        '20240326_1522_petra_train_masking_lr_0.001_'
+        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        'T_perturb/T_perturb/Model/checkpoints/'
+        '20240405_1742_petra_train_masking_lr_0.001_'
         'wd_0.001_batch_64_mlmp_0.15_tp_1-2-3.ckpt',
         help='path to checkpoint',
     )
@@ -109,7 +109,7 @@ def get_args():
         ),
         help='path to tgt',
     )
-    parser.add_argument('--batch_size', type=int, default=128, help='batch_size')
+    parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=False, help='shuffle')
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
