@@ -161,14 +161,17 @@ def map_input_ids(dataset):
     return dataset
 
 
-dataset = dataset.map(map_input_ids)
+# do not use the mapping function for the control dataset
+# Geneformer needs initial token ids to extract correct embeddings
+dataset_0h = dataset.select(cell_pairings['0h'])
+dataset_mapped = dataset.map(map_input_ids)
 paired_dataset_dir = f'./res/dataset_{gene_filtering_mode}'
 if not os.path.exists(paired_dataset_dir):
     os.makedirs(paired_dataset_dir)
-dataset_0h = dataset.select(cell_pairings['0h'])
-dataset_16h = dataset.select(cell_pairings['16h'])
-dataset_40h = dataset.select(cell_pairings['40h'])
-dataset_5d = dataset.select(cell_pairings['5d'])
+
+dataset_16h = dataset_mapped.select(cell_pairings['16h'])
+dataset_40h = dataset_mapped.select(cell_pairings['40h'])
+dataset_5d = dataset_mapped.select(cell_pairings['5d'])
 dataset_0h.save_to_disk(
     f'{paired_dataset_dir}/' f'cytoimmgen_tokenised_{pairing_mode}_pairing_0h.dataset'
 )
