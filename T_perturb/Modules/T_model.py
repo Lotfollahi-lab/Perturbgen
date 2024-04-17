@@ -284,11 +284,12 @@ class DecoderLayer(nn.Module):
 
 
 class SinusoidalPositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_seq_length):
+    def __init__(self, d_model, max_seq_length, n_time_steps):
         super(SinusoidalPositionalEncoding, self).__init__()
-
-        pe = torch.zeros(max_seq_length, d_model)
-        position = torch.arange(0, max_seq_length, dtype=torch.float).unsqueeze(1)
+        self.max_seq_length = max_seq_length
+        total_seq_length = n_time_steps * max_seq_length
+        pe = torch.zeros(total_seq_length, d_model)
+        position = torch.arange(0, total_seq_length, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(
             torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model)
         )
@@ -296,8 +297,14 @@ class SinusoidalPositionalEncoding(nn.Module):
         pe[:, 1::2] = torch.cos(position * div_term)
         self.register_buffer('pe', pe.unsqueeze(0))
 
-    def forward(self, x):
-        return x + self.pe[:, : x.size(1)]
+    def forward(self, x, tgt_time_step=None):
+        if tgt_time_step is not None:
+            start_pos = (tgt_time_step - 1) * self.max_seq_length
+            end_pos = start_pos + x.size(1)
+            pe = self.pe[:, start_pos:end_pos]
+        else:
+            pe = self.pe[:, : x.size(1)]
+        return x + pe
 
 
 # class LearntPositionalEncoding(nn.Module):
@@ -409,7 +416,9 @@ class Petra(nn.Module):
         total_vocab_size = total_vocab_size + 1
         self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
         self.positional_encoding = SinusoidalPositionalEncoding(
-            d_model, max_seq_length  # Specify the GPU device
+            d_model=d_model,
+            max_seq_length=max_seq_length,  # Specify the GPU device
+            n_time_steps=len(time_steps),
         )
         self.encoder_layers = Geneformerwrapper()
         self.decoder_layers = nn.ModuleList(
@@ -574,12 +583,11 @@ class Petra(nn.Module):
         else:
             for time_step in context_time_steps:
                 # provide only earlier than current time step as context
-                if time_step >= tgt_time_step:
-                    context_pad = torch.ones_like(
-                        tgt_pad_dict[f'tgt_pad_t{time_step}']
-                    ).bool()
-                else:
-                    context_pad = tgt_pad_dict[f'tgt_pad_t{time_step}']
+                # if time_step >= tgt_time_step:
+                #     context_pad = torch.ones_like(
+                #         tgt_pad_dict[f'tgt_pad_t{time_step}']
+                #     ).bool()
+                context_pad = tgt_pad_dict[f'tgt_pad_t{time_step}']
                 context_pad_list.append(context_pad)
             context_pad_ = torch.cat(context_pad_list, dim=1)
             full_context_pad = torch.cat([src_attention_mask, context_pad_], dim=1)
@@ -628,8 +636,6 @@ class Petra(nn.Module):
                 else:
                     dec_embeddings = torch.cat(context_embedding_list, dim=1)
                     context = torch.cat([enc_output, dec_embeddings], dim=1)
-                print('context', context.shape)
-                print(context)
                 if generate_id is not None:
                     tgt_input_id = generate_id
                 else:
@@ -639,7 +645,7 @@ class Petra(nn.Module):
                 tgt_input_id = tgt_input_id.masked_fill(tgt_pad, 0)
                 with torch.no_grad():
                     tgt_embedding = self.token_embedding(tgt_input_id)
-                    dec_embedding = self.positional_encoding(tgt_embedding)
+                    dec_embedding = self.positional_encoding(tgt_embedding, time_step)
                     # create context for the ones before the selected time step
                     # pad the rest
                     dec_outputs = self.call_decoder(
@@ -684,23 +690,21 @@ class Petra(nn.Module):
             tgt_time_step=tgt_time_step,
             context_time_steps=context_time_steps,
         )
-        print('context_pad', context_pad)
-        print(context_pad.shape)
         # only create maskings for the selected time step
         selected_tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
         selected_tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{tgt_time_step}']
         if return_embeddings:
             labels = None
-            # do not mask for embeddings
+            # do not mask for embeddings for testing
             masked_tgt_input_id = selected_tgt_input_id
         else:
             labels, masked_tgt_input_id = self.call_tgt_mask(
                 selected_tgt_input_id, selected_tgt_pad, generate_id
             )
-        masked_tgt_input_id = masked_tgt_input_id.masked_fill(selected_tgt_pad, 0)
-
         selected_tgt_embedding = self.token_embedding(masked_tgt_input_id)
-        selected_dec_embedding = self.positional_encoding(selected_tgt_embedding)
+        selected_dec_embedding = self.positional_encoding(
+            selected_tgt_embedding, tgt_time_step
+        )
 
         outputs = self.call_decoder(
             enc_output=context_embedding,
@@ -731,6 +735,7 @@ class Petra(nn.Module):
         enc_output = self.call_encoder(src_input_id, src_attention_mask)
         # distinction between selected time step and rest time steps
         if return_embeddings:
+            dec_embedding_list = []
             for time_step in self.time_steps:
                 # need to retrieve embeddings for each of selected time step
                 tgt_time_step = time_step
@@ -747,26 +752,23 @@ class Petra(nn.Module):
                     cls_positions=cls_positions,
                     generate=generate,
                 )
-            #     outputs = self.context_backprop(
-            #         enc_output,
-            #         src_attention_mask,
-            #         tgt_input_id_dict,
-            #         context_len,
-            #         return_embeddings,
-            #         cls_positions,
-            #         generate,
-            #         selected_time_step,
-            #         self.time_steps,
-            #         generate_id,
-            #         tgt_pad_dict,
-            #         dec_embedding_output,
-            #         context_pad,
-            #     )
-            #     dec_embedding_list.append(outputs['dec_embedding'])
-            # outputs['dec_embedding'] = torch.cat(dec_embedding_list, dim=1)
+                outputs = self.context_backprop(
+                    context_embedding=context_embedding,
+                    src_attention_mask=src_attention_mask,
+                    all_time_steps=self.time_steps,
+                    tgt_time_step=tgt_time_step,
+                    tgt_input_id_dict=tgt_input_id_dict,
+                    tgt_pad_dict=tgt_pad_dict,
+                    generate_id=generate_id,
+                    context_len=context_len,
+                    cls_positions=cls_positions,
+                    generate=generate,
+                    return_embeddings=return_embeddings,
+                )
+                dec_embedding_list.append(outputs['dec_embedding'])
+            outputs['dec_embedding'] = torch.cat(dec_embedding_list, dim=1)
         else:
             tgt_time_step = np.random.choice(self.time_steps)
-            print('tgt_time_step', tgt_time_step)
             # only extract context for all the ones before the selected time step
             # rest will be padded
             # ---Initialise the decoder embeddings
@@ -796,7 +798,6 @@ class Petra(nn.Module):
                 generate=generate,
                 return_embeddings=return_embeddings,
             )
-            print(outputs)
 
         return outputs
 

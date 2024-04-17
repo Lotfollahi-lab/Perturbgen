@@ -289,7 +289,7 @@ def main() -> None:
             num_heads=8,
             num_layers=1,
             d_ff=32,
-            max_seq_length=2000,
+            max_seq_length=500,
             dropout=args.petra_dropout,
             mlm_probability=args.mlm_probability,
             weight_decay=args.petra_wd,

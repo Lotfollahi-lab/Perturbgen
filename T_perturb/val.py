@@ -41,7 +41,7 @@ def get_args():
     parser.add_argument(
         '--generate',
         type=bool,
-        default=True,
+        default=False,
         help='generate data',
     )
     parser.add_argument(
@@ -59,19 +59,19 @@ def get_args():
     parser.add_argument(
         '--ckpt_masking_path',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/Model/checkpoints/'
-        '20240405_1742_petra_train_masking_lr_0.001_'
-        'wd_0.001_batch_64_mlmp_0.15_tp_1-2-3.ckpt',
+        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+        't_generative/T_perturb/T_perturb/Model/'
+        'checkpoints/20240417_1638_petra_train_masking_'
+        'lr_0.001_wd_0.001_batch_64_mlmp_0.15_tp_1-2-3.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
         '--ckpt_count_path',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/Model/checkpoints/'
-        '20240326_1730_petra_train_count_lr_0.0005_'
-        'wd_0.001_batch_64_zinb_tp_1-2-3.ckpt',
+        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+        't_generative/T_perturb/T_perturb/Model/checkpoints/'
+        '20240417_1638_petra_train_masking_'
+        'lr_0.001_wd_0.001_batch_64_mlmp_0.15_tp_1-2-3.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -284,7 +284,7 @@ def main() -> None:
             num_heads=8,
             num_layers=1,
             d_ff=32,
-            max_seq_length=2000,
+            max_seq_length=500,
             dropout=args.petra_dropout,
             mlm_probability=args.mlm_probability,
             weight_decay=args.petra_wd,
