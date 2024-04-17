@@ -167,23 +167,6 @@ class Petratrainer(LightningModule):
         interval = batch[f'tgt_input_ids_t{i}'].shape[1] + 1  # as 0 is cls token
         num_steps = len(self.time_steps)
         cls_positions = np.arange(0, num_steps * interval, interval)
-        # if self.return_embeddings:
-        # dec_embeddings = []
-        # for i in self.time_steps:
-        #     tgt_input_id_dict_ = {
-        #         f'tgt_input_id_t{i}': tgt_input_id_dict[f'tgt_input_id_t{i}']
-        #     }
-        #     outputs = self.transformer(
-        #         src_input_id=batch['src_input_ids'],
-        #         tgt_input_id_dict=tgt_input_id_dict_,
-        #         original_lens=batch['src_length'],
-        #         generate=self.generate,
-        #         cls_positions=cls_positions,
-        #         test_time_step=i,
-        #         return_embeddings=self.return_embeddings,
-        #     )
-        #     dec_embeddings.append(outputs['dec_embedding'])
-        # outputs['dec_embedding'] = torch.cat(dec_embeddings, dim=1)
         outputs = self.transformer(
             src_input_id=batch['src_input_ids'],
             tgt_input_id_dict=tgt_input_id_dict,
