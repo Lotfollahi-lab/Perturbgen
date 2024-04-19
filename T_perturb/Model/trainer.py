@@ -88,6 +88,7 @@ class Petratrainer(LightningModule):
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
+        self.save_hyperparameters()
         self.transformer = Petra(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
@@ -101,7 +102,9 @@ class Petratrainer(LightningModule):
         )
 
         self.masking_loss = nn.CrossEntropyLoss()
-        self.save_hyperparameters()
+        self.timepoint_loss = nn.CrossEntropyLoss()
+        self.alpha = 0.5
+
         self.weight_decay = weight_decay
         self.lr = lr
         self.lr_scheduler_patience = lr_scheduler_patience
@@ -189,24 +192,52 @@ class Petratrainer(LightningModule):
         return {
             'optimizer': optimizer,
             'lr_scheduler': lr_scheduler,
-            'monitor': 'train/loss',
+            'monitor': 'train/combined_loss',
         }
 
     def training_step(self, batch, *args, **kwargs):
         # logits, labels, count_output, count_dropout = self.forward(batch)
         outputs = self.forward(batch)
-        logits = outputs['logits']
+        dec_logits = outputs['dec_logits']
+        moe_logits = outputs['moe_logits']
+        time_step = outputs['selected_time_step']
         labels = outputs['labels']
 
-        perp = self.perplexity(logits, labels)
-        logits = logits.contiguous().view(-1, logits.size(-1))
+        perp = self.perplexity(dec_logits, labels)
+        dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
         labels = labels.contiguous().view(-1)
 
-        masking_loss = self.masking_loss(logits, labels)
+        masking_loss = self.masking_loss(dec_logits, labels)
+        moe_loss = self.timepoint_loss(
+            moe_logits, batch[f'tgt_time_point_t{time_step}']
+        )
+        combined_loss = self.alpha * masking_loss + (1 - self.alpha) * moe_loss
 
         self.log(
-            'train/loss',
-            masking_loss,
+            'train/masking_loss',
+            self.alpha * masking_loss,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=batch['tgt_input_ids_t1'].shape[0],
+            rank_zero_only=True,
+            sync_dist=True,
+        )
+        self.log(
+            'train/moe_loss',
+            (1 - self.alpha) * moe_loss,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=batch['tgt_input_ids_t1'].shape[0],
+            rank_zero_only=True,
+            sync_dist=True,
+        )
+        self.log(
+            'train/combined_loss',
+            combined_loss,
             on_step=True,
             on_epoch=True,
             prog_bar=True,
@@ -228,7 +259,7 @@ class Petratrainer(LightningModule):
             sync_dist=True,
         )
 
-        return masking_loss
+        return combined_loss
 
     def on_train_epoch_end(self):
         # return F1 score and accuracy
@@ -236,12 +267,18 @@ class Petratrainer(LightningModule):
 
     def validation_step(self, batch, *args, **kwargs):
         outputs = self.forward(batch)
-        logits = outputs['logits']
+        dec_logits = outputs['dec_logits']
+        moe_logits = outputs['moe_logits']
+        time_step = outputs['selected_time_step']
         labels = outputs['labels']
-        perp = self.perplexity(logits, labels)
-        logits = logits.contiguous().view(-1, logits.size(-1))
+        perp = self.perplexity(dec_logits, labels)
+        dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
         labels = labels.contiguous().view(-1)
-        masking_loss = self.masking_loss(logits, labels)
+        masking_loss = self.masking_loss(dec_logits, labels)
+        moe_loss = self.timepoint_loss(
+            moe_logits, batch[f'tgt_time_point_t{time_step}']
+        )
+        combined_loss = self.alpha * masking_loss + (1 - self.alpha) * moe_loss
 
         self.log(
             'val/loss',
@@ -265,6 +302,7 @@ class Petratrainer(LightningModule):
             rank_zero_only=True,
             sync_dist=True,
         )
+        return combined_loss
 
     def test_step(self, batch, *args, **kwargs):
         if self.return_embeddings:
