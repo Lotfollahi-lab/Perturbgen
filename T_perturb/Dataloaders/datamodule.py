@@ -11,6 +11,7 @@ from geneformer.perturber_utils import pad_tensor_list
 from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningDataModule
 from scipy.sparse import csr_matrix
+from sklearn.preprocessing import LabelEncoder
 from torch.utils.data import DataLoader, Dataset
 
 
@@ -289,10 +290,10 @@ class PetraDataModule(LightningDataModule):
     def collate(self, batch):
         if any('src_dataset' in item for item in batch):
             src_input_batch_id = [
-                torch.tensor(d['src_dataset']['input_ids'], device='cpu') for d in batch
+                torch.tensor(d['src_dataset']['input_ids']) for d in batch
             ]
             src_length = torch.stack(
-                [torch.tensor(d['src_dataset']['length'], device='cpu') for d in batch]
+                [torch.tensor(d['src_dataset']['length']) for d in batch]
             )
             model_input_size = torch.max(src_length)
             src_cell_type = [d['src_dataset']['Cell_type'] for d in batch]
@@ -388,9 +389,11 @@ class PetraDataModule(LightningDataModule):
                 out[f'tgt_cell_population_t{time_step}'] = [
                     d[dataset]['Cell_population'] for d in batch
                 ]
-                out[f'tgt_time_point_t{time_step}'] = [
-                    d[dataset]['Time_point'] for d in batch
-                ]
+                time_step_list = [d[dataset]['Time_point'] for d in batch]
+                # encode time point to categories for classification
+                encoder = LabelEncoder()
+                integer_time_step = encoder.fit_transform(time_step_list)
+                out[f'tgt_time_point_t{time_step}'] = torch.tensor(integer_time_step)
                 out[f'tgt_input_ids_t{time_step}'] = pad_tensor_list(
                     out[f'tgt_input_ids_t{time_step}'],
                     self.max_len,

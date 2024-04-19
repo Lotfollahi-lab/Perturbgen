@@ -8,6 +8,7 @@ import numpy as np
 import torch
 from einops import rearrange, repeat
 from torch import einsum, nn
+from torch.nn import functional as F
 from tqdm import tqdm
 from transformers import BertForMaskedLM
 
@@ -217,24 +218,29 @@ class DecoderLayer(nn.Module):
         hidden_size,
         dropout=0.0,
         context_dim=None,
-        num_blocks=3,
+        top_k=2,
+        num_experts=3,
+        num_classes=3,
     ):
         super().__init__()
         self.self_attn = CrossAttention(
             query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout
         )
-
-        # Initialize attention blocks
-        self.attention_blocks = nn.ModuleList(
+        # induce sparsity in the attention mechanism using MoE
+        self.top_k = top_k
+        # Initialize experts
+        self.experts = nn.ModuleList(
             [
                 CrossAttention(
                     query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout
                 )
-                for _ in range(num_blocks)
+                for _ in range(num_experts)
             ]
         )
-        # Initialize gates as zeros - indicating all blocks are initially inactive
-        self.gates = torch.nn.Parameter(torch.zeros(num_blocks), requires_grad=False)
+        # learn gate weights one on batch and one on token level
+        self.cls_gating_layer = nn.Linear(dim, num_experts)
+        self.token_gating_layer = nn.Linear(dim, num_experts)
+        self.classifier = nn.Linear(dim, num_classes)
 
         self.cross_attn = CrossAttention(
             query_dim=dim,
@@ -243,6 +249,7 @@ class DecoderLayer(nn.Module):
             dim_head=d_head,
             dropout=dropout,
         )
+        self.register_buffer('top_k_mask', torch.zeros(num_experts, dtype=torch.bool))
         self.feed_forward = Mlp(
             in_features=dim, hidden_features=hidden_size
         )  # add hidden size
@@ -252,20 +259,43 @@ class DecoderLayer(nn.Module):
         self.norm4 = nn.LayerNorm(dim)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None, time_step=None):
+    def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None):
         attn_output = self.self_attn(x, mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
-        # Update gating mechanism based on provided gate_indices
-        self.gates.data.fill_(0)  # Ensure gates are reset to 0
-        if time_step is not None:
-            self.gates.data[
-                time_step - 1
-            ] = 1  # Activate selected gates based on gate_indices
-
-        for i, attention_block in enumerate(self.attention_blocks):
-            if self.gates[i] == 1:
-                # Process through the attention block if the gate is active
-                gated_output = attention_block(x, mask=tgt_mask)
+        # get cls token for gating
+        cls_features = x[:, 0, :]  # (batch_size, seq_len, dim)
+        aggregated_cls_features = cls_features.mean(dim=0).unsqueeze(
+            0
+        )  # Mean pooling, [1, d_model]
+        cls_gate_logits = self.cls_gating_layer(
+            aggregated_cls_features
+        )  # [1, num_experts]
+        cls_gate_logits = cls_gate_logits.squeeze(0)
+        _, top_k_indices = torch.topk(F.softmax(cls_gate_logits, dim=-1), self.top_k)
+        self.top_k_mask.fill_(False)
+        self.top_k_mask.scatter_(0, top_k_indices, True)
+        # Filter to keep only the top-k experts active
+        gate_logits = self.token_gating_layer(x)
+        gated_logits_topk = gate_logits[
+            :, :, self.top_k_mask
+        ]  # Apply gating mask, [seq_length, batch_size, top_k]
+        gate_probs = F.softmax(gated_logits_topk, dim=-1)
+        # only select top expert - hard gating for tokens
+        top_experts_per_token = gate_probs.argmax(dim=-1)  # [seq_length, batch_size]
+        top_experts_indices = top_k_indices.squeeze(0)[
+            top_experts_per_token
+        ]  # Map back to actual expert indices
+        # Efficient selection of outputs from the top expert for each token
+        moe_outputs = torch.zeros_like(x)
+        for i, expert in enumerate(self.experts):
+            mask = top_experts_indices == (i)
+            # compute proportion of tokens assigned to each expert
+            proportion = mask.sum() / (mask.size(0) * mask.size(1))
+            print(proportion)
+            if mask.any():
+                expert_output = expert(x, mask=tgt_mask)
+                moe_outputs += expert_output * mask.unsqueeze(-1).float()
+        cls_moe_embedding = moe_outputs[:, 0, :]
         # attn_time_ouput = []
         # for i, attention_block in enumerate(self.attention_blocks):
         #     if i == time_random:
@@ -275,12 +305,12 @@ class DecoderLayer(nn.Module):
         #         block_output = torch.zeros_like(x)
         #     attn_time_ouput.append(block_output)
         # aggregated_output = torch.stack(attn_time_ouput, dim=-1).sum(dim=-1)
-        x = self.norm2(x + self.dropout(gated_output))
+        x = self.norm2(x + self.dropout(moe_outputs))
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
         x = self.norm3(x + self.dropout(attn_output))
         ff_output = self.feed_forward(x)
         x = self.norm4(x + self.dropout(ff_output))
-        return x
+        return x, cls_moe_embedding
 
 
 class SinusoidalPositionalEncoding(nn.Module):
@@ -429,11 +459,15 @@ class Petra(nn.Module):
                     d_head=d_ff,
                     hidden_size=d_model,
                     dropout=dropout,
+                    top_k=2,
+                    num_experts=len(time_steps),
+                    num_classes=len(time_steps),
                 )
                 for _ in range(num_layers)
             ]
         )
-        self.fc = nn.Linear(d_model, tgt_vocab_size)  # Specify the GPU device)
+        self.decoder_fc = nn.Linear(d_model, tgt_vocab_size)  # Specify the GPU device)
+        self.classifier_fc = nn.Linear(d_model, len(time_steps))
         self.dropout = nn.Dropout(dropout)
 
     def generate_pad(self, tgt_pad):
@@ -464,11 +498,10 @@ class Petra(nn.Module):
         probability_matrix = torch.full_like(
             tgt_pad, mlm_probability, dtype=torch.float
         )
+        # add CLS token to the tokens
         cls_tgt_pad = tgt_pad.clone()
         cls_tgt_pad[:, 0] = True
-        probability_matrix = probability_matrix.masked_fill(
-            cls_tgt_pad, 0
-        )  # add CLS token to the tokens
+        probability_matrix = probability_matrix.masked_fill(cls_tgt_pad, 0)
         tgt_mask = torch.bernoulli(probability_matrix).bool()
         labels[~tgt_mask] = -100
 
@@ -556,18 +589,24 @@ class Petra(nn.Module):
         cls_positions=None,
     ):
         for dec_layer in self.decoder_layers:
-            dec_embedding = dec_layer(
-                dec_embedding, src_attention_mask, tgt_pad, enc_output, time_random
+            dec_embedding, moe_embedding = dec_layer(
+                x=dec_embedding,
+                src_mask=src_attention_mask,
+                tgt_mask=tgt_pad,
+                enc_output=enc_output,
             )
         # :TODO rewrite this part logits not needed for running the other timepoints
         outputs = {}
         if labels is not None:
-            logits = self.fc(dec_embedding)
-            outputs['logits'] = logits
+            decoder_logits = self.decoder_fc(dec_embedding)
+            moe_logits = self.classifier_fc(moe_embedding)
+            outputs['dec_logits'] = decoder_logits
+            outputs['moe_logits'] = moe_logits
             outputs['labels'] = labels
+            outputs['selected_time_step'] = time_random
         if (generate is True) and (context_len is not None):
             outputs['dec_embedding'] = dec_embedding
-            outputs['logits'] = logits[:, context_len + 1 :, :]
+            outputs['dec_logits'] = logits[:, context_len + 1 :, :]
         else:
             outputs['dec_embedding'] = dec_embedding
         if cls_positions is not None:
@@ -1019,7 +1058,7 @@ class CountDecoder(nn.Module):
                 original_lens=original_lens,
                 generate=True,
             )
-            logits = outputs['logits']
+            logits = outputs['dec_logits']
             # exclude cls token
             ids_ = ids[:, 1:]
             scores_ = scores[:, 1:]
