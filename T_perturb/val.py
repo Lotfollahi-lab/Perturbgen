@@ -29,7 +29,7 @@ def get_args():
     parser.add_argument(
         '--test_mode',
         type=str,
-        default='masking',
+        default='count',
         help='Mode [masking, count]',
     )
     parser.add_argument(
@@ -41,13 +41,13 @@ def get_args():
     parser.add_argument(
         '--generate',
         type=bool,
-        default=False,
+        default=True,
         help='generate data',
     )
     parser.add_argument(
         '--return_embeddings',
         type=bool,
-        default=True,
+        default=False,
         help='return embedding',
     )
     parser.add_argument(
@@ -59,19 +59,21 @@ def get_args():
     parser.add_argument(
         '--ckpt_masking_path',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/T_perturb/T_perturb/Model/'
-        'checkpoints/20240417_1638_petra_train_masking_'
+        default='/lustre/scratch123/hgi/projects/'
+        'healthy_imm_expr/t_generative/T_perturb/'
+        'T_perturb/Model/checkpoints/'
+        '20240421_1739_petra_train_masking_'
         'lr_0.001_wd_0.001_batch_64_mlmp_0.15_tp_1-2-3.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
         '--ckpt_count_path',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/T_perturb/T_perturb/Model/checkpoints/'
-        '20240417_1638_petra_train_masking_'
-        'lr_0.001_wd_0.001_batch_64_mlmp_0.15_tp_1-2-3.ckpt',
+        default='/lustre/scratch123/hgi/projects/'
+        'healthy_imm_expr/t_generative/T_perturb/'
+        'T_perturb/Model/checkpoints/'
+        '20240421_1854_petra_train_count_'
+        'lr_0.0005_wd_0.001_batch_64_zinb_tp_1-2-3.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -394,7 +396,6 @@ def main() -> None:
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
         devices=1 if torch.cuda.is_available() else 0,  # infernce only on one gpu
-        limit_test_batches=1.0,
     )
     # Finally, kick of the training process.
     if args.test_mode == 'masking':

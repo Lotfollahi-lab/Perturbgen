@@ -30,7 +30,7 @@ def get_args():
     parser.add_argument(
         '--train_mode',
         type=str,
-        default='masking',
+        default='count',
         help='Mode [masking, count]',
     )
     parser.add_argument(
@@ -54,9 +54,10 @@ def get_args():
     parser.add_argument(
         '--ckpt_path',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/T_perturb/T_perturb/Model/'
-        'checkpoints/20240404_1308_petra_train_masking_'
+        default='/lustre/scratch123/hgi/projects/'
+        'healthy_imm_expr/t_generative/T_perturb/'
+        'T_perturb/Model/checkpoints/'
+        '20240421_1739_petra_train_masking_'
         'lr_0.001_wd_0.001_batch_64_mlmp_0.15_tp_1-2-3.ckpt',
         help='path to checkpoint',
     )

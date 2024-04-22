@@ -223,7 +223,10 @@ class DecoderLayer(nn.Module):
         num_classes=3,
     ):
         super().__init__()
-        self.self_attn = CrossAttention(
+        self.self_attn_1 = CrossAttention(
+            query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout
+        )
+        self.self_attn_2 = CrossAttention(
             query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout
         )
         # induce sparsity in the attention mechanism using MoE
@@ -239,8 +242,8 @@ class DecoderLayer(nn.Module):
         )
         # learn gate weights one on batch and one on token level
         self.cls_gating_layer = nn.Linear(dim, num_experts)
-        self.token_gating_layer = nn.Linear(dim, num_experts)
-        self.classifier = nn.Linear(dim, num_classes)
+        # self.token_gating_layer = nn.Linear(dim, num_experts)
+        self.classifier_fc = nn.Linear(dim, num_classes)
 
         self.cross_attn = CrossAttention(
             query_dim=dim,
@@ -259,58 +262,72 @@ class DecoderLayer(nn.Module):
         self.norm4 = nn.LayerNorm(dim)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None):
-        attn_output = self.self_attn(x, mask=tgt_mask)
-        x = self.norm1(x + self.dropout(attn_output))
-        # get cls token for gating
-        cls_features = x[:, 0, :]  # (batch_size, seq_len, dim)
-        aggregated_cls_features = cls_features.mean(dim=0).unsqueeze(
-            0
-        )  # Mean pooling, [1, d_model]
-        cls_gate_logits = self.cls_gating_layer(
-            aggregated_cls_features
-        )  # [1, num_experts]
-        cls_gate_logits = cls_gate_logits.squeeze(0)
-        _, top_k_indices = torch.topk(F.softmax(cls_gate_logits, dim=-1), self.top_k)
-        self.top_k_mask.fill_(False)
-        self.top_k_mask.scatter_(0, top_k_indices, True)
-        # Filter to keep only the top-k experts active
-        gate_logits = self.token_gating_layer(x)
-        gated_logits_topk = gate_logits[
-            :, :, self.top_k_mask
-        ]  # Apply gating mask, [seq_length, batch_size, top_k]
-        gate_probs = F.softmax(gated_logits_topk, dim=-1)
-        # only select top expert - hard gating for tokens
-        top_experts_per_token = gate_probs.argmax(dim=-1)  # [seq_length, batch_size]
-        top_experts_indices = top_k_indices.squeeze(0)[
-            top_experts_per_token
-        ]  # Map back to actual expert indices
-        # Efficient selection of outputs from the top expert for each token
-        moe_outputs = torch.zeros_like(x)
-        for i, expert in enumerate(self.experts):
-            mask = top_experts_indices == (i)
-            # compute proportion of tokens assigned to each expert
-            proportion = mask.sum() / (mask.size(0) * mask.size(1))
-            print(proportion)
-            if mask.any():
-                expert_output = expert(x, mask=tgt_mask)
-                moe_outputs += expert_output * mask.unsqueeze(-1).float()
-        cls_moe_embedding = moe_outputs[:, 0, :]
-        # attn_time_ouput = []
-        # for i, attention_block in enumerate(self.attention_blocks):
-        #     if i == time_random:
-        #         block_output = attention_block(x)
-        #     else:
-        #         #skip the block
-        #         block_output = torch.zeros_like(x)
-        #     attn_time_ouput.append(block_output)
-        # aggregated_output = torch.stack(attn_time_ouput, dim=-1).sum(dim=-1)
+    def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None, moe=False):
+        attn_output = self.self_attn_1(x, mask=tgt_mask)
+        if moe:
+            x = self.norm1(x + self.dropout(attn_output))
+            # get cls token for gating
+            cls_features = x[:, 0, :]  # (batch_size, seq_len, dim)
+            aggregated_cls_features = cls_features.mean(dim=0).unsqueeze(
+                0
+            )  # Mean pooling, [1, d_model]
+            cls_gate_logits = self.cls_gating_layer(
+                aggregated_cls_features
+            )  # [1, num_experts]
+            cls_gate_logits = cls_gate_logits.squeeze(0)
+            cls_gate_probs = F.softmax(cls_gate_logits, dim=-1)
+            # print(cls_gate_probs)
+            top_k_values, top_k_indices = torch.topk(cls_gate_probs, self.top_k)
+            # Compute outputs for the selected top-k experts and weight them
+            cls_logit_outputs = []
+            moe_outputs = torch.zeros_like(
+                x
+            )  # Assuming encoded has shape [seq_length, batch_size, d_model]
+            for i, index in enumerate(top_k_indices.squeeze(0)):
+                # print("expert", index)
+                expert_output = self.experts[index](x)
+                weight = top_k_values.squeeze(0)[i]
+                # print(weight)
+                cls_expert_embedding = expert_output[:, 0, :]
+                cls_expert_logit = self.classifier_fc(cls_expert_embedding)
+                cls_logit_outputs.append(cls_expert_logit)
+                moe_outputs += expert_output * weight
+        else:
+            x = self.norm1(x + self.dropout(attn_output))
+            moe_outputs = self.self_attn_2(x, mask=tgt_mask)
+            cls_logit_outputs = None
+
+        # self.top_k_mask.fill_(False)
+        # self.top_k_mask.scatter_(0, top_k_indices, True)
+        # # Filter to keep only the top-k experts active
+        # gate_logits = self.token_gating_layer(x)
+        # gated_logits_topk = gate_logits[
+        #     :, :, self.top_k_mask
+        # ]  # Apply gating mask, [seq_length, batch_size, top_k]
+        # gate_probs = F.softmax(gated_logits_topk, dim=-1)
+        # # only select top expert - hard gating for tokens
+        # top_experts_per_token = gate_probs.argmax(dim=-1)  # [seq_length, batch_size]
+        # top_experts_indices = top_k_indices.squeeze(0)[
+        #     top_experts_per_token
+        # ]  # Map back to actual expert indices
+        # # Efficient selection of outputs from the top expert for each token
+        # moe_outputs = torch.zeros_like(x)
+        # for i, expert in enumerate(self.experts):
+        #     print("Expert", i)
+        #     mask = top_experts_indices == (i)
+        #     # compute proportion of tokens assigned to each expert
+        #     proportion = mask.sum() / (mask.size(0) * mask.size(1))
+        #     print(proportion)
+        #     if mask.any():
+        #         expert_output = expert(x, mask=tgt_mask)
+        #         moe_outputs += expert_output * mask.unsqueeze(-1).float()
+
         x = self.norm2(x + self.dropout(moe_outputs))
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
         x = self.norm3(x + self.dropout(attn_output))
         ff_output = self.feed_forward(x)
         x = self.norm4(x + self.dropout(ff_output))
-        return x, cls_moe_embedding
+        return x, cls_logit_outputs
 
 
 class SinusoidalPositionalEncoding(nn.Module):
@@ -467,7 +484,6 @@ class Petra(nn.Module):
             ]
         )
         self.decoder_fc = nn.Linear(d_model, tgt_vocab_size)  # Specify the GPU device)
-        self.classifier_fc = nn.Linear(d_model, len(time_steps))
         self.dropout = nn.Dropout(dropout)
 
     def generate_pad(self, tgt_pad):
@@ -536,16 +552,12 @@ class Petra(nn.Module):
     #         return scaled_logits, embed
 
     #     return scaled_logits
-    def call_padding(self, tgt_input_id_dict, generate_id=None):
+    def call_padding(self, tgt_input_id_dict):
         time_step = 1
         tgt_pad_dict = {}
-        # pad generation for the selected time step
-        if generate_id is not None:
-            tgt_pad_dict[f'tgt_pad_t{time_step}'] = self.generate_pad(generate_id)
-        elif tgt_input_id_dict is not None:
-            for _, tgt_input_id in tgt_input_id_dict.items():
-                tgt_pad_dict[f'tgt_pad_t{time_step}'] = self.generate_pad(tgt_input_id)
-                time_step = time_step + 1
+        for _, tgt_input_id in tgt_input_id_dict.items():
+            tgt_pad_dict[f'tgt_pad_t{time_step}'] = self.generate_pad(tgt_input_id)
+            time_step = time_step + 1
         return tgt_pad_dict
 
     def generate_src_mask(self, src_input_id):
@@ -556,19 +568,13 @@ class Petra(nn.Module):
         self,
         tgt_input_id,
         tgt_pad,
-        generate_id=None,
     ):
-        if generate_id is not None:
-            tgt_mask = generate_id == (self.mask_token)
-            tgt_mask = tgt_mask | (generate_id == 0)
-            tgt_input_id = generate_id.clone()
-        else:
-            tgt_mask, labels = self.generate_mask(
-                tgt_input_id,
-                tgt_pad,
-                self.mlm_probability,
-            )
-            tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
+        tgt_mask, labels = self.generate_mask(
+            tgt_input_id,
+            tgt_pad,
+            self.mlm_probability,
+        )
+        tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
 
         return labels, tgt_input_id
 
@@ -584,12 +590,11 @@ class Petra(nn.Module):
         tgt_pad,
         time_random,
         generate=False,
-        context_len=None,
         labels=None,
         cls_positions=None,
     ):
         for dec_layer in self.decoder_layers:
-            dec_embedding, moe_embedding = dec_layer(
+            dec_embedding, moe_logits = dec_layer(
                 x=dec_embedding,
                 src_mask=src_attention_mask,
                 tgt_mask=tgt_pad,
@@ -597,35 +602,27 @@ class Petra(nn.Module):
             )
         # :TODO rewrite this part logits not needed for running the other timepoints
         outputs = {}
+        decoder_logits = self.decoder_fc(dec_embedding)
         if labels is not None:
-            decoder_logits = self.decoder_fc(dec_embedding)
-            moe_logits = self.classifier_fc(moe_embedding)
             outputs['dec_logits'] = decoder_logits
             outputs['moe_logits'] = moe_logits
             outputs['labels'] = labels
             outputs['selected_time_step'] = time_random
-        if (generate is True) and (context_len is not None):
+        if generate is True:
             outputs['dec_embedding'] = dec_embedding
-            outputs['dec_logits'] = logits[:, context_len + 1 :, :]
+            outputs['dec_logits'] = decoder_logits[:, 1:, :]
         else:
             outputs['dec_embedding'] = dec_embedding
         if cls_positions is not None:
             outputs['cls_positions'] = cls_positions
         return outputs
 
-    def context_padding(
-        self, src_attention_mask, tgt_pad_dict, tgt_time_step, context_time_steps
-    ):
+    def context_padding(self, src_attention_mask, tgt_pad_dict, context_time_steps):
         context_pad_list = []
         if len(context_time_steps) == 0:
             full_context_pad = src_attention_mask
         else:
             for time_step in context_time_steps:
-                # provide only earlier than current time step as context
-                # if time_step >= tgt_time_step:
-                #     context_pad = torch.ones_like(
-                #         tgt_pad_dict[f'tgt_pad_t{time_step}']
-                #     ).bool()
                 context_pad = tgt_pad_dict[f'tgt_pad_t{time_step}']
                 context_pad_list.append(context_pad)
             context_pad_ = torch.cat(context_pad_list, dim=1)
@@ -641,8 +638,6 @@ class Petra(nn.Module):
         tgt_time_step,
         tgt_input_id_dict,
         tgt_pad_dict,
-        generate_id=None,
-        context_len=None,
         cls_positions=None,
         generate=False,
     ):
@@ -658,6 +653,7 @@ class Petra(nn.Module):
             # retrieve the embeddings to provide as context
             # pad the rest of the time steps
             for time_step in rest_time_steps:
+                # print("contex time step",time_step)
                 # select all the ones before the selected time step
                 context_time_steps = [
                     tmp_time_step
@@ -667,7 +663,6 @@ class Petra(nn.Module):
                 context_pad = self.context_padding(
                     src_attention_mask=src_attention_mask,
                     tgt_pad_dict=tgt_pad_dict,
-                    tgt_time_step=time_step,
                     context_time_steps=context_time_steps,
                 )
                 if len(context_embedding_list) == 0:
@@ -675,13 +670,13 @@ class Petra(nn.Module):
                 else:
                     dec_embeddings = torch.cat(context_embedding_list, dim=1)
                     context = torch.cat([enc_output, dec_embeddings], dim=1)
-                if generate_id is not None:
-                    tgt_input_id = generate_id
-                else:
-                    tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_step}']
+                tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_step}']
+                if generate:
+                    # tgt input id already padded
                     tgt_pad = tgt_pad_dict[f'tgt_pad_t{time_step}']
-                # only run the context for the ones before the selected time step
-                tgt_input_id = tgt_input_id.masked_fill(tgt_pad, 0)
+                else:
+                    tgt_pad = tgt_pad_dict[f'tgt_pad_t{time_step}']
+                    tgt_input_id = tgt_input_id.masked_fill(tgt_pad, 0)
                 with torch.no_grad():
                     tgt_embedding = self.token_embedding(tgt_input_id)
                     dec_embedding = self.positional_encoding(tgt_embedding, time_step)
@@ -694,7 +689,6 @@ class Petra(nn.Module):
                         tgt_pad=tgt_pad,
                         time_random=time_step,
                         generate=generate,
-                        context_len=context_len,
                         labels=None,
                         cls_positions=cls_positions,
                     )
@@ -712,11 +706,9 @@ class Petra(nn.Module):
         tgt_time_step,
         tgt_input_id_dict,
         tgt_pad_dict,
-        generate_id=None,
-        context_len=None,
         cls_positions=None,
         generate=False,
-        return_embeddings=False,
+        not_masked=False,
     ):
         context_time_steps = [
             tmp_time_step
@@ -726,19 +718,19 @@ class Petra(nn.Module):
         context_pad = self.context_padding(
             src_attention_mask=src_attention_mask,
             tgt_pad_dict=tgt_pad_dict,
-            tgt_time_step=tgt_time_step,
             context_time_steps=context_time_steps,
         )
-        # only create maskings for the selected time step
         selected_tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
         selected_tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{tgt_time_step}']
-        if return_embeddings:
+        # print("tgt", tgt_time_step)
+        # only create maskings for the selected time step
+        if not_masked or generate:
             labels = None
             # do not mask for embeddings for testing
             masked_tgt_input_id = selected_tgt_input_id
         else:
             labels, masked_tgt_input_id = self.call_tgt_mask(
-                selected_tgt_input_id, selected_tgt_pad, generate_id
+                selected_tgt_input_id, selected_tgt_pad
             )
         selected_tgt_embedding = self.token_embedding(masked_tgt_input_id)
         selected_dec_embedding = self.positional_encoding(
@@ -752,7 +744,6 @@ class Petra(nn.Module):
             tgt_pad=selected_tgt_pad,
             time_random=tgt_time_step,
             generate=generate,
-            context_len=context_len,
             labels=labels,
             cls_positions=cls_positions,
         )
@@ -763,17 +754,21 @@ class Petra(nn.Module):
         src_input_id,
         original_lens,
         tgt_input_id_dict=None,
-        context_len=None,
-        generate_id=None,
-        generate=False,
+        generate_id_dict=None,
+        generate_pad_dict=None,
+        tgt_time_step=None,
         cls_positions=None,
-        return_embeddings=False,
+        not_masked=False,
     ):
-        tgt_pad_dict = self.call_padding(tgt_input_id_dict, generate_id)
+        if tgt_input_id_dict:
+            tgt_pad_dict = self.call_padding(tgt_input_id_dict)
+        else:
+            tgt_pad_dict = generate_pad_dict
+
         src_attention_mask = self.generate_src_mask(src_input_id)
         enc_output = self.call_encoder(src_input_id, src_attention_mask)
         # distinction between selected time step and rest time steps
-        if return_embeddings:
+        if not_masked:
             dec_embedding_list = []
             for time_step in self.time_steps:
                 # need to retrieve embeddings for each of selected time step
@@ -786,10 +781,7 @@ class Petra(nn.Module):
                     tgt_time_step=tgt_time_step,
                     tgt_input_id_dict=tgt_input_id_dict,
                     tgt_pad_dict=tgt_pad_dict,
-                    generate_id=generate_id,
-                    context_len=context_len,
                     cls_positions=cls_positions,
-                    generate=generate,
                 )
                 outputs = self.context_backprop(
                     context_embedding=context_embedding,
@@ -798,16 +790,21 @@ class Petra(nn.Module):
                     tgt_time_step=tgt_time_step,
                     tgt_input_id_dict=tgt_input_id_dict,
                     tgt_pad_dict=tgt_pad_dict,
-                    generate_id=generate_id,
-                    context_len=context_len,
                     cls_positions=cls_positions,
-                    generate=generate,
-                    return_embeddings=return_embeddings,
+                    not_masked=not_masked,
                 )
                 dec_embedding_list.append(outputs['dec_embedding'])
             outputs['dec_embedding'] = torch.cat(dec_embedding_list, dim=1)
+
         else:
-            tgt_time_step = np.random.choice(self.time_steps)
+            if tgt_time_step is None:
+                tgt_time_step = np.random.choice(self.time_steps)
+                tgt_input_id_dict = tgt_input_id_dict
+                generate = False
+            else:
+                tgt_time_step = tgt_time_step
+                tgt_input_id_dict = generate_id_dict
+                generate = True
             # only extract context for all the ones before the selected time step
             # rest will be padded
             # ---Initialise the decoder embeddings
@@ -819,8 +816,6 @@ class Petra(nn.Module):
                 tgt_time_step=tgt_time_step,
                 tgt_input_id_dict=tgt_input_id_dict,
                 tgt_pad_dict=tgt_pad_dict,
-                generate_id=generate_id,
-                context_len=context_len,
                 cls_positions=cls_positions,
                 generate=generate,
             )
@@ -831,11 +826,9 @@ class Petra(nn.Module):
                 tgt_time_step=tgt_time_step,
                 tgt_input_id_dict=tgt_input_id_dict,
                 tgt_pad_dict=tgt_pad_dict,
-                generate_id=generate_id,
-                context_len=context_len,
                 cls_positions=cls_positions,
                 generate=generate,
-                return_embeddings=return_embeddings,
+                not_masked=not_masked,
             )
 
         return outputs
@@ -908,6 +901,7 @@ class CountDecoder(nn.Module):
         total_vocab_size = tgt_vocab_size + len(time_steps)  # add one for cls token
         if add_mask_id:
             self.mask_token = total_vocab_size
+        self.time_steps = time_steps
         self.cls_embedding = None
 
     def generate_pad(self, tgt):
@@ -921,18 +915,18 @@ class CountDecoder(nn.Module):
         src_input_id,
         tgt_input_id_dict,
         original_lens,
-        generate=False,
-        cls_positions=[0, 247, 494],
+        cls_positions=None,
     ):
+        count_outputs = {}
+
         # find length for a single time step
         outputs = self.pretrained_model.forward(
             src_input_id=src_input_id,
             tgt_input_id_dict=tgt_input_id_dict,
             original_lens=original_lens,
-            generate=generate,
+            not_masked=True,
         )
 
-        # -1 because of 0 indexing
         count_outputs = {}
         for i, cls_position in enumerate(cls_positions):
             cls_embedding = outputs['dec_embedding'][:, cls_position, :]
@@ -958,10 +952,13 @@ class CountDecoder(nn.Module):
         starting_temperature = temperature
         demask_fn = self.pretrained_model
         keys = list(tgt_input_id_dict.keys())
-        context = []
+        generate_id_dict = {}
+        generate_pad_dict = {}
+        dec_embedding_list = []
         for time_step in time_steps:
             tgt_input_id = tgt_input_id_dict[keys[time_step - 1]]
             tgt_pad = self.generate_pad(tgt_input_id)
+            generate_pad_dict[f'tgt_pad_t{time_step}'] = tgt_pad
             batch_size = tgt_input_id.shape[0]
             seq_len = tgt_input_id.shape[1]
             shape = (batch_size, seq_len)
@@ -971,11 +968,12 @@ class CountDecoder(nn.Module):
             )
             # add cls token to the ids
             ids[:, 0] = tgt_input_id[:, 0]
+            generate_id_dict[keys[time_step - 1]] = ids
             # pad ids
             scores = torch.zeros(shape, dtype=torch.float, device=tgt_input_id.device)
             outputs, generated_ids = self.generate_sequence(
-                context=context,
-                tgt_pad=tgt_pad,
+                generate_id_dict=generate_id_dict,
+                generate_pad_dict=generate_pad_dict,
                 src_input_id=src_input_id,
                 original_lens=original_lens,
                 demask_fn=demask_fn,
@@ -984,11 +982,12 @@ class CountDecoder(nn.Module):
                 topk_filter_thres=topk_filter_thres,
                 starting_temperature=starting_temperature,
                 iterations=iterations,
-                ids=ids,
                 scores=scores,
+                tgt_time_step=time_step,
             )
-            context.append(generated_ids)
-
+            generate_id_dict[keys[time_step - 1]] = generated_ids
+            dec_embedding_list.append(outputs['dec_embedding'])
+        outputs['dec_embedding'] = torch.cat(dec_embedding_list, dim=1)
         count_outputs = {}
         for i, cls_position in enumerate(cls_positions):
             cls_embedding = outputs['dec_embedding'][:, cls_position, :]
@@ -999,8 +998,8 @@ class CountDecoder(nn.Module):
 
     def generate_sequence(
         self,
-        context,
-        tgt_pad,
+        generate_id_dict,
+        generate_pad_dict,
         src_input_id,
         original_lens,
         demask_fn,
@@ -1009,8 +1008,8 @@ class CountDecoder(nn.Module):
         topk_filter_thres=0.9,
         starting_temperature=2.0,
         iterations=18,
-        ids=None,
         scores=None,
+        tgt_time_step=1,
     ):
         for iteration, steps_until_x0 in tqdm(
             zip(
@@ -1019,48 +1018,43 @@ class CountDecoder(nn.Module):
             ),
             total=iterations,
         ):
-            cls_token = ids[:, 0]
+            tmp_ids = generate_id_dict[f'tgt_input_id_t{tgt_time_step}']
+            tgt_pad = generate_pad_dict[f'tgt_pad_t{tgt_time_step}']
+            cls_token = tmp_ids[:, 0]
             # mask scheduler function, gamma
             rand_mask_prob = noise_schedule(
                 ratio=iteration,
-                total_tokens=ids.shape[1],
+                total_tokens=tmp_ids.shape[1],
                 method=mask_scheduler,
             )
             scores = scores.masked_fill(tgt_pad, -torch.finfo().max)
-            ids = ids.masked_fill(tgt_pad, 0)
-            ids_to_keep = torch.zeros_like(ids, dtype=torch.long)
+            tmp_ids = tmp_ids.masked_fill(tgt_pad, 0)
+            ids_to_keep = torch.zeros_like(tmp_ids, dtype=torch.long)
 
             for i, score in enumerate(scores):
                 # count zeros in each row
                 unpadded = len(score) - sum(score == -torch.finfo().max)
                 num_token_masked = int(unpadded * rand_mask_prob)
                 masked_indices = score.topk(num_token_masked, dim=-1).indices
-                mask = torch.zeros_like(ids[i], dtype=torch.bool)
+                mask = torch.zeros_like(tmp_ids[i], dtype=torch.bool)
                 mask[masked_indices] = True
-                ids[i, masked_indices] = self.mask_token
+                tmp_ids[i, masked_indices] = self.mask_token
                 # keep indices which are not masked
-                ids_to_keep[i, ~mask] = ids[i, ~mask]
-            # pad scores and ids
-            if len(context) > 0:
-                context_ = torch.cat(context, dim=1)
-                context_len = context_.shape[1]
-                # add context to ids
-                ids[:, 0] = cls_token
-                ids_merged = torch.cat([context_, ids], dim=1)
-            else:
-                ids[:, 0] = cls_token
-                ids_merged = ids
-                context_len = 0
+                ids_to_keep[i, ~mask] = tmp_ids[i, ~mask]
+
+            tmp_ids[:, 0] = cls_token
+            generate_id_dict[f'tgt_input_id_t{tgt_time_step}'] = tmp_ids
             outputs = demask_fn.forward(
                 src_input_id=src_input_id,  # target
-                generate_id=ids_merged,
-                context_len=context_len,
+                generate_id_dict=generate_id_dict,
+                generate_pad_dict=generate_pad_dict,
                 original_lens=original_lens,
-                generate=True,
+                not_masked=False,
+                tgt_time_step=tgt_time_step,
             )
             logits = outputs['dec_logits']
             # exclude cls token
-            ids_ = ids[:, 1:]
+            tmp_ids_ = tmp_ids[:, 1:]
             scores_ = scores[:, 1:]
             ids_to_keep_ = ids_to_keep[:, 1:]
             # Create a mask of already predicted tokens
@@ -1073,8 +1067,8 @@ class CountDecoder(nn.Module):
             )  # temperature is annealed
             pred_ids = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
 
-            is_mask = ids_ == self.mask_token
-            ids_ = torch.where(is_mask, pred_ids, ids_)
+            is_mask = tmp_ids_ == self.mask_token
+            tmp_ids_ = torch.where(is_mask, pred_ids, tmp_ids_)
             probs_without_temperature = logits.softmax(dim=-1)
             # avoid predicting the same token
             scores_ = 1 - probs_without_temperature.gather(2, pred_ids[..., None])
@@ -1084,9 +1078,9 @@ class CountDecoder(nn.Module):
                 scores_ = scores_.masked_fill(~is_mask, -torch.finfo().max)
             # add cls token to the ids and update scores and ids
             scores[:, 1:] = scores_
-            ids[:, 1:] = ids_
+            tmp_ids[:, 1:] = tmp_ids_
 
-        return outputs, ids
+        return outputs, tmp_ids
 
 
 if __name__ == '__main__':

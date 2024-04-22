@@ -390,10 +390,13 @@ class PetraDataModule(LightningDataModule):
                     d[dataset]['Cell_population'] for d in batch
                 ]
                 time_step_list = [d[dataset]['Time_point'] for d in batch]
+                out[f'tgt_time_point_t{time_step}'] = time_step_list
                 # encode time point to categories for classification
                 encoder = LabelEncoder()
                 integer_time_step = encoder.fit_transform(time_step_list)
-                out[f'tgt_time_point_t{time_step}'] = torch.tensor(integer_time_step)
+                out[f'tgt_time_point_int_t{time_step}'] = torch.tensor(
+                    integer_time_step
+                )
                 out[f'tgt_input_ids_t{time_step}'] = pad_tensor_list(
                     out[f'tgt_input_ids_t{time_step}'],
                     self.max_len,

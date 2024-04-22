@@ -85,7 +85,7 @@ for time_point in adata_cls.obs['time_point'].cat.categories:
         show=False,
     )
     plt.savefig(
-        f'./res/Petra/cls_embeddings_' f'umap_{time_point}.pdf',
+        f'./res/Petra/cls_embeddings_umap_{time_point}.pdf',
         bbox_inches='tight',
     )
     plt.close()
@@ -255,11 +255,34 @@ adata = sc.read_h5ad(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
     'T_perturb/T_perturb/plt/res/Petra/generate_adata.h5ad'
 )
+del adata.uns['Cell_type_colors']
+del adata.uns['Cell_population_colors']
+del adata.uns['Time_point_colors']
+# plot embeddings
+sc.pp.neighbors(adata, n_neighbors=15, use_rep='cls_embeddings')
+sc.tl.umap(adata)
+sc.pl.embedding(
+    adata,
+    basis='X_umap',
+    color=[
+        'Cell_type',
+        'Cell_population',
+        'Time_point',
+    ],
+    ncols=2,
+    wspace=0.4,
+    frameon=False,
+    show=False,
+)
+plt.savefig(
+    './res/Petra/generate_umap_cls.pdf',
+    bbox_inches='tight',
+)
 # log normalised counts
 sc.pp.normalize_total(adata, target_sum=1e4)
 sc.pp.log1p(adata)
 sc.tl.pca(adata, svd_solver='arpack', n_comps=50)
-sc.pp.neighbors(adata, n_neighbors=10, n_pcs=50)
+sc.pp.neighbors(adata, n_neighbors=15, n_pcs=50)
 sc.tl.umap(adata)
 sc.pl.umap(
     adata,
@@ -285,14 +308,14 @@ if mode == 'log_norm':
     sc.pp.log1p(adata_true)
 
 sc.tl.pca(adata_true, svd_solver='arpack', n_comps=50)
-sc.pp.neighbors(adata_true, n_neighbors=10, n_pcs=50)
+sc.pp.neighbors(adata_true, n_neighbors=15, n_pcs=50)
 sc.tl.umap(adata_true)
 sc.pl.umap(
     adata_true,
     color=[
         'Cell_type',
-        'Cell_population',
         'Time_point',
+        'Cell_population',
     ],
     wspace=0.5,
     # plot 2x2 grid

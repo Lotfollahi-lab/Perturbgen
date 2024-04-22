@@ -164,23 +164,24 @@ def map_input_ids(dataset):
 # do not use the mapping function for the control dataset
 # Geneformer needs initial token ids to extract correct embeddings
 dataset_0h = dataset.select(cell_pairings['0h'])
-dataset_mapped = dataset.map(map_input_ids)
+
 paired_dataset_dir = f'./res/dataset_{gene_filtering_mode}'
 if not os.path.exists(paired_dataset_dir):
     os.makedirs(paired_dataset_dir)
-
+dataset_0h.save_to_disk(
+    f'{paired_dataset_dir}_src/cytoimmgen_tokenised_{pairing_mode}_pairing_0h.dataset'
+)
+dataset_mapped = dataset.map(map_input_ids)
 dataset_16h = dataset_mapped.select(cell_pairings['16h'])
 dataset_40h = dataset_mapped.select(cell_pairings['40h'])
 dataset_5d = dataset_mapped.select(cell_pairings['5d'])
-dataset_0h.save_to_disk(
-    f'{paired_dataset_dir}/' f'cytoimmgen_tokenised_{pairing_mode}_pairing_0h.dataset'
-)
+
 dataset_16h.save_to_disk(
-    f'{paired_dataset_dir}/' f'cytoimmgen_tokenised_{pairing_mode}_pairing_16h.dataset'
+    f'{paired_dataset_dir}_tgt/cytoimmgen_tokenised_{pairing_mode}_pairing_16h.dataset'
 )
 dataset_40h.save_to_disk(
-    f'{paired_dataset_dir}/' f'cytoimmgen_tokenised_{pairing_mode}_pairing_40h.dataset'
+    f'{paired_dataset_dir}_tgt/cytoimmgen_tokenised_{pairing_mode}_pairing_40h.dataset'
 )
 dataset_5d.save_to_disk(
-    f'{paired_dataset_dir}/' f'cytoimmgen_tokenised_{pairing_mode}_pairing_5d.dataset'
+    f'{paired_dataset_dir}_tgt/cytoimmgen_tokenised_{pairing_mode}_pairing_5d.dataset'
 )

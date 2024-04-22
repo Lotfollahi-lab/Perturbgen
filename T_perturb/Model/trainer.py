@@ -103,7 +103,7 @@ class Petratrainer(LightningModule):
 
         self.masking_loss = nn.CrossEntropyLoss()
         self.timepoint_loss = nn.CrossEntropyLoss()
-        self.alpha = 0.5
+        self.alpha = 0.75
 
         self.weight_decay = weight_decay
         self.lr = lr
@@ -174,11 +174,9 @@ class Petratrainer(LightningModule):
             src_input_id=batch['src_input_ids'],
             tgt_input_id_dict=tgt_input_id_dict,
             original_lens=batch['src_length'],
-            generate=self.generate,
             cls_positions=cls_positions,
-            return_embeddings=self.return_embeddings,
+            not_masked=self.return_embeddings,
         )
-
         return outputs
 
     def configure_optimizers(self):
@@ -192,15 +190,15 @@ class Petratrainer(LightningModule):
         return {
             'optimizer': optimizer,
             'lr_scheduler': lr_scheduler,
-            'monitor': 'train/combined_loss',
+            'monitor': 'train/masking_loss',
         }
 
     def training_step(self, batch, *args, **kwargs):
         # logits, labels, count_output, count_dropout = self.forward(batch)
         outputs = self.forward(batch)
         dec_logits = outputs['dec_logits']
-        moe_logits = outputs['moe_logits']
-        time_step = outputs['selected_time_step']
+        # moe_logits = outputs['moe_logits']
+        # time_step = outputs['selected_time_step']
         labels = outputs['labels']
 
         perp = self.perplexity(dec_logits, labels)
@@ -208,10 +206,12 @@ class Petratrainer(LightningModule):
         labels = labels.contiguous().view(-1)
 
         masking_loss = self.masking_loss(dec_logits, labels)
-        moe_loss = self.timepoint_loss(
-            moe_logits, batch[f'tgt_time_point_t{time_step}']
-        )
-        combined_loss = self.alpha * masking_loss + (1 - self.alpha) * moe_loss
+        # moe_loss = 0
+        # for i in range(len(moe_logits)):
+        #     moe_loss += self.timepoint_loss(
+        #         moe_logits[i], batch[f'tgt_time_point_t{time_step}']
+        #     )
+        # combined_loss = self.alpha * masking_loss + (1 - self.alpha) * moe_loss
 
         self.log(
             'train/masking_loss',
@@ -224,28 +224,28 @@ class Petratrainer(LightningModule):
             rank_zero_only=True,
             sync_dist=True,
         )
-        self.log(
-            'train/moe_loss',
-            (1 - self.alpha) * moe_loss,
-            on_step=True,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            batch_size=batch['tgt_input_ids_t1'].shape[0],
-            rank_zero_only=True,
-            sync_dist=True,
-        )
-        self.log(
-            'train/combined_loss',
-            combined_loss,
-            on_step=True,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            batch_size=batch['tgt_input_ids_t1'].shape[0],
-            rank_zero_only=True,
-            sync_dist=True,
-        )
+        # self.log(
+        #     'train/moe_loss',
+        #     (1 - self.alpha) * moe_loss,
+        #     on_step=True,
+        #     on_epoch=True,
+        #     prog_bar=True,
+        #     logger=True,
+        #     batch_size=batch['tgt_input_ids_t1'].shape[0],
+        #     rank_zero_only=True,
+        #     sync_dist=True,
+        # )
+        # self.log(
+        #     'train/combined_loss',
+        #     combined_loss,
+        #     on_step=True,
+        #     on_epoch=True,
+        #     prog_bar=True,
+        #     logger=True,
+        #     batch_size=batch['tgt_input_ids_t1'].shape[0],
+        #     rank_zero_only=True,
+        #     sync_dist=True,
+        # )
 
         self.log(
             'train/perplexity',
@@ -259,7 +259,7 @@ class Petratrainer(LightningModule):
             sync_dist=True,
         )
 
-        return combined_loss
+        return masking_loss
 
     def on_train_epoch_end(self):
         # return F1 score and accuracy
@@ -268,17 +268,19 @@ class Petratrainer(LightningModule):
     def validation_step(self, batch, *args, **kwargs):
         outputs = self.forward(batch)
         dec_logits = outputs['dec_logits']
-        moe_logits = outputs['moe_logits']
-        time_step = outputs['selected_time_step']
+        # moe_logits = outputs['moe_logits']
+        # time_step = outputs['selected_time_step']
         labels = outputs['labels']
         perp = self.perplexity(dec_logits, labels)
         dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
         labels = labels.contiguous().view(-1)
         masking_loss = self.masking_loss(dec_logits, labels)
-        moe_loss = self.timepoint_loss(
-            moe_logits, batch[f'tgt_time_point_t{time_step}']
-        )
-        combined_loss = self.alpha * masking_loss + (1 - self.alpha) * moe_loss
+        # moe_loss = 0
+        # for i in range(len(moe_logits)):
+        #     moe_loss += self.timepoint_loss(
+        #         moe_logits[i], batch[f'tgt_time_point_t{time_step}']
+        #     )
+        # combined_loss = self.alpha * masking_loss + (1 - self.alpha) * moe_loss
 
         self.log(
             'val/loss',
@@ -302,12 +304,11 @@ class Petratrainer(LightningModule):
             rank_zero_only=True,
             sync_dist=True,
         )
-        return combined_loss
+        return masking_loss
 
     def test_step(self, batch, *args, **kwargs):
         if self.return_embeddings:
             outputs = self.forward(batch)
-            outputs
             for time_step in self.time_steps:
                 cls_position = outputs['cls_positions'][time_step - 1]
                 cls_embeddings = outputs['dec_embedding'][:, cls_position, :]
@@ -982,9 +983,7 @@ class CountDecodertrainer(LightningModule):
                 iterations=self.iterations,
                 cls_positions=cls_positions,
             )
-            print(outputs)
             count_loss, pred_count_list = self.compute_count_loss(outputs, batch)
-            print('Test loss:', count_loss)
             self.log(
                 'test/loss',
                 count_loss,
