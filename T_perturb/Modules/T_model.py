@@ -332,6 +332,9 @@ class DecoderLayer(nn.Module):
 
 class SinusoidalPositionalEncoding(nn.Module):
     def __init__(self, d_model, max_seq_length, n_time_steps):
+        # train time steps and interpolation timestep
+        # TODO: separate timestep positional encoding
+        # and positional encoding for the ranks
         super(SinusoidalPositionalEncoding, self).__init__()
         self.max_seq_length = max_seq_length
         total_seq_length = n_time_steps * max_seq_length
