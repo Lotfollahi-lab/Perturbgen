@@ -1,5 +1,5 @@
 """Script for training a classifier on  with Pytorch Lightning."""
-
+print('imports')
 import argparse
 import os
 import re
@@ -11,19 +11,20 @@ import torch
 from datasets import load_from_disk
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
+from wandb import init  # type: ignore
+import gc
 
 from T_perturb.Dataloaders.datamodule import PetraDataModule
 from T_perturb.Model.trainer import CountDecodertrainer, Petratrainer
+from T_perturb.src.utils import label_encoder, stratified_split, gears_splitter, randomised_split
 
-# from T_perturb.src.utils import subset_adata_dataset
-from wandb import init  # type: ignore
-
+print('set up')
 RANDOM_SEED = 42
 
-train_dataset = 'cytoimmgen_tokenised_stratified_pairing_16h.dataset'
+# train_dataset = 'cytoimmgen_tokenised_stratified_pairing_16h.dataset'
 # use regex to find condition between degs and .dataset
-dataset_info = re.findall(r'(?<=tokenised_).*(?=.dataset)', train_dataset)[0]
-
+# dataset_info = re.findall(r'(?<=tokenised_).*(?=.dataset)', train_dataset)[0]
+dataset_info = 'hvg_pairing_GFpert'
 
 def get_args():
     """Get command line arguments."""
@@ -55,7 +56,7 @@ def get_args():
     parser.add_argument(
         '--ckpt_path',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        default='/lustre/groups/imm01/worskpace/irene.bonafonte/Projects/2024Mar_Tperturb/'
         'T_perturb/T_perturb/Model/checkpoints/20240306_1831_petra_mode_masking'
         '_lr_0.001_wd_0.0_batch_256_mlmp_0.3_stratified_pairing_16h.ckpt',
         help='path to checkpoint',
@@ -63,7 +64,7 @@ def get_args():
     parser.add_argument(
         '--src_dataset_folder',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        default='/lustre/groups/imm01/worskpace/irene.bonafonte/Projects/2024Mar_Tperturb/'
         'T_perturb/T_perturb/pp/res/dataset_hvg/'
         'cytoimmgen_tokenised_stratified_pairing_0h.dataset',
         help='path to tokenised resting data',
@@ -71,30 +72,17 @@ def get_args():
     parser.add_argument(
         '--tgt_dataset_folder',
         type=str,
-        default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        default=f'/lustre/groups/imm01/worskpace/irene.bonafonte/Projects/2024Mar_Tperturb/'
         f'T_perturb/T_perturb/pp/res/dataset_hvg/'
         f'cytoimmgen_tokenised_{dataset_info}.dataset',
         help='path to tokenised activated data',
     )
-    # parser.add_argument(
-    #     '--tgt_dataset_t1',
-    #     type=str,
-    #     default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    #     f'T_perturb/T_perturb/pp/res/dataset/{train_dataset}',
-    #     help='path to tokenised activated data',
-    # )
-    # parser.add_argument(
-    #     '--tgt_dataset_t2',
-    #     type=str,
-    #     default=f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    #     f'T_perturb/T_perturb/pp/res/dataset/{train_dataset}',
-    #     help='path to tokenised activated data',
-    # )
+
     parser.add_argument(
         '--src_adata_folder',
         type=str,
         default=(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
+            '/lustre/groups/imm01/worskpace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/'
             'T_perturb/pp/res/h5ad_pairing_hvg/'
             'cytoimmgen_tokenisation_stratified_pairing_0h.h5ad'
         ),
@@ -104,12 +92,18 @@ def get_args():
         '--tgt_adata_folder',
         type=str,
         default=(
-            f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
+            f'/lustre/groups/imm01/worskpace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/'
             f'T_perturb/pp/res/h5ad_pairing_hvg/'
             f'cytoimmgen_tokenisation_{dataset_info}.h5ad'
         ),
         help='path to tgt',
     )
+    
+    parser.add_argument(
+        '--splitting_mode', type=str, default='random',
+        help="data splitting strategy (can be 'random', 'stratified', 'unseen_donor' or 'gears-{gears_modes}')",
+    )
+
     parser.add_argument('--batch_size', type=int, default=256, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=True, help='shuffle')
     parser.add_argument(
@@ -135,7 +129,7 @@ def get_args():
     parser.add_argument(
         '--condition_keys',
         nargs='+',
-        default='Cell_culture_batch',
+        default=None,
         type=str,
         help='Selection of condition keys to use for model',
     )
@@ -158,30 +152,57 @@ def main() -> None:
     print('Loading and preprocessing data...')
     src_dataset = load_from_disk(args.src_dataset_folder)
     tgt_dataset = load_from_disk(args.tgt_dataset_folder)
-    # tgt_dataset_t1 = load_from_disk(args.tgt_dataset_t1)
-    # tgt_dataset_t2 = load_from_disk(args.tgt_dataset_t2)
-
-    # # create dictionary for dataset
-    # tgt_datasets = {'t1': tgt_dataset_t1, 't2': tgt_dataset_t2}
-
     src_adata = sc.read_h5ad(args.src_adata_folder)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
-    if tgt_adata.X.__class__.__name__ == 'csr_matrix':
-        tgt_adata.X = tgt_adata.X.A
-    if src_adata.X.__class__.__name__ == 'csr_matrix':
-        src_adata.X = src_adata.X.A
-    if args.loss_mode == 'mse':
-        # log normalize data only for mse loss
-        sc.pp.normalize_total(src_adata, target_sum=1e4)
-        sc.pp.log1p(src_adata)
-        sc.pp.normalize_total(tgt_adata, target_sum=1e4)
-        sc.pp.log1p(tgt_adata)
-    # if args.num_cells != 0:
-    #     src_adata, tgt_adata, src_dataset, tgt_dataset = subset_adata_dataset(
-    #         src_adata, tgt_adata, src_dataset,
-    #         tgt_dataset, args.num_cells, RANDOM_SEED
-    #     )
 
+    if not all(
+        tgt_adata.obs['cell_pairing_index'] == tgt_dataset['cell_pairing_index']
+    ):
+        raise ValueError('Index of adata and tokenized data do not match')
+
+    # Splitting to avoid loading anndata into data module ---------------
+    if args.splitting_mode == 'stratified':
+        train_indices, val_indices, test_indices = stratified_split(
+            tgt_adata=tgt_adata,
+            train_prop=0.8,
+            test_prop=0.1,
+            groups=['Cell_type', 'Donor'],
+            seed=RANDOM_SEED,
+        )
+    elif args.splitting_mode == 'random':
+        train_indices, val_indices, test_indices = randomised_split(train_prop=0.8, test_prop=0.1, seed=RANDOM_SEED, adata=tgt_adata)
+    elif 'gears' in args.splitting_mode:
+        # validation is always 90% of train
+        train_indices, val_indices, test_indices = gears_splitter(
+            mode=args.splitting_mode.split('-')[1],
+            adata=tgt_adata,
+            train_prop=0.9, test_prop=0.1, 
+            seed=RANDOM_SEED, 
+            test_pert_genes=None, test_perts=None
+        )
+    else:
+        raise ValueError(
+            "split is not available, must be either '"
+            "random','stratified', 'unseen_donor' or 'gears-*"
+        )
+    
+    # check that indices are unique to avoid data leakage
+    assert len(set(train_indices).intersection(val_indices)) == 0
+    assert len(set(train_indices).intersection(test_indices)) == 0
+    assert len(set(val_indices).intersection(test_indices)) == 0
+
+    print(
+        f'Number of samples in train set: {len(train_indices)}\n'
+        f'Number of samples in val set: {len(val_indices)}\n'
+        f'Number of samples in test set: {len(test_indices)}'
+    )
+
+    # Conditions preprocessing for ZINB count loss ---------------------------------
+    # create dummy batch variable for when there are no conditions
+    if args.condition_keys is None and args.conditions is None and args.conditions_combined is None:
+        args.condition_keys = 'dummy'
+        tgt_adata.obs[args.condition_keys] = 'dummy_batch'
+    
     if isinstance(args.condition_keys, str):
         condition_keys_ = [args.condition_keys]
     else:
@@ -207,13 +228,56 @@ def main() -> None:
         conditions_combined_ = tgt_adata.obs['conditions_combined'].unique().tolist()
     else:
         conditions_combined_ = args.conditions_combined
+
+    condition_encodings = {
+        cond: {k: v for k, v in zip(conditions_[cond], range(len(conditions_[cond])))}
+        for cond in conditions_.keys()
+    }
+    conditions_combined_encodings = {
+        k: v for k, v in zip(conditions_combined_, range(len(conditions_combined_)))
+    }
+
+    if (condition_encodings is not None) and (condition_keys_ is not None):
+        conditions = [
+            label_encoder(
+                tgt_adata,
+                encoder=condition_encodings[condition_keys_[i]],
+                condition_key=condition_keys_[i],
+            )
+            for i in range(len(condition_encodings))
+        ]
+        conditions = torch.tensor(conditions, dtype=torch.long).T
+        conditions_combined = label_encoder(
+            tgt_adata,
+            encoder=conditions_combined_encodings,
+            condition_key='conditions_combined',
+        )
+        conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)   
+
+    # Pre-process adata and take counts
+    if tgt_adata.X.__class__.__name__ == 'csr_matrix':
+        tgt_adata.X = tgt_adata.X.A
+    if src_adata.X.__class__.__name__ == 'csr_matrix':
+        src_adata.X = src_adata.X.A
+    if args.loss_mode == 'mse':
+        # log normalize data only for mse loss
+        sc.pp.normalize_total(src_adata, target_sum=1e4)
+        sc.pp.log1p(src_adata)
+        sc.pp.normalize_total(tgt_adata, target_sum=1e4)
+        sc.pp.log1p(tgt_adata)
+    src_counts = src_adata.X
+    tgt_counts = tgt_adata.X
+    del src_adata, tgt_adata
+    gc.collect()
+
     print('Data loaded and preprocessed.')
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.train_mode == 'masking':
         pretrained_module = Petratrainer(
-            tgt_vocab_size=1820,  # 704 for degs, 1819 for tokenised
+            tgt_vocab_size=5028,  # 704 for degs, 1819 for tokenised, 5027 for HVG in peturbation assay +1 (padding)
             d_model=256,
+            d_encoded_input=512,
             num_heads=8,
             num_layers=1,
             d_ff=32,
@@ -224,10 +288,8 @@ def main() -> None:
             lr=args.petra_lr,
             lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
-            batch_size=args.batch_size,
-            adata=tgt_adata,
-            dataset_info=dataset_info,
             generate=args.generate,
+            perturbation_modeling='activation', # activation repression or None (if not perturbation experiment)
         )
     elif args.train_mode == 'count':
         decoder_module = CountDecodertrainer(
@@ -239,62 +301,52 @@ def main() -> None:
             # lr_scheduler_factor=0.8,
             conditions=conditions_,
             conditions_combined=conditions_combined_,
-            tgt_vocab_size=1820,  # 704 for degs, 1819 for tokenised
+            tgt_vocab_size=5028,  # 704 for degs, 1819 for tokenised
             dropout=args.count_dropout,
             d_model=256,
             generate=args.generate,
-            tgt_adata=tgt_adata,
+            perturbation_modeling='activation',
         )
 
-        # # Assume `model` is your model
-        if args.loss_mode == 'mse':
-            condition_encodings = None
-            conditions_combined_encodings = None
-        else:
-            condition_encodings = decoder_module.condition_encodings
-            conditions_combined_encodings = decoder_module.conditions_combined_encodings
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
     # Initialize data module
     # ----------------------------------------------------------------------------------
-
-    # While there is a wide variety of different augmentation strategies, we simply
-    # resort to the supposedly optimal AutoAugment policy.
-    # change dataloader and input
-    if not all(
-        tgt_adata.obs['cell_pairing_index'] == tgt_dataset['cell_pairing_index']
-    ):
-        raise ValueError('Index of adata and tokenized data do not match')
     if args.train_mode == 'masking':
         data_module = PetraDataModule(
             src_dataset=src_dataset,
             tgt_dataset=tgt_dataset,
-            src_adata=src_adata,
-            tgt_adata=tgt_adata,
+            src_counts=src_counts,
+            tgt_counts=tgt_counts,
             batch_size=args.batch_size,
             num_workers=args.n_workers,
             shuffle=args.shuffle,
             max_len=args.max_len,
-            seed=RANDOM_SEED,
             drop_last=False,
             split=args.split,
+            train_indices=train_indices,
+            val_indices=val_indices,
+            test_indices=test_indices,
         )
     elif args.train_mode == 'count':
         data_module = PetraDataModule(
             src_dataset=src_dataset,
             tgt_dataset=tgt_dataset,
-            src_adata=src_adata,
-            tgt_adata=tgt_adata,
+            src_counts=src_counts,
+            tgt_counts=tgt_counts,
             batch_size=args.batch_size,
             num_workers=args.n_workers,
             shuffle=args.shuffle,
             max_len=args.max_len,
             condition_keys=condition_keys_,
             condition_encodings=condition_encodings,
-            conditions_combined_encodings=conditions_combined_encodings,
-            seed=RANDOM_SEED,
+            conditions=conditions,
+            conditions_combined=conditions_combined,
             drop_last=False,
             split=args.split,
+            train_indices=train_indices,
+            val_indices=val_indices,
+            test_indices=test_indices,
         )
     # Setup trainer
     # ----------------------------------------------------------------------------------
@@ -313,6 +365,7 @@ def main() -> None:
         )
         monitor_metric = 'train/perplexity'
         mode = 'min'
+
     elif args.train_mode == 'count':
         filename = (
             f'{run_id}_mode_{args.train_mode}_lr_{args.count_lr}_wd_{args.count_wd}_'
@@ -321,9 +374,9 @@ def main() -> None:
         )
         monitor_metric = 'val/pearson'
         mode = 'max'
+
     checkpoint_callback = ModelCheckpoint(
-        dirpath='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/T_perturb/T_perturb/Model/checkpoints',
+        dirpath='/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints',
         filename=filename,
         save_top_k=1,
         verbose=True,
@@ -331,23 +384,21 @@ def main() -> None:
         mode=mode,
     )
     # The tensorboard logger allows for monitoring the progress of training
+    print(torch.cuda.device_count())
     if torch.cuda.device_count() > 1:
         # multi gpu training with group logging
         init(
-            entity='k-ly',
+            entity='irene-bonafonte',
             project='ttransformer',
             # id=unique_id,  # specify id to log to same run
             group=log_path,  # all runs are saved in one group for multi gpu training
-            dir='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            't_generative/T_perturb/T_perturb',
+            # dir='/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/T_perturb',
         )  # noqa
     else:
         init(
-            entity='k-ly',
-            project='ttransformer',
+            entity='irene-bonafonte', 
+            project='ttransformer', 
             id=run_id,
-            dir='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            't_generative/T_perturb/T_perturb',
         )  # noqa
 
     wandb_logger = WandbLogger(log_model='all')
@@ -370,7 +421,6 @@ def main() -> None:
         verbose=False,
         mode=mode,
     )
-    accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
     trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=[

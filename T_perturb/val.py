@@ -11,17 +11,18 @@ import torch
 from datasets import load_from_disk
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
+import gc
 
-import wandb
+from wandb import init  # type: ignore
 from T_perturb.Dataloaders.datamodule import PetraDataModule
 from T_perturb.Model.trainer import CountDecodertrainer, Petratrainer
-from T_perturb.src.utils import subset_adata_dataset
+from T_perturb.src.utils import subset_adata_dataset, label_encoder, stratified_split, gears_splitter, randomised_split
 
 RANDOM_SEED = 42
-test_dataset = 'cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset'
+# test_dataset = 'cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset'
 # use regex to find condition between degs and .dataset
-dataset_info = re.findall(r'(?<=degs_).*(?=.dataset)', test_dataset)[0]
-
+# dataset_info = re.findall(r'(?<=degs_).*(?=.dataset)', test_dataset)[0]
+dataset_info = 'hvg_pairing_GFpert'
 
 def get_args():
     """Get command line arguments."""
@@ -37,6 +38,10 @@ def get_args():
         type=bool,
         default=True,
         help='split data for extrapolation',
+    )
+    parser.add_argument(
+        '--splitting_mode', type=str, default='random',
+        help="data splitting strategy (can be 'random', 'stratified', 'unseen_donor' or 'gears-{gears_modes}')",
     )
     parser.add_argument(
         '--generate',
@@ -134,7 +139,7 @@ def get_args():
     parser.add_argument(
         '--condition_keys',
         nargs='+',
-        default='Cell_culture_batch',
+        default=None,
         type=str,
         help='Selection of condition keys to use for model',
     )
@@ -159,21 +164,50 @@ def main() -> None:
     tgt_dataset = load_from_disk(args.tgt_dataset_folder)
     src_adata = sc.read_h5ad(args.src_adata_folder)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
-    if tgt_adata.X.__class__.__name__ == 'csr_matrix':
-        tgt_adata.X = tgt_adata.X.A
-    if src_adata.X.__class__.__name__ == 'csr_matrix':
-        src_adata.X = src_adata.X.A
-    if args.loss_mode == 'mse':
-        # log normalize data only for mse loss
-        sc.pp.normalize_total(src_adata, target_sum=1e4)
-        sc.pp.log1p(src_adata)
-        sc.pp.normalize_total(tgt_adata, target_sum=1e4)
-        sc.pp.log1p(tgt_adata)
-    if args.num_cells != 0:
-        src_adata, tgt_adata, src_dataset, tgt_dataset = subset_adata_dataset(
-            src_adata, tgt_adata, src_dataset, tgt_dataset, args.num_cells, RANDOM_SEED
-        )
 
+    # Splitting to avoid loading anndata into data module ---------------
+    if args.splitting_mode == 'stratified':
+        train_indices, val_indices, test_indices = stratified_split(
+            tgt_adata=tgt_adata,
+            train_prop=0.8,
+            test_prop=0.1,
+            groups=['Cell_type', 'Donor'],
+            seed=RANDOM_SEED,
+        )
+    elif args.splitting_mode == 'random':
+        train_indices, val_indices, test_indices = randomised_split(train_prop=0.8, test_prop=0.1, seed=RANDOM_SEED, adata=tgt_adata)
+    elif 'gears' in args.splitting_mode:
+        # validation is always 90% of train
+        train_indices, val_indices, test_indices = gears_splitter(
+            mode=args.splitting_mode.split('-')[1],
+            adata=tgt_adata,
+            train_prop=0.9, test_prop=0.1, 
+            seed=RANDOM_SEED, 
+            test_pert_genes=None, test_perts=None
+        )
+    else:
+        raise ValueError(
+            "split is not available, must be either '"
+            "random','stratified', 'unseen_donor' or 'gears-*"
+        )
+    
+    # check that indices are unique to avoid data leakage
+    assert len(set(train_indices).intersection(val_indices)) == 0
+    assert len(set(train_indices).intersection(test_indices)) == 0
+    assert len(set(val_indices).intersection(test_indices)) == 0
+
+    print(
+        f'Number of samples in train set: {len(train_indices)}\n'
+        f'Number of samples in val set: {len(val_indices)}\n'
+        f'Number of samples in test set: {len(test_indices)}'
+    )
+
+    # Conditions preprocessing for ZINB count loss ---------------------------------
+    # create dummy batch variable for when there are no conditions
+    if args.condition_keys is None and args.conditions is None and args.conditions_combined is None:
+        args.condition_keys = 'dummy'
+        tgt_adata.obs[args.condition_keys] = 'dummy_batch'
+    
     if isinstance(args.condition_keys, str):
         condition_keys_ = [args.condition_keys]
     else:
@@ -199,13 +233,56 @@ def main() -> None:
         conditions_combined_ = tgt_adata.obs['conditions_combined'].unique().tolist()
     else:
         conditions_combined_ = args.conditions_combined
+
+    condition_encodings = {
+        cond: {k: v for k, v in zip(conditions_[cond], range(len(conditions_[cond])))}
+        for cond in conditions_.keys()
+    }
+    conditions_combined_encodings = {
+        k: v for k, v in zip(conditions_combined_, range(len(conditions_combined_)))
+    }
+
+    if (condition_encodings is not None) and (condition_keys_ is not None):
+        conditions = [
+            label_encoder(
+                tgt_adata,
+                encoder=condition_encodings[condition_keys_[i]],
+                condition_key=condition_keys_[i],
+            )
+            for i in range(len(condition_encodings))
+        ]
+        conditions = torch.tensor(conditions, dtype=torch.long).T
+        conditions_combined = label_encoder(
+            tgt_adata,
+            encoder=conditions_combined_encodings,
+            condition_key='conditions_combined',
+        )
+        conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)   
+    
+    # Pre-process adata and take counts
+    if tgt_adata.X.__class__.__name__ == 'csr_matrix':
+        tgt_adata.X = tgt_adata.X.A
+    if src_adata.X.__class__.__name__ == 'csr_matrix':
+        src_adata.X = src_adata.X.A
+    if args.loss_mode == 'mse':
+        # log normalize data only for mse loss
+        sc.pp.normalize_total(src_adata, target_sum=1e4)
+        sc.pp.log1p(src_adata)
+        sc.pp.normalize_total(tgt_adata, target_sum=1e4)
+        sc.pp.log1p(tgt_adata)
+    src_counts = src_adata.X
+    tgt_counts = tgt_adata.X
+    del src_adata, tgt_adata
+    gc.collect()
+
     print('Data loaded and preprocessed.')
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.test_mode == 'masking':
         pretrained_module = Petratrainer(
-            tgt_vocab_size=1820,  # 704 for degs, 1819 for tokenised
+            tgt_vocab_size=5028,  # 704 for degs, 1819 for tokenised
             d_model=256,
+            d_encoded_input=512,
             num_heads=8,
             num_layers=1,
             d_ff=32,
@@ -217,10 +294,9 @@ def main() -> None:
             lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             return_embeddings=args.return_embeddings,
-            batch_size=args.batch_size,
-            adata=tgt_adata,
             dataset_info=dataset_info,
             generate=args.generate,
+            perturbation_modeling='activation', # activation repression or None (if not perturbation experiment)
         )
     elif args.test_mode == 'count':
         decoder_module = CountDecodertrainer(
@@ -232,19 +308,12 @@ def main() -> None:
             # lr_scheduler_factor=0.8,
             conditions=conditions_,
             conditions_combined=conditions_combined_,
-            tgt_vocab_size=1820,  # 704 for degs, 1819 for tokenised
+            tgt_vocab_size=5028,  # 704 for degs, 1819 for tokenised
             dropout=args.count_dropout,
             d_model=256,
             generate=args.generate,
-            dataset_info=dataset_info,
-            tgt_adata=tgt_adata,
+            perturbation_modeling='activation', # activation repression or None (if not perturbation experiment)
         )
-        if args.loss_mode == 'mse':
-            condition_encodings = None
-            conditions_combined_encodings = None
-        else:
-            condition_encodings = decoder_module.condition_encodings
-            conditions_combined_encodings = decoder_module.conditions_combined_encodings
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')
 
@@ -258,22 +327,24 @@ def main() -> None:
         data_module = PetraDataModule(
             src_dataset=src_dataset,
             tgt_dataset=tgt_dataset,
-            src_adata=src_adata,
-            tgt_adata=tgt_adata,
+            src_counts=src_counts,
+            tgt_counts=tgt_counts,
             batch_size=args.batch_size,
             num_workers=args.n_workers,
             shuffle=args.shuffle,
             max_len=args.max_len,
-            seed=RANDOM_SEED,
             split=args.split,
             drop_last=False,
+            train_indices=train_indices,
+            val_indices=val_indices,
+            test_indices=test_indices,
         )
     elif args.test_mode == 'count':
         data_module = PetraDataModule(
             src_dataset=src_dataset,
             tgt_dataset=tgt_dataset,
-            src_adata=src_adata,
-            tgt_adata=tgt_adata,
+            src_counts=src_counts,
+            tgt_counts=tgt_counts,
             batch_size=args.batch_size,
             num_workers=args.n_workers,
             shuffle=args.shuffle,
@@ -281,9 +352,12 @@ def main() -> None:
             split=args.split,
             condition_keys=condition_keys_,
             condition_encodings=condition_encodings,
-            conditions_combined_encodings=conditions_combined_encodings,
-            seed=RANDOM_SEED,
+            conditions=conditions,
+            conditions_combined=conditions_combined,
             drop_last=False,
+            train_indices=train_indices,
+            val_indices=val_indices,
+            test_indices=test_indices,
         )
 
     # Setup trainer
@@ -311,9 +385,9 @@ def main() -> None:
         )
         monitor_metric = 'val/pearson'
         mode = 'max'
+        
     checkpoint_callback = ModelCheckpoint(
-        dirpath='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/T_perturb/T_perturb/Model/checkpoints',
+        dirpath='/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints',
         filename=filename,
         save_top_k=1,
         verbose=True,
@@ -322,25 +396,22 @@ def main() -> None:
     )
 
     # The tensorboard logger allows for monitoring the progress of training
+    print(torch.cuda.device_count())
     if torch.cuda.device_count() > 1:
         # multi gpu training with group logging
-        wandb.init(  # type: ignore
-            entity='k-ly',
+        init(
+            entity='irene-bonafonte',
             project='ttransformer',
             # id=unique_id,  # specify id to log to same run
             group=log_path,  # all runs are saved in one group for multi gpu training
-            dir='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            't_generative/T_perturb/T_perturb',
-        )
+            # dir='/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/T_perturb',
+        )  # noqa
     else:
-        wandb.init(  # type: ignore
-            entity='k-ly',
-            project='ttransformer',
+        init(
+            entity='irene-bonafonte', 
+            project='ttransformer', 
             id=run_id,
-            dir='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            't_generative/T_perturb/T_perturb',
-        )
-
+        )  # noqa
     wandb_logger = WandbLogger(log_model='all')
 
     # In this simple example we just check if a GPU is available.

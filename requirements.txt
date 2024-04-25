@@ -34,7 +34,6 @@ flax==0.8.1
 fonttools==4.47.0
 frozenlist==1.4.1
 fsspec==2023.10.0
-geneformer==0.1.0
 gitdb==4.0.11
 GitPython==3.1.41
 google-auth==2.26.2
@@ -142,7 +141,6 @@ stack-data==0.6.3
 statsmodels==0.14.1
 stdlib-list==0.10.0
 sympy==1.12
--e git+ssh://git@github.com/amirvhd/T_perturb.git@de02cbcd2534890888ae70eb575dd0f6148f2095#egg=T_perturb
 tdigest==0.5.2.2
 tensorboard==2.15.1
 tensorboard-data-server==0.7.2

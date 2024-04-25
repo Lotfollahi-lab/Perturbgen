@@ -150,7 +150,7 @@ class CrossAttention(nn.Module):
 
 class DecoderLayer(nn.Module):
     def __init__(
-        self, dim, n_heads, d_head, hidden_size, dropout=0.0, context_dim=None
+        self, dim, n_heads, d_head, hidden_size=None, dropout=0.0, context_dim=None
     ):
         super().__init__()
         self.self_attn = CrossAttention(
@@ -184,7 +184,6 @@ class DecoderLayer(nn.Module):
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, max_seq_length):
         super(PositionalEncoding, self).__init__()
-
         pe = torch.zeros(max_seq_length, d_model)
         position = torch.arange(0, max_seq_length, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(
@@ -197,12 +196,11 @@ class PositionalEncoding(nn.Module):
     def forward(self, x):
         return x + self.pe[:, : x.size(1)]
 
-
+# To do: path not hardcoded
 class Geneformerwrapper(nn.Module):
     def __init__(
         self,
-        model_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'generative_modelling_omic/Geneformer/',
+        model_path='/lustre/groups/imm01/workspace/irene.bonafonte/Software/Geneformer/geneformer-12L-30M',
         output_attentions=False,
         output_hidden_states=True,
     ):
@@ -276,12 +274,14 @@ class Petra(nn.Module):
         max_seq_length: int = 2048,
         dropout: float = 0.0,
         mlm_probability: float = 0.3,
-        add_mask_id: bool = True,
+        d_encoded_input=None,        
+        perturbation_modeling=None,
     ):
         super(Petra, self).__init__()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
+        self.perturbation_modeling = perturbation_modeling
 
         self.cls_token = torch.tensor(
             [tgt_vocab_size], dtype=torch.long, device=self.device
@@ -293,21 +293,18 @@ class Petra(nn.Module):
 
         # self.masked_embed = nn.Parameter(torch.zeros(1, self.embed_dim))
         print('embedding size problem')
-
         self.token_embedding = nn.Embedding(
             total_vocab_size, d_model, padding_idx=0, device=self.device
         )
+
         print(self.token_embedding.weight.shape)
-
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
-
         self.positional_encoding = self.positional_encoding.to(self.device)
-
         self.encoder_layers = Geneformerwrapper()
         self.encoder_layers = self.encoder_layers.to(self.device)
 
         self.decoder_layers = nn.ModuleList(
-            [DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)]
+            [DecoderLayer(dim=d_model, n_heads=num_heads, d_head=d_ff, dropout=dropout, context_dim=d_encoded_input) for _ in range(num_layers)]
         )
         self.decoder_layers = self.decoder_layers.to(self.device)
 
@@ -321,8 +318,9 @@ class Petra(nn.Module):
     def generate_mask(self, tgt, tgt_pad, mlm_probability=0.15):
         labels = tgt.clone()
         probability_matrix = torch.full(
-            tgt_pad.shape, mlm_probability, device=self.device
+            tgt.shape, mlm_probability, device=self.device
         )
+        # cls_tgt_pad = (tgt == self.cls_token) | (tgt == self.perturbation_token) | (tgt == 0)
         cls_tgt_pad = tgt_pad.clone()
         cls_tgt_pad[:, 0] = True
         probability_matrix = probability_matrix.masked_fill(
@@ -335,8 +333,8 @@ class Petra(nn.Module):
     def prepare_tokens(self, x):
         # B, nc, d = x.shape
         # add positional encoding to each token
-        x = x + self.positional_encoding(x)
-
+        # x = x + self.positional_encoding(x)
+        x = self.positional_encoding(x)
         return x
 
     # def forward_with_cond_scale(
@@ -373,9 +371,12 @@ class Petra(nn.Module):
         self,
         src_input_id,
         tgt_input_id,
+        perturbation_id,
+        perturbation_embedding,
         original_lens,
         generate=False,
     ):
+        # append cls token at the beginning of the input ids
         tgt_input_id = torch.cat(
             (
                 self.cls_token.expand(tgt_input_id.shape[0], -1),
@@ -383,6 +384,7 @@ class Petra(nn.Module):
             ),
             dim=1,
         )
+
         src_attention_mask = src_input_id == 0
         # convert to numeric type
         src_attention_mask_int = src_attention_mask.int()
@@ -397,8 +399,25 @@ class Petra(nn.Module):
             )
 
         src_embedded = self.encoder_layers(src_input_id, src_attention_mask_int)
-        # overwrite with tgt input id with masked token
-        tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
+
+        # add embedding at the begining of the src_embedding for perturbed genes and update mask
+        if self.perturbation_modeling is not None:
+            for i in range(src_input_id.shape[0]):
+                # move sentence 2 positions to the right to leave place for the perturbation embeddings
+                src_embedded[i,2:,:] = src_embedded[i,:-2,:].clone()
+                src_attention_mask[i,2:] = src_attention_mask[i,:-2].clone()
+            
+                # add perturbation/s embeddings in the first positions
+                src_embedded[i,:2,:] = perturbation_embedding[i]
+                if len(perturbation_id[i]) == 1:
+                    src_attention_mask[i,0] = 0
+                    src_attention_mask[i,0] = 1
+                else:
+                    src_attention_mask[i,:2] = 0
+        
+        # overwrite tgt input id with masked token
+        if not generate:
+            tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
         tgt_embedded_mask = self.token_embedding(tgt_input_id)
         # tgt_embedded_mask[tgt_mask, :] = self.masked_embed
 
@@ -406,6 +425,7 @@ class Petra(nn.Module):
 
         enc_output = src_embedded
         dec_embedding = tgt_embedded_mask
+
         for dec_layer in self.decoder_layers:
             dec_embedding = dec_layer(
                 dec_embedding, src_attention_mask, tgt_pad, enc_output
@@ -431,10 +451,11 @@ class CountHead(nn.Module):
         tgt_vocab_size: int = 25426,
         d_model: int = 256,
         dropout: float = 0.0,
+        perturbation_modeling: str = None,
     ):
         super(CountHead, self).__init__()
         self.loss_mode = loss_mode
-
+        self.perturbation_modeling = perturbation_modeling
         self.mlp = Mlp(
             in_features=d_model,
             hidden_features=d_model,
@@ -477,6 +498,7 @@ class CountDecoder(nn.Module):
         d_model: int = 256,
         add_mask_id: bool = True,
         dropout: float = 0.0,
+        perturbation_modeling=None,
     ):
         super(CountDecoder, self).__init__()
         self.pretrained_model = pretrained_model
@@ -490,6 +512,7 @@ class CountDecoder(nn.Module):
         self.decoder = CountHead(loss_mode, tgt_vocab_size, d_model, dropout)
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.cls_embedding = None
+        self.perturbation_modeling = perturbation_modeling
 
     def generate_pad(self, tgt):
         tgt_ = tgt.clone().detach()
@@ -502,12 +525,16 @@ class CountDecoder(nn.Module):
         src_input_id,
         tgt_input_id,
         original_lens,
+        perturbation_id,
+        perturbation_embedding,
         generate=False,
     ):
         outputs = self.pretrained_model.forward(
             src_input_id=src_input_id,
             tgt_input_id=tgt_input_id,
             original_lens=original_lens,
+            perturbation_id=perturbation_id,
+            perturbation_embedding=perturbation_embedding,
             generate=generate,
         )
         cls_embedding = outputs['dec_embedding'][:, 0, :]
@@ -523,6 +550,8 @@ class CountDecoder(nn.Module):
         noise_schedule,
         tgt_input_id,
         original_lens,
+        perturbation_id,
+        perturbation_embedding,
         can_remask_prev_masked=False,
         topk_filter_thres=0.9,
         temperature=2.0,  # keep in range 2.0-3.0
@@ -574,6 +603,8 @@ class CountDecoder(nn.Module):
                 # self_cond_embed = self_cond_embed,
                 tgt_input_id=ids,  # change to token id
                 original_lens=original_lens,
+                perturbation_id=perturbation_id,
+                perturbation_embedding=perturbation_embedding,
                 generate=True,
             )
             logits = outputs['logits']
@@ -581,6 +612,11 @@ class CountDecoder(nn.Module):
             for sample in range(batch_size):
                 unique_ids = torch.unique(ids_to_keep[sample])
                 logits[sample, :, unique_ids] = -float('inf')
+                
+                # and also perturbed genes
+                if self.perturbation_modeling == 'repression':
+                    logits[sample, :, perturbation_id[sample]] = -float('inf')
+
             filtered_logits = top_k(logits, topk_filter_thres)
             temperature = starting_temperature * (
                 steps_until_x0 / timesteps

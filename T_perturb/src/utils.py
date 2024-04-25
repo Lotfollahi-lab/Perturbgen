@@ -11,6 +11,7 @@ import tqdm
 from datasets import DatasetDict
 from scipy.sparse import csr_matrix
 from torch.utils.data import Subset, random_split
+from gears.data_utils import DataSplitter
 
 
 def map_ensembl_to_genename(
@@ -285,21 +286,61 @@ def label_encoder(adata, encoder, condition_key=None):
     labels = [int(x) for x in labels]
     return labels
 
+def randomised_split(train_prop: float, test_prop: float, seed: int, adata: ad.AnnData):
+    np.random.seed(seed)
+    m = adata.__len__()
+    idx = range(adata.__len__())
+    idx = np.random.permutation(idx)
+    val_prop = 1 - train_prop - test_prop
+    train_end = int(train_prop * m)
+    validate_end = int(val_prop * m) + train_end
+    train_indices = idx[:train_end]
+    val_indices = idx[train_end:validate_end]
+    test_indices = idx[validate_end:]
 
-def randomised_split(
-    train_prop: float, test_prop: float, seed: int, dataset: ad.AnnData
-):
-    # define train, val and test size
-    train_size = np.round(train_prop * dataset.__len__()).astype(int)
-    test_size = np.round(test_prop * dataset.__len__()).astype(int)
-    val_size = dataset.__len__() - train_size - test_size
-    generator = torch.Generator().manual_seed(seed)
-    train, val, test = random_split(
-        dataset, [train_size, val_size, test_size], generator=generator
-    )
+    return train_indices, val_indices, test_indices
 
-    return train, val, test
+def gears_splitter(mode: str, train_prop: float, test_prop: float, seed: int, adata: ad.AnnData, test_pert_genes: str, test_perts: list):
+    # Call GEARS splitter in different modes
+    if mode in ['simulation', 'simulation_single']:
+        DS = DataSplitter(adata, split_type=mode)
+        adata, subgroup = DS.split_data(train_gene_set_size = train_prop, combo_seen2_train_frac = train_prop, seed=seed, test_perts=test_perts, only_test_set_perts = False)
+        pickle.dump(subgroup, open(f'/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/T_perturb/pp/res/Petra/pert_test_split_seed{seed}.pkl', "wb"))
 
+    elif mode[:5] == 'combo':
+        # combo perturbation
+        mode = 'combo'
+        seen = int(mode[-1])
+        if test_pert_genes:
+            test_pert_genes = test_pert_genes.split('_')
+        DS = DataSplitter(adata, split_type=mode, seen=int(seen))
+        adata = DS.split_data(test_size=test_prop, test_perts=test_perts, test_pert_genes=test_pert_genes, seed=seed)
+        
+    elif mode == 'single':
+        DS = DataSplitter(adata, split_type=mode)
+        adata = DS.split_data(test_size=test_prop, seed=seed)
+        
+    elif mode == 'no_test':
+        DS = DataSplitter(adata, split_type=mode)
+        adata = DS.split_data(seed=seed)
+        
+    elif mode == 'no_split':
+        adata.obs['split'] = 'test'
+
+    else:
+        raise ValueError(
+            "split is not available, must be either '"
+            "'simulation', 'simulation_single', 'combo_seen0', 'combo_seen1', 'combo_seen2', 'single', 'no_test', 'no_split''"
+        )
+
+    # get the idx
+    idx = np.arange(adata.__len__())
+    selset = adata.obs.split.values
+    train_indices = idx[selset == 'train']
+    val_indices = idx[selset == 'val']
+    test_indices = idx[selset == 'test']
+
+    return train_indices, val_indices, test_indices
 
 def stratified_split(
     tgt_adata: ad.AnnData,
