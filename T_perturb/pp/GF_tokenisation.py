@@ -64,7 +64,9 @@ def get_args():
         # 'Phase',
         # 'Donor',
         # 'cell_pairing_index'],
-        default=['Time_point'],
+        default=[
+            'Time_point',
+        ],
         help='List of variables to keep in the dataset',
     )
     parser.add_argument(
@@ -85,6 +87,18 @@ def get_args():
         type=str,
         default='Day 00-03',
         help='Control time point for cell pairing' 'which is feed into Geneformer',
+    )
+    parser.add_argument(
+        '--time_point_order',
+        type=list,
+        default=[
+            'Day 00-03',
+            'Day 06-09',
+            'Day 12-15',
+            'Day 18-21',
+            'Day 24-27',
+        ],
+        help='Order of time points in the dataset',
     )
     args = parser.parse_args()
     return args
@@ -155,7 +169,9 @@ paired_h5ad_dir = (
 if not os.path.exists(paired_h5ad_dir):
     os.makedirs(paired_h5ad_dir)
 # add unique index to adata obs for cell pairing
-adata_subset.obs['cell_pairing_index'] = range(adata_subset.shape[0])
+idx_column = 'cell_pairing_index'
+adata_subset.obs[idx_column] = range(adata_subset.shape[0])
+args.var_list = args.var_list + [idx_column]
 # save filtered adata with DEGs
 adata_subset.obs['n_counts'] = adata_subset.X.sum(axis=1)
 # create sparse matrix if not already
@@ -205,16 +221,26 @@ if not os.path.exists(paired_dataset_dir):
 dataset_mapped = dataset.map(
     lambda example: map_input_ids_to_row_id(example, token_id_to_row_id_dict)
 )
-
+n_tgt_iter = 0  # for enumerating the timepoints
 for time_point in tqdm.tqdm(cell_pairings.keys()):
     # subset adata by cell pairings
     adata_tmp = subset_adata(adata_subset, cell_pairings[time_point])
-    adata_tmp.write_h5ad(
-        f'{paired_h5ad_dir}/{args.dataset}_{args.gene_filtering_mode}_{time_point}.h5ad'
-    )
-    print('adata saved')
+    # separate src and target directory
+    if not os.path.exists(f'{paired_h5ad_dir}_src'):
+        os.makedirs(f'{paired_h5ad_dir}_src')
+    if not os.path.exists(f'{paired_h5ad_dir}_tgt'):
+        os.makedirs(f'{paired_h5ad_dir}_tgt')
+    if not os.path.exists(f'{output_dir}_src'):
+        os.makedirs(f'{output_dir}_src')
+    if not os.path.exists(f'{output_dir}_tgt'):
+        os.makedirs(f'{output_dir}_tgt')
+
     # subset dataset by cell pairings
     if time_point == args.reference_time:
+        adata_tmp.write_h5ad(
+            f'./{paired_h5ad_dir}_src/'
+            f'{args.dataset}_{args.gene_filtering_mode}_{time_point}.h5ad'
+        )
         # do not map input ids to row ids for Geneformer input
         # Geneformer needs initial token ids to extract correct embeddings
         dataset_tmp = dataset.select(cell_pairings[time_point])
@@ -223,8 +249,13 @@ for time_point in tqdm.tqdm(cell_pairings.keys()):
             f'{args.gene_filtering_mode}_{time_point}.dataset'
         )
     else:
+        adata_tmp.write_h5ad(
+            f'{paired_h5ad_dir}_tgt/'
+            f'{n_tgt_iter}_{args.dataset}_{args.gene_filtering_mode}_{time_point}.h5ad'
+        )
         dataset_tmp = dataset_mapped.select(cell_pairings[time_point])
         dataset_tmp.save_to_disk(
-            f'{output_dir}_tgt/{args.dataset}_'
+            f'{output_dir}_tgt/{n_tgt_iter}_{args.dataset}_'
             f'{args.gene_filtering_mode}_{time_point}.dataset'
         )
+        n_tgt_iter += 1

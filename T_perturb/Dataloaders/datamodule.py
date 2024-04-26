@@ -137,6 +137,7 @@ class PetraDataModule(LightningDataModule):
         train_indices: Optional[list[int]] = None,
         val_indices: Optional[list[int]] = None,
         test_indices: Optional[list[int]] = None,
+        var_list: Optional[list] = None,
     ):
         """
         Description:
@@ -168,6 +169,7 @@ class PetraDataModule(LightningDataModule):
         self.val_indices = val_indices
         self.test_indices = test_indices
         self.time_steps = time_steps
+        self.var_list = var_list
 
         # create condition encoder for categorical variables in
         # form of dictionary with key: value pairs based on condition_keys
@@ -296,25 +298,12 @@ class PetraDataModule(LightningDataModule):
                 [torch.tensor(d['src_dataset']['length']) for d in batch]
             )
             model_input_size = torch.max(src_length)
-            src_cell_type = [d['src_dataset']['Cell_type'] for d in batch]
-            src_time_point = ([d['src_dataset']['Time_point'] for d in batch],)
-            src_donor = ([d['src_dataset']['Donor'] for d in batch],)
             src_input_batch_id = pad_tensor_list(
                 src_input_batch_id, self.max_len, self.pad_token_id, model_input_size
             )
         else:
             src_input_batch_id = None
             src_length = None
-            src_cell_type = None
-            src_time_point = None
-            src_donor = None
-
-        if any('tgt_dataset_t1' in item for item in batch):
-            tgt_cell_type = [d['tgt_dataset_t1']['Cell_type'] for d in batch]
-            tgt_donor = [d['tgt_dataset_t1']['Donor'] for d in batch]
-        else:
-            tgt_cell_type = None
-            tgt_donor = None
 
         if any('src_counts' in item for item in batch):
             if isinstance(batch[0]['src_counts'], csr_matrix):
@@ -337,15 +326,13 @@ class PetraDataModule(LightningDataModule):
         out = {
             'src_input_ids': src_input_batch_id,
             'src_length': src_length,
-            'src_cell_type': src_cell_type,
-            'src_time_point': src_time_point,
-            'src_donor': src_donor,
             'src_counts': src_counts,
-            'tgt_cell_type': tgt_cell_type,
-            'tgt_donor': tgt_donor,
+            # 'tgt_cell_type': tgt_cell_type,
+            # 'tgt_donor': tgt_donor,
             'batch': condition,
             'combined_batch': condition_combined,
         }
+
         if any('tgt_counts_dict_t1' in item for item in batch):
             for time_step in self.time_steps:
                 if isinstance(batch[0][f'tgt_counts_dict_t{time_step}'], csr_matrix):
@@ -386,17 +373,23 @@ class PetraDataModule(LightningDataModule):
                     [torch.tensor(d[dataset]['length'], device='cpu') for d in batch]
                 )
                 model_input_size = torch.max(out[f'tgt_length_t{time_step}'])
-                out[f'tgt_cell_population_t{time_step}'] = [
-                    d[dataset]['Cell_population'] for d in batch
-                ]
-                time_step_list = [d[dataset]['Time_point'] for d in batch]
-                out[f'tgt_time_point_t{time_step}'] = time_step_list
-                # encode time point to categories for classification
-                encoder = LabelEncoder()
-                integer_time_step = encoder.fit_transform(time_step_list)
-                out[f'tgt_time_point_int_t{time_step}'] = torch.tensor(
-                    integer_time_step
-                )
+                for var in self.var_list:
+                    var_ = var.lower()
+                    var_ = var_.replace(' ', '_')
+                    if var == 'Time_point':
+                        time_step_list = [d[dataset]['Time_point'] for d in batch]
+                        out[f'tgt_time_point_t{time_step}'] = time_step_list
+                        # encode time point to categories for classification
+                        encoder = LabelEncoder()
+                        integer_time_step = encoder.fit_transform(time_step_list)
+                        out[f'tgt_time_point_int_t{time_step}'] = torch.tensor(
+                            integer_time_step
+                        )
+                    else:
+                        out[f'tgt_{var_}_t{time_step}'] = [
+                            d[dataset][var] for d in batch
+                        ]
+
                 out[f'tgt_input_ids_t{time_step}'] = pad_tensor_list(
                     out[f'tgt_input_ids_t{time_step}'],
                     self.max_len,
@@ -406,7 +399,6 @@ class PetraDataModule(LightningDataModule):
         else:
             out['tgt_dataset'] = None
             out['tgt_length_'] = None
-            out['tgt_cell_population'] = None
         return out
 
 
