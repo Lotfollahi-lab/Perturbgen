@@ -463,7 +463,7 @@ class Petra(nn.Module):
         total_vocab_size = tgt_vocab_size + len(time_steps)  # add one for cls token
         self.time_steps = time_steps
         self.mask_token = total_vocab_size
-        total_vocab_size = total_vocab_size + 1
+        total_vocab_size = total_vocab_size + 1  # add one for padding token
         self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
         self.positional_encoding = SinusoidalPositionalEncoding(
             d_model=d_model,
@@ -674,6 +674,7 @@ class Petra(nn.Module):
                     dec_embeddings = torch.cat(context_embedding_list, dim=1)
                     context = torch.cat([enc_output, dec_embeddings], dim=1)
                 tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_step}']
+
                 if generate:
                     # tgt input id already padded
                     tgt_pad = tgt_pad_dict[f'tgt_pad_t{time_step}']
@@ -683,6 +684,7 @@ class Petra(nn.Module):
                 with torch.no_grad():
                     tgt_embedding = self.token_embedding(tgt_input_id)
                     dec_embedding = self.positional_encoding(tgt_embedding, time_step)
+
                     # create context for the ones before the selected time step
                     # pad the rest
                     dec_outputs = self.call_decoder(
@@ -725,7 +727,6 @@ class Petra(nn.Module):
         )
         selected_tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
         selected_tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{tgt_time_step}']
-        # print("tgt", tgt_time_step)
         # only create maskings for the selected time step
         if not_masked or generate:
             labels = None
@@ -739,7 +740,6 @@ class Petra(nn.Module):
         selected_dec_embedding = self.positional_encoding(
             selected_tgt_embedding, tgt_time_step
         )
-
         outputs = self.call_decoder(
             enc_output=context_embedding,
             src_attention_mask=context_pad,
@@ -902,8 +902,10 @@ class CountDecoder(nn.Module):
             [CountHead(loss_mode, tgt_vocab_size, d_model, dropout) for _ in time_steps]
         )
         total_vocab_size = tgt_vocab_size + len(time_steps)  # add one for cls token
+        total_vocab_size = total_vocab_size  # add one for mask token
         if add_mask_id:
             self.mask_token = total_vocab_size
+
         self.time_steps = time_steps
         self.cls_embedding = None
 

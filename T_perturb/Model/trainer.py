@@ -14,7 +14,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
+
+# from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningModule
 from torchmetrics import (
     CosineSimilarity,
@@ -82,6 +83,9 @@ class Petratrainer(LightningModule):
         lr_scheduler_patience: float = 5.0,
         return_embeddings: bool = False,
         generate: bool = False,
+        mapping_dict_path: str = (
+            './T_perturb/T_perturb/pp/eb/' 'res/token_id_to_genename_all.pkl'
+        ),
         time_steps: list = [1, 2],
         gene_names: Optional[List[str]] = None,
         *args,
@@ -119,15 +123,11 @@ class Petratrainer(LightningModule):
             }
         )
 
-        with open(TOKEN_DICTIONARY_FILE, 'rb') as f:
-            gene_token_dict = pickle.load(f)
-        self.gene_token_dict = {value: key for key, value in gene_token_dict.items()}
         with open(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-            'T_perturb/pp/res/token_id_to_genename_hvg.pkl',
+            mapping_dict_path,
             'rb',
         ) as f:
-            self.subset_tokenid_to_deg = pickle.load(f)
+            self.subset_tokenid_to_genename = pickle.load(f)
         self.return_embeddings = return_embeddings
         self.generate = generate
         self.tgt_vocab_size = tgt_vocab_size
@@ -197,9 +197,11 @@ class Petratrainer(LightningModule):
         # logits, labels, count_output, count_dropout = self.forward(batch)
         outputs = self.forward(batch)
         dec_logits = outputs['dec_logits']
+        print(dec_logits.shape)
         # moe_logits = outputs['moe_logits']
         # time_step = outputs['selected_time_step']
         labels = outputs['labels']
+        print(labels.shape)
 
         perp = self.perplexity(dec_logits, labels)
         dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
@@ -215,7 +217,7 @@ class Petratrainer(LightningModule):
 
         self.log(
             'train/masking_loss',
-            self.alpha * masking_loss,
+            masking_loss,
             on_step=True,
             on_epoch=True,
             prog_bar=True,
@@ -379,7 +381,7 @@ class Petratrainer(LightningModule):
                 # filter for marker genes and swap key value
                 marker_genes_ids = {
                     v: k
-                    for k, v in self.subset_tokenid_to_deg.items()
+                    for k, v in self.subset_tokenid_to_genename.items()
                     if v in marker_genes
                 }
                 self.marker_genes = marker_genes_ids

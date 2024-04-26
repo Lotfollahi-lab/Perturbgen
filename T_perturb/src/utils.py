@@ -14,7 +14,7 @@ from datasets import DatasetDict, load_from_disk
 from geneformer import EmbExtractor
 from geneformer.emb_extractor import get_embs, label_cell_embs
 from scipy.sparse import csr_matrix
-from torch.utils.data import Subset, random_split
+from torch.utils.data import Subset
 
 
 def read_dataset_files(directory, file_type):
@@ -295,19 +295,28 @@ def label_encoder(adata, encoder, condition_key=None):
     return labels
 
 
-def randomised_split(
-    train_prop: float, test_prop: float, seed: int, dataset: ad.AnnData
-):
-    # define train, val and test size
-    train_size = np.round(train_prop * dataset.__len__()).astype(int)
-    test_size = np.round(test_prop * dataset.__len__()).astype(int)
-    val_size = dataset.__len__() - train_size - test_size
-    generator = torch.Generator().manual_seed(seed)
-    train, val, test = random_split(
-        dataset, [train_size, val_size, test_size], generator=generator
-    )
+def randomised_split(adata: ad.AnnData, train_prop: float, test_prop: float, seed: int):
+    n_cells = adata.shape[0]
+    indices = np.arange(n_cells)
+    print(len(indices))
 
-    return train, val, test
+    # define train, val and test size
+    train_size = np.round(train_prop * n_cells).astype(int)
+    test_size = np.round(test_prop * n_cells).astype(int)
+    # val_size = adata.shape - train_size - test_size
+    # generator = torch.Generator().manual_seed(seed)
+    # train, val, test = random_split(
+    #     dataset, [train_size, val_size, test_size], generator=generator
+    # )
+    train_indices = np.random.choice(indices, train_size, replace=False)
+
+    indices_ = np.setdiff1d(indices, train_indices)
+    print(len(indices_))
+    test_indices = np.random.choice(indices_, test_size, replace=False)
+    indices_ = np.setdiff1d(indices_, test_indices)
+    val_indices = indices_
+
+    return train_indices, val_indices, test_indices
 
 
 def stratified_split(

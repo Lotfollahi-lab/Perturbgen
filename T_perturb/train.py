@@ -17,11 +17,19 @@ from T_perturb.Dataloaders.datamodule import PetraDataModule
 from T_perturb.Model.trainer import CountDecodertrainer, Petratrainer
 from T_perturb.src.utils import (
     label_encoder,
+    randomised_split,
     read_dataset_files,
     stratified_split,
 )
 
 RANDOM_SEED = 42
+
+if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
+    # set working directory to root of repository
+    os.chdir('/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/')
+    print('Changed working directory to root of repository')
+
+print(os.getcwd())
 
 
 def get_args():
@@ -30,7 +38,7 @@ def get_args():
     parser.add_argument(
         '--train_mode',
         type=str,
-        default='count',
+        default='masking',
         help='Mode [masking, count]',
     )
     parser.add_argument(
@@ -38,6 +46,13 @@ def get_args():
         type=bool,
         default=True,
         help='split data for extrapolation',
+    )
+    parser.add_argument(
+        '--splitting_mode',
+        type=str,
+        default='random',
+        choices=['random', 'stratified', 'unseen_donor'],
+        help='splitting mode',
     )
     parser.add_argument(
         '--generate',
@@ -54,8 +69,7 @@ def get_args():
     parser.add_argument(
         '--ckpt_path',
         type=str,
-        default='/lustre/scratch123/hgi/projects/'
-        'healthy_imm_expr/t_generative/T_perturb/'
+        default='./T_perturb/'
         'T_perturb/Model/checkpoints/'
         '20240421_1739_petra_train_masking_'
         'lr_0.001_wd_0.001_batch_64_mlmp_0.15_tp_1-2-3.ckpt',
@@ -65,37 +79,36 @@ def get_args():
         '--src_dataset',
         type=str,
         default=(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            't_generative/T_perturb/T_perturb/pp/res/dataset_hvg_src'
-            '/cytoimmgen_tokenised_stratified_pairing_0h.dataset'
+            './T_perturb/T_perturb/pp/eb/'
+            'res/dataset_all_src/eb_all_Day 00-03.dataset'
         ),
         help='path to tokenised resting data',
     )
     parser.add_argument(
         '--tgt_dataset_folder',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset_hvg_tgt',
+        default='./T_perturb/' 'T_perturb/pp/eb/res/dataset_all_tgt',
         help='path to tokenised activated data',
     )
     parser.add_argument(
         '--src_adata',
         type=str,
         default=(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-            'T_perturb/pp/res/h5ad_pairing_hvg_src/'
-            'cytoimmgen_tokenisation_stratified_pairing_0h.h5ad'
+            './T_perturb/T_perturb/pp/'
+            'eb/res/h5ad_pairing_all_src/eb_all_Day 00-03.h5ad'
         ),
         help='path to src',
     )
     parser.add_argument(
         '--tgt_adata_folder',
         type=str,
-        default=(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-            'T_perturb/pp/res/h5ad_pairing_hvg_tgt'
-        ),
+        default=('./T_perturb/T_perturb/' 'pp/eb/res/h5ad_pairing_all_tgt'),
         help='path to tgt',
+    )
+    parser.add_argument(
+        '--mapping_dict_path',
+        type=str,
+        default='./T_perturb/T_perturb/pp/eb/res/token_id_to_genename_all.pkl',
     )
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=True, help='shuffle')
@@ -126,7 +139,8 @@ def get_args():
     parser.add_argument(
         '--condition_keys',
         nargs='+',
-        default='Cell_culture_batch',
+        default=None,
+        # default='Cell_culture_batch',
         type=str,
         help='Selection of condition keys to use for model',
     )
@@ -145,8 +159,20 @@ def get_args():
     parser.add_argument(
         '--time_steps',
         type=list,
-        default=[1, 2, 3],
+        default=[1, 2, 3, 4],
         help='time steps to include during training',
+    )
+    parser.add_argument(
+        '--var_list',
+        type=list,
+        default=['Time_point'],
+        # default=[
+        #     'Cell_population',
+        #     'Cell_type',
+        #     'Time_point',
+        #     'Donor'
+        #     ],
+        help='List of variables to keep in the dataset',
     )
     args = parser.parse_args()
     return args
@@ -174,9 +200,8 @@ def main() -> None:
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
     tgt_adata_tmp = tgt_adatas['tgt_h5ad_t1']
-    splitting_mode = 'stratified'  # 'random', 'stratified', 'unseen_donor'
     if args.split:
-        if splitting_mode == 'stratified':
+        if args.splitting_mode == 'stratified':
             # start preprocessing to avoid loading anndata into datamodule
             train_indices, val_indices, test_indices = stratified_split(
                 tgt_adata=tgt_adata_tmp,
@@ -190,8 +215,13 @@ def main() -> None:
             assert len(set(train_indices).intersection(val_indices)) == 0
             assert len(set(train_indices).intersection(test_indices)) == 0
             assert len(set(val_indices).intersection(test_indices)) == 0
-        # elif split == 'random':
-        #     train, val, test = random_split()
+        elif args.splitting_mode == 'random':
+            train_indices, val_indices, test_indices = randomised_split(
+                adata=tgt_adata_tmp,
+                train_prop=0.8,  # 0.8,0.1,0.1 train, val, test
+                test_prop=0.1,
+                seed=RANDOM_SEED,
+            )
         # elif split == 'unseen_donor':
         #     train, val, test = unseen_donor_split()
         else:
@@ -209,7 +239,13 @@ def main() -> None:
         train_indices = list(range(len(src_dataset)))
         val_indices = None
         test_indices = list(range(len(tgt_datasets)))
-
+    # check if the train indices are the same for both adata and dataset
+    subset_adata = tgt_adata_tmp[train_indices]
+    subset_dataset = tgt_datasets['tgt_dataset_t1'].select(train_indices)
+    assert (
+        subset_adata.obs['cell_pairing_index'].tolist()
+        == subset_dataset['cell_pairing_index']
+    )
     # if tgt_adata.X.__class__.__name__ == 'csr_matrix':
     #     tgt_adata.X = tgt_adata.X.A
     # if src_adata.X.__class__.__name__ == 'csr_matrix':
@@ -224,6 +260,12 @@ def main() -> None:
 
     # ZINB count loss preprocessing
     # ----------------------------------------------------------------------------------
+
+    if args.condition_keys is None:
+        args.condition_keys = 'tmp_batch'
+        # create a mock vector if there are no batch effect
+        tgt_adata_tmp.obs[args.condition_keys] = 1
+
     if isinstance(args.condition_keys, str):
         condition_keys_ = [args.condition_keys]
     else:
@@ -285,7 +327,8 @@ def main() -> None:
     # ----------------------------------------------------------------------------------
     if args.train_mode == 'masking':
         pretrained_module = Petratrainer(
-            tgt_vocab_size=1820,  # 704 for degs, 1820 for tokenised
+            # tgt_vocab_size=1820,  # 704 for degs, 1820 for tokenised
+            tgt_vocab_size=15278,  # max token id + 1 for padding
             d_model=256,
             num_heads=8,
             num_layers=1,
@@ -299,6 +342,7 @@ def main() -> None:
             # lr_scheduler_factor=0.8,
             generate=args.generate,
             time_steps=args.time_steps,
+            mapping_dict_path=args.mapping_dict_path,
         )
     elif args.train_mode == 'count':
         decoder_module = CountDecodertrainer(
@@ -327,11 +371,6 @@ def main() -> None:
     # While there is a wide variety of different augmentation strategies, we simply
     # resort to the supposedly optimal AutoAugment policy.
     # change dataloader and input
-    if not all(
-        tgt_adata_tmp.obs['cell_pairing_index']
-        == tgt_datasets['tgt_dataset_t1']['cell_pairing_index']
-    ):
-        raise ValueError('Index of adata and tokenized data do not match')
     # create count dictionnary
     tgt_counts_dict = {}
     for keys, tgt_adata in tgt_adatas.items():
@@ -353,6 +392,7 @@ def main() -> None:
             val_indices=val_indices,
             test_indices=test_indices,
             time_steps=args.time_steps,
+            var_list=args.var_list,
         )
     elif args.train_mode == 'count':
         data_module = PetraDataModule(
@@ -373,6 +413,7 @@ def main() -> None:
             val_indices=val_indices,
             test_indices=test_indices,
             time_steps=args.time_steps,
+            var_list=args.var_list,
         )
     # Setup trainer
     # ----------------------------------------------------------------------------------
