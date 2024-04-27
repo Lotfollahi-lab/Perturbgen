@@ -131,6 +131,7 @@ class Petratrainer(LightningModule):
         self.return_embeddings = return_embeddings
         self.generate = generate
         self.tgt_vocab_size = tgt_vocab_size
+
         self.time_steps = time_steps
 
         self.cls_embeddings_list: List[torch.tensor] = []
@@ -197,12 +198,9 @@ class Petratrainer(LightningModule):
         # logits, labels, count_output, count_dropout = self.forward(batch)
         outputs = self.forward(batch)
         dec_logits = outputs['dec_logits']
-        print(dec_logits.shape)
         # moe_logits = outputs['moe_logits']
         # time_step = outputs['selected_time_step']
         labels = outputs['labels']
-        print(labels.shape)
-
         perp = self.perplexity(dec_logits, labels)
         dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
         labels = labels.contiguous().view(-1)
@@ -543,7 +541,6 @@ class CountDecodertrainer(LightningModule):
                     dtype=torch.long,
                 ),
             )
-
         self.generate = generate
         self.adata = tgt_adata
         # scheduler

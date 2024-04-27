@@ -69,10 +69,9 @@ def get_args():
     parser.add_argument(
         '--ckpt_path',
         type=str,
-        default='./T_perturb/'
-        'T_perturb/Model/checkpoints/'
-        '20240421_1739_petra_train_masking_'
-        'lr_0.001_wd_0.001_batch_64_mlmp_0.15_tp_1-2-3.ckpt',
+        default='./T_perturb/T_perturb/Model/checkpoints/'
+        '20240426_1417_petra_train_masking_lr_0.001'
+        '_wd_0.001_batch_64_mlmp_0.15_tp_1-2-3-4.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -119,8 +118,15 @@ def get_args():
         '--log_dir', type=str, default='logs', help='path to data directory'
     )
     parser.add_argument(
-        '--max_len', type=int, default=400, help='max sequence length'
+        '--max_len', type=int, default=1000, help='max sequence length'
     )  # check how many genes there are
+    parser.add_argument(
+        '--tgt_vocab_size',
+        type=int,
+        # default=1820,
+        default=15280,
+        help='vocab size (max token id + 1) in dataset for padding',
+    )
     parser.add_argument('--petra_lr', type=float, default=0.001, help='learning rate')
     parser.add_argument('--count_lr', type=float, default=0.0005, help='learning rate')
     parser.add_argument('--petra_wd', type=float, default=0.001, help='weight decay')
@@ -328,7 +334,7 @@ def main() -> None:
     if args.train_mode == 'masking':
         pretrained_module = Petratrainer(
             # tgt_vocab_size=1820,  # 704 for degs, 1820 for tokenised
-            tgt_vocab_size=15278,  # max token id + 1 for padding
+            tgt_vocab_size=args.tgt_vocab_size,  # max token id + 1 for padding
             d_model=256,
             num_heads=8,
             num_layers=1,
@@ -354,7 +360,7 @@ def main() -> None:
             # lr_scheduler_factor=0.8,
             conditions=conditions_,
             conditions_combined=conditions_combined_,
-            tgt_vocab_size=1820,  # 704 for degs, 1820 for tokenised
+            tgt_vocab_size=args.tgt_vocab_size,  # 704 for degs, 1820 for tokenised
             dropout=args.count_dropout,
             generate=args.generate,
             tgt_adata=tgt_adatas,

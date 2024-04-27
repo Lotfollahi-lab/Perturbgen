@@ -853,7 +853,7 @@ class CountHead(nn.Module):
             hidden_features=d_model,
             drop=dropout,
         )
-        n_genes = tgt_vocab_size - 1
+        n_genes = tgt_vocab_size
         if self.loss_mode == 'mse':
             self.relu_output = nn.Sequential(nn.Linear(d_model, n_genes), nn.ReLU())
         elif self.loss_mode == 'zinb':
@@ -897,6 +897,7 @@ class CountDecoder(nn.Module):
         self.embed_dim = d_model
 
         self.loss_mode = loss_mode
+        tgt_vocab_size = tgt_vocab_size - 1
         # initialise multiple decoder for each time step
         self.decoder_list = nn.ModuleList(
             [CountHead(loss_mode, tgt_vocab_size, d_model, dropout) for _ in time_steps]
