@@ -18,7 +18,6 @@ from T_perturb.Dataloaders.datamodule import PetraDataModule
 from T_perturb.Model.trainer import CountDecodertrainer, Petratrainer
 from T_perturb.src.utils import subset_adata_dataset, label_encoder, stratified_split, gears_splitter, randomised_split
 
-RANDOM_SEED = 42
 # test_dataset = 'cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset'
 # use regex to find condition between degs and .dataset
 # dataset_info = re.findall(r'(?<=degs_).*(?=.dataset)', test_dataset)[0]
@@ -60,6 +59,12 @@ def get_args():
         type=int,
         default=0,
         help='number of cells to use for testing',
+    )
+    parser.add_argument(
+        '--seed',
+        type=int,
+        default=42,
+        help='random seed',
     )
     parser.add_argument(
         '--ckpt_masking_path',
@@ -154,6 +159,7 @@ def get_args():
 def main() -> None:
     """Run training."""
     args = get_args()
+    RANDOM_SEED = args.seed
 
     # PyTorch Lightning allows to set all necessary seeds in one function call.
     pl.seed_everything(RANDOM_SEED)

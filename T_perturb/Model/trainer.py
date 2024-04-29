@@ -466,6 +466,8 @@ class CountDecodertrainer(LightningModule):
         self.test_true_counts_list: List[int] = []
         self.test_ctrl_counts_list: List[int] = []
         self.test_pred_counts_list: List[int] = []
+        self.test_tgtcell_idx: List[int] = []
+        self.test_srccell_idx: List[int] = []
 
         if self.perturbation_modeling is None:
             self.val_tgt_cell_type_list: List[str] = []
@@ -744,6 +746,8 @@ class CountDecodertrainer(LightningModule):
         self.test_true_counts_list.append(batch['tgt_counts'])
         self.test_ctrl_counts_list.append(batch['src_counts'])
         self.test_perturbation_list.append(batch['perturbation_id'])
+        self.test_tgtcell_idx.append(batch['tgt_cell_idx'])
+        self.test_srccell_idx.append(batch['src_cell_idx'])
         #self.test_tgt_cell_type_list.append(batch['tgt_cell_type'])
         #self.test_tgt_cell_population_list.append(batch['tgt_cell_population'])
         #self.test_tgt_donor_list.append(batch['tgt_donor'])
@@ -757,14 +761,16 @@ class CountDecodertrainer(LightningModule):
         true_cts_delta = torch.stack(self.test_true_counts_ctrl_delta_deg).detach().cpu()
 
         perturbation_list = ['+'.join([str(x) for x in el]) for el in list(itertools.chain.from_iterable(self.test_perturbation_list))]
-        test_obs = pd.DataFrame({'perturbation_id': perturbation_list})
+        test_obs = pd.DataFrame(
+            {
+                'tgt_cell_idx': list(itertools.chain.from_iterable(self.test_tgtcell_idx)),
+                'src_cell_idx': list(itertools.chain.from_iterable(self.test_srccell_idx)),
+                'perturbation_id': perturbation_list
+            }
+        )
         pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs)
-        pred_adata.layers['counts'] = true_counts.numpy()
-        true_adata = ad.AnnData(X=true_counts.numpy(), obs=test_obs)
-
-        # to do - group by perturbation type and store the number of cells used to compute the mean
-        # or load /lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/T_perturb/pp/res/Petra/pert_test_split_seed{seed}.pkl
-        # and use to compute per-test type metric 
+        pred_adata.layers['tgt_counts'] = true_counts.numpy()
+        pred_adata.layers['src_counts'] = ctrl_counts.numpy()
 
         # save adata
         if self.generate:
@@ -844,7 +850,7 @@ class CountDecodertrainer(LightningModule):
             mean_pearson_delta_deg = pearson(pred_cts_delta[perturbation_list == perturbation, :], true_cts_delta[perturbation_list == perturbation, :]).cpu().detach().numpy()
             mse_delta_deg = torch.mean(self.metric['mse'](pred_cts_delta[perturbation_list == perturbation, :], true_cts_delta[perturbation_list == perturbation, :])).cpu().detach().numpy()
 
-            metrics.loc[perturbation,:] = [mean_pearson, mean_pearson, mse, mean_pearson_delta_deg, mse_delta_deg, np.sum(perturbation_list == perturbation)]            
+            metrics.loc[perturbation,:] = [mean_pearson, mean_pearson_delta, mse, mean_pearson_delta_deg, mse_delta_deg, np.sum(perturbation_list == perturbation)]            
 
 
         # To do: base path not hardoced
@@ -856,6 +862,7 @@ class CountDecodertrainer(LightningModule):
         # calculate MMD and EMD
         # condition_key = 'Cell_population'        
         # EMD
+        # true_adata = ad.AnnData(X=true_counts.numpy(), obs=test_obs)
         #emd = evaluate_emd(true_adata, pred_adata)
         #condition_key = None
         #if condition_key is not None:

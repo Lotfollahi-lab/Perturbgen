@@ -1,15 +1,15 @@
 #!/bin/bash
-#SBATCH -J 1_train_counts_Norman2019
-#SBATCH -o ../../logs/1_Norman2019_train_counts.out
-#SBATCH -e ../../logs/1_Norman2019_train_counts.err
+#SBATCH -J 2_train_counts_Norman2019
+#SBATCH -o ../../logs/2_Norman2019_train_counts.out
+#SBATCH -e ../../logs/2_Norman2019_train_counts.err
 #SBATCH -t 24:00:00
 #SBATCH -p gpu_p
 #SBATCH --gres=gpu:1
 #SBATCH --qos=gpu_normal
 #SBATCH -c 20
 #SBATCH --mem=160G
-#SBATCH --nice=10000
-
+#SBATCH --nice=10000b
+#SBATCH --constraint=a100_80gb
 
 # activate conda environment
 source ~/.bashrc
@@ -31,14 +31,14 @@ python3 $cwd/train.py \
 --tgt_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_perturbed.dataset \
 --src_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_control.h5ad \
 --tgt_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_perturbed.h5ad \
---batch_size 16 \
+--batch_size 64 \
 --split True \
 --splitting_mode gears-simulation \
 --epochs 15 \
 --max_len 1750 \
 --mlm_probability 0.3 \
---n_workers 16 \
---loss_mode zinb \
+--n_workers 20 \
+--loss_mode mse \
 --petra_lr 0.001 \
 --count_lr 0.001 \
 --petra_wd 0.001 \

@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH -J 2_train_masking_Norman2019
-#SBATCH -o ../../logs/2_Norman2019_train_masking.out
-#SBATCH -e ../../logs/2_Norman2019_train_masking.err
+#SBATCH -J 3_train_masking_Norman2019
+#SBATCH -o ../../logs/3_Norman2019_train_masking.out
+#SBATCH -e ../../logs/3_Norman2019_train_masking.err
 #SBATCH -t 24:00:00
 #SBATCH -p gpu_p
 #SBATCH --gres=gpu:1
@@ -9,6 +9,7 @@
 #SBATCH -c 20
 #SBATCH --mem=160G
 #SBATCH --nice=10000
+#SBATCH --constraint=a100_80gb
 
 # activate conda environment
 source ~/.bashrc
@@ -31,13 +32,14 @@ python3 $cwd/train.py \
 --tgt_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_perturbed.dataset \
 --src_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_control.h5ad \
 --tgt_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_perturbed.h5ad \
---batch_size 16 \
+--batch_size 32 \
 --epochs 50 \
 --max_len 1750 \
---petra_lr 0.01 \
+--petra_lr 0.001 \
 --petra_wd 0.001 \
 --count_wd 0.001 \
 --mlm_probability 0.3 \
 --n_workers 20 \
---loss_mode zinb
+--seed 1 \
+--loss_mode mse
 echo "--- Finished computing model"

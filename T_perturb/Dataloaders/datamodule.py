@@ -271,6 +271,8 @@ class PetraDataModule(LightningDataModule):
                 perturbation_id = None
                 perturbation_embedding = None
 
+            src_cell_idx = [d['src_dataset']['cell_pairing_index'] for d in batch]
+
         else:
             src_input_batch_id = None
             src_length = None
@@ -279,6 +281,7 @@ class PetraDataModule(LightningDataModule):
             src_donor = None
             perturbation_id = None
             perturbation_embedding = None
+            src_cell_idx = None
 
         if any('tgt_dataset' in item for item in batch):
             tgt_input_batch_id = [
@@ -303,6 +306,8 @@ class PetraDataModule(LightningDataModule):
                 tgt_cell_population = None
                 tgt_time_point = None
                 tgt_donor = None
+            
+            tgt_cell_idx = [d['tgt_dataset']['cell_pairing_index'] for d in batch]
 
         else:
             tgt_input_batch_id = None
@@ -311,6 +316,7 @@ class PetraDataModule(LightningDataModule):
             tgt_cell_population = None
             tgt_time_point = None
             tgt_donor = None
+            tgt_cell_idx = None
 
         if any('src_counts' in item for item in batch):
             src_counts = [torch.tensor(d['src_counts']) for d in batch]
@@ -358,7 +364,9 @@ class PetraDataModule(LightningDataModule):
             'combined_batch': condition_combined,
             'perturbation_id': perturbation_id,
             'perturbation_embedding': perturbation_embedding,
-            'testing_genes_subset': testing_genes_subset, 
+            'testing_genes_subset': testing_genes_subset,
+            'src_cell_idx': src_cell_idx, 
+            'tgt_cell_idx': tgt_cell_idx, 
         }
 
     def gen_attention_mask(self, length):

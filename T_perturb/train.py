@@ -13,13 +13,11 @@ from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 from wandb import init  # type: ignore
 import gc
-
 from T_perturb.Dataloaders.datamodule import PetraDataModule
 from T_perturb.Model.trainer import CountDecodertrainer, Petratrainer
 from T_perturb.src.utils import label_encoder, stratified_split, gears_splitter, randomised_split
 
 print('set up')
-RANDOM_SEED = 42
 
 # train_dataset = 'cytoimmgen_tokenised_stratified_pairing_16h.dataset'
 # use regex to find condition between degs and .dataset
@@ -52,6 +50,12 @@ def get_args():
         type=int,
         default=0,
         help='number of cells to use for testing',
+    )
+    parser.add_argument(
+        '--seed',
+        type=int,
+        default=42,
+        help='random seed',
     )
     parser.add_argument(
         '--ckpt_path',
@@ -144,6 +148,7 @@ def get_args():
 def main() -> None:
     """Run training."""
     args = get_args()
+    RANDOM_SEED = args.seed
 
     # PyTorch Lightning allows to set all necessary seeds in one function call.
     pl.seed_everything(RANDOM_SEED)
@@ -176,7 +181,7 @@ def main() -> None:
         train_indices, val_indices, test_indices = gears_splitter(
             mode=args.splitting_mode.split('-')[1],
             adata=tgt_adata,
-            train_prop=0.9, test_prop=0.1, 
+            train_prop=0.75, test_prop=0.1, 
             seed=RANDOM_SEED, 
             test_pert_genes=None, test_perts=None
         )

@@ -23,6 +23,7 @@ def pearson(
     pred_counts_t = pred_counts.transpose(0, 1).contiguous()
     true_counts_t = true_counts.transpose(0, 1).contiguous()
     pearson_output = pearson(pred_counts_t, true_counts_t)
+    pearson_output = torch.nan_to_num(pearson_output, nan=0)
     mean_pearson = torch.mean(pearson_output)
     # pearson_gene = PearsonCorrCoef()
     # pearson_gene_mean = pearson_gene(pred_counts.mean(0), true_counts.mean(0))

@@ -1,181 +1,275 @@
 import os
 import pickle
-from pathlib import Path
 from typing import Dict
-
 import numpy as np
 import pandas as pd
 import scanpy as sc
 from datasets import load_from_disk
 from geneformer import TranscriptomeTokenizer
-
+import matplotlib.pyplot as plt
+from typing import Dict, List
+import tqdm
+import gc
+from datasets import load_from_disk
+from pertpy import data
+import itertools
+from gears.data_utils import get_dropout_non_zero_genes, get_DE_genes
+from transformers import BertForMaskedLM
+from torch import tensor
 from T_perturb.src.utils import (
-    map_deg_to_tokenid,
-    map_ensembl_to_genename,
-    map_token_id_to_genename,
-    pairing_resting_to_activated_cells,
     subset_adata,
 )
 
-seed_no = 42
-np.random.seed(seed_no)
+# Set up -------------------
+# paths
+base_path = '/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb'
+data_path = 'datasets/'
+dataset = 'Norman2019'
+pp_path = 'T_perturb/T_perturb/pp/res'
+geneformer_path = '/lustre/groups/imm01/workspace/irene.bonafonte/Software/Geneformer/'
 
-if os.getcwd().split('/')[-3] != 'T_perturb':
-    # set working directory to root of repository
-    os.chdir(
-        '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/T_perturb/T_perturb/pp'
-    )
-    print('Changed working directory to root of repository')
 
-# Preprocess adata
-# ----------------
-print('Start preprocessing adata...')
-adata = sc.read_h5ad(
-    '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-    't_generative/data/h5d_files/cytoimmgen.h5ad'
-)
-adata = map_ensembl_to_genename(
-    adata,
-    Path(
-        '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'data/h5d_files/phase2_data_qced_cells_cellCycleScored_geneMetadata.csv.gz'
-    ),
-)
+# arguments
+gene_filtering_mode = 'hvg'
 
-adata.var['ensembl_id'] = adata.var.index
-# gene_filtering_mode = 'hvg'
-gene_filtering_mode = 'degs'
-if gene_filtering_mode == 'hvg':
-    adata.layers['counts'] = adata.X.copy()
-    sc.pp.normalize_total(adata, target_sum=1e4)
-    sc.pp.log1p(adata)
-    sc.pp.highly_variable_genes(adata, n_top_genes=3000)
-    adata.X = adata.layers['counts']  # need raw counts
-    adata = adata[:, adata.var['highly_variable']]
-    del adata.layers['counts']
-else:
-    # Filter adata for only DEGs
-    degs = pd.read_csv(
-        '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'generative_modelling_omic_notebooks/'
-        'pp/res/deg/significant_deg_1.5logfc_0.05padj_hvg_5k.csv'
-    )
-    unique_degs = degs['names'].unique()
-    adata = adata[:, adata.var['gene_name'].isin(unique_degs)]
-# filter adata for only genes occuring in the token dictionary
-deg_to_tokenid_dict, adata_subset = map_deg_to_tokenid(
-    adata,
-    Path(
-        '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'generative_modelling_omic/Geneformer/geneformer/token_dictionary.pkl'
-    ),
-)
-with open(
-    f'/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-    f'T_perturb/pp/res/token_dictionary_{gene_filtering_mode}_for_subset_token_id.pkl',
+
+# download ----------------
+adata = data.norman_2019()
+
+# pre-process ----------------
+# add some annotations to the perturbations
+ann_f = f'{base_path}/{data_path}/{dataset}/metadata/norman_annotation.csv'
+if os.path.exists(ann_f):
+    annotation = pd.read_csv(ann_f, sep=';')
+    annotation = {p: a for p, a in zip(annotation.Perturbation.values, annotation.Annotation.values)}
+    adata.obs['perturbation_annotation'] = adata.obs['perturbation_name'].map(annotation)
+    adata.obs.loc[adata.obs.perturbation_annotation.isna(),'perturbation_annotation'] = ''
+    adata.obs['perturbation_annotation'] = adata.obs['perturbation_annotation'].astype(str)
+
+# reformat perturbation name
+adata.obs['n_perturbations'] = 1
+adata.obs.loc[adata.obs.perturbation_name=='control', 'n_perturbations'] = 0
+adata.obs.loc[adata.obs.perturbation_name.str.contains('+', regex=False),'n_perturbations'] = 2
+adata.obs['perturbation_name_l'] = adata.obs['perturbation_name'].str.split('+').values
+adata.obs['perturbation1_name'] = adata.obs['perturbation_name_l'].apply(lambda x: x[0])
+adata.obs['perturbation2_name'] = adata.obs['perturbation_name_l'].apply(lambda x: x[1] if len(x) > 1 else 'control')
+
+# re-naming for geneformer
+adata.var['gene_name'] = adata.var_names
+adata.var = adata.var.rename(columns={'index': 'ensembl_id'})
+adata.var_names = adata.var['ensembl_id']
+adata.obs = adata.obs.rename(columns={'total_counts': 'n_counts'})
+
+# add token ids
+tpath = f'{geneformer_path}/geneformer/token_dictionary.pkl'
+with open(tpath, 'rb') as f:
+    token_id_dict = pickle.load(f)
+adata.var['token_id'] = adata.var_names.map(token_id_dict)
+adata = adata[:, adata.var['token_id'].notna()]
+adata.var['token_id'] = adata.var['token_id'].astype('Int64')
+
+# list of perturbed genes
+import itertools
+perturbations = [p for p in set(itertools.chain.from_iterable(adata.obs.perturbation_name_l.to_list())) if p != 'control']
+
+# exclude cells with perturbations on genes without a token id
+missing_perturbations = set([p for p in perturbations if not p in adata.var.gene_name.values])
+print('The following perturbed genes cannot be tokenized with GF: ', missing_perturbations)
+missing_mask = adata.obs.perturbation_name_l.apply(lambda x: len(missing_perturbations.intersection(x)) > 0)
+adata = adata[~missing_mask]
+
+# after cell filtering, add unique index to adata obs for cell pairing
+adata.obs['cell_pairing_index'] = range(adata.shape[0])
+
+# highly variable gene filter + perturbed genes
+sc.pp.highly_variable_genes(adata, n_top_genes=5000)
+adata.var.loc[adata.var.gene_name.isin(perturbations),'highly_variable'] = True
+adata.X = adata.layers['counts'] # we need raw counts
+adata = adata[:, adata.var['highly_variable']] # filter
+
+# update token_id_dict with index instead of ensembl IDs
+token_id_df = adata.var.copy()
+adata.var['rowidx'] = np.arange(0, len(token_id_df)) + 1
+token_id_df.index = np.arange(0, len(token_id_df)) + 1
+token_id_dict = dict(zip(token_id_df['token_id'], token_id_df.index))
+token_id_dict[0] = 0
+
+# save row idx to GF token id dictionary
+with open(f'{base_path}/{pp_path}/{dataset}_token_dictionary_{gene_filtering_mode}.pkl',
     'wb',
 ) as f:
-    pickle.dump(deg_to_tokenid_dict, f)
+    pickle.dump(token_id_dict, f)
 
-adata_subset = map_token_id_to_genename(adata_subset)
-adata_subset.layers['counts'] = adata_subset.X.copy()
-# make new directory to store h5ad files
-paired_h5ad_dir = f'./res/h5ad_pairing_{gene_filtering_mode}'
-if not os.path.exists(paired_h5ad_dir):
-    os.makedirs(paired_h5ad_dir)
-# add unique index to adata obs for cell pairing
-adata_subset.obs['cell_pairing_index'] = range(adata_subset.shape[0])
-# save filtered adata with DEGs
-adata_subset.write_h5ad(
-    f'{paired_h5ad_dir}/cytoimmgen_tokenised_{gene_filtering_mode}.h5ad'
-)
-var_list = [
-    'Cell_population',
-    'Cell_type',
-    'Time_point',
-    'Age',
-    'Sex',
-    'batch',
-    'Cell_culture_batch',
-    'Phase',
-    'Donor',
-    'cell_pairing_index',
-]
+# perturbed genes info
+adata.uns['perturbation_id'] = token_id_df.loc[token_id_df.gene_name.isin(perturbations), ['gene_name','ensembl_id','token_id']].copy()
+adata.uns['perturbation_id']['rowidx'] = adata.uns['perturbation_id'].index
+adata.obs.drop(columns='perturbation_name_l', inplace=True) # can't be written with adata
+
+# Differentially expressed genes per perturbation (for metric) ----------------
+# reformat for GEARS
+adata.obs['condition'] = adata.obs.perturbation_name.astype(str).copy()
+adata.obs.loc[adata.obs['condition']=='control','condition'] = 'ctrl'
+adata.obs.loc[adata.obs['n_perturbations']==1,'condition'] = adata.obs.loc[adata.obs['n_perturbations']==1,'condition'] + '+ctrl'
+adata.obs['cell_type'] = 'A549'
+adata_gears = adata.copy()
+
+# compute DEG per perturbation
+adata_gears = get_DE_genes(adata_gears, False)
+adata_gears = get_dropout_non_zero_genes(adata_gears)
+
+# change to our IDs and add to adata
+gears2gene = adata_gears.obs[['condition_name','perturbation_name']].drop_duplicates().set_index('condition_name', inplace=False, drop=True).to_dict()['perturbation_name']
+ens2idx = adata_gears.var['rowidx'].to_dict()
+
+# add to adata
+adata.uns['top_non_dropout_de_20'] = {gears2gene[p]: np.vectorize(ens2idx.__getitem__)(g) for p, g in adata_gears.uns['top_non_dropout_de_20'].items()}
+del adata_gears
+gc.collect()
+
+# Save pre-processed object
+adata.write_h5ad(f'{base_path}/{data_path}/{dataset}/adata/filtered_tokenised_hvg.h5ad')
+
+# Tokenize ---------
+var_list = [var for var in ['guide_identity', 'perturbation_name', 'perturbation_annotation', 'n_perturbations','perturbation1_name', 'perturbation2_name', 'leiden', 'pct_counts_mt', 'n_genes_by_counts', 'n_counts', 'cell_pairing_index'] if var in adata.obs.columns]
 var_to_keep: Dict[str, str] = {v: v for v in var_list}.copy()
-print('Finished preprocessing adata.')
-print('Start tokenisation of adata...')
-input_dir = paired_h5ad_dir
-output_dir = './res/dataset'
-tk = TranscriptomeTokenizer(var_to_keep, nproc=16)
+
+tk = TranscriptomeTokenizer(var_to_keep, nproc=15) #, model_input_size=5000)
 tk.tokenize_data(
-    input_dir,  # input directory - all h5ad files in this directory will be tokenised
-    output_dir,  # output directory - tokenised h5ad files will be saved here
-    f'cytoimmgen_tokenised_{gene_filtering_mode}_paired',  # name of output file
+    f'{base_path}/{data_path}/{dataset}/adata/',  # input directory - all h5ad files in this directory will be tokenised
+    f'{base_path}/{data_path}/{dataset}/dataset',  # output directory - tokenised h5ad files will be saved here
+    f'filtered_tokenised_hvg',  # name of output file
     file_format='h5ad',  # format [loom, h5ad]
 )
-print('Finished tokenisation.')
-# ---------------- Cell pairing and save adata/dataset by time point ----------------
-# filter and save dataset by time point
-dataset = load_from_disk(
-    f'./res/dataset_{gene_filtering_mode}/'
-    f'cytoimmgen_tokenised_{gene_filtering_mode}_paired.dataset'
-)
-adata_subset = sc.read_h5ad(
-    f'{paired_h5ad_dir}/cytoimmgen_tokenised_{gene_filtering_mode}.h5ad'
-)
-pairing_mode = 'stratified'
-# Pairing resting to activated cells and tokenise individual datasets
-cell_pairings = pairing_resting_to_activated_cells(
-    adata_subset=adata_subset, pairing_mode=pairing_mode, seed=seed_no
-)
 
-adata_0h = subset_adata(adata_subset, cell_pairings['0h'])
-adata_16h = subset_adata(adata_subset, cell_pairings['16h'])
-adata_40h = subset_adata(adata_subset, cell_pairings['40h'])
-adata_5d = subset_adata(adata_subset, cell_pairings['5d'])
+# Pairing --------
+# load
+dataset = load_from_disk(f'{base_path}/{data_path}/{dataset}/dataset/filtered_tokenised_hvg.dataset')
+adata = sc.read_h5ad(f'{base_path}/{data_path}/adata/filtered_tokenised_hvg.h5ad')
+adata.obs = adata.obs.reset_index()
 
+# obs df for ctrl and perturbed
+adata_ctrl = adata.obs.loc[adata.obs['perturbation_name'] == 'control', :]
+adata_perturbed = adata.obs.loc[adata.obs['perturbation_name'] != 'control', :]
 
-adata_0h.write_h5ad(
-    f'{paired_h5ad_dir}/cytoimmgen_tokenisation_{pairing_mode}_pairing_0h.h5ad'
-)
-adata_16h.write_h5ad(
-    f'{paired_h5ad_dir}/cytoimmgen_tokenisation_{pairing_mode}_pairing_16h.h5ad'
-)
-adata_40h.write_h5ad(
-    f'{paired_h5ad_dir}/cytoimmgen_tokenisation_{pairing_mode}_pairing_40h.h5ad'
-)
-adata_5d.write_h5ad(
-    f'{paired_h5ad_dir}/cytoimmgen_tokenisation_{pairing_mode}_pairing_5d.h5ad'
-)
+# ctrl dataset to check if perturbed genes are in input_ids
+dataset_ctrl = dataset.select(adata_ctrl.index.values)
 
+# replace adata_ctrl index by row number
+adata_ctrl = adata_ctrl.reset_index(drop=True)
+
+# new df to store info about perturbation occurrance
+multiple_perturb = adata.obs[adata.obs.n_perturbations>1].perturbation_name.unique()
+multiple_perturb = pd.DataFrame({
+    'gene_name': multiple_perturb,
+    'token_id': ['+'.join(adata.uns['perturbation_id'].loc[adata.uns['perturbation_id'].gene_name.isin(mp.split('+')),'token_id'].astype(str).tolist()) for mp in multiple_perturb],
+    'rowidx': ['+'.join(adata.uns['perturbation_id'].loc[adata.uns['perturbation_id'].gene_name.isin(mp.split('+')),'rowidx'].astype(str).tolist()) for mp in multiple_perturb],
+    'n_perturbations': [2 for p in multiple_perturb]
+}, index=multiple_perturb)
+
+adata.uns['perturbations'] = adata.uns['perturbation_id'].copy().set_index('gene_name', drop=False).drop(columns='ensembl_id')
+adata.uns['perturbations']['n_perturbations'] = 1
+adata.uns['perturbations'] = pd.concat([adata.uns['perturbations'],multiple_perturb])
+adata.uns['perturbations']['n_cells'] = adata.obs['perturbation_name'].value_counts()[adata.uns['perturbations'].gene_name] # number of cells with that perturbation
+
+# cells where single perturbed genes are present
+ctrl_cells_idx = {p: [] for p in adata.uns['perturbation_id'].token_id.values}
+for cell in tqdm.tqdm(dataset_ctrl):
+    for gene in cell['input_ids']:
+        if gene in ctrl_cells_idx.keys():
+            ctrl_cells_idx[gene].append(cell['cell_pairing_index'])
+
+# cells where multiple perturbed genes are present (get it using intersection from prev)
+for mp in adata.uns['perturbations'].loc[adata.uns['perturbations'].n_perturbations == 2, 'token_id'].str.split('+'):
+    ctrl_cells_idx[f'{mp[0]}+{mp[1]}'] = list(set(ctrl_cells_idx[int(mp[0])]).intersection(ctrl_cells_idx[int(mp[1])]))
+
+# add in uns how many control cells have the perturbed genes within input list
+adata.uns['perturbations']['in_n_ctrl_cells'] = [len(ctrl_cells_idx[p]) for p in adata.uns['perturbations']['token_id']]
+
+# Exclude perturbations of genes not sufficiently expressed
+filters = {'in_n_ctrl_cells': 50, 'n_cells': 50}
+include = adata.uns['perturbations'].gene_name.tolist()
+print(f'Initial number of perturbations: {len(include)}')
+for f, v in filters.items():
+    to_del = adata.uns['perturbations']['gene_name'].values[adata.uns['perturbations'][f] < v].tolist()
+    for el in to_del:
+        include.remove(el)
+print(f'Number of perturbations after filtering: {len(include)}')
+
+# initiate dictionary to store cell pairings
+cell_pairings: Dict[str, List[int]] = {'control': [], 'perturbed': [], 'perturbed_gene': []}
+
+# randomly sample from each time point (two samples: ctrl or perturbed -including all perturbations-, ctrl cells are repeated)
+# while removing from the unperturbed, the perturbed gene
+for idx, row in tqdm.tqdm(adata_perturbed.iterrows(), total=adata_perturbed.shape[0]):
+    perturbed_genes = adata_perturbed.loc[idx, 'perturbation_name']
+    if perturbed_genes in include:
+        # perturbation name
+        perturbed_token = adata.uns['perturbations'].loc[perturbed_genes, 'token_id']
+        perturbed_idx = adata.uns['perturbation_id'].loc[adata.uns['perturbation_id'].gene_name.isin(perturbed_genes.split('+')),'rowidx'].tolist()
+        cell_pairings['perturbed_gene'].append(perturbed_idx) 
+        # perturbed cell idx
+        cell_pairings['perturbed'].append(idx)
+        # choose resting within cells expressing the perturbed gene
+        cell_pairings['control'].append(np.random.choice(ctrl_cells_idx[perturbed_token])) 
+
+# Encode perturbation
+with open(f'{base_path}/{pp_path}/{dataset}_token_dictionary_{gene_filtering_mode}.pkl', 'rb') as f:
+    token_id_dict = pickle.load(f)
 
 # use dictionary to map token_id to input_ids
-def map_input_ids(dataset):
-    dataset['input_ids'] = [
-        deg_to_tokenid_dict.get(item, item) for item in dataset['input_ids']
+def map_input_ids(dataset_):
+    dataset_['input_ids'] = [
+        token_id_dict.get(item, item) for item in dataset_['input_ids']
     ]
-    return dataset
+    return dataset_
 
+# divide into ctrl and perturbed
+dataset_ctrl = dataset.select(cell_pairings['control'])
+dataset_perturbed = dataset.select(cell_pairings['perturbed'])
 
-dataset = dataset.map(map_input_ids)
-dataset_0h = dataset.select(cell_pairings['0h'])
-dataset_16h = dataset.select(cell_pairings['16h'])
-dataset_40h = dataset.select(cell_pairings['40h'])
-dataset_5d = dataset.select(cell_pairings['5d'])
-dataset_0h.save_to_disk(
-    f'./res/dataset_{gene_filtering_mode}/'
-    f'cytoimmgen_tokenised_{pairing_mode}_pairing_0h.dataset'
+# map token ids to our 5k dimension for the perturbed dataset
+dataset_perturbed = dataset_perturbed.map(map_input_ids)
+
+# add column with perturbed gene
+dataset_ctrl = dataset_ctrl.add_column("perturbation_id", cell_pairings['perturbed_gene'])
+dataset_perturbed = dataset_perturbed.add_column("perturbation_id", cell_pairings['perturbed_gene'])
+
+# add list of genes to use for testing in the perturbed dataset
+dataset_perturbed = dataset_perturbed.add_column("testing_genes_subset", [adata.uns['top_non_dropout_de_20'][p] for p in dataset_perturbed['perturbation_name']])
+dataset_perturbed.save_to_disk(f'{base_path}/{data_path}/dataset/filtered_tokenised_hvg_pairing_perturbed.dataset')
+
+# add perturbed gene embedding to the control dataset - Geneformer -----------------
+gf = BertForMaskedLM.from_pretrained(
+            '/lustre/groups/imm01/workspace/irene.bonafonte/Software/Geneformer/geneformer-12L-30M',
+            output_attentions=False,
+            output_hidden_states=True
 )
-dataset_16h.save_to_disk(
-    f'./res/dataset_{gene_filtering_mode}/'
-    f'cytoimmgen_tokenised_{pairing_mode}_pairing_16h.dataset'
+print(gf._modules['bert'].embeddings.word_embeddings)
+
+# get gene embeddings for perturbed genes from GF (including padding value)
+gene_embeddings = pd.DataFrame(
+    np.squeeze(gf._modules['bert'].embeddings.word_embeddings(tensor(np.insert(adata.uns['perturbation_id'].token_id.values, 0, 0).astype(int))).detach().numpy()), 
+    index=np.insert(adata.uns['perturbation_id'].rowidx.values, 0, 0)
 )
-dataset_40h.save_to_disk(
-    f'./res/dataset_{gene_filtering_mode}/'
-    f'cytoimmgen_tokenised_{pairing_mode}_pairing_40h.dataset'
-)
-dataset_5d.save_to_disk(
-    f'./res/dataset_{gene_filtering_mode}/'
-    f'cytoimmgen_tokenised_{pairing_mode}_pairing_5d.dataset'
-)
+
+# store gene embedding of each perturbed gene (list of embeddings)
+# if only one perturbation, add a padded value in 2nd position
+gene_embeddings_list = []
+for pg in tqdm.tqdm(cell_pairings['perturbed_gene']):
+    if len(pg) == 1:
+        pg = pg + [0]
+    gene_embeddings_list.append([embed.values for row, embed in gene_embeddings.loc[pg].iterrows()])
+
+dataset_ctrl_wembed = dataset_ctrl.add_column("perturbation_embedding", gene_embeddings_list)
+
+# save
+dataset_ctrl_wembed.save_to_disk(f'{base_path}/{data_path}/dataset/filtered_tokenised_hvg_pairing_GFpert_control.dataset')
+
+# subset adata
+adata_ctrl = subset_adata(adata, cell_pairings['control'])
+adata_perturbed = subset_adata(adata, cell_pairings['perturbed'])
+
+# save
+adata_ctrl.write_h5ad(f'{base_path}/{data_path}/{dataset}/adata/filtered_tokenised_hvg_pairing_control.h5ad')
+adata_perturbed.write_h5ad(f'{base_path}/{data_path}/{dataset}/adata/filtered_tokenised_hvg_pairing_perturbed.h5ad')
+
