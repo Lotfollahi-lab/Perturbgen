@@ -103,7 +103,7 @@ class Petratrainer(LightningModule):
             'cuda' if torch.cuda.is_available() else 'cpu'
         )
         self.masking_loss = nn.CrossEntropyLoss()
-        self.save_hyperparameters()
+        # self.save_hyperparameters(ignore=['transformer'])
         self.weight_decay = weight_decay
         self.lr = lr
         self.lr_scheduler_patience = lr_scheduler_patience
@@ -122,9 +122,7 @@ class Petratrainer(LightningModule):
             gene_token_dict = pickle.load(f)
         self.gene_token_dict = {value: key for key, value in gene_token_dict.items()}
         with open(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-            'T_perturb/T_perturb/pp/res/dataset_hvg/'
-            'token_dictionary_for_subset_token_id.pkl',
+            '/lustre/scratch126/cellgen/team205/av13/PETRA/res/token_dictionary_hvg_for_token_id.pkl',
             'rb',
         ) as f:
             self.subset_tokenid_to_deg = pickle.load(f)
@@ -142,7 +140,9 @@ class Petratrainer(LightningModule):
             src_input_id=batch['src_input_ids'],
             tgt_input_id=batch['tgt_input_ids'],
             original_lens=batch['src_length'],
+            batch_labels=batch['combined_batch'],
             generate=self.generate,
+            unmasked=False # set to True while testing
         )
         return outputs
 
@@ -336,8 +336,8 @@ class Petratrainer(LightningModule):
             self.adata.obsm['X_CLS_embeddings'] = self.cls_embeddings_list
             # save anndata
             self.adata.write_h5ad(
-                f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-                f't_generative/T_perturb/T_perturb/'
+                f'/lustre/scratch126/cellgen/team205/ha11/'
+                f'T_perturb/T_perturb/'
                 f'plt/res/Petra/'
                 f'cls_embeddings_{self.dataset_info}_cosine_similarity.h5ad'
             )
@@ -456,6 +456,8 @@ class CountDecodertrainer(LightningModule):
             src_input_id=batch['src_input_ids'],
             tgt_input_id=batch['tgt_input_ids'],
             original_lens=batch['src_length'],
+            batch_labels=batch['combined_batch'],
+            unmasked=True
         )
 
         return outputs
@@ -727,8 +729,8 @@ class CountDecodertrainer(LightningModule):
         else:
             name_prefix = 'test'
         pred_adata.write_h5ad(
-            f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            f't_generative/T_perturb/T_perturb/'
+            f'/lustre/scratch126/cellgen/team205/ha11/'
+            f'T_perturb/T_perturb/'
             f'plt/res/Petra/'
             f'{name_prefix}_pred_adata_{self.dataset_info}.h5ad'
         )
@@ -772,8 +774,8 @@ class CountDecodertrainer(LightningModule):
         )
 
         metrics.to_csv(
-            f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            f't_generative/T_perturb/T_perturb/plt/res/Petra/'
+            f'/lustre/scratch126/cellgen/team205/ha11/'
+            f'T_perturb/T_perturb/plt/res/Petra/'
             f'{name_prefix}_count_metrics.csv'
         )
         # calculate MMD and EMD
@@ -796,8 +798,8 @@ class CountDecodertrainer(LightningModule):
         # metrics = pd.concat([mmd, emd])
         # save metrics
         emd_condition.to_csv(
-            f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            f't_generative/T_perturb/T_perturb/plt/res/Petra/'
+            f'/lustre/scratch126/cellgen/team205/ha11/'
+            f'T_perturb/T_perturb/plt/res/Petra/'
             f'{name_prefix}_mmd_emd_{condition_key}_metrics.csv'
         )
         # set to status quo

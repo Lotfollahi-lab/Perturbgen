@@ -201,8 +201,7 @@ class PositionalEncoding(nn.Module):
 class Geneformerwrapper(nn.Module):
     def __init__(
         self,
-        model_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'generative_modelling_omic/Geneformer/',
+        model_path='/lustre/scratch126/cellgen/team292/mm58/geneformer_endometrium/Geneformer/',
         output_attentions=False,
         output_hidden_states=True,
     ):
@@ -278,7 +277,7 @@ class Petra(nn.Module):
         mlm_probability: float = 0.3,
         add_mask_id: bool = True,
     ):
-        super(Petra, self).__init__()
+        super().__init__()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
@@ -305,6 +304,9 @@ class Petra(nn.Module):
 
         self.encoder_layers = Geneformerwrapper()
         self.encoder_layers = self.encoder_layers.to(self.device)
+
+        self.bn = DomainSpecificBatchNorm1d(256, 15)
+        self.bn = self.bn.to(self.device)
 
         self.decoder_layers = nn.ModuleList(
             [DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)]
@@ -375,6 +377,8 @@ class Petra(nn.Module):
         tgt_input_id,
         original_lens,
         generate=False,
+        batch_labels=None,
+        unmasked=False 
     ):
         tgt_input_id = torch.cat(
             (
@@ -397,8 +401,14 @@ class Petra(nn.Module):
             )
 
         src_embedded = self.encoder_layers(src_input_id, src_attention_mask_int)
+        # TODO: Add BatchNorm 
+        src_embedded = self.bn(src_embedded, batch_labels)
         # overwrite with tgt input id with masked token
-        tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
+        if unmasked:
+            masked_tgt_input_id = tgt_input_id
+        else: 
+            masked_tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
+        
         tgt_embedded_mask = self.token_embedding(tgt_input_id)
         # tgt_embedded_mask[tgt_mask, :] = self.masked_embed
 
@@ -423,6 +433,39 @@ class Petra(nn.Module):
 
         return outputs
 
+# adapted from: https://github.com/woozch/DSBN/blob/master/model/dsbn.py
+class _DomainSpecificBatchNorm(nn.Module):
+    _version = 2
+
+    def __init__(self, num_features, num_classes, eps=1e-5, momentum=0.1, affine=True,
+                 track_running_stats=True):
+        super(_DomainSpecificBatchNorm, self).__init__()
+        self.bns = nn.ModuleList(
+            [nn.BatchNorm1d(num_features, eps, momentum, affine, track_running_stats) for _ in range(num_classes)])
+
+    def reset_running_stats(self):
+        for bn in self.bns:
+            bn.reset_running_stats()
+
+    def reset_parameters(self):
+        for bn in self.bns:
+            bn.reset_parameters()
+
+    def _check_input_dim(self, input):
+        raise NotImplementedError
+
+    def forward(self, x, combined_batch):
+        self._check_input_dim(x)
+        out = torch.cat([
+            self.bns[combined_batch[i].item()](x[i].permute(1, 0).unsqueeze(0)).permute(0, 2, 1)
+        for i in range(len(combined_batch))])
+        return out
+
+class DomainSpecificBatchNorm1d(_DomainSpecificBatchNorm):
+    def _check_input_dim(self, input):
+        if input.dim() != 3:
+            raise ValueError('expected 3D input (got {}D input)'
+                             .format(input.dim()))
 
 class CountHead(nn.Module):
     def __init__(
