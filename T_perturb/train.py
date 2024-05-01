@@ -11,7 +11,7 @@ import torch
 from datasets import load_from_disk
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.strategies import DDPStrategy
+from pytorch_lightning.strategies import DeepSpeedStrategy
 
 from T_perturb.Dataloaders.datamodule import PetraDataModule
 from T_perturb.Model.trainer import CountDecodertrainer, Petratrainer
@@ -51,6 +51,7 @@ def get_args():
         '--splitting_mode',
         type=str,
         default='random',
+        # default='stratified',
         choices=['random', 'stratified', 'unseen_donor'],
         help='splitting mode',
     )
@@ -61,32 +62,29 @@ def get_args():
         help='generate data',
     )
     parser.add_argument(
-        '--num_cells',
-        type=int,
-        default=0,
-        help='number of cells to use for testing',
-    )
-    parser.add_argument(
         '--ckpt_path',
         type=str,
         default='./T_perturb/T_perturb/Model/checkpoints/'
-        '20240426_1417_petra_train_masking_lr_0.001'
-        '_wd_0.001_batch_64_mlmp_0.15_tp_1-2-3-4.ckpt',
+        '20240430_1030_petra_train_masking_lr_0.001'
+        '_wd_0.001_batch_64_mlmp_0.15_tp_1-2-3.ckpt/'
+        'checkpoint/mp_rank_00_model_states.pt',
         help='path to checkpoint',
     )
     parser.add_argument(
         '--src_dataset',
         type=str,
         default=(
-            './T_perturb/T_perturb/pp/eb/'
-            'res/dataset_all_src/eb_all_Day 00-03.dataset'
+            './T_perturb/T_perturb/pp/res/eb/'
+            'dataset_all_src/eb_all_Day 00-03.dataset'
         ),
+        # default='./T_perturb/T_perturb/pp/cytoimmgen/dataset_hvg_src/0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
         '--tgt_dataset_folder',
         type=str,
-        default='./T_perturb/' 'T_perturb/pp/eb/res/dataset_all_tgt',
+        default='./T_perturb/T_perturb/pp/res/eb/dataset_all_tgt',
+        # default='./T_perturb/T_perturb/pp/cytoimmgen/dataset_hvg_tgt',
         help='path to tokenised activated data',
     )
     parser.add_argument(
@@ -94,22 +92,26 @@ def get_args():
         type=str,
         default=(
             './T_perturb/T_perturb/pp/'
-            'eb/res/h5ad_pairing_all_src/eb_all_Day 00-03.h5ad'
+            'res/eb/h5ad_pairing_all_src/eb_all_Day 00-03.h5ad'
         ),
+        # default='./T_perturb/T_perturb/pp/cytoimmgen/'
+        # 'h5ad_pairing_hvg_src/0h.h5ad',
         help='path to src',
     )
     parser.add_argument(
         '--tgt_adata_folder',
         type=str,
-        default=('./T_perturb/T_perturb/' 'pp/eb/res/h5ad_pairing_all_tgt'),
+        default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_all_tgt',
+        # default='./T_perturb/T_perturb/pp/cytoimmgen/h5ad_pairing_hvg_tgt',
         help='path to tgt',
     )
     parser.add_argument(
         '--mapping_dict_path',
         type=str,
-        default='./T_perturb/T_perturb/pp/eb/res/token_id_to_genename_all.pkl',
+        default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
+        # default = './T_perturb/T_perturb/pp/cytoimmgen/token_id_to_genename_hvg.pkl',
     )
-    parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
+    parser.add_argument('--batch_size', type=int, default=32, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=True, help='shuffle')
     parser.add_argument(
         '--epochs', type=int, default=100, help='number of training epochs'
@@ -118,7 +120,11 @@ def get_args():
         '--log_dir', type=str, default='logs', help='path to data directory'
     )
     parser.add_argument(
-        '--max_len', type=int, default=1000, help='max sequence length'
+        '--max_len',
+        type=int,
+        # default=400,
+        default=2048,
+        help='max sequence length',
     )  # check how many genes there are
     parser.add_argument(
         '--tgt_vocab_size',
@@ -131,9 +137,7 @@ def get_args():
     parser.add_argument('--count_lr', type=float, default=0.0005, help='learning rate')
     parser.add_argument('--petra_wd', type=float, default=0.001, help='weight decay')
     parser.add_argument('--count_wd', type=float, default=0.001, help='weight decay')
-    parser.add_argument(
-        '--mlm_probability', type=float, default=0.15, help='mlm probability'
-    )
+    parser.add_argument('--mlm_prob', type=float, default=0.15, help='mlm probability')
     parser.add_argument(
         '--n_workers', type=int, default=64, help='number of workers'
     )  # 64
@@ -164,13 +168,17 @@ def get_args():
     )
     parser.add_argument(
         '--time_steps',
-        type=list,
-        default=[1, 2, 3, 4],
+        # type=list,
+        nargs='+',
+        type=int,
+        default=[1, 2, 3],
         help='time steps to include during training',
     )
     parser.add_argument(
         '--var_list',
-        type=list,
+        # type=list,
+        nargs='+',
+        type=str,
         default=['Time_point'],
         # default=[
         #     'Cell_population',
@@ -189,9 +197,7 @@ def main() -> None:
     # torch.backends.cudnn.benchmark = False
     # torch.backends.cudnn.deterministic = True
     """Run training."""
-
     args = get_args()
-
     # PyTorch Lightning allows to set all necessary seeds in one function call.
     pl.seed_everything(RANDOM_SEED)
     torch.manual_seed(RANDOM_SEED)
@@ -339,12 +345,12 @@ def main() -> None:
             num_heads=8,
             num_layers=1,
             d_ff=32,
-            max_seq_length=500,
+            max_seq_length=args.max_len + 100,
             dropout=args.petra_dropout,
-            mlm_probability=args.mlm_probability,
+            mlm_probability=args.mlm_prob,
             weight_decay=args.petra_wd,
             lr=args.petra_lr,
-            lr_scheduler_patience=5.0,
+            # lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             generate=args.generate,
             time_steps=args.time_steps,
@@ -356,7 +362,7 @@ def main() -> None:
             loss_mode=args.loss_mode,
             lr=args.count_lr,
             weight_decay=args.count_wd,
-            lr_scheduler_patience=5.0,
+            # lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             conditions=conditions_,
             conditions_combined=conditions_combined_,
@@ -436,7 +442,7 @@ def main() -> None:
         filename = (
             f'{run_id}_train_{args.train_mode}_lr_{args.petra_lr}_wd_{args.petra_wd}_'
             f'batch_{args.batch_size}_'
-            f'mlmp_{args.mlm_probability}_tp_{time_steps_str}'
+            f'mlmp_{args.mlm_prob}_tp_{time_steps_str}'
         )
         if args.split:
             monitor_metric = 'val/perplexity'
@@ -456,9 +462,9 @@ def main() -> None:
             monitor_metric = 'val/pearson'
             mode = 'max'
 
+    checkpoint_path = './T_perturb/T_perturb/Model/checkpoints'
     checkpoint_callback = ModelCheckpoint(
-        dirpath='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/T_perturb/T_perturb/Model/checkpoints',
+        dirpath=checkpoint_path,
         filename=filename,
         save_top_k=1,
         verbose=True,
@@ -500,8 +506,11 @@ def main() -> None:
     )
     accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
     print('Using device {}.'.format(accelerator))
+    deepspeed_strategy = DeepSpeedStrategy(
+        stage=2,
+    )
 
-    ddp_strategy = DDPStrategy(find_unused_parameters=True)
+    # ddp_strategy = DDPStrategy(find_unused_parameters=True)
     trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=[
@@ -512,8 +521,16 @@ def main() -> None:
         max_epochs=args.epochs,
         accelerator='auto',
         devices=-1 if torch.cuda.is_available() else 0,
-        strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
+        strategy=deepspeed_strategy if torch.cuda.device_count() > 1 else 'auto',
     )
+    print('Starting training...')
+    if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
+        # set working directory to root of repository
+        os.chdir(
+            '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+            't_generative/T_perturb/T_perturb/'
+        )
+        print('Changed working directory to root of repository')
 
     if args.train_mode == 'masking':
         # Finally, kick of the training process.
@@ -522,6 +539,13 @@ def main() -> None:
         trainer.fit(decoder_module, data_module)
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
+    # #collate deepzero checkpoint
+    # if torch.cuda.device_count() > 1:
+    #     save_path = f'./Model/checkpoints/{filename}'
+    #     convert_zero_checkpoint_to_fp32_state_dict(
+    #         save_path,
+    #         f'{save_path}.pt'
+    #     )
 
 
 if __name__ == '__main__':

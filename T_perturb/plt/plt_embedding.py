@@ -325,7 +325,7 @@ sc.pl.umap(
 plt.savefig(f'./res/true_umap_{mode}.pdf', dpi=300, bbox_inches='tight')
 adata_full = sc.read_h5ad(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    'T_perturb/T_perturb/pp/res/h5ad_pairing_hvg/'
+    'T_perturb/T_perturb/pp/cytoimmgen/res/h5ad_pairing_hvg/'
     'cytoimmgen_tokenised_hvg.h5ad'
 )
 adata_random = adata_full.copy()

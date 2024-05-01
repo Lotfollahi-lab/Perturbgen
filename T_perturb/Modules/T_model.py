@@ -1081,7 +1081,8 @@ class CountDecoder(nn.Module):
             scores_ = rearrange(scores_, '... 1 -> ...')
 
             if not can_remask_prev_masked:
-                scores_ = scores_.masked_fill(~is_mask, -torch.finfo().max)
+                dtype = scores_.dtype
+                scores_ = scores_.masked_fill(~is_mask, -torch.finfo(dtype).max)
             # add cls token to the ids and update scores and ids
             scores[:, 1:] = scores_
             tmp_ids[:, 1:] = tmp_ids_

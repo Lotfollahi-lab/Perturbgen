@@ -13,7 +13,9 @@ import scanpy as sc
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
+
+# import torch.optim as optim
+from deepspeed.ops.adam import FusedAdam
 
 # from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningModule
@@ -31,7 +33,6 @@ from T_perturb.src.losses import (
     nb,
     zinb,
 )
-from T_perturb.src.utils import one_hot_encoder
 
 if torch.cuda.is_available():
     cuda_device_name = torch.cuda.get_device_name()
@@ -80,11 +81,11 @@ class Petratrainer(LightningModule):
         mlm_probability: float = 0.15,
         weight_decay: float = 0.0,
         lr: float = 1e-3,
-        lr_scheduler_patience: float = 5.0,
+        # lr_scheduler_patience: float = 5.0,
         return_embeddings: bool = False,
         generate: bool = False,
         mapping_dict_path: str = (
-            './T_perturb/T_perturb/pp/eb/' 'res/token_id_to_genename_all.pkl'
+            './T_perturb/T_perturb/pp/eb/res/token_id_to_genename_all.pkl'
         ),
         time_steps: list = [1, 2],
         gene_names: Optional[List[str]] = None,
@@ -111,7 +112,7 @@ class Petratrainer(LightningModule):
 
         self.weight_decay = weight_decay
         self.lr = lr
-        self.lr_scheduler_patience = lr_scheduler_patience
+        # self.lr_scheduler_patience = lr_scheduler_patience
         # self.lr_scheduler_factor = lr_scheduler_factor
         self.perplexity = Perplexity(ignore_index=-100)
         self.metric = nn.ModuleDict(
@@ -181,16 +182,20 @@ class Petratrainer(LightningModule):
         return outputs
 
     def configure_optimizers(self):
-        parameters = [{'params': self.transformer.parameters(), 'lr': self.lr}]
-        optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
-        lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            mode='min',
-            patience=self.lr_scheduler_patience,
+        optimizer = FusedAdam(
+            self.transformer.parameters(), lr=self.lr, weight_decay=self.weight_decay
         )
+        # lr_scheduler = WarmupCosineLR(
+        #     optimizer,
+        #     total_num_steps=2000,
+        #     # mode='min',
+        #     warmup_type = 'linear',
+        #     # patience=self.lr_scheduler_patience,
+        # )
         return {
             'optimizer': optimizer,
-            'lr_scheduler': lr_scheduler,
+            # 'lr_scheduler': lr_scheduler,
+            # 'scheduler_type': 'WarmupCosineLR',
             'monitor': 'train/masking_loss',
         }
 
@@ -491,15 +496,15 @@ class CountDecodertrainer(LightningModule):
             max_seq_length=checkpoint['hyper_parameters']['max_seq_length'],
             time_steps=time_steps,
         )
-        state_dict = checkpoint['state_dict']
+        # state_dict = checkpoint['state_dict']
 
-        new_state_dict = {}
-        for k, v in state_dict.items():
-            k = k.replace('transformer.', '')
-            new_state_dict[k] = v
-        state_dict = new_state_dict
+        # new_state_dict = {}
+        # for k, v in state_dict.items():
+        #     k = k.replace('transformer.', '')
+        #     new_state_dict[k] = v
+        # state_dict = new_state_dict
 
-        pretrained_model.load_state_dict(new_state_dict, strict=False)
+        # pretrained_model.load_state_dict(new_state_dict, strict=False)
 
         self.decoder = CountDecoder(
             pretrained_model=pretrained_model,
@@ -510,6 +515,7 @@ class CountDecodertrainer(LightningModule):
             time_steps=time_steps,
         )
         self.save_hyperparameters()
+
         self.weight_decay = weight_decay
         self.lr = lr
         self.lr_scheduler_patience = lr_scheduler_patience
@@ -566,6 +572,15 @@ class CountDecodertrainer(LightningModule):
         self.test_tgt_time_point_list: List[str] = []
         self.test_cls_embeddings_list: List[torch.tensor] = []
 
+    def on_load_checkpoint(self, checkpoint):
+        state_dict = checkpoint['module']
+        state_dict = {
+            k.partition('module.')[2]: state_dict[k] for k in state_dict.keys()
+        }
+        checkpoint['state_dict'] = state_dict
+
+        return checkpoint
+
     def forward(self, batch):
         tgt_input_id_dict = {}
 
@@ -592,6 +607,24 @@ class CountDecodertrainer(LightningModule):
         )
 
         return outputs
+
+    def one_hot_encoder(
+        self,
+        idx,
+        n_cls,
+        dtype,
+    ):
+        assert torch.max(idx).item() < n_cls
+
+        if idx.dim() == 1:
+            idx = idx.unsqueeze(1)
+        self.register_buffer(
+            'onehot', torch.zeros(idx.size(0), n_cls, dtype=dtype, device=idx.device)
+        )
+        # change idx dtype to onehot dtype
+        idx = idx.type(self.onehot.dtype)
+        self.onehot.scatter_(1, idx.long(), 1)
+        return self.onehot
 
     def compute_count_loss(
         self,
@@ -625,10 +658,11 @@ class CountDecodertrainer(LightningModule):
                 )
 
                 dec_mean = dec_mean_gamma * size_factor_view
-
                 dispersion = F.linear(
-                    one_hot_encoder(
-                        batch['combined_batch'], self.n_conditions_combined
+                    self.one_hot_encoder(
+                        batch['combined_batch'],
+                        self.n_conditions_combined,
+                        self.theta.dtype,
                     ),
                     self.theta,
                 )
@@ -651,7 +685,9 @@ class CountDecodertrainer(LightningModule):
                 )
                 dec_mean = dec_mean_gamma * size_factor_view
                 dispersion = F.linear(
-                    one_hot_encoder(combined_batch, self.n_conditions_combined),
+                    self.one_hot_encoder(
+                        combined_batch, self.n_conditions_combined, self.theta.dtype
+                    ),
                     self.theta,
                 )
                 dispersion = torch.exp(dispersion)
@@ -1156,15 +1192,19 @@ class CountDecodertrainer(LightningModule):
             self.test_pred_counts_list = []
 
     def configure_optimizers(self):
-        parameters = [{'params': self.decoder.parameters(), 'lr': self.lr}]
-        optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
-        lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            mode='min',
-            patience=self.lr_scheduler_patience,
+        optimizer = FusedAdam(
+            self.decoder.parameters(), lr=self.lr, weight_decay=self.weight_decay
         )
+        # lr_scheduler = WarmupCosineLR(
+        #     optimizer,
+        #     total_num_steps=2000,
+        #     # mode='min',
+        #     warmup_type = 'linear',
+        #     # patience=self.lr_scheduler_patience,
+        # )
         return {
             'optimizer': optimizer,
-            'lr_scheduler': lr_scheduler,
+            # 'lr_scheduler': lr_scheduler,
+            # 'scheduler_type': 'WarmupCosineLR',
             'monitor': 'train/loss',
         }
