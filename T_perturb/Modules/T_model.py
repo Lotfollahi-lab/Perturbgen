@@ -8,7 +8,6 @@ import numpy as np
 import torch
 from einops import rearrange, repeat
 from torch import einsum, nn
-from torch.nn import functional as F
 from tqdm import tqdm
 from transformers import BertForMaskedLM
 
@@ -218,9 +217,9 @@ class DecoderLayer(nn.Module):
         hidden_size,
         dropout=0.0,
         context_dim=None,
-        top_k=2,
-        num_experts=3,
-        num_classes=3,
+        # top_k=2,
+        # num_experts=3,
+        # num_classes=3,
     ):
         super().__init__()
         self.self_attn_1 = CrossAttention(
@@ -230,20 +229,20 @@ class DecoderLayer(nn.Module):
             query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout
         )
         # induce sparsity in the attention mechanism using MoE
-        self.top_k = top_k
+        # self.top_k = top_k
         # Initialize experts
-        self.experts = nn.ModuleList(
-            [
-                CrossAttention(
-                    query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout
-                )
-                for _ in range(num_experts)
-            ]
-        )
-        # learn gate weights one on batch and one on token level
-        self.cls_gating_layer = nn.Linear(dim, num_experts)
-        # self.token_gating_layer = nn.Linear(dim, num_experts)
-        self.classifier_fc = nn.Linear(dim, num_classes)
+        # self.experts = nn.ModuleList(
+        #     [
+        #         CrossAttention(
+        #             query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout
+        #         )
+        #         for _ in range(num_experts)
+        #     ]
+        # )
+        # # learn gate weights one on batch and one on token level
+        # self.cls_gating_layer = nn.Linear(dim, num_experts)
+        # # self.token_gating_layer = nn.Linear(dim, num_experts)
+        # self.classifier_fc = nn.Linear(dim, num_classes)
 
         self.cross_attn = CrossAttention(
             query_dim=dim,
@@ -252,7 +251,7 @@ class DecoderLayer(nn.Module):
             dim_head=d_head,
             dropout=dropout,
         )
-        self.register_buffer('top_k_mask', torch.zeros(num_experts, dtype=torch.bool))
+        # self.register_buffer('top_k_mask', torch.zeros(num_experts, dtype=torch.bool))
         self.feed_forward = Mlp(
             in_features=dim, hidden_features=hidden_size
         )  # add hidden size
@@ -264,38 +263,38 @@ class DecoderLayer(nn.Module):
 
     def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None, moe=False):
         attn_output = self.self_attn_1(x, mask=tgt_mask)
-        if moe:
-            x = self.norm1(x + self.dropout(attn_output))
-            # get cls token for gating
-            cls_features = x[:, 0, :]  # (batch_size, seq_len, dim)
-            aggregated_cls_features = cls_features.mean(dim=0).unsqueeze(
-                0
-            )  # Mean pooling, [1, d_model]
-            cls_gate_logits = self.cls_gating_layer(
-                aggregated_cls_features
-            )  # [1, num_experts]
-            cls_gate_logits = cls_gate_logits.squeeze(0)
-            cls_gate_probs = F.softmax(cls_gate_logits, dim=-1)
-            # print(cls_gate_probs)
-            top_k_values, top_k_indices = torch.topk(cls_gate_probs, self.top_k)
-            # Compute outputs for the selected top-k experts and weight them
-            cls_logit_outputs = []
-            moe_outputs = torch.zeros_like(
-                x
-            )  # Assuming encoded has shape [seq_length, batch_size, d_model]
-            for i, index in enumerate(top_k_indices.squeeze(0)):
-                # print("expert", index)
-                expert_output = self.experts[index](x)
-                weight = top_k_values.squeeze(0)[i]
-                # print(weight)
-                cls_expert_embedding = expert_output[:, 0, :]
-                cls_expert_logit = self.classifier_fc(cls_expert_embedding)
-                cls_logit_outputs.append(cls_expert_logit)
-                moe_outputs += expert_output * weight
-        else:
-            x = self.norm1(x + self.dropout(attn_output))
-            moe_outputs = self.self_attn_2(x, mask=tgt_mask)
-            cls_logit_outputs = None
+        # if moe:
+        #     x = self.norm1(x + self.dropout(attn_output))
+        #     # get cls token for gating
+        #     cls_features = x[:, 0, :]  # (batch_size, seq_len, dim)
+        #     aggregated_cls_features = cls_features.mean(dim=0).unsqueeze(
+        #         0
+        #     )  # Mean pooling, [1, d_model]
+        #     cls_gate_logits = self.cls_gating_layer(
+        #         aggregated_cls_features
+        #     )  # [1, num_experts]
+        #     cls_gate_logits = cls_gate_logits.squeeze(0)
+        #     cls_gate_probs = F.softmax(cls_gate_logits, dim=-1)
+        #     # print(cls_gate_probs)
+        #     top_k_values, top_k_indices = torch.topk(cls_gate_probs, self.top_k)
+        #     # Compute outputs for the selected top-k experts and weight them
+        #     cls_logit_outputs = []
+        #     moe_outputs = torch.zeros_like(
+        #         x
+        #     )  # Assuming encoded has shape [seq_length, batch_size, d_model]
+        #     for i, index in enumerate(top_k_indices.squeeze(0)):
+        #         # print("expert", index)
+        #         expert_output = self.experts[index](x)
+        #         weight = top_k_values.squeeze(0)[i]
+        #         # print(weight)
+        #         cls_expert_embedding = expert_output[:, 0, :]
+        #         cls_expert_logit = self.classifier_fc(cls_expert_embedding)
+        #         cls_logit_outputs.append(cls_expert_logit)
+        #         moe_outputs += expert_output * weight
+        # else:
+        x = self.norm1(x + self.dropout(attn_output))
+        attn_output = self.self_attn_2(x, mask=tgt_mask)
+        # cls_logit_outputs = None
 
         # self.top_k_mask.fill_(False)
         # self.top_k_mask.scatter_(0, top_k_indices, True)
@@ -322,12 +321,12 @@ class DecoderLayer(nn.Module):
         #         expert_output = expert(x, mask=tgt_mask)
         #         moe_outputs += expert_output * mask.unsqueeze(-1).float()
 
-        x = self.norm2(x + self.dropout(moe_outputs))
+        x = self.norm2(x + self.dropout(attn_output))
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
         x = self.norm3(x + self.dropout(attn_output))
         ff_output = self.feed_forward(x)
         x = self.norm4(x + self.dropout(ff_output))
-        return x, cls_logit_outputs
+        return x
 
 
 class SinusoidalPositionalEncoding(nn.Module):
@@ -398,6 +397,8 @@ class Geneformerwrapper(nn.Module):
             )
             embs = outputs.hidden_states[-1]
 
+        # do we need to set this to eval ?
+
         return embs
 
 
@@ -448,6 +449,7 @@ class Petra(nn.Module):
         dropout: float = 0.0,
         mlm_probability: float = 0.3,
         time_steps: list = [1, 2],
+        total_time_steps: int = 3,
     ):
         super(Petra, self).__init__()
         self.num_features = self.embed_dim = d_model
@@ -460,7 +462,7 @@ class Petra(nn.Module):
         self.max_seq_length = max_seq_length
         self.dropout = dropout
 
-        total_vocab_size = tgt_vocab_size + len(time_steps)  # add one for cls token
+        total_vocab_size = tgt_vocab_size + total_time_steps  # add one for cls token
         self.time_steps = time_steps
         self.mask_token = total_vocab_size
         total_vocab_size = total_vocab_size + 1  # add one for padding token
@@ -468,7 +470,7 @@ class Petra(nn.Module):
         self.positional_encoding = SinusoidalPositionalEncoding(
             d_model=d_model,
             max_seq_length=max_seq_length,  # Specify the GPU device
-            n_time_steps=len(time_steps),
+            n_time_steps=total_time_steps,
         )
         self.encoder_layers = Geneformerwrapper()
         self.decoder_layers = nn.ModuleList(
@@ -479,9 +481,9 @@ class Petra(nn.Module):
                     d_head=d_ff,
                     hidden_size=d_model,
                     dropout=dropout,
-                    top_k=2,
-                    num_experts=len(time_steps),
-                    num_classes=len(time_steps),
+                    # top_k=2,
+                    # num_experts=len(time_steps),
+                    # num_classes=len(time_steps),
                 )
                 for _ in range(num_layers)
             ]
@@ -555,12 +557,15 @@ class Petra(nn.Module):
     #         return scaled_logits, embed
 
     #     return scaled_logits
-    def call_padding(self, tgt_input_id_dict):
-        time_step = 1
+    def call_padding(
+        self,
+        tgt_input_id_dict,
+        time_steps,
+    ):
         tgt_pad_dict = {}
-        for _, tgt_input_id in tgt_input_id_dict.items():
+        for time_step in time_steps:
+            tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_step}']
             tgt_pad_dict[f'tgt_pad_t{time_step}'] = self.generate_pad(tgt_input_id)
-            time_step = time_step + 1
         return tgt_pad_dict
 
     def generate_src_mask(self, src_input_id):
@@ -597,7 +602,7 @@ class Petra(nn.Module):
         cls_positions=None,
     ):
         for dec_layer in self.decoder_layers:
-            dec_embedding, moe_logits = dec_layer(
+            dec_embedding = dec_layer(
                 x=dec_embedding,
                 src_mask=src_attention_mask,
                 tgt_mask=tgt_pad,
@@ -608,7 +613,7 @@ class Petra(nn.Module):
         decoder_logits = self.decoder_fc(dec_embedding)
         if labels is not None:
             outputs['dec_logits'] = decoder_logits
-            outputs['moe_logits'] = moe_logits
+            # outputs['moe_logits'] = moe_logits
             outputs['labels'] = labels
             outputs['selected_time_step'] = time_random
         if generate is True:
@@ -647,7 +652,7 @@ class Petra(nn.Module):
         # only retrieve context for the ones before the selected time step
         # rest will be padded
         rest_time_steps = [
-            time_step for time_step in all_time_steps if time_step < tgt_time_step
+            time_step for time_step in all_time_steps if time_step != tgt_time_step
         ]
         if len(rest_time_steps) == 0:
             full_context_embedding = enc_output
@@ -660,9 +665,10 @@ class Petra(nn.Module):
                 # select all the ones before the selected time step
                 context_time_steps = [
                     tmp_time_step
-                    for tmp_time_step in all_time_steps
+                    for tmp_time_step in rest_time_steps
                     if tmp_time_step < time_step
                 ]
+
                 context_pad = self.context_padding(
                     src_attention_mask=src_attention_mask,
                     tgt_pad_dict=tgt_pad_dict,
@@ -718,13 +724,14 @@ class Petra(nn.Module):
         context_time_steps = [
             tmp_time_step
             for tmp_time_step in all_time_steps
-            if tmp_time_step < tgt_time_step
+            if tmp_time_step != tgt_time_step
         ]
         context_pad = self.context_padding(
             src_attention_mask=src_attention_mask,
             tgt_pad_dict=tgt_pad_dict,
             context_time_steps=context_time_steps,
         )
+
         selected_tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
         selected_tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{tgt_time_step}']
         # only create maskings for the selected time step
@@ -764,7 +771,10 @@ class Petra(nn.Module):
         not_masked=False,
     ):
         if tgt_input_id_dict:
-            tgt_pad_dict = self.call_padding(tgt_input_id_dict)
+            tgt_pad_dict = self.call_padding(
+                tgt_input_id_dict,
+                self.time_steps,
+            )
         else:
             tgt_pad_dict = generate_pad_dict
 
@@ -891,6 +901,7 @@ class CountDecoder(nn.Module):
         add_mask_id: bool = True,
         dropout: float = 0.0,
         time_steps: list = [1, 2],
+        total_time_steps: int = 3,
     ):
         super(CountDecoder, self).__init__()
         self.pretrained_model = pretrained_model
@@ -899,10 +910,8 @@ class CountDecoder(nn.Module):
         self.loss_mode = loss_mode
         tgt_vocab_size = tgt_vocab_size - 1
         # initialise multiple decoder for each time step
-        self.decoder_list = nn.ModuleList(
-            [CountHead(loss_mode, tgt_vocab_size, d_model, dropout) for _ in time_steps]
-        )
-        total_vocab_size = tgt_vocab_size + len(time_steps)  # add one for cls token
+        self.count_decoder = CountHead(loss_mode, tgt_vocab_size, d_model, dropout)
+        total_vocab_size = tgt_vocab_size + total_time_steps  # add one for cls token
         total_vocab_size = total_vocab_size  # add one for mask token
         if add_mask_id:
             self.mask_token = total_vocab_size
@@ -924,7 +933,6 @@ class CountDecoder(nn.Module):
         cls_positions=None,
     ):
         count_outputs = {}
-
         # find length for a single time step
         outputs = self.pretrained_model.forward(
             src_input_id=src_input_id,
@@ -934,10 +942,13 @@ class CountDecoder(nn.Module):
         )
 
         count_outputs = {}
-        for i, cls_position in enumerate(cls_positions):
+        for i, t in enumerate(self.time_steps):
+            print(cls_positions)
+            print(outputs['dec_embedding'].shape)
+            cls_position = cls_positions[i]
             cls_embedding = outputs['dec_embedding'][:, cls_position, :]
-            count_outputs_tmp = self.decoder_list[i].forward(cls_embedding)
-            count_outputs[f'count_output_t{i+1}'] = count_outputs_tmp
+            count_outputs_tmp = self.count_decoder.forward(cls_embedding)
+            count_outputs[f'count_output_t{t}'] = count_outputs_tmp
         return count_outputs
 
     def generate(
@@ -947,7 +958,7 @@ class CountDecoder(nn.Module):
         original_lens,
         can_remask_prev_masked=False,
         topk_filter_thres=0.9,
-        time_steps=[1, 2, 3],
+        # time_steps=[1, 2, 3],
         # steps=18,
         temperature=2.0,  # keep in range 2.0-3.0
         # self_cond_prob=0.9,
@@ -957,12 +968,12 @@ class CountDecoder(nn.Module):
     ):
         starting_temperature = temperature
         demask_fn = self.pretrained_model
-        keys = list(tgt_input_id_dict.keys())
         generate_id_dict = {}
         generate_pad_dict = {}
         dec_embedding_list = []
-        for time_step in time_steps:
-            tgt_input_id = tgt_input_id_dict[keys[time_step - 1]]
+        for i, time_step in enumerate(self.time_steps):
+            tgt_input_id_key = f'tgt_input_id_t{time_step}'
+            tgt_input_id = tgt_input_id_dict[tgt_input_id_key]
             tgt_pad = self.generate_pad(tgt_input_id)
             generate_pad_dict[f'tgt_pad_t{time_step}'] = tgt_pad
             batch_size = tgt_input_id.shape[0]
@@ -974,7 +985,7 @@ class CountDecoder(nn.Module):
             )
             # add cls token to the ids
             ids[:, 0] = tgt_input_id[:, 0]
-            generate_id_dict[keys[time_step - 1]] = ids
+            generate_id_dict[tgt_input_id_key] = ids
             # pad ids
             scores = torch.zeros(shape, dtype=torch.float, device=tgt_input_id.device)
             outputs, generated_ids = self.generate_sequence(
@@ -991,15 +1002,16 @@ class CountDecoder(nn.Module):
                 scores=scores,
                 tgt_time_step=time_step,
             )
-            generate_id_dict[keys[time_step - 1]] = generated_ids
+            generate_id_dict[tgt_input_id_key] = generated_ids
             dec_embedding_list.append(outputs['dec_embedding'])
         outputs['dec_embedding'] = torch.cat(dec_embedding_list, dim=1)
         count_outputs = {}
-        for i, cls_position in enumerate(cls_positions):
+        for i, t in enumerate(self.time_steps):
+            cls_position = cls_positions[i]
             cls_embedding = outputs['dec_embedding'][:, cls_position, :]
-            count_outputs_tmp = self.decoder_list[i].forward(cls_embedding)
-            count_outputs[f'count_output_t{i+1}'] = count_outputs_tmp
-            count_outputs[f'cls_embedding_t{i+1}'] = cls_embedding
+            count_outputs_tmp = self.count_decoder.forward(cls_embedding)
+            count_outputs[f'count_output_t{t}'] = count_outputs_tmp
+            count_outputs[f'cls_embedding_t{t}'] = cls_embedding
         return count_outputs
 
     def generate_sequence(

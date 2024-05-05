@@ -33,14 +33,15 @@ def get_args():
     parser.add_argument(
         '--h5ad_path',
         type=str,
-        default='./data/h5d_files/cytoimmgen.h5ad',
-        # default='./data/20240423_eb/EB.h5ad',
+        # default='./data/h5d_files/cytoimmgen.h5ad',
+        default='./data/20240423_eb/EB.h5ad',
         help='Path to h5ad file',
     )
     parser.add_argument(
         '--dataset',
         type=str,
-        default='cytoimmgen',
+        # default='cytoimmgen',
+        default='eb',
         choices=['cytoimmgen', 'eb'],
     )
     parser.add_argument(
@@ -53,27 +54,28 @@ def get_args():
     parser.add_argument(
         '--var_list',
         type=list,
-        default=[
-            'Cell_population',
-            'Cell_type',
-            'Time_point',
-            'Age',
-            'Sex',
-            'batch',
-            'Cell_culture_batch',
-            'Phase',
-            'Donor',
-            'cell_pairing_index',
-        ],
         # default=[
+        #     'Cell_population',
+        #     'Cell_type',
         #     'Time_point',
+        #     'Age',
+        #     'Sex',
+        #     'batch',
+        #     'Cell_culture_batch',
+        #     'Phase',
+        #     'Donor',
+        #     'cell_pairing_index',
         # ],
+        default=[
+            'Time_point',
+        ],
         help='List of variables to keep in the dataset',
     )
     parser.add_argument(
         '--pairing_mode',
         type=str,
-        default='stratified',
+        # default='stratified',
+        default='random',
         choices=['stratified', 'random'],
         help='Cell pairing mode',
     )
@@ -86,25 +88,26 @@ def get_args():
     parser.add_argument(
         '--reference_time',
         type=str,
-        default='0h',
+        # default='0h',
+        default='Day 00-03',
         help='Control time point for cell pairing' 'which is feed into Geneformer',
     )
     parser.add_argument(
         '--time_point_order',
         type=list,
-        default=[
-            '0h',
-            '16h',
-            '40h',
-            '5d',
-        ],
         # default=[
-        #     'Day 00-03',
-        #     'Day 06-09',
-        #     'Day 12-15',
-        #     'Day 18-21',
-        #     'Day 24-27',
+        #     '0h',
+        #     '16h',
+        #     '40h',
+        #     '5d',
         # ],
+        default=[
+            'Day 00-03',
+            'Day 06-09',
+            'Day 12-15',
+            'Day 18-21',
+            'Day 24-27',
+        ],
         help='Order of time points in the dataset',
     )
     args = parser.parse_args()
@@ -132,7 +135,7 @@ if args.gene_filtering_mode == 'hvg':
     adata.layers['counts'] = adata.X.copy()
     sc.pp.normalize_total(adata, target_sum=1e4)
     sc.pp.log1p(adata)
-    sc.pp.highly_variable_genes(adata, n_top_genes=3000)
+    sc.pp.highly_variable_genes(adata, n_top_genes=2000)
     adata.X = adata.layers['counts']  # need raw counts
     adata = adata[:, adata.var['highly_variable']]
     del adata.layers['counts']
@@ -157,14 +160,14 @@ else:
 )
 # save mapping dictionnary
 with open(
-    f'./T_perturb/T_perturb/pp/{args.dataset}/res/'
+    f'./T_perturb/T_perturb/pp/res/{args.dataset}/'
     f'tokenid_to_rowid_{args.gene_filtering_mode}.pkl',
     'wb',
 ) as f:
     pickle.dump(token_id_to_row_id_dict, f)
 
 with open(
-    f'./T_perturb/T_perturb/pp/{args.dataset}/res'
+    f'./T_perturb/T_perturb/pp/res/{args.dataset}'
     f'/token_id_to_genename_{args.gene_filtering_mode}.pkl',
     'wb',
 ) as f:
@@ -172,8 +175,8 @@ with open(
 adata_subset.layers['counts'] = adata_subset.X.copy()
 # make new directory to store h5ad files
 paired_h5ad_dir = (
-    f'./T_perturb/T_perturb/pp/{args.dataset}'
-    f'/res/h5ad_pairing_{args.gene_filtering_mode}'
+    f'./T_perturb/T_perturb/pp/res/{args.dataset}'
+    f'/h5ad_pairing_{args.gene_filtering_mode}'
 )
 if not os.path.exists(paired_h5ad_dir):
     os.makedirs(paired_h5ad_dir)
@@ -196,8 +199,8 @@ print('Start tokenisation of adata...')
 input_dir = paired_h5ad_dir
 
 output_dir = (
-    f'./T_perturb/T_perturb/pp/{args.dataset}'
-    f'/res/dataset_{args.gene_filtering_mode}'
+    f'./T_perturb/T_perturb/pp/res/{args.dataset}'
+    f'/dataset_{args.gene_filtering_mode}'
 )
 var_to_keep: Dict[str, str] = {v: v for v in args.var_list}.copy()
 tk = TranscriptomeTokenizer(var_to_keep, nproc=args.nproc)
@@ -246,13 +249,11 @@ for time_point in tqdm.tqdm(args.time_point_order):
 
     # subset dataset by cell pairings
     if time_point == args.reference_time:
-        adata_tmp.write_h5ad(f'./{paired_h5ad_dir}_src/' f'{time_point}.h5ad')
+        adata_tmp.write_h5ad(f'./{paired_h5ad_dir}_src/{time_point}.h5ad')
         # do not map input ids to row ids for Geneformer input
         # Geneformer needs initial token ids to extract correct embeddings
         dataset_tmp = dataset.select(cell_pairings[time_point])
-        dataset_tmp.save_to_disk(
-            f'{output_dir}_src/{args.dataset}_' f'{time_point}.dataset'
-        )
+        dataset_tmp.save_to_disk(f'{output_dir}_src/{time_point}.dataset')
     else:
         adata_tmp.write_h5ad(
             f'{paired_h5ad_dir}_tgt/' f'{n_tgt_iter}_{time_point}.h5ad'

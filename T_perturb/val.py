@@ -2,12 +2,12 @@
 
 import argparse
 import os
+import uuid
 from datetime import datetime
 
 import pytorch_lightning as pl
 import scanpy as sc
 import torch
-import wandb
 from datasets import load_from_disk
 from pytorch_lightning.callbacks import TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
@@ -16,11 +16,19 @@ from T_perturb.Dataloaders.datamodule import PetraDataModule
 from T_perturb.Model.trainer import CountDecodertrainer, Petratrainer
 from T_perturb.src.utils import (
     label_encoder,
+    randomised_split,
     read_dataset_files,
     stratified_split,
 )
 
 RANDOM_SEED = 42
+
+if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
+    # set working directory to root of repository
+    os.chdir('/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/')
+    print('Changed working directory to root of repository')
+
+print(os.getcwd())
 
 
 def get_args():
@@ -35,8 +43,16 @@ def get_args():
     parser.add_argument(
         '--split',
         type=bool,
-        default=True,
+        default=False,
         help='split data for extrapolation',
+    )
+    parser.add_argument(
+        '--splitting_mode',
+        type=str,
+        default='random',
+        # default='stratified',
+        choices=['random', 'stratified', 'unseen_donor'],
+        help='splitting mode',
     )
     parser.add_argument(
         '--generate',
@@ -51,80 +67,88 @@ def get_args():
         help='return embedding',
     )
     parser.add_argument(
-        '--num_cells',
-        type=int,
-        default=0,
-        help='number of cells to use for testing',
-    )
-    parser.add_argument(
         '--ckpt_masking_path',
         type=str,
-        default='/lustre/scratch123/hgi/projects/'
-        'healthy_imm_expr/t_generative/T_perturb/'
-        'T_perturb/Model/checkpoints/'
-        '20240421_1739_petra_train_masking_'
-        'lr_0.001_wd_0.001_batch_64_mlmp_0.15_tp_1-2-3.ckpt',
+        default=None,
         help='path to checkpoint',
     )
     parser.add_argument(
         '--ckpt_count_path',
         type=str,
-        default='/lustre/scratch123/hgi/projects/'
-        'healthy_imm_expr/t_generative/T_perturb/'
-        'T_perturb/Model/checkpoints/'
-        '20240421_1854_petra_train_count_'
-        'lr_0.0005_wd_0.001_batch_64_zinb_tp_1-2-3.ckpt',
+        default='./T_perturb/T_perturb/Model/checkpoints/'
+        '20240503_1525_petra_train_count_lr_0.0005_'
+        'wd_0.001_batch_32_zinb_tp_1-2-4.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
         '--src_dataset',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset_hvg_src/'
-        'cytoimmgen_tokenised_stratified_pairing_0h.dataset',
+        default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset',
+        # default=(
+        #     './T_perturb/T_perturb/pp/res/eb/'
+        #     'dataset_all_src/eb_all_Day 00-03.dataset'
+        # ),
+        # default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        # 'T_perturb/T_perturb/pp/res/dataset_hvg_src/'
+        # 'cytoimmgen_tokenised_stratified_pairing_0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
         '--tgt_dataset_folder',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/pp/res/dataset_hvg_tgt/',
+        default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt',
+        # default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
+        # 'T_perturb/T_perturb/pp/res/dataset_hvg_tgt/',
         help='path to tokenised activated data',
     )
 
     parser.add_argument(
         '--src_adata',
         type=str,
-        default=(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-            'T_perturb/pp/res/h5ad_pairing_hvg_src/'
-            'cytoimmgen_tokenisation_stratified_pairing_0h.h5ad'
-        ),
+        default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
+        # default=(
+        #     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
+        #     'T_perturb/pp/res/h5ad_pairing_hvg_src/'
+        #     'cytoimmgen_tokenisation_stratified_pairing_0h.h5ad'
+        # ),
         help='path to src',
     )
     parser.add_argument(
         '--tgt_adata_folder',
         type=str,
-        default=(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-            'T_perturb/pp/res/h5ad_pairing_hvg_tgt/'
-        ),
+        default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt',
+        # default=(
+        #     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
+        #     'T_perturb/pp/res/h5ad_pairing_hvg_tgt/'
+        # ),
         help='path to tgt',
     )
-    parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
+    parser.add_argument('--batch_size', type=int, default=32, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=False, help='shuffle')
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
     )
     parser.add_argument(
-        '--mlm_probability', type=float, default=0.15, help='mlm probability'
+        '--max_len',
+        type=int,
+        # default=400,
+        # default=2048,
+        default=263,
+        help='max sequence length',
     )
-    parser.add_argument('--max_len', type=int, default=400, help='max sequence length')
+    parser.add_argument(
+        '--tgt_vocab_size',
+        type=int,
+        # default=1820,
+        # default=15280,
+        default=1737,
+        help='vocab size (max token id + 1) in dataset for padding',
+    )
     parser.add_argument('--petra_lr', type=float, default=0.001, help='learning rate')
     parser.add_argument('--count_lr', type=float, default=0.0005, help='learning rate')
     parser.add_argument('--petra_wd', type=float, default=0.001, help='weight decay')
     parser.add_argument('--count_wd', type=float, default=0.001, help='weight decay')
-    parser.add_argument('--n_workers', type=int, default=64, help='number of workers')
+    parser.add_argument('--n_workers', type=int, default=32, help='number of workers')
     parser.add_argument(
         '--loss_mode', type=str, default='zinb', help='loss mode [zinb, nb, mse]'
     )
@@ -133,7 +157,8 @@ def get_args():
     parser.add_argument(
         '--condition_keys',
         nargs='+',
-        default='Cell_culture_batch',
+        # default='Cell_culture_batch',
+        default=None,
         type=str,
         help='Selection of condition keys to use for model',
     )
@@ -152,8 +177,22 @@ def get_args():
     parser.add_argument(
         '--time_steps',
         type=list,
-        default=[1, 2, 3],
+        default=[3],
         help='time steps to include during training',
+    )
+    parser.add_argument(
+        '--var_list',
+        # type=list,
+        nargs='+',
+        type=str,
+        default=['Time_point'],
+        # default=[
+        #     'Cell_population',
+        #     'Cell_type',
+        #     'Time_point',
+        #     'Donor'
+        #     ],
+        help='List of variables to keep in the dataset',
     )
     args = parser.parse_args()
     return args
@@ -175,10 +214,9 @@ def main() -> None:
 
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
-    tgt_adata_tmp = tgt_adatas['tgt_h5ad_t1'].copy()
-    splitting_mode = 'stratified'  # 'random', 'stratified', 'unseen_donor'
+    tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.time_steps[0]}'].copy()
     if args.split:
-        if splitting_mode == 'stratified':
+        if args.splitting_mode == 'stratified':
             # start preprocessing to avoid loading anndata into datamodule
             train_indices, val_indices, test_indices = stratified_split(
                 tgt_adata=tgt_adata_tmp,
@@ -192,8 +230,13 @@ def main() -> None:
             assert len(set(train_indices).intersection(val_indices)) == 0
             assert len(set(train_indices).intersection(test_indices)) == 0
             assert len(set(val_indices).intersection(test_indices)) == 0
-        # elif split == 'random':
-        #     train, val, test = random_split()
+        elif args.splitting_mode == 'random':
+            train_indices, val_indices, test_indices = randomised_split(
+                adata=tgt_adata_tmp,
+                train_prop=0.8,  # 0.8,0.1,0.1 train, val, test
+                test_prop=0.1,
+                seed=RANDOM_SEED,
+            )
         # elif split == 'unseen_donor':
         #     train, val, test = unseen_donor_split()
         else:
@@ -210,7 +253,18 @@ def main() -> None:
         # return all the indices
         train_indices = list(range(len(src_dataset)))
         val_indices = None
-        test_indices = list(range(len(tgt_datasets['tgt_dataset_t1'])))
+        test_indices = list(
+            range(len(tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}']))
+        )
+    # check if the train indices are the same for both adata and dataset
+    subset_adata = tgt_adata_tmp[train_indices]
+    subset_dataset = tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}'].select(
+        train_indices
+    )
+    assert (
+        subset_adata.obs['cell_pairing_index'].tolist()
+        == subset_dataset['cell_pairing_index']
+    )
 
     if args.loss_mode == 'mse':
         # log normalize data only for mse loss
@@ -221,7 +275,12 @@ def main() -> None:
             sc.pp.log1p(tgt_adata)
     # ZINB count loss preprocessing
     # ----------------------------------------------------------------------------------
-    # TODO: needs to be changed in case batches are different across paired cells
+
+    if args.condition_keys is None:
+        args.condition_keys = 'tmp_batch'
+        # create a mock vector if there are no batch effect
+        tgt_adata_tmp.obs[args.condition_keys] = 1
+
     if isinstance(args.condition_keys, str):
         condition_keys_ = [args.condition_keys]
     else:
@@ -276,19 +335,21 @@ def main() -> None:
             condition_key='conditions_combined',
         )
         conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
+
     print('Data loaded and preprocessed.')
+    # count number of unique timepoints
+    n_total_timepoints = len(tgt_adatas)
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.test_mode == 'masking':
         pretrained_module = Petratrainer(
-            tgt_vocab_size=1820,
+            tgt_vocab_size=args.tgt_vocab_size,
             d_model=256,
             num_heads=8,
             num_layers=1,
             d_ff=32,
-            max_seq_length=500,
+            max_seq_length=args.max_len + 100,
             dropout=args.petra_dropout,
-            mlm_probability=args.mlm_probability,
             weight_decay=args.petra_wd,
             lr=args.petra_lr,
             lr_scheduler_patience=5.0,
@@ -296,11 +357,19 @@ def main() -> None:
             return_embeddings=args.return_embeddings,
             generate=args.generate,
             time_steps=args.time_steps,
+            total_time_steps=n_total_timepoints,
             gene_names=tgt_adata_tmp.var['gene_name'],
         )
     elif args.test_mode == 'count':
         decoder_module = CountDecodertrainer(
-            ckpt_path=args.ckpt_masking_path,
+            ckpt_masking_path=args.ckpt_masking_path,
+            ckpt_count_path=args.ckpt_count_path,
+            tgt_vocab_size=args.tgt_vocab_size,
+            d_model=256,
+            num_heads=8,
+            num_layers=1,
+            d_ff=32,
+            max_seq_length=args.max_len + 100,
             loss_mode=args.loss_mode,
             lr=args.count_lr,
             weight_decay=args.count_wd,
@@ -308,11 +377,11 @@ def main() -> None:
             # lr_scheduler_factor=0.8,
             conditions=conditions_,
             conditions_combined=conditions_combined_,
-            tgt_vocab_size=1820,
             dropout=args.count_dropout,
             generate=args.generate,
             tgt_adata=tgt_adatas,
             time_steps=args.time_steps,
+            total_time_steps=n_total_timepoints,
             temperature=args.temperature,
             iterations=args.iterations,
             mask_scheduler=args.mask_scheduler,
@@ -331,7 +400,6 @@ def main() -> None:
     for keys, tgt_adata in tgt_adatas.items():
         tgt_counts_dict[keys] = tgt_adata.X
     src_counts = src_adata.X
-
     data_module = PetraDataModule(
         src_dataset=src_dataset,
         tgt_datasets=tgt_datasets,
@@ -346,10 +414,11 @@ def main() -> None:
         conditions=conditions,
         conditions_combined=conditions_combined,
         split=args.split,
-        train_indices=train_indices,
-        val_indices=val_indices,
+        train_indices=None,
+        val_indices=None,
         test_indices=test_indices,
         time_steps=args.time_steps,
+        var_list=args.var_list,
     )
 
     # Setup trainer
@@ -361,24 +430,19 @@ def main() -> None:
     # The tensorboard logger allows for monitoring the progress of training
     if torch.cuda.device_count() > 1:
         # multi gpu training with group logging
-        wandb.init(  # type: ignore
-            entity='k-ly',
+        wandb_logger = WandbLogger(
             project='ttransformer',
-            # id=unique_id,  # specify id to log to same run
-            group=log_path,  # all runs are saved in one group for multi gpu training
-            dir='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            't_generative/T_perturb/T_perturb',
-        )
+            name=f'{run_id}_{str(uuid.uuid4())[:6]}',
+            save_dir=args.log_dir,
+            log_model='all',
+        )  # noqa
     else:
-        wandb.init(  # type: ignore
-            entity='k-ly',
+        wandb_logger = WandbLogger(
             project='ttransformer',
-            id=run_id,
-            dir='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            't_generative/T_perturb/T_perturb',
-        )
-
-    wandb_logger = WandbLogger(log_model='all')
+            name=f'{run_id}',
+            save_dir=args.log_dir,
+            log_model='all',
+        )  # noqa
 
     # In this simple example we just check if a GPU is available.
     # For training larger models in a distributed settings, this needs more care.
@@ -408,7 +472,6 @@ def main() -> None:
         trainer.test(
             decoder_module,
             data_module,
-            args.ckpt_count_path,
         )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')

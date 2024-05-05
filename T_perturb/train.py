@@ -38,13 +38,13 @@ def get_args():
     parser.add_argument(
         '--train_mode',
         type=str,
-        default='masking',
+        default='count',
         help='Mode [masking, count]',
     )
     parser.add_argument(
         '--split',
         type=bool,
-        default=True,
+        default=False,
         help='split data for extrapolation',
     )
     parser.add_argument(
@@ -62,38 +62,40 @@ def get_args():
         help='generate data',
     )
     parser.add_argument(
-        '--ckpt_path',
+        '--ckpt_masking_path',
         type=str,
         default='./T_perturb/T_perturb/Model/checkpoints/'
-        '20240430_1030_petra_train_masking_lr_0.001'
-        '_wd_0.001_batch_64_mlmp_0.15_tp_1-2-3.ckpt/'
-        'checkpoint/mp_rank_00_model_states.pt',
+        '20240503_1202_petra_train_masking_lr_0.001_'
+        'wd_0.001_batch_32_mlmp_0.15_tp_1-2-4.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
         '--src_dataset',
         type=str,
-        default=(
-            './T_perturb/T_perturb/pp/res/eb/'
-            'dataset_all_src/eb_all_Day 00-03.dataset'
-        ),
+        default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset',
+        # default=(
+        #     './T_perturb/T_perturb/pp/res/eb/'
+        #     'dataset_all_src/eb_all_Day 00-03.dataset'
+        # ),
         # default='./T_perturb/T_perturb/pp/cytoimmgen/dataset_hvg_src/0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
         '--tgt_dataset_folder',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/dataset_all_tgt',
+        default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt',
+        # default='./T_perturb/T_perturb/pp/res/eb/dataset_all_tgt',
         # default='./T_perturb/T_perturb/pp/cytoimmgen/dataset_hvg_tgt',
         help='path to tokenised activated data',
     )
     parser.add_argument(
         '--src_adata',
         type=str,
-        default=(
-            './T_perturb/T_perturb/pp/'
-            'res/eb/h5ad_pairing_all_src/eb_all_Day 00-03.h5ad'
-        ),
+        default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
+        # default=(
+        #     './T_perturb/T_perturb/pp/'
+        #     'res/eb/h5ad_pairing_all_src/eb_all_Day 00-03.h5ad'
+        # ),
         # default='./T_perturb/T_perturb/pp/cytoimmgen/'
         # 'h5ad_pairing_hvg_src/0h.h5ad',
         help='path to src',
@@ -101,14 +103,16 @@ def get_args():
     parser.add_argument(
         '--tgt_adata_folder',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_all_tgt',
+        default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt',
+        # default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_all_tgt',
         # default='./T_perturb/T_perturb/pp/cytoimmgen/h5ad_pairing_hvg_tgt',
         help='path to tgt',
     )
     parser.add_argument(
         '--mapping_dict_path',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
+        default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl',
+        # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
         # default = './T_perturb/T_perturb/pp/cytoimmgen/token_id_to_genename_hvg.pkl',
     )
     parser.add_argument('--batch_size', type=int, default=32, help='batch_size')
@@ -123,14 +127,16 @@ def get_args():
         '--max_len',
         type=int,
         # default=400,
-        default=2048,
+        # default=2048,
+        default=263,
         help='max sequence length',
     )  # check how many genes there are
     parser.add_argument(
         '--tgt_vocab_size',
         type=int,
         # default=1820,
-        default=15280,
+        # default=15280,
+        default=1737,
         help='vocab size (max token id + 1) in dataset for padding',
     )
     parser.add_argument('--petra_lr', type=float, default=0.001, help='learning rate')
@@ -139,7 +145,7 @@ def get_args():
     parser.add_argument('--count_wd', type=float, default=0.001, help='weight decay')
     parser.add_argument('--mlm_prob', type=float, default=0.15, help='mlm probability')
     parser.add_argument(
-        '--n_workers', type=int, default=64, help='number of workers'
+        '--n_workers', type=int, default=32, help='number of workers'
     )  # 64
     parser.add_argument(
         '--loss_mode', type=str, default='zinb', help='loss mode [zinb, nb, mse]'
@@ -171,7 +177,7 @@ def get_args():
         # type=list,
         nargs='+',
         type=int,
-        default=[1, 2, 3],
+        default=[1, 2, 4],
         help='time steps to include during training',
     )
     parser.add_argument(
@@ -211,7 +217,7 @@ def main() -> None:
 
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
-    tgt_adata_tmp = tgt_adatas['tgt_h5ad_t1']
+    tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.time_steps[0]}']
     if args.split:
         if args.splitting_mode == 'stratified':
             # start preprocessing to avoid loading anndata into datamodule
@@ -250,10 +256,14 @@ def main() -> None:
         # return all the indices
         train_indices = list(range(len(src_dataset)))
         val_indices = None
-        test_indices = list(range(len(tgt_datasets)))
+        test_indices = list(
+            range(len(tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}']))
+        )
     # check if the train indices are the same for both adata and dataset
     subset_adata = tgt_adata_tmp[train_indices]
-    subset_dataset = tgt_datasets['tgt_dataset_t1'].select(train_indices)
+    subset_dataset = tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}'].select(
+        train_indices
+    )
     assert (
         subset_adata.obs['cell_pairing_index'].tolist()
         == subset_dataset['cell_pairing_index']
@@ -334,7 +344,8 @@ def main() -> None:
         conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
 
     print('Data loaded and preprocessed.')
-
+    # count number of unique timepoints
+    n_total_timepoints = len(tgt_adatas)
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.train_mode == 'masking':
@@ -354,23 +365,31 @@ def main() -> None:
             # lr_scheduler_factor=0.8,
             generate=args.generate,
             time_steps=args.time_steps,
+            total_time_steps=n_total_timepoints,
             mapping_dict_path=args.mapping_dict_path,
         )
     elif args.train_mode == 'count':
         decoder_module = CountDecodertrainer(
-            ckpt_path=args.ckpt_path,
+            ckpt_masking_path=args.ckpt_masking_path,
+            ckpt_count_path=None,
+            tgt_vocab_size=args.tgt_vocab_size,
+            d_model=256,
+            num_heads=8,
+            num_layers=1,
+            d_ff=32,
+            max_seq_length=args.max_len + 100,
             loss_mode=args.loss_mode,
             lr=args.count_lr,
             weight_decay=args.count_wd,
-            # lr_scheduler_patience=5.0,
+            lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             conditions=conditions_,
             conditions_combined=conditions_combined_,
-            tgt_vocab_size=args.tgt_vocab_size,  # 704 for degs, 1820 for tokenised
             dropout=args.count_dropout,
             generate=args.generate,
             tgt_adata=tgt_adatas,
             time_steps=args.time_steps,
+            total_time_steps=n_total_timepoints,
             temperature=args.temperature,
             iterations=args.iterations,
             mask_scheduler=args.mask_scheduler,
@@ -458,9 +477,12 @@ def main() -> None:
         if args.generate:
             monitor_metric = 'val/emd'
             mode = 'min'
+        if args.split:
+            monitor_metric = 'val/mse'
+            mode = 'min'
         else:
-            monitor_metric = 'val/pearson'
-            mode = 'max'
+            monitor_metric = 'train/mse'
+            mode = 'min'
 
     checkpoint_path = './T_perturb/T_perturb/Model/checkpoints'
     checkpoint_callback = ModelCheckpoint(

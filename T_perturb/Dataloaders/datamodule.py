@@ -11,7 +11,6 @@ from geneformer.perturber_utils import pad_tensor_list
 from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningDataModule
 from scipy.sparse import csr_matrix
-from sklearn.preprocessing import LabelEncoder
 from torch.utils.data import DataLoader, Dataset
 
 
@@ -68,23 +67,16 @@ class PetraDataset(Dataset):
             self.tgt_counts_dict = tgt_counts_dict
         else:
             self.src_dataset = src_dataset.select(split_indices)
-            # self.tgt_dataset = tgt_dataset.select(split_indices)
             tmp_tgt_datasets = tgt_datasets.copy()
             tmp_tgt_counts_dict = tgt_counts_dict.copy()
-            self.dataset_keys = list(tmp_tgt_datasets.keys())
-            self.counts_keys = list(tgt_counts_dict.keys())
             self.time_steps = time_steps
-            for time_step in range(len(self.time_steps)):
-                # dataset split
-                dataset_keys_ = self.dataset_keys[time_step]
-                dataset = tmp_tgt_datasets[dataset_keys_]
-                tmp_tgt_datasets[dataset_keys_] = dataset.select(split_indices)
+            for t in self.time_steps:
+                dataset = tmp_tgt_datasets[f'tgt_dataset_t{t}']
+                tmp_tgt_datasets[f'tgt_dataset_t{t}'] = dataset.select(split_indices)
                 if tgt_counts_dict is not None:
                     # time point split
-                    counts_keys_ = self.counts_keys[time_step]
-                    counts = tmp_tgt_counts_dict[counts_keys_]
-
-                    tmp_tgt_counts_dict[counts_keys_] = counts[split_indices, :]
+                    counts = tmp_tgt_counts_dict[f'tgt_h5ad_t{t}']
+                    tmp_tgt_counts_dict[f'tgt_h5ad_t{t}'] = counts[split_indices, :]
             self.tgt_datasets = tmp_tgt_datasets
             self.tgt_counts_dict = tmp_tgt_counts_dict
 
@@ -100,20 +92,23 @@ class PetraDataset(Dataset):
             if self.conditions_combined is not None
             else None,
         }
-        for time_step in range(len(self.time_steps)):
-            dataset_keys_ = self.dataset_keys[time_step]
-            out[f'tgt_dataset_t{time_step+1}'] = self.tgt_datasets[dataset_keys_][ind]
-            counts_keys_ = self.counts_keys[time_step]
-            out[f'tgt_counts_dict_t{time_step+1}'] = self.tgt_counts_dict[counts_keys_][
-                ind
-            ]
+        for t in self.time_steps:
+            dataset_keys_ = f'tgt_dataset_t{t}'
+
+            out[dataset_keys_] = self.tgt_datasets[dataset_keys_][ind]
+            out[f'tgt_counts_t{t}'] = self.tgt_counts_dict[f'tgt_h5ad_t{t}'][ind]
 
         return out
 
     def __len__(self):
-        if len(self.src_dataset) != len(self.tgt_datasets['tgt_dataset_t1']):
+        if len(self.src_dataset) != len(
+            self.tgt_datasets[f'tgt_dataset_t{self.time_steps[0]}']
+        ):
             warn('src and tgt dataset have different length')
-        return min(len(self.src_dataset), len(self.tgt_datasets['tgt_dataset_t1']))
+        return min(
+            len(self.src_dataset),
+            len(self.tgt_datasets[f'tgt_dataset_t{self.time_steps[0]}']),
+        )
 
 
 # two dataloader vs one dataloader
@@ -170,7 +165,6 @@ class PetraDataModule(LightningDataModule):
         self.test_indices = test_indices
         self.time_steps = time_steps
         self.var_list = var_list
-
         # create condition encoder for categorical variables in
         # form of dictionary with key: value pairs based on condition_keys
 
@@ -327,78 +321,59 @@ class PetraDataModule(LightningDataModule):
             'src_input_ids': src_input_batch_id,
             'src_length': src_length,
             'src_counts': src_counts,
-            # 'tgt_cell_type': tgt_cell_type,
-            # 'tgt_donor': tgt_donor,
             'batch': condition,
             'combined_batch': condition_combined,
         }
 
-        if any('tgt_counts_dict_t1' in item for item in batch):
-            for time_step in self.time_steps:
-                if isinstance(batch[0][f'tgt_counts_dict_t{time_step}'], csr_matrix):
-                    tgt_counts = [
-                        torch.tensor(d[f'tgt_counts_dict_t{time_step}'].A)
-                        for d in batch
-                    ]
-                    tgt_size_factor = [
-                        torch.tensor(
-                            np.ravel(d[f'tgt_counts_dict_t{time_step}'].A.sum(axis=1))
-                        )
-                        for d in batch
-                    ]
-                else:
-                    tgt_counts = [
-                        torch.tensor(d[f'tgt_counts_dict_t{time_step}']) for d in batch
-                    ]
-                    tgt_size_factor = [
-                        torch.tensor(
-                            np.ravel(d[f'tgt_counts_dict_t{time_step}'].sum(axis=1))
-                        )
-                        for d in batch
-                    ]
-                out[f'tgt_counts_dict_t{time_step}'] = torch.cat(tgt_counts, dim=0)
-                out[f'tgt_size_factor_t{time_step}'] = torch.cat(tgt_size_factor, dim=0)
-
-        else:
-            out['tgt_counts_dict_t1'] = None
-            out['tgt_size_factor_t1'] = None
-
-        if any('tgt_dataset_t1' in item for item in batch):
-            for time_step in self.time_steps:
-                dataset = f'tgt_dataset_t{time_step}'
-                out[f'tgt_input_ids_t{time_step}'] = [
-                    torch.tensor(d[dataset]['input_ids'], device='cpu') for d in batch
+        for time_step in self.time_steps:
+            if isinstance(batch[0][f'tgt_counts_t{time_step}'], csr_matrix):
+                tgt_counts = [
+                    torch.tensor(d[f'tgt_counts_t{time_step}'].A) for d in batch
                 ]
-                out[f'tgt_length_t{time_step}'] = torch.stack(
-                    [torch.tensor(d[dataset]['length'], device='cpu') for d in batch]
-                )
-                model_input_size = torch.max(out[f'tgt_length_t{time_step}'])
-                for var in self.var_list:
-                    var_ = var.lower()
-                    var_ = var_.replace(' ', '_')
-                    if var == 'Time_point':
-                        time_step_list = [d[dataset]['Time_point'] for d in batch]
-                        out[f'tgt_time_point_t{time_step}'] = time_step_list
-                        # encode time point to categories for classification
-                        encoder = LabelEncoder()
-                        integer_time_step = encoder.fit_transform(time_step_list)
-                        out[f'tgt_time_point_int_t{time_step}'] = torch.tensor(
-                            integer_time_step
-                        )
-                    else:
-                        out[f'tgt_{var_}_t{time_step}'] = [
-                            d[dataset][var] for d in batch
-                        ]
+                tgt_size_factor = [
+                    torch.tensor(np.ravel(d[f'tgt_counts_t{time_step}'].A.sum(axis=1)))
+                    for d in batch
+                ]
+            else:
+                tgt_counts = [
+                    torch.tensor(d[f'tgt_counts_t{time_step}']) for d in batch
+                ]
+                tgt_size_factor = [
+                    torch.tensor(np.ravel(d[f'tgt_counts_t{time_step}'].sum(axis=1)))
+                    for d in batch
+                ]
+            out[f'tgt_counts_t{time_step}'] = torch.cat(tgt_counts, dim=0)
+            out[f'tgt_size_factor_t{time_step}'] = torch.cat(tgt_size_factor, dim=0)
 
-                out[f'tgt_input_ids_t{time_step}'] = pad_tensor_list(
-                    out[f'tgt_input_ids_t{time_step}'],
-                    self.max_len,
-                    self.pad_token_id,
-                    model_input_size,
-                )
-        else:
-            out['tgt_dataset'] = None
-            out['tgt_length_'] = None
+        for time_step in self.time_steps:
+            dataset = f'tgt_dataset_t{time_step}'
+            out[f'tgt_input_ids_t{time_step}'] = [
+                torch.tensor(d[dataset]['input_ids'], device='cpu') for d in batch
+            ]
+            out[f'tgt_length_t{time_step}'] = torch.stack(
+                [torch.tensor(d[dataset]['length'], device='cpu') for d in batch]
+            )
+            model_input_size = torch.max(out[f'tgt_length_t{time_step}'])
+            for var in self.var_list:
+                # if var == 'Time_point':
+                #     time_step_list = [d[dataset]['Time_point'] for d in batch]
+                #     out[f'{var}_t{time_step}'] = time_step_list
+                #     # encode time point to categories for classification
+                #     # encoder = LabelEncoder()
+                #     # integer_time_step = encoder.fit_transform(time_step_list)
+                #     # out[f'{var}_int_t{time_step}'] = torch.tensor(
+                #     #     integer_time_step
+                #     # )
+                # else:
+                out[f'{var}_t{time_step}'] = [d[dataset][var] for d in batch]
+
+            out[f'tgt_input_ids_t{time_step}'] = pad_tensor_list(
+                out[f'tgt_input_ids_t{time_step}'],
+                self.max_len,
+                self.pad_token_id,
+                model_input_size,
+            )
+
         return out
 
 
@@ -423,4 +398,4 @@ if __name__ == '__main__':
     train_iterator = iter(dataloader)
     batch = next(train_iterator)
     print(batch['tgt_input_ids'][:20, :20])
-    print(len(batch['tgt_counts_dict'][0]))
+    print(len(batch['tgt_counts'][0]))

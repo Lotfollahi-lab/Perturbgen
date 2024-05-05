@@ -153,7 +153,6 @@ def subset_adata(adata, cell_pairings):
     df.reset_index(drop=True, inplace=True)
     subset_df = df.loc[cell_pairings]
     adata_obs_subsetted = adata_.obs.loc[cell_pairings]
-    print(adata_obs_subsetted)
     obs = adata_obs_subsetted
     var = adata_.var.loc[df.columns]
     adata_subsetted = ad.AnnData(X=subset_df.values, obs=obs, var=var)
@@ -301,7 +300,7 @@ def randomised_split(adata: ad.AnnData, train_prop: float, test_prop: float, see
     train_indices = np.random.choice(indices, train_size, replace=False)
 
     indices_ = np.setdiff1d(indices, train_indices)
-    print(len(indices_))
+
     test_indices = np.random.choice(indices_, test_size, replace=False)
     indices_ = np.setdiff1d(indices_, test_indices)
     val_indices = indices_

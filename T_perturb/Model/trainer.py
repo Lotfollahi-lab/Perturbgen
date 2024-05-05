@@ -88,6 +88,7 @@ class Petratrainer(LightningModule):
             './T_perturb/T_perturb/pp/eb/res/token_id_to_genename_all.pkl'
         ),
         time_steps: list = [1, 2],
+        total_time_steps: int = 3,
         gene_names: Optional[List[str]] = None,
         *args,
         **kwargs,
@@ -104,6 +105,7 @@ class Petratrainer(LightningModule):
             dropout=dropout,
             mlm_probability=mlm_probability,
             time_steps=time_steps,
+            total_time_steps=total_time_steps,
         )
 
         self.masking_loss = nn.CrossEntropyLoss()
@@ -145,8 +147,9 @@ class Petratrainer(LightningModule):
         self.marker_genes = None
         self.gene_names = gene_names
         # register buffer for CLS
-        total_vocab_size = self.tgt_vocab_size
-        for i in self.time_steps:
+        total_vocab_size = tgt_vocab_size
+        # initialize cls token for all time steps
+        for i in range(1, total_time_steps + 1):
             # i-1, as first token is tgt_vocab_size
             self.register_buffer(
                 f'cls_token_{str(i)}',
@@ -155,6 +158,7 @@ class Petratrainer(LightningModule):
                     dtype=torch.long,
                 ),
             )
+            print(f'cls_token_{str(i)}', getattr(self, f'cls_token_{str(i)}'))
 
     def forward(self, batch):
         tgt_input_id_dict = {}
@@ -314,8 +318,8 @@ class Petratrainer(LightningModule):
     def test_step(self, batch, *args, **kwargs):
         if self.return_embeddings:
             outputs = self.forward(batch)
-            for time_step in self.time_steps:
-                cls_position = outputs['cls_positions'][time_step - 1]
+            for i, time_step in enumerate(self.time_steps):
+                cls_position = outputs['cls_positions'][i]
                 cls_embeddings = outputs['dec_embedding'][:, cls_position, :]
                 token_ids = batch[f'tgt_input_ids_t{time_step}']
                 if time_step == max(self.time_steps):
@@ -404,7 +408,7 @@ class Petratrainer(LightningModule):
                     ]
                 del gene_embeddings
                 self.tgt_counts_list.append(
-                    batch[f'tgt_counts_dict_t{time_step}'].detach().cpu()
+                    batch[f'tgt_counts_t{time_step}'].detach().cpu()
                 )
                 self.cls_embeddings_list.append(cls_embeddings.detach().cpu())
                 self.cosine_similarity_list.append(emb.detach().cpu())
@@ -464,19 +468,27 @@ class Petratrainer(LightningModule):
 class CountDecodertrainer(LightningModule):
     def __init__(
         self,
-        ckpt_path: str = 'ckpt_path',
+        tgt_vocab_size: int = 25000,
+        d_model=256,
+        num_heads=8,
+        num_layers=1,
+        d_ff=32,
+        max_seq_length=2048,
         loss_mode: str = 'mse',
         lr: float = 1e-3,
         weight_decay: float = 0.0,
         lr_scheduler_patience: float = 1.0,
         # lr_scheduler_factor: float = 0.8,
+        ckpt_masking_path: Optional[str] = None,
+        ckpt_count_path: Optional[str] = None,
         conditions: Optional[Dict[Any, Any]] = None,
         conditions_combined: Optional[List[Any]] = None,
-        tgt_vocab_size: int = 25000,
         dropout: float = 0.0,
         generate: bool = True,
+        var_list: List[str] = ['Time_point'],
         tgt_adata: Optional[ad.AnnData] = None,
         time_steps: list = [1, 2],
+        total_time_steps: int = 3,
         temperature: float = 2.0,
         iterations: int = 18,
         mask_scheduler: Optional[str] = 'cosine',
@@ -484,44 +496,47 @@ class CountDecodertrainer(LightningModule):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-
-        # Create an instance of your model
-        checkpoint = torch.load(ckpt_path, map_location='cpu')
-        self.tgt_vocab_size = checkpoint['hyper_parameters']['tgt_vocab_size']
-        self.d_model = checkpoint['hyper_parameters']['d_model']
+        self.save_hyperparameters()
         pretrained_model = Petra(
-            tgt_vocab_size=self.tgt_vocab_size,
-            d_model=self.d_model,
-            d_ff=checkpoint['hyper_parameters']['d_ff'],
-            max_seq_length=checkpoint['hyper_parameters']['max_seq_length'],
+            tgt_vocab_size=tgt_vocab_size,
+            d_model=d_model,
+            num_heads=num_heads,
+            num_layers=num_layers,
+            d_ff=d_ff,
+            max_seq_length=max_seq_length,
             time_steps=time_steps,
+            total_time_steps=total_time_steps,
         )
-        # state_dict = checkpoint['state_dict']
-
-        # new_state_dict = {}
-        # for k, v in state_dict.items():
-        #     k = k.replace('transformer.', '')
-        #     new_state_dict[k] = v
-        # state_dict = new_state_dict
-
-        # pretrained_model.load_state_dict(new_state_dict, strict=False)
+        # load PETRA checkpoint
+        if ckpt_masking_path is not None:
+            checkpoint = torch.load(ckpt_masking_path, map_location='cpu')
+            state_dict_ = self.modify_ckpt_state_dict(checkpoint, 'transformer.')
+            pretrained_model.load_state_dict(state_dict_, strict=False)
+            # freeze the pretrained model
+            for param in pretrained_model.parameters():
+                param.requires_grad = False
 
         self.decoder = CountDecoder(
             pretrained_model=pretrained_model,
             loss_mode=loss_mode,
-            tgt_vocab_size=self.tgt_vocab_size,
-            d_model=self.d_model,
+            tgt_vocab_size=tgt_vocab_size,
+            d_model=d_model,
             dropout=dropout,
             time_steps=time_steps,
+            total_time_steps=total_time_steps,
         )
-        self.save_hyperparameters()
+
+        if ckpt_count_path is not None:
+            checkpoint = torch.load(ckpt_count_path, map_location='cpu')
+
+            state_dict_ = self.modify_ckpt_state_dict(checkpoint, 'decoder.')
+            self.decoder.load_state_dict(state_dict_, strict=False)
 
         self.weight_decay = weight_decay
         self.lr = lr
         self.lr_scheduler_patience = lr_scheduler_patience
         # self.lr_scheduler_factor = lr_scheduler_factor
         self.loss_mode = loss_mode
-
         if (
             (self.loss_mode in ['nb', 'zinb'])
             and (conditions is not None)
@@ -539,7 +554,7 @@ class CountDecodertrainer(LightningModule):
         self.metric = nn.ModuleDict({'mse': MeanSquaredError()})
         total_vocab_size = tgt_vocab_size
         self.time_steps = time_steps
-        for i in self.time_steps:
+        for i in range(1, total_time_steps + 1):
             self.register_buffer(
                 f'cls_token_{str(i)}',
                 torch.tensor(
@@ -553,6 +568,18 @@ class CountDecodertrainer(LightningModule):
         self.mask_scheduler = mask_scheduler
         self.temperature = temperature
         self.iterations = iterations
+
+        self.test_dict: Dict[str, List[Any]] = {
+            'true_counts': [],
+            'ctrl_counts': [],
+            'pred_counts': [],
+            'cls_embeddings': [],
+        }
+
+        self.var_list = var_list
+        for var in self.var_list:
+            self.test_dict[var] = []
+        # create variables based
         # initiate lists to store true, ctrl and pred counts
         self.train_true_counts_list: List[int] = []
         self.train_pred_counts_list: List[int] = []
@@ -563,23 +590,24 @@ class CountDecodertrainer(LightningModule):
         self.val_tgt_cell_type_list: List[str] = []
         self.val_tgt_cell_population_list: List[str] = []
         self.val_tgt_donor_list: List[str] = []
-        self.test_true_counts_list: List[int] = []
-        self.test_ctrl_counts_list: List[int] = []
-        self.test_pred_counts_list: List[int] = []
-        self.test_tgt_cell_type_list: List[str] = []
-        self.test_tgt_cell_population_list: List[str] = []
-        self.test_tgt_donor_list: List[str] = []
-        self.test_tgt_time_point_list: List[str] = []
-        self.test_cls_embeddings_list: List[torch.tensor] = []
 
-    def on_load_checkpoint(self, checkpoint):
-        state_dict = checkpoint['module']
-        state_dict = {
-            k.partition('module.')[2]: state_dict[k] for k in state_dict.keys()
-        }
-        checkpoint['state_dict'] = state_dict
+    def modify_ckpt_state_dict(
+        self,
+        checkpoint,
+        replace_str,
+    ):
+        if 'module' in checkpoint.keys():
+            state_dict = checkpoint['module']
+        else:
+            state_dict = checkpoint['state_dict']
 
-        return checkpoint
+        new_state_dict = {}
+        for k, v in state_dict.items():
+            if k.startswith(replace_str):
+                k = k.replace(replace_str, '', 1)
+            new_state_dict[k] = v
+
+        return new_state_dict
 
     def forward(self, batch):
         tgt_input_id_dict = {}
@@ -632,10 +660,10 @@ class CountDecodertrainer(LightningModule):
         batch: Dict[str, torch.Tensor],
     ):
         loss_list = []
-        counts_list = []
+        count_dict = {}
         for time_step in self.time_steps:
             count_ouput = outputs[f'count_output_t{time_step}']
-            true_counts = batch[f'tgt_counts_dict_t{time_step}']
+            true_counts = batch[f'tgt_counts_t{time_step}']
             batch_size_factor = batch[f'tgt_size_factor_t{time_step}']
 
             if self.loss_mode == 'mse':
@@ -646,7 +674,7 @@ class CountDecodertrainer(LightningModule):
                     .float()
                 )
                 loss_list.append(loss)
-                counts_list.append(count_ouput['count_lognorm'])
+                count_dict[time_step] = count_ouput['count_lognorm']
 
             elif self.loss_mode == 'zinb':
                 dec_mean_gamma, dec_dropout = (
@@ -673,11 +701,9 @@ class CountDecodertrainer(LightningModule):
                     .mean()
                 )
                 loss_list.append(loss)
-                counts_list.append(dec_mean)
+                count_dict[time_step] = dec_mean
 
             elif self.loss_mode == 'nb':
-                combined_batch = torch.tensor(batch['combined_batch'])
-                combined_batch = combined_batch.to(self.target_device)
                 dec_mean_gamma = count_ouput['count_mean']
 
                 size_factor_view = batch_size_factor.unsqueeze(1).expand(
@@ -686,7 +712,9 @@ class CountDecodertrainer(LightningModule):
                 dec_mean = dec_mean_gamma * size_factor_view
                 dispersion = F.linear(
                     self.one_hot_encoder(
-                        combined_batch, self.n_conditions_combined, self.theta.dtype
+                        batch['combined_batch'],
+                        self.n_conditions_combined,
+                        self.theta.dtype,
                     ),
                     self.theta,
                 )
@@ -695,12 +723,12 @@ class CountDecodertrainer(LightningModule):
                     -nb(x=true_counts, mu=dec_mean, theta=dispersion).sum(dim=-1).mean()
                 )
                 loss_list.append(loss)
-                counts_list.append(dec_mean)
+                count_dict[time_step] = dec_mean
 
             else:
                 raise ValueError('Loss not supported, choose either mse or zinb')
         loss = torch.sum(torch.stack(loss_list))
-        return loss, counts_list
+        return loss, count_dict
 
     @staticmethod
     def pearson(
@@ -724,7 +752,7 @@ class CountDecodertrainer(LightningModule):
 
     def training_step(self, batch, *args, **kwargs):
         outputs = self.forward(batch)
-        count_loss, pred_count_list = self.compute_count_loss(outputs, batch)
+        count_loss, pred_counts_dict = self.compute_count_loss(outputs, batch)
         self.log(
             'train/loss',
             count_loss,
@@ -738,14 +766,13 @@ class CountDecodertrainer(LightningModule):
 
         mse_all = []
         for time_step in self.time_steps:
-            pred_count = pred_count_list[time_step - 1]
-
-            true_count = batch[f'tgt_counts_dict_t{time_step}']
+            pred_count = pred_counts_dict[time_step]
+            true_count = batch[f'tgt_counts_t{time_step}']
             # MSE
             mse = self.metric['mse'](pred_count, true_count)
             mse_all.append(mse)
             # gather for validation step
-            self.train_true_counts_list.append(batch[f'tgt_counts_dict_t{time_step}'])
+            self.train_true_counts_list.append(batch[f'tgt_counts_t{time_step}'])
             self.train_pred_counts_list.append(pred_count)
 
         mean_mse = torch.mean(torch.stack(mse_all))
@@ -815,12 +842,11 @@ class CountDecodertrainer(LightningModule):
                 original_lens=batch['src_length'],
                 can_remask_prev_masked=False,
                 topk_filter_thres=0.9,
-                time_steps=self.time_steps,
                 temperature=self.temperature,
                 iterations=self.iterations,
                 cls_positions=cls_positions,
             )
-            count_loss, pred_count_list = self.compute_count_loss(outputs, batch)
+            count_loss, pred_counts_dict = self.compute_count_loss(outputs, batch)
             self.log(
                 'val/loss',
                 count_loss,
@@ -833,15 +859,15 @@ class CountDecodertrainer(LightningModule):
             )
             mse_all = []
             for time_step in self.time_steps:
-                pred_count = pred_count_list[time_step - 1]
-                true_count = batch[f'tgt_counts_dict_t{time_step}']
+                pred_count = pred_counts_dict[time_step]
+                true_count = batch[f'tgt_counts_t{time_step}']
                 # MSE
                 mse = self.metric['mse'](pred_count, true_count)
                 mse_all.append(mse)
                 # gather for validation step
-                self.val_true_counts_list.append(batch[f'tgt_counts_dict_t{time_step}'])
+                self.val_true_counts_list.append(batch[f'tgt_counts_t{time_step}'])
                 self.val_true_delta_counts_list.append(
-                    (batch[f'tgt_counts_dict_t{time_step}'] - batch['src_counts'])
+                    (batch[f'tgt_counts_t{time_step}'] - batch['src_counts'])
                 )
                 self.val_pred_delta_counts_list.append(
                     (pred_count - batch['src_counts'])
@@ -870,7 +896,7 @@ class CountDecodertrainer(LightningModule):
 
         else:
             outputs = self.forward(batch)
-            count_loss, pred_count_list = self.compute_count_loss(outputs, batch)
+            count_loss, pred_counts_dict = self.compute_count_loss(outputs, batch)
             self.log(
                 'val/loss',
                 count_loss,
@@ -884,15 +910,15 @@ class CountDecodertrainer(LightningModule):
             # MSE
             mse_all = []
             for time_step in self.time_steps:
-                pred_count = pred_count_list[time_step - 1]
-                true_count = batch[f'tgt_counts_dict_t{time_step}']
+                pred_count = pred_counts_dict[time_step]
+                true_count = batch[f'tgt_counts_t{time_step}']
                 # MSE
                 mse = self.metric['mse'](pred_count, true_count)
                 mse_all.append(mse)
                 # gather for validation step
-                self.val_true_counts_list.append(batch[f'tgt_counts_dict_t{time_step}'])
+                self.val_true_counts_list.append(batch[f'tgt_counts_t{time_step}'])
                 self.val_true_delta_counts_list.append(
-                    (batch[f'tgt_counts_dict_t{time_step}'] - batch['src_counts'])
+                    (batch[f'tgt_counts_t{time_step}'] - batch['src_counts'])
                 )
                 self.val_pred_delta_counts_list.append(
                     (pred_count - batch['src_counts'])
@@ -1013,12 +1039,12 @@ class CountDecodertrainer(LightningModule):
                 original_lens=batch['src_length'],
                 can_remask_prev_masked=False,
                 topk_filter_thres=0.9,
-                time_steps=self.time_steps,
+                # time_steps=self.time_steps,
                 temperature=self.temperature,
                 iterations=self.iterations,
                 cls_positions=cls_positions,
             )
-            count_loss, pred_count_list = self.compute_count_loss(outputs, batch)
+            count_loss, pred_counts_dict = self.compute_count_loss(outputs, batch)
             self.log(
                 'test/loss',
                 count_loss,
@@ -1026,30 +1052,22 @@ class CountDecodertrainer(LightningModule):
                 on_epoch=True,
                 prog_bar=True,
                 logger=True,
-                batch_size=batch['tgt_input_ids_t1'].shape[0],
+                batch_size=batch[f'tgt_input_ids_t{self.time_steps[0]}'].shape[0],
             )
             mse_all = []
             for time_step in self.time_steps:
-                pred_count = pred_count_list[time_step - 1]
-                true_count = batch[f'tgt_counts_dict_t{time_step}']
+                pred_count = pred_counts_dict[time_step]
+                true_count = batch[f'tgt_counts_t{time_step}']
                 # MSE
                 mse = self.metric['mse'](pred_count, true_count)
                 mse_all.append(mse)
                 # gather for validation step
-                self.test_true_counts_list.append(
-                    batch[f'tgt_counts_dict_t{time_step}']
-                )
-                self.test_pred_counts_list.append(pred_count)
-                self.test_tgt_cell_population_list.append(
-                    batch[f'tgt_cell_population_t{time_step}']
-                )
-                self.test_tgt_time_point_list.append(
-                    batch[f'tgt_time_point_t{time_step}']
-                )
-                self.test_tgt_cell_type_list.append(batch['tgt_cell_type'])
-                self.test_tgt_donor_list.append(batch['tgt_donor'])
+                self.test_dict['pred_counts'].append(pred_count)
+                self.test_dict['true_counts'].append(true_count)
+                for var in self.var_list:
+                    self.test_dict[var].append(batch[f'{var}_t{time_step}'])
                 cls_embeddings = outputs[f'cls_embedding_t{time_step}']
-                self.test_cls_embeddings_list.append(cls_embeddings)
+                self.test_dict['cls_embeddings'].append(cls_embeddings)
 
             mean_mse = torch.mean(torch.stack(mse_all))
             self.log(
@@ -1075,29 +1093,32 @@ class CountDecodertrainer(LightningModule):
                 batch_size=batch['tgt_input_ids'].shape[0],
             )
 
-            self.test_pred_counts_list.append(pred_count)
-            self.test_true_counts_list.append(batch['tgt_counts'])
-            self.test_ctrl_counts_list.append(batch['src_counts'])
-            self.test_tgt_cell_type_list.append(batch['tgt_cell_type'])
-            self.test_tgt_cell_population_list.append(batch['tgt_cell_population'])
-            self.test_tgt_donor_list.append(batch['tgt_donor'])
+            self.test_dict['pred_counts'].append(pred_count)
+            self.test_dict['true_counts'].append(batch['tgt_counts'])
+            self.test_dict['ctrl_counts'].append(batch['src_counts'])
+            for var in self.var_list:
+                self.test_dict[var].append(batch[var])
 
     def on_test_epoch_end(self):
         if self.generate:
-            true_counts = torch.cat(self.test_true_counts_list).detach().cpu()
-            pred_counts = torch.cat(self.test_pred_counts_list).detach().cpu()
-            tgt_cell_population = np.concatenate(self.test_tgt_cell_population_list)
-            tgt_time_point = np.concatenate(self.test_tgt_time_point_list)
-            tgt_cell_type = np.concatenate(self.test_tgt_cell_type_list)
-            tgt_donor = np.concatenate(self.test_tgt_donor_list)
-            cls_embeddings = torch.cat(self.test_cls_embeddings_list).detach().cpu()
-            test_obs = pd.DataFrame(
-                np.array(
-                    [tgt_cell_type, tgt_cell_population, tgt_time_point, tgt_donor]
-                ).T,
-                columns=['Cell_type', 'Cell_population', 'Time_point', 'Donor'],
-            )
+            true_counts = torch.cat(self.test_dict['true_counts']).detach().cpu()
+            pred_counts = torch.cat(self.test_dict['pred_counts']).detach().cpu()
+            # create dict to var_list values
+            var_dict = {}
+            for var in self.var_list:
+                var_dict[var] = np.concatenate(self.test_dict[var])
+            test_obs = pd.DataFrame(var_dict)
+            print(test_obs)
+            cls_embeddings = torch.cat(self.test_dict['cls_embeddings']).detach().cpu()
+            # test_obs = pd.DataFrame(
+            #     np.array(
+            #         [tgt_cell_type, tgt_cell_population, tgt_time_point, tgt_donor]
+            #     ).T,
+            #     columns=['Cell_type', 'Cell_population', 'Time_point', 'Donor'],
+            # )
             pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs)
+            print(pred_adata.obs)
+            print(pred_adata)
             pred_adata.layers['counts'] = true_counts.numpy()
             pred_adata.obsm['cls_embeddings'] = cls_embeddings.numpy()
             # save adata
