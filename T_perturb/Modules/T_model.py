@@ -464,6 +464,15 @@ class CountHead(nn.Module):
         n_genes = tgt_vocab_size - 1
         if self.loss_mode == 'mse':
             self.relu_output = nn.Sequential(nn.Linear(d_model, n_genes), nn.ReLU())
+
+            self.zero_logit = nn.Sequential(
+                nn.Linear(d_model, d_model), # TO DO: correct input shape?
+                nn.LeakyReLU(),
+                nn.Linear(d_model, d_model),
+                nn.LeakyReLU(),
+                nn.Linear(d_model, n_genes),
+            )
+
         elif self.loss_mode == 'zinb':
             self.linear_output = nn.Linear(d_model, n_genes)
             self.softmax_output = nn.Sequential(
@@ -481,6 +490,8 @@ class CountHead(nn.Module):
         mlp_output = nn.functional.normalize(mlp_output, dim=-1, p=2)
         if self.loss_mode == 'mse':
             count_outpus['count_lognorm'] = self.relu_output(mlp_output)
+            count_outpus['zero_probs'] = torch.sigmoid(self.zero_logit(x)) # (batch, d_model-cls-) -> (batch, seq_len)
+
         elif self.loss_mode == 'zinb':
             count_outpus['count_mean'] = self.softmax_output(mlp_output)
             count_outpus['count_dropout'] = self.linear_output(mlp_output)
@@ -634,6 +645,13 @@ class CountDecoder(nn.Module):
             if not can_remask_prev_masked:
                 scores = scores.masked_fill(~is_mask, -torch.finfo().max)
         count_outputs = self.decoder.forward(outputs['cls_embedding'])
+
+        # set counts to 0 based on zero counts probability - To do: should we do this?
+        if 'zero_probs' in count_outputs.keys():
+            bernoulli = torch.distributions.Bernoulli(probs=count_outputs['zero_probs'])
+            zeros = bernoulli.sample() # sample from bernoulli probabilities
+            count_outputs['count_lognorm'][zeros==0] = 0 # set 0 counts to 0            
+
         return count_outputs
 
 

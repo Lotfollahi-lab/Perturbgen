@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH -J 2_train_counts_Norman2019
-#SBATCH -o ../../logs/2_Norman2019_train_counts.out
-#SBATCH -e ../../logs/2_Norman2019_train_counts.err
+#SBATCH -J 3.1_train_counts_Norman2019
+#SBATCH -o ../../logs/3.1_Norman2019_train_counts.out
+#SBATCH -e ../../logs/3.1_Norman2019_train_counts.err
 #SBATCH -t 24:00:00
 #SBATCH -p gpu_p
 #SBATCH --gres=gpu:1
@@ -25,19 +25,19 @@ echo "--- Start computing model"
 # # Run python script for rna
 python3 $cwd/train.py \
 --train_mode count \
---ckpt_path "/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints/20240424_2248_petra_mode_masking_lr_0.001_wd_0.001_batch_16_mlmp_0.3_hvg_pairing_GFpert_epoch13.ckpt" \
+--ckpt_path "/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints/20240428_2344_petra_mode_masking_lr_0.001_wd_0.001_batch_32_mlmp_0.3_hvg_pairing_GFpert.ckpt" \
 --num_cells 0 \
 --src_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_GFpert_control.dataset \
 --tgt_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_perturbed.dataset \
 --src_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_control.h5ad \
 --tgt_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_perturbed.h5ad \
---batch_size 64 \
+--batch_size 55 \
 --split True \
 --splitting_mode gears-simulation \
 --epochs 15 \
 --max_len 1750 \
 --mlm_probability 0.3 \
---n_workers 20 \
+--n_workers 16 \
 --loss_mode mse \
 --petra_lr 0.001 \
 --count_lr 0.001 \

@@ -23,6 +23,28 @@ def mse(x_pred, x_true):
     loss = torch.nn.MSELoss()(x_pred, x_true)
     return loss
 
+def criterion_neg_log_bernoulli_loss(input, target):
+    """
+    Description:
+    ------------
+    Compute the negative log-likelihood of Bernoulli distribution.
+
+    Parameters:
+    -----------
+    input : torch.Tensor
+        Predicted data.
+    target : torch.Tensor
+        True data.
+
+    Returns:
+    --------
+    loss : torch.Tensor
+        negative log-likelihood of Bernoulli distribution.
+    """
+    bernoulli = torch.distributions.Bernoulli(probs=input)
+    log_probs = bernoulli.log_prob((target > 0).float())
+    loss = -log_probs.sum() / log_probs.shape[1]
+    return loss
 
 def mse_loss(x_pred, x_true):
     """

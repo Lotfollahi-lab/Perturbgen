@@ -187,7 +187,7 @@ def main() -> None:
         train_indices, val_indices, test_indices = gears_splitter(
             mode=args.splitting_mode.split('-')[1],
             adata=tgt_adata,
-            train_prop=0.9, test_prop=0.1, 
+            train_prop=0.75, test_prop=0.1, 
             seed=RANDOM_SEED, 
             test_pert_genes=None, test_perts=None
         )

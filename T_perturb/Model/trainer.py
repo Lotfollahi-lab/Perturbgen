@@ -29,6 +29,7 @@ from T_perturb.src.losses import (
     mse_loss,
     nb,
     zinb,
+    criterion_neg_log_bernoulli_loss,
 )
 from T_perturb.src.utils import one_hot_encoder
 
@@ -511,6 +512,13 @@ class CountDecodertrainer(LightningModule):
                 .mean()
                 .float()
             )
+
+            # currently not logged into wandb
+            loss_zero_log_prob = criterion_neg_log_bernoulli_loss(
+                outputs['zero_probs'], true_counts
+            )
+            loss = loss + loss_zero_log_prob
+
             return loss, outputs['count_lognorm']
 
         elif self.loss_mode == 'zinb':
@@ -558,7 +566,7 @@ class CountDecodertrainer(LightningModule):
 
     def training_step(self, batch, *args, **kwargs):
         outputs = self.forward(batch)
-        count_loss, pred_count = self.compute_count_loss(outputs, batch)
+        count_loss, pred_count = self.compute_count_loss(outputs, batch)            
 
         self.log(
             'train/loss',
