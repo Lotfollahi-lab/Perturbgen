@@ -1,3 +1,4 @@
+import os
 import pickle
 from typing import (
     Any,
@@ -85,10 +86,11 @@ class Petratrainer(LightningModule):
         return_embeddings: bool = False,
         generate: bool = False,
         mapping_dict_path: str = (
-            './T_perturb/T_perturb/pp/eb/res/token_id_to_genename_all.pkl'
+            './T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
         ),
         time_steps: list = [1, 2],
         total_time_steps: int = 3,
+        output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         gene_names: Optional[List[str]] = None,
         *args,
         **kwargs,
@@ -159,6 +161,10 @@ class Petratrainer(LightningModule):
                 ),
             )
             print(f'cls_token_{str(i)}', getattr(self, f'cls_token_{str(i)}'))
+        self.output_dir = output_dir
+        # create directory if not exist
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
 
     def forward(self, batch):
         tgt_input_id_dict = {}
@@ -456,12 +462,7 @@ class Petratrainer(LightningModule):
             df.index = adata.obs_names
             adata.obsm['cosine_similarity'] = df
             # save anndata
-            adata.write_h5ad(
-                '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-                't_generative/T_perturb/T_perturb/'
-                'plt/res/Petra/'
-                'cls_embeddings_cosine_similarity.h5ad'
-            )
+            adata.write_h5ad(f'{self.output_dir}/cls_embeddings_cosine_similarity.h5ad')
             print('End saving embeddings -------------------')
 
 
@@ -491,6 +492,7 @@ class CountDecodertrainer(LightningModule):
         total_time_steps: int = 3,
         temperature: float = 2.0,
         iterations: int = 18,
+        output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         mask_scheduler: Optional[str] = 'cosine',
         *args,
         **kwargs,
@@ -579,6 +581,10 @@ class CountDecodertrainer(LightningModule):
         self.var_list = var_list
         for var in self.var_list:
             self.test_dict[var] = []
+        self.output_dir = output_dir
+        # create directory if not exist
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
         # create variables based
         # initiate lists to store true, ctrl and pred counts
         self.train_true_counts_list: List[int] = []
@@ -667,6 +673,8 @@ class CountDecodertrainer(LightningModule):
             batch_size_factor = batch[f'tgt_size_factor_t{time_step}']
 
             if self.loss_mode == 'mse':
+                # change true counts dtype to count output dtype
+                true_counts = true_counts.type(count_ouput['count_lognorm'].dtype)
                 loss = (
                     mse_loss(count_ouput['count_lognorm'], true_counts)
                     .sum(dim=-1)
@@ -1121,13 +1129,10 @@ class CountDecodertrainer(LightningModule):
             print(pred_adata)
             pred_adata.layers['counts'] = true_counts.numpy()
             pred_adata.obsm['cls_embeddings'] = cls_embeddings.numpy()
+
+            # create output directory
             # save adata
-            pred_adata.write_h5ad(
-                '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-                't_generative/T_perturb/T_perturb/'
-                'plt/res/Petra/'
-                'generate_adata.h5ad'
-            )
+            pred_adata.write_h5ad(f'{self.output_dir}/generate_adata.h5ad')
         else:
             # return Pearson correlation coefficient
             true_counts = torch.cat(self.test_true_counts_list)
@@ -1145,12 +1150,7 @@ class CountDecodertrainer(LightningModule):
             )
             pred_adata.layers['counts'] = true_counts.numpy()
             # save adata
-            pred_adata.write_h5ad(
-                '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-                't_generative/T_perturb/T_perturb/'
-                'plt/res/Petra/'
-                'pred_adata.h5ad'
-            )
+            pred_adata.write_h5ad(f'{self.output_dir}/pred_adata.h5ad')
             mean_pearson = self.pearson(pred_counts, true_counts)
             # Pearson correlation coefficient
             self.log(
@@ -1185,11 +1185,7 @@ class CountDecodertrainer(LightningModule):
                     'mse': [mse.cpu().detach().numpy()],
                 }
             )
-            metrics.to_csv(
-                '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-                't_generative/T_perturb/T_perturb/plt/res/Petra/'
-                'test_count_metrics.csv'
-            )
+            metrics.to_csv(f'{self.output_dir}/test_metrics.csv')
             # calculate MMD and EMD
             condition_key = 'Cell_population'
             mmd = evaluate_mmd(self.adata, pred_adata, condition_key=condition_key)
@@ -1203,9 +1199,7 @@ class CountDecodertrainer(LightningModule):
             metrics = pd.concat([mmd, emd])
             # save metrics
             metrics.to_csv(
-                f'/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-                f't_generative/T_perturb/T_perturb/plt/res/Petra/'
-                f'test_mmd_emd_{condition_key}_metrics.csv'
+                f'{self.output_dir}/test_mmd_emd_{condition_key}_metrics.csv'
             )
             # set to status quo
             self.test_true_counts_list = []

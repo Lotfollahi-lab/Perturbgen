@@ -225,9 +225,10 @@ cell_pairings = pairing_resting_to_activated_cells(
     adata_subset=adata_subset,
     pairing_mode=args.pairing_mode,
     seed_no=seed_no,
-    reference_time=args.reference_time,
 )
-paired_dataset_dir = f'./res/dataset_{args.gene_filtering_mode}'
+paired_dataset_dir = (
+    f'./T_perturb/T_perturb/res/{args.dataset}/' f'dataset_{args.gene_filtering_mode}'
+)
 if not os.path.exists(paired_dataset_dir):
     os.makedirs(paired_dataset_dir)
 dataset_mapped = dataset.map(
@@ -246,7 +247,6 @@ for time_point in tqdm.tqdm(args.time_point_order):
         os.makedirs(f'{output_dir}_src')
     if not os.path.exists(f'{output_dir}_tgt'):
         os.makedirs(f'{output_dir}_tgt')
-
     # subset dataset by cell pairings
     if time_point == args.reference_time:
         adata_tmp.write_h5ad(f'./{paired_h5ad_dir}_src/{time_point}.h5ad')

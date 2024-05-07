@@ -47,6 +47,13 @@ def get_args():
         help='split data for extrapolation',
     )
     parser.add_argument(
+        '--output_dir',
+        type=str,
+        # default='./T_perturb/T_perturb/plt/res/cytoimmgen',
+        default='./T_perturb/T_perturb/plt/res/eb',
+        help='store dataset name',
+    )
+    parser.add_argument(
         '--splitting_mode',
         type=str,
         default='random',
@@ -359,6 +366,7 @@ def main() -> None:
             time_steps=args.time_steps,
             total_time_steps=n_total_timepoints,
             gene_names=tgt_adata_tmp.var['gene_name'],
+            output_dir=args.output_dir,
         )
     elif args.test_mode == 'count':
         decoder_module = CountDecodertrainer(
@@ -385,6 +393,7 @@ def main() -> None:
             temperature=args.temperature,
             iterations=args.iterations,
             mask_scheduler=args.mask_scheduler,
+            output_dir=args.output_dir,
         )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')

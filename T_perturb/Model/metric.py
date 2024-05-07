@@ -99,33 +99,55 @@ def mmd_loss_calc(source_features, target_features, gamma):
 # Date of access: 2024.01.08
 
 
-def evaluate_mmd(adata, pred_adata, condition_key, de_genes_dict=None):
+def evaluate_mmd(adata, pred_adata, condition_key=None, de_genes_dict=None):
     mmd_list = []
-    for cond in pred_adata.obs[condition_key].unique():
-        adata_ = adata[adata.obs[condition_key] == cond].copy()
-        pred_adata_ = pred_adata[pred_adata.obs[condition_key] == cond].copy()
+    if condition_key is not None:
+        for cond in pred_adata.obs[condition_key].unique():
+            adata_ = adata[adata.obs[condition_key] == cond].copy()
+            pred_adata_ = pred_adata[pred_adata.obs[condition_key] == cond].copy()
+            if issparse(adata_.X):
+                adata_.X = adata_.X.A
+            if issparse(pred_adata_.X):
+                pred_adata_.X = pred_adata_.X.A
+
+            gammas = [2, 1, 0.5, 0.1, 0.01, 0.005]
+            print('start mmd calculation')
+            mmd = np.mean(
+                list(map(lambda x: mmd_loss_calc(adata_.X, pred_adata_.X, x), gammas))
+            )
+            print('end mmd calculation')
+            # mmd = mmd_loss_calc(torch.Tensor(), torch.Tensor())
+            mmd_list.append({'condition': cond, 'mmd': mmd})
+            if de_genes_dict:
+                de_genes = de_genes_dict[cond]
+                sub_adata_ = adata_[:, de_genes]
+                sub_pred_adata_ = pred_adata_[:, de_genes]
+                mmd_deg = mmd_loss_calc(
+                    torch.Tensor(sub_adata_.X), torch.Tensor(sub_pred_adata_.X)
+                )
+                mmd_list[-1]['mmd_deg'] = mmd_deg
+        mmd_df = pd.DataFrame(mmd_list).set_index('condition')
+    else:
+        adata_ = adata.copy()
+        pred_adata_ = pred_adata.copy()
         if issparse(adata_.X):
             adata_.X = adata_.X.A
         if issparse(pred_adata_.X):
             pred_adata_.X = pred_adata_.X.A
-
         gammas = [2, 1, 0.5, 0.1, 0.01, 0.005]
-        print('start mmd calculation')
         mmd = np.mean(
             list(map(lambda x: mmd_loss_calc(adata_.X, pred_adata_.X, x), gammas))
         )
-        print('end mmd calculation')
-        # mmd = mmd_loss_calc(torch.Tensor(), torch.Tensor())
-        mmd_list.append({'condition': cond, 'mmd': mmd})
+        mmd_list.append({'mmd': mmd})
         if de_genes_dict:
-            de_genes = de_genes_dict[cond]
+            de_genes = de_genes_dict
             sub_adata_ = adata_[:, de_genes]
             sub_pred_adata_ = pred_adata_[:, de_genes]
             mmd_deg = mmd_loss_calc(
                 torch.Tensor(sub_adata_.X), torch.Tensor(sub_pred_adata_.X)
             )
             mmd_list[-1]['mmd_deg'] = mmd_deg
-    mmd_df = pd.DataFrame(mmd_list).set_index('condition')
+        mmd_df = pd.DataFrame(mmd_list)
     return mmd_df
 
 

@@ -943,8 +943,6 @@ class CountDecoder(nn.Module):
 
         count_outputs = {}
         for i, t in enumerate(self.time_steps):
-            print(cls_positions)
-            print(outputs['dec_embedding'].shape)
             cls_position = cls_positions[i]
             cls_embedding = outputs['dec_embedding'][:, cls_position, :]
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
