@@ -29,8 +29,6 @@ if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     os.chdir('/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/')
     print('Changed working directory to root of repository')
 
-print(os.getcwd())
-
 
 def get_args():
     """Get command line arguments."""
@@ -46,6 +44,13 @@ def get_args():
         type=bool,
         default=False,
         help='split data for extrapolation',
+    )
+    parser.add_argument(
+        '--output_dir',
+        type=str,
+        # default='./T_perturb/T_perturb/plt/res/cytoimmgen',
+        default='./T_perturb/T_perturb/plt/res/eb',
+        help='store dataset name',
     )
     parser.add_argument(
         '--splitting_mode',
@@ -65,8 +70,8 @@ def get_args():
         '--ckpt_masking_path',
         type=str,
         default='./T_perturb/T_perturb/Model/checkpoints/'
-        '20240503_1202_petra_train_masking_lr_0.001_'
-        'wd_0.001_batch_32_mlmp_0.15_tp_1-2-4.ckpt',
+        '20240507_1047_petra_train_masking_lr_0.001_wd_0.001'
+        '_batch_32_mlmp_0.15_tp_1-2-4.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -148,7 +153,7 @@ def get_args():
         '--n_workers', type=int, default=32, help='number of workers'
     )  # 64
     parser.add_argument(
-        '--loss_mode', type=str, default='zinb', help='loss mode [zinb, nb, mse]'
+        '--loss_mode', type=str, default='mse', help='loss mode [zinb, nb, mse]'
     )
     parser.add_argument('--petra_dropout', type=float, default=0.0, help='dropout')
     parser.add_argument('--count_dropout', type=float, default=0.0, help='dropout')
@@ -367,6 +372,7 @@ def main() -> None:
             time_steps=args.time_steps,
             total_time_steps=n_total_timepoints,
             mapping_dict_path=args.mapping_dict_path,
+            output_dir=args.output_dir,
         )
     elif args.train_mode == 'count':
         decoder_module = CountDecodertrainer(
@@ -393,6 +399,7 @@ def main() -> None:
             temperature=args.temperature,
             iterations=args.iterations,
             mask_scheduler=args.mask_scheduler,
+            output_dir=args.output_dir,
         )
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')

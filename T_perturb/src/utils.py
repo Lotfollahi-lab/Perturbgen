@@ -162,10 +162,7 @@ def subset_adata(adata, cell_pairings):
 
 
 def pairing_resting_to_activated_cells(
-    adata_subset: sc.AnnData,
-    pairing_mode: str,
-    seed_no: int = 42,
-    reference_time: str = '0h',
+    adata_subset: sc.AnnData, pairing_mode: str, seed_no: int = 42
 ):
     """
     Description:
@@ -191,14 +188,19 @@ def pairing_resting_to_activated_cells(
     adata_subset_ = adata_subset.copy()
     adata_subset_.obs = adata_subset_.obs.reset_index()
     adata_dict = {}
-    cell_pairings: Dict[str, List[int]] = {}
+    # initiate dict to store cell pairing
+    cell_pairings: Dict[str, List[str]] = {}
+    max_rows = 0
+    max_reference_time = None
     for adata_tmp in adata_subset_.obs['Time_point'].unique():
         adata_dict[adata_tmp] = adata_subset_.obs.loc[
             adata_subset_.obs['Time_point'] == adata_tmp, :
         ]
         cell_pairings[adata_tmp] = []
-    # initiate dictionary to store cell pairings
-
+        # Check if this adata_tmp has more rows than the current maximum
+        if len(adata_dict[adata_tmp]) > max_rows:
+            max_rows = len(adata_dict[adata_tmp])
+            max_reference_time = adata_tmp
     if pairing_mode == 'stratified':
         # drop Donor if they do not have Cell_type, Donor in all the Time_points
         adata_grouped = adata_subset_.obs[
@@ -227,15 +229,16 @@ def pairing_resting_to_activated_cells(
             cell_pairings['5d'].append(np.random.choice(indices_5d))
 
     elif pairing_mode == 'random':
-        # randomly sample from each time point
-        ref_adata = adata_dict[reference_time]
-        cell_pairings[reference_time] = ref_adata.index.tolist()
-        # remove reference time from dictionary
-        del adata_dict[reference_time]
-        for rest_time, adata_ in adata_dict.items():
-            cell_pairings[rest_time] = np.random.choice(
-                adata_.index, len(ref_adata), replace=True
-            ).tolist()
+        if max_reference_time is not None:
+            # randomly sample from each time point
+            ref_adata = adata_dict[max_reference_time]
+            cell_pairings[max_reference_time] = ref_adata.index.tolist()
+            # remove reference time from dictionary
+            del adata_dict[max_reference_time]
+            for rest_time, adata_ in adata_dict.items():
+                cell_pairings[rest_time] = np.random.choice(
+                    adata_.index, len(ref_adata), replace=True
+                ).tolist()
     else:
         raise ValueError('pairing_mode must be either random or stratified')
     return cell_pairings

@@ -1,3 +1,4 @@
+import argparse
 import os
 import random
 
@@ -13,20 +14,40 @@ from T_perturb.Model.metric import evaluate_emd, evaluate_mmd
 np.random.seed(42)
 random.seed(42)
 
-# colorblind friendly palette
-plt.rcParams['axes.prop_cycle'] = plt.cycler(color=sns.color_palette('colorblind'))
-if os.getcwd().split('/')[-3] != 'T_perturb':
+if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
-    os.chdir(
-        '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/T_perturb/T_perturb/plt'
-    )
+    os.chdir('/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/')
     print('Changed working directory to root of repository')
 
-style.use(
-    '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    'T_perturb/T_perturb/pp/mpl_style.mplstyle'
-)
+
+def get_args():
+    """Get command line arguments."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--res_dir',
+        type=str,
+        default='./T_perturb/T_perturb/plt/res/eb',
+        help='Dataset to use for analysis',
+    )
+    parser.add_argument(
+        '--full_data_dir',
+        type=str,
+        # default='./T_perturb/T_perturb/pp/res/h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad',
+        default=(
+            './T_perturb/T_perturb/pp/eb/res/'
+            'h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad'
+        ),
+        help='Dataset to use for analysis',
+    )
+    args = parser.parse_args()
+    return args
+
+
+args = get_args()
+# colorblind friendly palette
+plt.rcParams['axes.prop_cycle'] = plt.cycler(color=sns.color_palette('colorblind'))
+
+style.use('./T_perturb/T_perturb/pp/mpl_style.mplstyle')
 
 # Plotting CLS embeddings
 # --------------------------------
@@ -36,10 +57,7 @@ style.use(
 # --------------------------------
 
 # plot log normalised embeddings
-adata_full = sc.read_h5ad(
-    '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    'T_perturb/T_perturb/pp/res/h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad'
-)
+adata_full = sc.read_h5ad(args.full_data_dir)
 
 sc.pp.normalize_total(adata_full, target_sum=1e4)
 sc.pp.log1p(adata_full)
@@ -64,7 +82,7 @@ sc.pl.embedding(
 )
 plt.savefig('./res/full_data_umap_log_norm.pdf', dpi=300, bbox_inches='tight')
 plt.close()
-adata_cls = sc.read_h5ad('./res/Petra/cls_embeddings_cosine_similarity.h5ad')
+adata_cls = sc.read_h5ad(f'{args.res_dir}/cls_embeddings_cosine_similarity.h5ad')
 # plot umap of cls embeddings
 fig, ax = plt.subplots(figsize=(5, 5))
 # create umap for each time point separately
@@ -108,7 +126,7 @@ sc.pl.embedding(
     show=False,
 )
 plt.savefig(
-    './res/Petra/cls_embeddings_umap.pdf',
+    f'{args.res_dir}/cls_embeddings_umap.pdf',
     bbox_inches='tight',
 )
 plt.close()
@@ -211,7 +229,7 @@ sc.pl.dotplot(
 )
 # save figure
 plt.savefig(
-    './res/Petra/cosine_similarity.pdf',
+    f'{args.res_dir}/cosine_similarity.pdf',
     bbox_inches='tight',
 )
 plt.close()
@@ -243,7 +261,7 @@ sc.pl.dotplot(
 )
 # save figure
 plt.savefig(
-    './res/Petra/cosine_similarity_LA_HA_16h.pdf',
+    f'{args.res_dir}/cosine_similarity_LA_HA_16h.pdf',
     bbox_inches='tight',
 )
 plt.close()
@@ -251,10 +269,7 @@ plt.close()
 
 # Plotting generate results
 # --------------------------------
-adata = sc.read_h5ad(
-    '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    'T_perturb/T_perturb/plt/res/Petra/generate_adata.h5ad'
-)
+adata = sc.read_h5ad(f'{args.res_dir}/generate_adata.h5ad')
 del adata.uns['Cell_type_colors']
 del adata.uns['Cell_population_colors']
 del adata.uns['Time_point_colors']
@@ -275,7 +290,7 @@ sc.pl.embedding(
     show=False,
 )
 plt.savefig(
-    './res/Petra/generate_umap_cls.pdf',
+    f'{args.res_dir}/generate_umap_cls.pdf',
     bbox_inches='tight',
 )
 # log normalised counts
@@ -296,7 +311,7 @@ sc.pl.umap(
     frameon=False,
     show=False,
 )
-plt.savefig('./res/generate_umap_raw.pdf', dpi=300, bbox_inches='tight')
+plt.savefig(f'{args.res_dir}/generate_umap_raw.pdf', dpi=300, bbox_inches='tight')
 plt.close()
 
 mode = 'log_norm'
@@ -324,13 +339,11 @@ sc.pl.umap(
 )
 plt.savefig(f'./res/true_umap_{mode}.pdf', dpi=300, bbox_inches='tight')
 adata_full = sc.read_h5ad(
-    '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    'T_perturb/T_perturb/pp/cytoimmgen/res/h5ad_pairing_hvg/'
-    'cytoimmgen_tokenised_hvg.h5ad'
+    f'{args.res_dir}/h5ad_pairing_hvg/' 'cytoimmgen_tokenised_hvg.h5ad'
 )
 adata_random = adata_full.copy()
 sc.pp.subsample(adata_random, n_obs=adata_true.n_obs)
-# calculate emd and mmd between true and generated data
+# calculate emd and mmd between true and generated data for cytoimmgen
 emd_list = []
 emd_random = []
 mmd_list = []
@@ -402,3 +415,14 @@ plt.savefig('./res/emd_mmd_timepoint.pdf', bbox_inches='tight')
 # save dataframe
 df_long.to_csv('./res/emd_mmd_timepoint.csv')
 df_long.groupby(['Metric', 'Type'])['Value'].mean()
+
+# EB analysis
+# ------------------------------
+adata = sc.read_h5ad(f'{args.res_dir}/generate_adata.h5ad')
+adata_true = adata.copy()
+adata_true.X = adata_true.layers['counts']
+
+emd_list = []
+mmd_list = []
+emd_df = evaluate_emd(adata_true, adata, None)
+mmd_df = evaluate_mmd(adata_true, adata, None)
