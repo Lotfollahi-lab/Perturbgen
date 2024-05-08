@@ -83,8 +83,8 @@ def get_args():
         '--ckpt_count_path',
         type=str,
         default='./T_perturb/T_perturb/Model/checkpoints/'
-        '20240503_1525_petra_train_count_lr_0.0005_'
-        'wd_0.001_batch_32_zinb_tp_1-2-4.ckpt',
+        '20240507_1144_petra_train_count_lr_0.0005'
+        '_wd_0.001_batch_32_mse_tp_1-2-4.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -157,7 +157,7 @@ def get_args():
     parser.add_argument('--count_wd', type=float, default=0.001, help='weight decay')
     parser.add_argument('--n_workers', type=int, default=32, help='number of workers')
     parser.add_argument(
-        '--loss_mode', type=str, default='zinb', help='loss mode [zinb, nb, mse]'
+        '--loss_mode', type=str, default='mse', help='loss mode [zinb, nb, mse]'
     )
     parser.add_argument('--petra_dropout', type=float, default=0.0, help='dropout')
     parser.add_argument('--count_dropout', type=float, default=0.0, help='dropout')

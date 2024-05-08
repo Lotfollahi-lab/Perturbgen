@@ -1116,7 +1116,6 @@ class CountDecodertrainer(LightningModule):
             for var in self.var_list:
                 var_dict[var] = np.concatenate(self.test_dict[var])
             test_obs = pd.DataFrame(var_dict)
-            print(test_obs)
             cls_embeddings = torch.cat(self.test_dict['cls_embeddings']).detach().cpu()
             # test_obs = pd.DataFrame(
             #     np.array(
@@ -1132,7 +1131,9 @@ class CountDecodertrainer(LightningModule):
 
             # create output directory
             # save adata
-            pred_adata.write_h5ad(f'{self.output_dir}/generate_adata.h5ad')
+            pred_adata.write_h5ad(
+                f'{self.output_dir}/generate_adata_{self.loss_mode}.h5ad'
+            )
         else:
             # return Pearson correlation coefficient
             true_counts = torch.cat(self.test_true_counts_list)

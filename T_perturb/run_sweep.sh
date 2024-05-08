@@ -14,7 +14,6 @@ date=$(date "+%Y-%m-%d")
 
 # activate environment
 source /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/.tperturb/bin/activate
-source ~/.bashrc
 cwd=$(pwd)
 
 export WANDB_DIR=$cwd/wandb

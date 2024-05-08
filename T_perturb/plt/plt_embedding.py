@@ -418,7 +418,7 @@ df_long.groupby(['Metric', 'Type'])['Value'].mean()
 
 # EB analysis
 # ------------------------------
-adata = sc.read_h5ad(f'{args.res_dir}/generate_adata.h5ad')
+adata = sc.read_h5ad(f'{args.res_dir}/generate_adata_mse.h5ad')
 adata_true = adata.copy()
 adata_true.X = adata_true.layers['counts']
 
