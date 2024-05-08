@@ -299,14 +299,14 @@ class Petra(nn.Module):
 
         print(self.token_embedding.weight.shape)
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
-        self.positional_encoding = self.positional_encoding.to(self.device)
+        # self.positional_encoding = self.positional_encoding.to(self.device)
         self.encoder_layers = Geneformerwrapper()
-        self.encoder_layers = self.encoder_layers.to(self.device)
+        # self.encoder_layers = self.encoder_layers.to(self.device)
 
         self.decoder_layers = nn.ModuleList(
             [DecoderLayer(dim=d_model, n_heads=num_heads, d_head=d_ff, dropout=dropout, context_dim=d_encoded_input) for _ in range(num_layers)]
         )
-        self.decoder_layers = self.decoder_layers.to(self.device)
+        # self.decoder_layers = self.decoder_layers.to(self.device)
 
         self.fc = nn.Linear(d_model, tgt_vocab_size, device=self.device)
         self.dropout = nn.Dropout(dropout)

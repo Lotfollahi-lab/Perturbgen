@@ -90,6 +90,7 @@ class Petratrainer(LightningModule):
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
+        self.save_hyperparameters()
         self.transformer = Petra(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
@@ -167,7 +168,7 @@ class Petratrainer(LightningModule):
         logits = outputs['logits']
         labels = outputs['labels']
 
-        perp = Perplexity(ignore_index=-100).to('cuda')  # -100 = masked labels
+        perp = Perplexity(ignore_index=-100)#.to('cuda')  # -100 = masked labels
         perp.update(logits, labels)
         logits = logits.contiguous().view(-1, logits.size(-1))
         labels = labels.contiguous().view(-1)
@@ -202,7 +203,7 @@ class Petratrainer(LightningModule):
         outputs = self.forward(batch)
         logits = outputs['logits']
         labels = outputs['labels']
-        perp = Perplexity(ignore_index=-100).to('cuda')
+        perp = Perplexity(ignore_index=-100)#.to('cuda')
         perp.update(logits, labels)
         logits = logits.contiguous().view(-1, logits.size(-1))
         labels = labels.contiguous().view(-1)
@@ -383,6 +384,7 @@ class CountDecodertrainer(LightningModule):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
+        self.save_hyperparameters()
         self.target_device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu'
         )
@@ -505,7 +507,7 @@ class CountDecodertrainer(LightningModule):
         true_counts = batch['tgt_counts'].float()
         batch_size_factor = np.array(batch['size_factor'])
         batch_size_factor = torch.tensor(batch_size_factor)
-        batch_size_factor = batch_size_factor.to(self.target_device)
+        # batch_size_factor = batch_size_factor.to(self.target_device)
 
         if self.loss_mode == 'mse':
             loss = (
@@ -525,7 +527,7 @@ class CountDecodertrainer(LightningModule):
 
         elif self.loss_mode == 'zinb':
             combined_batch = torch.tensor(batch['combined_batch'])
-            combined_batch = combined_batch.to(self.target_device)
+            # combined_batch = combined_batch.to(self.target_device)
             dec_mean_gamma, dec_dropout = (
                 outputs['count_mean'],
                 outputs['count_dropout'],
@@ -549,7 +551,7 @@ class CountDecodertrainer(LightningModule):
 
         elif self.loss_mode == 'nb':
             combined_batch = torch.tensor(batch['combined_batch'])
-            combined_batch = combined_batch.to(self.target_device)
+            # combined_batch = combined_batch.to(self.target_device)
             dec_mean_gamma = outputs['count_mean']
 
             size_factor_view = batch_size_factor.unsqueeze(1).expand(

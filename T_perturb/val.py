@@ -436,8 +436,8 @@ def main() -> None:
     trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=[TQDMProgressBar(refresh_rate=10), checkpoint_callback],
-        max_epochs=args.epochs,
         accelerator=accelerator,
+        devices=1 if torch.cuda.is_available() else 0,  # infernce only on one gpu
     )
     # Finally, kick of the training process.
     if args.test_mode == 'masking':

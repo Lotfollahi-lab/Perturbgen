@@ -11,6 +11,7 @@ import torch
 from datasets import load_from_disk
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.strategies import DeepSpeedStrategy
 from wandb import init  # type: ignore
 import gc
 from T_perturb.Dataloaders.datamodule import PetraDataModule
@@ -426,6 +427,7 @@ def main() -> None:
         verbose=False,
         mode=mode,
     )
+    deepspeed_strategy = DeepSpeedStrategy(stage=2)   
     trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=[
@@ -434,7 +436,9 @@ def main() -> None:
             early_stop_callback,
         ],
         max_epochs=args.epochs,
-        accelerator=accelerator,
+        accelerator='auto',
+        devices=-1 if torch.cuda.is_available() else 0,
+        strategy=deepspeed_strategy if torch.cuda.device_count() > 1 else 'auto',
     )
 
     if args.train_mode == 'masking':
