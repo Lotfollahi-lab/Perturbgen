@@ -284,6 +284,8 @@ def main() -> None:
     print('Data loaded and preprocessed.')
     # Initialize model module
     # ----------------------------------------------------------------------------------
+    run_id = datetime.now().strftime('%Y%m%d_%H%M_ttransformer')
+
     if args.test_mode == 'masking':
         pretrained_module = Petratrainer(
             tgt_vocab_size=5028,  # 704 for degs, 1819 for tokenised
@@ -319,6 +321,7 @@ def main() -> None:
             d_model=256,
             generate=args.generate,
             perturbation_modeling='activation', # activation repression or None (if not perturbation experiment)
+            run_id = run_id,
         )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')
@@ -368,7 +371,6 @@ def main() -> None:
 
     # Setup trainer
     # ----------------------------------------------------------------------------------
-    run_id = datetime.now().strftime('%Y%m%d_%H%M_ttransformer')
     log_path = os.path.join(args.log_dir, run_id)
     os.makedirs(os.path.join(os.getcwd(), log_path), exist_ok=True)
 
@@ -379,7 +381,7 @@ def main() -> None:
         filename = (
             f'{run_id}_mode_{args.test_mode}_lr_{args.petra_lr}_wd_{args.petra_wd}_'
             f'batch_{args.batch_size}_'
-            f'mlmp_{args.mlm_probability}_{dataset_info}'
+            f'mlmp_{args.mlm_probability}_seed{RANDOM_SEED}_{dataset_info}'
         )
         monitor_metric = 'train/perplexity'
         mode = 'min'
@@ -387,7 +389,7 @@ def main() -> None:
         filename = (
             f'{run_id}_mode_{args.test_mode}_lr_{args.count_lr}_wd_{args.count_wd}_'
             f'batch_{args.batch_size}_'
-            f'{args.loss_mode}_{dataset_info}'
+            f'{args.loss_mode}_seed{RANDOM_SEED}_{dataset_info}'
         )
         monitor_metric = 'val/pearson'
         mode = 'max'

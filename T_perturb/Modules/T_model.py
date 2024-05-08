@@ -465,8 +465,9 @@ class CountHead(nn.Module):
         if self.loss_mode == 'mse':
             self.relu_output = nn.Sequential(nn.Linear(d_model, n_genes), nn.ReLU())
 
+            # To-do: dropout prediction from MLP output, with a single linear+sigmoid layer
             self.zero_logit = nn.Sequential(
-                nn.Linear(d_model, d_model), # TO DO: correct input shape?
+                nn.Linear(d_model, d_model),
                 nn.LeakyReLU(),
                 nn.Linear(d_model, d_model),
                 nn.LeakyReLU(),

@@ -378,6 +378,7 @@ class CountDecodertrainer(LightningModule):
         perturbation_modeling = None,
         temperature: float = 2.0,
         iterations: int = 18,
+        run_id: str = '',
         *args,
         **kwargs,
     ):
@@ -387,6 +388,7 @@ class CountDecodertrainer(LightningModule):
         )
         # Create an instance of your model
         checkpoint = torch.load(ckpt_path, map_location='cpu')
+        self.run_id = run_id
         self.tgt_vocab_size = checkpoint['hyper_parameters']['tgt_vocab_size']
         self.d_model = checkpoint['hyper_parameters']['d_model']
         pretrained_model = Petra(
@@ -587,6 +589,15 @@ class CountDecodertrainer(LightningModule):
             prog_bar=True,
             logger=True,
         )
+        if self.loss_mode == 'mse':
+            nllb = torch.mean(criterion_neg_log_bernoulli_loss(outputs['zero_probs'], batch['tgt_counts']))
+            self.log(
+                'train/nllb',
+                nllb,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+            )
         # implement the split
         # pearson delta
 
@@ -649,6 +660,15 @@ class CountDecodertrainer(LightningModule):
             prog_bar=True,
             logger=True,
         )
+        if self.loss_mode == 'mse':
+            nllb = torch.mean(criterion_neg_log_bernoulli_loss(outputs['zero_probs'], batch['tgt_counts']))
+            self.log(
+                'val/nllb',
+                nllb,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+            )
         self.val_true_counts_list.append(batch['tgt_counts'])
         self.val_pred_counts_list.append(pred_count)
         self.val_ctrl_counts_list.append(batch['src_counts'])
@@ -790,7 +810,7 @@ class CountDecodertrainer(LightningModule):
             f'/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/'
             f'T_perturb/T_perturb/'
             f'plt/res/Petra/'
-            f'{name_prefix}_pred_adata_{self.dataset_info}.h5ad'
+            f'{self.run_id}_{name_prefix}_pred_adata_{self.dataset_info}.h5ad'
         )
         # Pearson correlation coefficient
         mean_pearson = pearson(pred_counts, true_counts)
@@ -865,7 +885,7 @@ class CountDecodertrainer(LightningModule):
         metrics.to_csv(
             f'/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/'
             f'T_perturb/T_perturb/plt/res/Petra/'
-            f'{name_prefix}_count_metrics.csv'
+            f'{self.run_id}_{name_prefix}_count_metrics.csv'
         )
         # calculate MMD and EMD
         # condition_key = 'Cell_population'        

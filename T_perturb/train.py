@@ -366,7 +366,7 @@ def main() -> None:
         filename = (
             f'{run_id}_mode_{args.train_mode}_lr_{args.petra_lr}_wd_{args.petra_wd}_'
             f'batch_{args.batch_size}_'
-            f'mlmp_{args.mlm_probability}_{dataset_info}'
+            f'mlmp_{args.mlm_probability}_seed{RANDOM_SEED}_{dataset_info}'
         )
         monitor_metric = 'train/perplexity'
         mode = 'min'
@@ -375,7 +375,7 @@ def main() -> None:
         filename = (
             f'{run_id}_mode_{args.train_mode}_lr_{args.count_lr}_wd_{args.count_wd}_'
             f'batch_{args.batch_size}_'
-            f'{args.loss_mode}_{dataset_info}'
+            f'{args.loss_mode}_seed{RANDOM_SEED}_{dataset_info}'
         )
         monitor_metric = 'val/pearson'
         mode = 'max'
