@@ -19,6 +19,7 @@ from T_perturb.src.utils import (
     label_encoder,
     randomised_split,
     read_dataset_files,
+    str2bool,
     stratified_split,
 )
 
@@ -41,28 +42,28 @@ def get_args():
     )
     parser.add_argument(
         '--split',
-        type=bool,
+        type=str2bool,
         default=False,
         help='split data for extrapolation',
     )
     parser.add_argument(
         '--output_dir',
         type=str,
-        # default='./T_perturb/T_perturb/plt/res/cytoimmgen',
-        default='./T_perturb/T_perturb/plt/res/eb',
+        default='./T_perturb/T_perturb/plt/res/cytoimmgen',
+        # default='./T_perturb/T_perturb/plt/res/eb',
         help='store dataset name',
     )
     parser.add_argument(
         '--splitting_mode',
         type=str,
-        default='random',
-        # default='stratified',
+        # default='random',
+        default='stratified',
         choices=['random', 'stratified', 'unseen_donor'],
         help='splitting mode',
     )
     parser.add_argument(
         '--generate',
-        type=bool,
+        type=str2bool,
         default=False,
         help='generate data',
     )
@@ -70,58 +71,59 @@ def get_args():
         '--ckpt_masking_path',
         type=str,
         default='./T_perturb/T_perturb/Model/checkpoints/'
-        '20240507_1047_petra_train_masking_lr_0.001_wd_0.001'
-        '_batch_32_mlmp_0.15_tp_1-2-4.ckpt',
+        '20240508_1759_petra_train_masking_lr_0.001'
+        '_wd_0.001_batch_64_mlmp_0.15_tp_1-3.ckpt/'
+        'checkpoint/mp_rank_00_model_states.pt',
         help='path to checkpoint',
     )
     parser.add_argument(
         '--src_dataset',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset',
+        # default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset',
         # default=(
         #     './T_perturb/T_perturb/pp/res/eb/'
         #     'dataset_all_src/eb_all_Day 00-03.dataset'
         # ),
-        # default='./T_perturb/T_perturb/pp/cytoimmgen/dataset_hvg_src/0h.dataset',
+        default='./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
         '--tgt_dataset_folder',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt',
+        # default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt',
         # default='./T_perturb/T_perturb/pp/res/eb/dataset_all_tgt',
-        # default='./T_perturb/T_perturb/pp/cytoimmgen/dataset_hvg_tgt',
+        default='./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt',
         help='path to tokenised activated data',
     )
     parser.add_argument(
         '--src_adata',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
+        # default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
         # default=(
         #     './T_perturb/T_perturb/pp/'
         #     'res/eb/h5ad_pairing_all_src/eb_all_Day 00-03.h5ad'
         # ),
-        # default='./T_perturb/T_perturb/pp/cytoimmgen/'
-        # 'h5ad_pairing_hvg_src/0h.h5ad',
+        default='./T_perturb/T_perturb/pp/res/cytoimmgen/'
+        'h5ad_pairing_hvg_src/0h.h5ad',
         help='path to src',
     )
     parser.add_argument(
         '--tgt_adata_folder',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt',
+        # default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt',
         # default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_all_tgt',
-        # default='./T_perturb/T_perturb/pp/cytoimmgen/h5ad_pairing_hvg_tgt',
+        default='./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt',
         help='path to tgt',
     )
     parser.add_argument(
         '--mapping_dict_path',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl',
+        # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl',
         # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
-        # default = './T_perturb/T_perturb/pp/cytoimmgen/token_id_to_genename_hvg.pkl',
+        default='./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl',
     )
     parser.add_argument('--batch_size', type=int, default=32, help='batch_size')
-    parser.add_argument('--shuffle', type=bool, default=True, help='shuffle')
+    parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle')
     parser.add_argument(
         '--epochs', type=int, default=100, help='number of training epochs'
     )
@@ -131,17 +133,17 @@ def get_args():
     parser.add_argument(
         '--max_len',
         type=int,
-        # default=400,
+        default=300,
         # default=2048,
-        default=263,
+        # default=263,
         help='max sequence length',
     )  # check how many genes there are
     parser.add_argument(
         '--tgt_vocab_size',
         type=int,
-        # default=1820,
+        default=1261,
         # default=15280,
-        default=1737,
+        # default=1737,
         help='vocab size (max token id + 1) in dataset for padding',
     )
     parser.add_argument('--petra_lr', type=float, default=0.001, help='learning rate')
@@ -160,8 +162,8 @@ def get_args():
     parser.add_argument(
         '--condition_keys',
         nargs='+',
-        default=None,
-        # default='Cell_culture_batch',
+        # default=None,
+        default='Cell_culture_batch',
         type=str,
         help='Selection of condition keys to use for model',
     )
@@ -182,7 +184,7 @@ def get_args():
         # type=list,
         nargs='+',
         type=int,
-        default=[1, 2, 4],
+        default=[1, 3],
         help='time steps to include during training',
     )
     parser.add_argument(
@@ -190,13 +192,8 @@ def get_args():
         # type=list,
         nargs='+',
         type=str,
-        default=['Time_point'],
-        # default=[
-        #     'Cell_population',
-        #     'Cell_type',
-        #     'Time_point',
-        #     'Donor'
-        #     ],
+        # default=['Time_point'],
+        default=['Cell_population', 'Cell_type', 'Time_point', 'Donor'],
         help='List of variables to keep in the dataset',
     )
     args = parser.parse_args()

@@ -1,3 +1,4 @@
+import argparse
 import os
 import pickle
 from pathlib import Path
@@ -113,12 +114,25 @@ def subset_adata_dataset(
     return src_adata, tgt_adata, src_dataset, tgt_dataset
 
 
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
+
 def tokenid_mapping(adata: ad.AnnData, token_id_path: str):
     with open(token_id_path, 'rb') as f:
         token_id_dict = pickle.load(f)
     adata.var['token_id'] = adata.var_names.map(token_id_dict)
     adata.var['token_id'] = adata.var['token_id'].astype('Int64')
     adata_subset = adata[:, adata.var['token_id'].notna()].copy()
+    # print number of genes dropped
+    print(f'Number of genes dropped: {adata.n_vars - adata_subset.n_vars}')
     adata_subset.var['row_id'] = np.arange(adata_subset.n_vars) + 1
     # create dictionary to map token_id to row_id
     token_id_to_row_id_dict = dict(

@@ -136,3 +136,4 @@ logs
 res
 wandb
 checkpoints
+*.test/
