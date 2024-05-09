@@ -59,17 +59,16 @@ def get_args():
         help='random seed',
     )
     parser.add_argument(
-        '--ckpt_path',
+        '--ckpt_file',
         type=str,
-        default='/lustre/groups/imm01/worskpace/irene.bonafonte/Projects/2024Mar_Tperturb/'
-        'T_perturb/T_perturb/Model/checkpoints/20240306_1831_petra_mode_masking'
+        default='20240306_1831_petra_mode_masking'
         '_lr_0.001_wd_0.0_batch_256_mlmp_0.3_stratified_pairing_16h.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
         '--src_dataset_folder',
         type=str,
-        default='/lustre/groups/imm01/worskpace/irene.bonafonte/Projects/2024Mar_Tperturb/'
+        default='Projects/2024Mar_Tperturb/'
         'T_perturb/T_perturb/pp/res/dataset_hvg/'
         'cytoimmgen_tokenised_stratified_pairing_0h.dataset',
         help='path to tokenised resting data',
@@ -77,7 +76,7 @@ def get_args():
     parser.add_argument(
         '--tgt_dataset_folder',
         type=str,
-        default=f'/lustre/groups/imm01/worskpace/irene.bonafonte/Projects/2024Mar_Tperturb/'
+        default=f'Projects/2024Mar_Tperturb/'
         f'T_perturb/T_perturb/pp/res/dataset_hvg/'
         f'cytoimmgen_tokenised_{dataset_info}.dataset',
         help='path to tokenised activated data',
@@ -87,7 +86,7 @@ def get_args():
         '--src_adata_folder',
         type=str,
         default=(
-            '/lustre/groups/imm01/worskpace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/'
+            'Projects/2024Mar_Tperturb/T_perturb/'
             'T_perturb/pp/res/h5ad_pairing_hvg/'
             'cytoimmgen_tokenisation_stratified_pairing_0h.h5ad'
         ),
@@ -97,7 +96,7 @@ def get_args():
         '--tgt_adata_folder',
         type=str,
         default=(
-            f'/lustre/groups/imm01/worskpace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/'
+            f'Projects/2024Mar_Tperturb/T_perturb/'
             f'T_perturb/pp/res/h5ad_pairing_hvg/'
             f'cytoimmgen_tokenisation_{dataset_info}.h5ad'
         ),
@@ -141,6 +140,9 @@ def get_args():
     parser.add_argument('--conditions', type=dict, default=None, help='conditions')
     parser.add_argument(
         '--conditions_combined', type=list, default=None, help='conditions combined'
+    )
+    parser.add_argument(
+        '--base_path', type=str, default='/lustre/groups/imm01/workspace/irene.bonafonte', help='home path'
     )
     args = parser.parse_args()
     return args
@@ -296,10 +298,11 @@ def main() -> None:
             # lr_scheduler_factor=0.8,
             generate=args.generate,
             perturbation_modeling='activation', # activation repression or None (if not perturbation experiment)
+            base_path = args.base_path,
         )
     elif args.train_mode == 'count':
         decoder_module = CountDecodertrainer(
-            ckpt_path=args.ckpt_path,
+            ckpt_path=f'{args.base_path}/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints/{args.ckpt_file}',
             loss_mode=args.loss_mode,
             lr=args.count_lr,
             weight_decay=args.count_wd,
@@ -312,6 +315,7 @@ def main() -> None:
             d_model=256,
             generate=args.generate,
             perturbation_modeling='activation',
+            base_path = args.base_path,
         )
 
     else:
@@ -382,7 +386,7 @@ def main() -> None:
         mode = 'max'
 
     checkpoint_callback = ModelCheckpoint(
-        dirpath='/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints',
+        dirpath=f'{args.base_path}/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints',
         filename=filename,
         save_top_k=1,
         verbose=True,
@@ -398,7 +402,7 @@ def main() -> None:
             project='ttransformer',
             # id=unique_id,  # specify id to log to same run
             group=log_path,  # all runs are saved in one group for multi gpu training
-            # dir='/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/T_perturb',
+            # dir=f'{args.base_path}/Projects/2024Mar_Tperturb/T_perturb/T_perturb',
         )  # noqa
     else:
         init(

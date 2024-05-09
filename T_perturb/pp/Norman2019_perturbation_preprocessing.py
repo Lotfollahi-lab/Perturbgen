@@ -22,11 +22,12 @@ from T_perturb.src.utils import (
 
 # Set up -------------------
 # paths
-base_path = '/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb'
-data_path = 'datasets/'
+# base_path = '/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb'
+base_path = '/lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb'
+data_path = 'datasets'
 dataset = 'Norman2019'
 pp_path = 'T_perturb/T_perturb/pp/res'
-geneformer_path = '/lustre/groups/imm01/workspace/irene.bonafonte/Software/Geneformer/'
+geneformer_path = f'{base_path}/../../Software/Geneformer'
 
 
 # arguments

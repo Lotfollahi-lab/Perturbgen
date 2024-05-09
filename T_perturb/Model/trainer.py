@@ -86,11 +86,11 @@ class Petratrainer(LightningModule):
         generate: bool = False,
         dataset_info: Optional[str] = None,
         perturbation_modeling=None,
+        base_path: str = '',
         *args,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
-        self.save_hyperparameters()
         self.transformer = Petra(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
@@ -102,10 +102,12 @@ class Petratrainer(LightningModule):
             mlm_probability=mlm_probability,
             d_encoded_input=d_encoded_input,
             perturbation_modeling=perturbation_modeling,
+            base_path=base_path,
         )
         self.target_device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu'
         )
+        self.base_path = base_path
         self.masking_loss = nn.CrossEntropyLoss()
         self.save_hyperparameters()
         self.weight_decay = weight_decay
@@ -124,7 +126,7 @@ class Petratrainer(LightningModule):
 
         # if perturbation_modeling is None:
         with open(
-            '/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/T_perturb/pp/res/Norman2019_token_dictionary_hvg.pkl',
+            f'{self.base_path}/Projects/2024Mar_Tperturb/T_perturb/T_perturb/pp/res/Norman2019_token_dictionary_hvg.pkl',
             'rb',
         ) as f:
             self.subset_tokenid_to_deg = pickle.load(f)
@@ -350,9 +352,8 @@ class Petratrainer(LightningModule):
             # save under adata.obsm
             adata.obsm['X_CLS_embeddings'] = self.cls_embeddings_list
             # save anndata
-            # To do: base path not hardcoded
             adata.write_h5ad(
-                f'/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/'
+                f'{self.base_path}/Projects/2024Mar_Tperturb/'
                 f'T_perturb/T_perturb/'
                 f'plt/res/Petra/'
                 f'cls_embeddings_{self.dataset_info}_cosine_similarity.h5ad'
@@ -380,11 +381,11 @@ class CountDecodertrainer(LightningModule):
         temperature: float = 2.0,
         iterations: int = 18,
         run_id: str = '',
+        base_path: str = '',
         *args,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        self.save_hyperparameters()
         self.target_device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu'
         )
@@ -402,7 +403,7 @@ class CountDecodertrainer(LightningModule):
             perturbation_modeling=perturbation_modeling,
         )
         state_dict = checkpoint['state_dict']
-
+        self.save_hyperparameters()
         new_state_dict = {}
         for k, v in state_dict.items():
             k = k.replace('transformer.', '')
@@ -419,7 +420,6 @@ class CountDecodertrainer(LightningModule):
             dropout=dropout,
             perturbation_modeling=perturbation_modeling,
         )
-        self.save_hyperparameters()
         self.weight_decay = weight_decay
         self.lr = lr
         self.lr_scheduler_patience = lr_scheduler_patience
@@ -428,6 +428,7 @@ class CountDecodertrainer(LightningModule):
         # self.lr_scheduler_factor = lr_scheduler_factor
         self.loss_mode = loss_mode
         self.perturbation_modeling = perturbation_modeling
+        self.base_path = base_path
 
         if (
             (self.loss_mode in ['nb', 'zinb'])
@@ -807,9 +808,9 @@ class CountDecodertrainer(LightningModule):
             name_prefix = 'generate'
         else:
             name_prefix = 'test'
-        # To do: base path not hardcoded
+
         pred_adata.write_h5ad(
-            f'/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/'
+            f'{self.base_path}/Projects/2024Mar_Tperturb/'
             f'T_perturb/T_perturb/'
             f'plt/res/Petra/'
             f'{self.run_id}_{name_prefix}_pred_adata_{self.dataset_info}.h5ad'
@@ -885,7 +886,7 @@ class CountDecodertrainer(LightningModule):
 
         # To do: base path not hardoced
         metrics.to_csv(
-            f'/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/'
+            f'{self.base_path}/Projects/2024Mar_Tperturb/'
             f'T_perturb/T_perturb/plt/res/Petra/'
             f'{self.run_id}_{name_prefix}_count_metrics.csv'
         )

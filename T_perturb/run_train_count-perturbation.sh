@@ -24,8 +24,8 @@ ulimit -n 4096
 echo "--- Start testing model"
 # # Run python script for rna
 python3 $cwd/val.py \
---ckpt_masking_path "/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints/20240428_2344_petra_mode_masking_lr_0.001_wd_0.001_batch_32_mlmp_0.3_hvg_pairing_GFpert.ckpt" \
---ckpt_count_path "/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints/20240506_1234_petra_mode_count_lr_0.001_wd_0.001_batch_55_mse_hvg_pairing_GFpert.ckpt" \
+--ckpt_masking_file "20240428_2344_petra_mode_masking_lr_0.001_wd_0.001_batch_32_mlmp_0.3_hvg_pairing_GFpert.ckpt" \
+--ckpt_count_file "20240506_1234_petra_mode_count_lr_0.001_wd_0.001_batch_55_mse_hvg_pairing_GFpert.ckpt" \
 --num_cells 0 \
 --src_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_GFpert_control.dataset \
 --tgt_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_perturbed.dataset \
@@ -43,5 +43,6 @@ python3 $cwd/val.py \
 --count_lr 0.001 \
 --petra_wd 0.001 \
 --count_wd 0.001 \
---seed 1
+--seed 1 \
+--base_path /lustre/groups/imm01/workspace/irene.bonafonte/
 echo "--- Finished computing model"

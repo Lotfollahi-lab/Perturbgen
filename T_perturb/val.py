@@ -67,19 +67,16 @@ def get_args():
         help='random seed',
     )
     parser.add_argument(
-        '--ckpt_masking_path',
+        '--ckpt_masking_file',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/Model/checkpoints/20240306_1831_petra_mode_masking'
+        default='20240306_1831_petra_mode_masking'
         '_lr_0.001_wd_0.0_batch_256_mlmp_0.3_stratified_pairing_16h.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
-        '--ckpt_count_path',
+        '--ckpt_count_file',
         type=str,
-        default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'T_perturb/T_perturb/Model/checkpoints/'
-        '20240306_2004_petra_mode_count_lr_0.0005_'
+        default='20240306_2004_petra_mode_count_lr_0.0005_'
         'wd_0.001_batch_256_zinb_stratified_pairing_16h.ckpt',
         help='path to checkpoint',
     )
@@ -151,6 +148,9 @@ def get_args():
     parser.add_argument('--conditions', type=dict, default=None, help='conditions')
     parser.add_argument(
         '--conditions_combined', type=list, default=None, help='conditions combined'
+    )
+    parser.add_argument(
+        '--base_path', type=str, default='/lustre/groups/imm01/workspace/irene.bonafonte', help='home path'
     )
     args = parser.parse_args()
     return args
@@ -305,10 +305,11 @@ def main() -> None:
             dataset_info=dataset_info,
             generate=args.generate,
             perturbation_modeling='activation', # activation repression or None (if not perturbation experiment)
+            base_path = args.base_path,
         )
     elif args.test_mode == 'count':
         decoder_module = CountDecodertrainer(
-            ckpt_path=args.ckpt_masking_path,
+            ckpt_path=f'{args.base_path}/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints/{args.ckpt_masking_file}',
             loss_mode=args.loss_mode,
             lr=args.count_lr,
             weight_decay=args.count_wd,
@@ -322,6 +323,7 @@ def main() -> None:
             generate=args.generate,
             perturbation_modeling='activation', # activation repression or None (if not perturbation experiment)
             run_id = run_id,
+            base_path = args.base_path,
         )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')
@@ -395,7 +397,7 @@ def main() -> None:
         mode = 'max'
         
     checkpoint_callback = ModelCheckpoint(
-        dirpath='/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints',
+        dirpath=f'{args.base_path}/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints',
         filename=filename,
         save_top_k=1,
         verbose=True,
@@ -412,7 +414,7 @@ def main() -> None:
             project='ttransformer',
             # id=unique_id,  # specify id to log to same run
             group=log_path,  # all runs are saved in one group for multi gpu training
-            # dir='/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/T_perturb',
+            # dir=f'{args.base_path}/Projects/2024Mar_Tperturb/T_perturb/T_perturb',
         )  # noqa
     else:
         init(
@@ -444,13 +446,13 @@ def main() -> None:
         trainer.test(
             pretrained_module,
             data_module,
-            ckpt_path=args.ckpt_masking_path,
+            ckpt_path=f'{args.base_path}/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints/{args.ckpt_masking_file}',
         )
     elif args.test_mode == 'count':
         trainer.test(
             decoder_module,
             data_module,
-            args.ckpt_count_path,
+            ckpt_path=f'{args.base_path}/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints/{args.ckpt_count_file}',
         )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')

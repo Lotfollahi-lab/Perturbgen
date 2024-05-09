@@ -276,6 +276,7 @@ class Petra(nn.Module):
         mlm_probability: float = 0.3,
         d_encoded_input=None,        
         perturbation_modeling=None,
+        base_path: str = '/lustre/groups/imm01/workspace/irene.bonafonte'
     ):
         super(Petra, self).__init__()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -300,7 +301,7 @@ class Petra(nn.Module):
         print(self.token_embedding.weight.shape)
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
         # self.positional_encoding = self.positional_encoding.to(self.device)
-        self.encoder_layers = Geneformerwrapper()
+        self.encoder_layers = Geneformerwrapper(model_path=f'{base_path}/Software/Geneformer/geneformer-12L-30M')
         # self.encoder_layers = self.encoder_layers.to(self.device)
 
         self.decoder_layers = nn.ModuleList(
