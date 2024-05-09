@@ -1,3 +1,4 @@
+print('imports')
 import os
 import pickle
 from typing import Dict
@@ -25,7 +26,7 @@ from T_perturb.src.utils import (
 # base_path = '/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb'
 base_path = '/lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb'
 data_path = 'datasets'
-dataset = 'Norman2019'
+dataset_name = 'Norman2019'
 pp_path = 'T_perturb/T_perturb/pp/res'
 geneformer_path = f'{base_path}/../../Software/Geneformer'
 
@@ -33,13 +34,14 @@ geneformer_path = f'{base_path}/../../Software/Geneformer'
 # arguments
 gene_filtering_mode = 'hvg'
 
-
+print('download')
 # download ----------------
 adata = data.norman_2019()
 
 # pre-process ----------------
 # add some annotations to the perturbations
-ann_f = f'{base_path}/{data_path}/{dataset}/metadata/norman_annotation.csv'
+print('preprocess')
+ann_f = f'{base_path}/{data_path}/{dataset_name}/metadata/norman_annotation.csv'
 if os.path.exists(ann_f):
     annotation = pd.read_csv(ann_f, sep=';')
     annotation = {p: a for p, a in zip(annotation.Perturbation.values, annotation.Annotation.values)}
@@ -65,6 +67,7 @@ adata.obs = adata.obs.rename(columns={'total_counts': 'n_counts'})
 tpath = f'{geneformer_path}/geneformer/token_dictionary.pkl'
 with open(tpath, 'rb') as f:
     token_id_dict = pickle.load(f)
+    
 adata.var['token_id'] = adata.var_names.map(token_id_dict)
 adata = adata[:, adata.var['token_id'].notna()]
 adata.var['token_id'] = adata.var['token_id'].astype('Int64')
@@ -96,9 +99,7 @@ token_id_dict = dict(zip(token_id_df['token_id'], token_id_df.index))
 token_id_dict[0] = 0
 
 # save row idx to GF token id dictionary
-with open(f'{base_path}/{pp_path}/{dataset}_token_dictionary_{gene_filtering_mode}.pkl',
-    'wb',
-) as f:
+with open(f'{base_path}/{pp_path}/{dataset_name}_token_dictionary_{gene_filtering_mode}.pkl', 'wb') as f:
     pickle.dump(token_id_dict, f)
 
 # perturbed genes info
@@ -107,6 +108,7 @@ adata.uns['perturbation_id']['rowidx'] = adata.uns['perturbation_id'].index
 adata.obs.drop(columns='perturbation_name_l', inplace=True) # can't be written with adata
 
 # Differentially expressed genes per perturbation (for metric) ----------------
+print('deg gears')
 # reformat for GEARS
 adata.obs['condition'] = adata.obs.perturbation_name.astype(str).copy()
 adata.obs.loc[adata.obs['condition']=='control','condition'] = 'ctrl'
@@ -128,24 +130,26 @@ del adata_gears
 gc.collect()
 
 # Save pre-processed object
-adata.write_h5ad(f'{base_path}/{data_path}/{dataset}/adata/filtered_tokenised_hvg.h5ad')
+adata.write_h5ad(f'{base_path}/{data_path}/{dataset_name}/adata/filtered_tokenised_hvg.h5ad')
 
 # Tokenize ---------
+print('tokenize')
 var_list = [var for var in ['guide_identity', 'perturbation_name', 'perturbation_annotation', 'n_perturbations','perturbation1_name', 'perturbation2_name', 'leiden', 'pct_counts_mt', 'n_genes_by_counts', 'n_counts', 'cell_pairing_index'] if var in adata.obs.columns]
 var_to_keep: Dict[str, str] = {v: v for v in var_list}.copy()
 
 tk = TranscriptomeTokenizer(var_to_keep, nproc=15) #, model_input_size=5000)
 tk.tokenize_data(
-    f'{base_path}/{data_path}/{dataset}/adata/',  # input directory - all h5ad files in this directory will be tokenised
-    f'{base_path}/{data_path}/{dataset}/dataset',  # output directory - tokenised h5ad files will be saved here
+    f'{base_path}/{data_path}/{dataset_name}/adata/',  # input directory - all h5ad files in this directory will be tokenised
+    f'{base_path}/{data_path}/{dataset_name}/dataset',  # output directory - tokenised h5ad files will be saved here
     f'filtered_tokenised_hvg',  # name of output file
     file_format='h5ad',  # format [loom, h5ad]
 )
 
 # Pairing --------
+print('pairing')
 # load
-dataset = load_from_disk(f'{base_path}/{data_path}/{dataset}/dataset/filtered_tokenised_hvg.dataset')
-adata = sc.read_h5ad(f'{base_path}/{data_path}/adata/filtered_tokenised_hvg.h5ad')
+dataset = load_from_disk(f'{base_path}/{data_path}/{dataset_name}/dataset/filtered_tokenised_hvg.dataset')
+adata = sc.read_h5ad(f'{base_path}/{data_path}/{dataset_name}/adata/filtered_tokenised_hvg.h5ad')
 adata.obs = adata.obs.reset_index()
 
 # obs df for ctrl and perturbed
@@ -214,7 +218,7 @@ for idx, row in tqdm.tqdm(adata_perturbed.iterrows(), total=adata_perturbed.shap
         cell_pairings['control'].append(np.random.choice(ctrl_cells_idx[perturbed_token])) 
 
 # Encode perturbation
-with open(f'{base_path}/{pp_path}/{dataset}_token_dictionary_{gene_filtering_mode}.pkl', 'rb') as f:
+with open(f'{base_path}/{pp_path}/{dataset_name}_token_dictionary_{gene_filtering_mode}.pkl', 'rb') as f:
     token_id_dict = pickle.load(f)
 
 # use dictionary to map token_id to input_ids
@@ -241,7 +245,7 @@ dataset_perturbed.save_to_disk(f'{base_path}/{data_path}/dataset/filtered_tokeni
 
 # add perturbed gene embedding to the control dataset - Geneformer -----------------
 gf = BertForMaskedLM.from_pretrained(
-            '/lustre/groups/imm01/workspace/irene.bonafonte/Software/Geneformer/geneformer-12L-30M',
+            f'{geneformer_path}/geneformer-12L-30M',
             output_attentions=False,
             output_hidden_states=True
 )
@@ -271,6 +275,6 @@ adata_ctrl = subset_adata(adata, cell_pairings['control'])
 adata_perturbed = subset_adata(adata, cell_pairings['perturbed'])
 
 # save
-adata_ctrl.write_h5ad(f'{base_path}/{data_path}/{dataset}/adata/filtered_tokenised_hvg_pairing_control.h5ad')
-adata_perturbed.write_h5ad(f'{base_path}/{data_path}/{dataset}/adata/filtered_tokenised_hvg_pairing_perturbed.h5ad')
+adata_ctrl.write_h5ad(f'{base_path}/{data_path}/{dataset_name}/adata/filtered_tokenised_hvg_pairing_control.h5ad')
+adata_perturbed.write_h5ad(f'{base_path}/{data_path}/{dataset_name}/adata/filtered_tokenised_hvg_pairing_perturbed.h5ad')
 
