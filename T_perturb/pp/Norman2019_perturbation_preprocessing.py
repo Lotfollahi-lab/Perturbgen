@@ -271,25 +271,26 @@ dataset_ctrl_wembed = dataset_ctrl.add_column("perturbation_embedding", gene_emb
 dataset_ctrl_wembed.save_to_disk(f'{base_path}/{data_path}/{dataset_name}/dataset/filtered_tokenised_hvg_pairing_GFpert_control.dataset')
 
 # add perturbed gene embedding to the control dataset - gene2vec -----------------
-# gene_embeddings = pd.read_csv(f'{base_path}/datasets/annotations/gene2vec_dim_200_iter_9.txt', sep='\t', header=None, index_col=0)
-# gene_embeddings = pd.DataFrame({g: [float(dim) for dim in embeds[:-1]] for g, embeds in zip(gene_embeddings.index, gene_embeddings[1].str.split(' '))}).T
-# gene_embeddings = gene_embeddings[gene_embeddings.index.isin(adata.uns['perturbation_id'].gene_name)]
+gene_embeddings = pd.read_csv(f'{base_path}/datasets/annotations/gene2vec_dim_200_iter_9.txt', sep='\t', header=None, index_col=0)
+gene_embeddings = pd.DataFrame({g: [float(dim) for dim in embeds[:-1]] for g, embeds in zip(gene_embeddings.index, gene_embeddings[1].str.split(' '))}).T
+pad_embed = gene_embeddings.mean(axis=0) # mean embedding for padding (when it's only one perturbation)
+gene_embeddings = gene_embeddings[gene_embeddings.index.isin(adata.uns['perturbation_id'].gene_name)]
 
 # change gene name by our idxs
-# adata.uns['perturbation_id'].set_index('gene_name', inplace=True, drop=False)
-# gene_embeddings.index = adata.uns['perturbation_id'].loc[gene_embeddings.index,'rowidx'].values
+adata.uns['perturbation_id'].set_index('gene_name', inplace=True, drop=False)
+gene_embeddings.index = adata.uns['perturbation_id'].loc[gene_embeddings.index,'rowidx'].values
+gene_embeddings.loc[0,:] = pad_embed.values
+gene_embeddings.head(3)
 
-# store gene embedding of each perturbed gene (list of embeddings)
-# if only one perturbation, add a padded value in 2nd position
-# gene_embeddings_list = []
-# for pg in tqdm.tqdm(cell_pairings['perturbed_gene']):
-#    if len(pg) == 1:
-#        pg = pg + [0]
-#    gene_embeddings_list.append([embed.values for row, embed in gene_embeddings.loc[pg].iterrows()])
+# store gene embedding of each perturbed gene 
+gene_embeddings_list = []
+for pg in tqdm.tqdm(cell_pairings['perturbed_gene']):
+    if len(pg) == 1:
+        pg = pg + [0]
+    gene_embeddings_list.append([embed.values for row, embed in gene_embeddings.loc[pg].iterrows()])
 
-# gene_embeddings = [[embed.values for row, embed in gene_embeddings.loc[cell].iterrows()] for cell in cell_pairings['perturbed_gene']]
-# dataset_ctrl_wembed = dataset_ctrl.add_column("perturbation_embedding", gene_embeddings)
-# dataset_ctrl_wembed.save_to_disk(f'{base_path}/{data_path}/dataset/filtered_tokenised_hvg_pairing_gene2vecpert_control.dataset')
+dataset_ctrl_wembed = dataset_ctrl.add_column("perturbation_embedding", gene_embeddings_list)
+dataset_ctrl_wembed.save_to_disk(f'{base_path}/{data_path}/{dataset_name}/dataset/filtered_tokenised_hvg_pairing_gene2vecpert_control.dataset')
 
 # save adata --------------
 # subset adata

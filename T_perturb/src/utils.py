@@ -305,7 +305,7 @@ def gears_splitter(mode: str, train_prop: float, test_prop: float, seed: int, ad
     if mode in ['simulation', 'simulation_single']:
         DS = DataSplitter(adata, split_type=mode)
         adata, subgroup = DS.split_data(train_gene_set_size = train_prop, combo_seen2_train_frac = train_prop, seed=seed, test_perts=test_perts, only_test_set_perts = False)
-        pickle.dump(subgroup, open(f'/lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/T_perturb/pp/res/Petra/pert_test_split_seed{seed}.pkl', "wb"))
+        pickle.dump(subgroup, open(f'/lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb/T_perturb/T_perturb/pp/res/Petra/pert_test_split_seed{seed}.pkl', "wb"))
 
     elif mode[:5] == 'combo':
         # combo perturbation
@@ -315,15 +315,15 @@ def gears_splitter(mode: str, train_prop: float, test_prop: float, seed: int, ad
             test_pert_genes = test_pert_genes.split('_')
         DS = DataSplitter(adata, split_type=mode, seen=int(seen))
         adata = DS.split_data(test_size=test_prop, test_perts=test_perts, test_pert_genes=test_pert_genes, seed=seed)
-        
+
     elif mode == 'single':
         DS = DataSplitter(adata, split_type=mode)
         adata = DS.split_data(test_size=test_prop, seed=seed)
-        
+
     elif mode == 'no_test':
         DS = DataSplitter(adata, split_type=mode)
         adata = DS.split_data(seed=seed)
-        
+
     elif mode == 'no_split':
         adata.obs['split'] = 'test'
 

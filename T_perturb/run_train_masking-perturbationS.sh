@@ -32,14 +32,14 @@ python3 $cwd/train.py \
 --tgt_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_perturbed.dataset \
 --src_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_control.h5ad \
 --tgt_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_perturbed.h5ad \
---batch_size 64 \
+--batch_size 45 \
 --epochs 50 \
 --max_len 1750 \
 --petra_lr 0.001 \
 --petra_wd 0.001 \
 --count_wd 0.001 \
 --mlm_probability 0.3 \
---n_workers 20 \
+--n_workers 32 \
 --seed 1 \
 --base_path /lustre/scratch126/cellgen/team361/ip14
 echo "--- Finished computing model"
