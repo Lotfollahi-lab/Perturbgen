@@ -316,15 +316,13 @@ class Petra(nn.Module):
 
     def generate_mask(self, tgt, tgt_pad, mlm_probability=0.15):
         labels = tgt.clone()
-        probability_matrix = torch.full(
-            tgt.shape, mlm_probability, # device=self.device
+        probability_matrix = torch.full_like(
+            tgt_pad, mlm_probability, dtype=torch.float # device=self.device
         )
         # cls_tgt_pad = (tgt == self.cls_token) | (tgt == self.perturbation_token) | (tgt == 0)
         cls_tgt_pad = tgt_pad.clone()
         cls_tgt_pad[:, 0] = True
-        probability_matrix = probability_matrix.masked_fill(
-            cls_tgt_pad, 0
-        )  # add CLS token to the tokens
+        probability_matrix = probability_matrix.masked_fill(cls_tgt_pad, 0)  # add CLS token to the tokens
         tgt_mask = torch.bernoulli(probability_matrix).bool()
         labels[~tgt_mask] = -100
         return tgt_mask, labels
