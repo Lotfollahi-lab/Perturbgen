@@ -11,12 +11,11 @@
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
 #BSUB -J eb_masking # job name
-#BSUB -W 12:00 # time for the job HH:MM:SS. Default: 1 min
 
 # load cuda
 module load cuda-12.1.1
 
-# activate conda environment
+# activate python environment
 source /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/.petra_cuda12/bin/activate
 cwd=$(pwd)
 

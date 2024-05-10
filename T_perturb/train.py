@@ -11,7 +11,7 @@ import torch
 from datasets import load_from_disk
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.strategies import DeepSpeedStrategy
+from pytorch_lightning.strategies import DDPStrategy
 
 from T_perturb.Dataloaders.datamodule import PetraDataModule
 from T_perturb.Model.trainer import CountDecodertrainer, Petratrainer
@@ -43,7 +43,7 @@ def get_args():
     parser.add_argument(
         '--split',
         type=str2bool,
-        default=False,
+        default=True,
         help='split data for extrapolation',
     )
     parser.add_argument(
@@ -62,18 +62,11 @@ def get_args():
         help='splitting mode',
     )
     parser.add_argument(
-        '--generate',
-        type=str2bool,
-        default=False,
-        help='generate data',
-    )
-    parser.add_argument(
         '--ckpt_masking_path',
         type=str,
         default='./T_perturb/T_perturb/Model/checkpoints/'
-        '20240508_1759_petra_train_masking_lr_0.001'
-        '_wd_0.001_batch_64_mlmp_0.15_tp_1-3.ckpt/'
-        'checkpoint/mp_rank_00_model_states.pt',
+        '20240510_1448_petra_train_masking_lr_0.001_'
+        'wd_0.001_batch_64_mlmp_0.15_tp_1-2-3.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -122,10 +115,10 @@ def get_args():
         # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
         default='./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl',
     )
-    parser.add_argument('--batch_size', type=int, default=32, help='batch_size')
+    parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle')
     parser.add_argument(
-        '--epochs', type=int, default=100, help='number of training epochs'
+        '--epochs', type=int, default=5, help='number of training epochs'
     )
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
@@ -150,6 +143,11 @@ def get_args():
     parser.add_argument('--count_lr', type=float, default=0.0005, help='learning rate')
     parser.add_argument('--petra_wd', type=float, default=0.001, help='weight decay')
     parser.add_argument('--count_wd', type=float, default=0.001, help='weight decay')
+    parser.add_argument(
+        '--num_layers', type=int, default=2, help='number of decoder layers'
+    )
+    parser.add_argument('--d_ff', type=int, default=32, help='feed forward dimension')
+
     parser.add_argument('--mlm_prob', type=float, default=0.15, help='mlm probability')
     parser.add_argument(
         '--n_workers', type=int, default=32, help='number of workers'
@@ -184,7 +182,7 @@ def get_args():
         # type=list,
         nargs='+',
         type=int,
-        default=[1, 3],
+        default=[1, 2, 3],
         help='time steps to include during training',
     )
     parser.add_argument(
@@ -356,8 +354,8 @@ def main() -> None:
             tgt_vocab_size=args.tgt_vocab_size,  # max token id + 1 for padding
             d_model=256,
             num_heads=8,
-            num_layers=1,
-            d_ff=32,
+            num_layers=args.num_layers,
+            d_ff=args.d_ff,
             max_seq_length=args.max_len + 100,
             dropout=args.petra_dropout,
             mlm_probability=args.mlm_prob,
@@ -365,7 +363,6 @@ def main() -> None:
             lr=args.petra_lr,
             # lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
-            generate=args.generate,
             time_steps=args.time_steps,
             total_time_steps=n_total_timepoints,
             mapping_dict_path=args.mapping_dict_path,
@@ -378,8 +375,8 @@ def main() -> None:
             tgt_vocab_size=args.tgt_vocab_size,
             d_model=256,
             num_heads=8,
-            num_layers=1,
-            d_ff=32,
+            num_layers=args.num_layers,
+            d_ff=args.d_ff,
             max_seq_length=args.max_len + 100,
             loss_mode=args.loss_mode,
             lr=args.count_lr,
@@ -389,7 +386,6 @@ def main() -> None:
             conditions=conditions_,
             conditions_combined=conditions_combined_,
             dropout=args.count_dropout,
-            generate=args.generate,
             tgt_adata=tgt_adatas,
             time_steps=args.time_steps,
             total_time_steps=n_total_timepoints,
@@ -478,9 +474,6 @@ def main() -> None:
             f'batch_{args.batch_size}_'
             f'{args.loss_mode}_tp_{time_steps_str}'
         )
-        if args.generate:
-            monitor_metric = 'val/emd'
-            mode = 'min'
         if args.split:
             monitor_metric = 'val/mse'
             mode = 'min'
@@ -526,17 +519,17 @@ def main() -> None:
     early_stop_callback = pl.callbacks.EarlyStopping(
         monitor=monitor_metric,
         min_delta=0.00,
-        patience=5,
+        patience=10,
         verbose=False,
         mode=mode,
     )
     accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
     print('Using device {}.'.format(accelerator))
-    deepspeed_strategy = DeepSpeedStrategy(
-        stage=2,
-    )
+    # deepspeed_strategy = DeepSpeedStrategy(
+    #     stage=2,
+    # )
 
-    # ddp_strategy = DDPStrategy(find_unused_parameters=True)
+    ddp_strategy = DDPStrategy()
     trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=[
@@ -547,7 +540,7 @@ def main() -> None:
         max_epochs=args.epochs,
         accelerator='auto',
         devices=-1 if torch.cuda.is_available() else 0,
-        strategy=deepspeed_strategy if torch.cuda.device_count() > 1 else 'auto',
+        strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
     )
     print('Starting training...')
     if os.getcwd().split('/')[-1] != 'healthy_imm_expr':

@@ -25,7 +25,6 @@ echo "--- Start computing model"
 python3 $cwd/train.py \
 --train_mode masking \
 --split False \
---generate False \
 --splitting_mode stratified \
 --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
 --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset" \

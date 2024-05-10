@@ -125,12 +125,20 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
-def tokenid_mapping(adata: ad.AnnData, token_id_path: str):
+def tokenid_mapping(
+    adata: ad.AnnData,
+    token_id_path: str,
+    exclude_non_GF_genes: bool = False,
+):
     with open(token_id_path, 'rb') as f:
         token_id_dict = pickle.load(f)
     adata.var['token_id'] = adata.var_names.map(token_id_dict)
     adata.var['token_id'] = adata.var['token_id'].astype('Int64')
-    adata_subset = adata[:, adata.var['token_id'].notna()].copy()
+    if exclude_non_GF_genes:
+        adata_subset = adata[:, adata.var['token_id'].notna()].copy()
+        print(f'Number of genes dropped: {adata.n_vars - adata_subset.n_vars}')
+    else:
+        adata_subset = adata.copy()
     # print number of genes dropped
     print(f'Number of genes dropped: {adata.n_vars - adata_subset.n_vars}')
     adata_subset.var['row_id'] = np.arange(adata_subset.n_vars) + 1
