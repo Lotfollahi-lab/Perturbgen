@@ -41,6 +41,5 @@ python3 $cwd/train.py \
 --mlm_probability 0.3 \
 --n_workers 20 \
 --seed 1 \
---loss_mode mse \
 --base_path /lustre/groups/imm01/workspace/irene.bonafonte/
 echo "--- Finished computing model"

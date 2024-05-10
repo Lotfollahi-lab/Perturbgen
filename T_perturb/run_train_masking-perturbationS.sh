@@ -6,8 +6,8 @@
 #BSUB -cwd /lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb/T_perturb/T_perturb/ # working directory
 #BSUB -o ../../logs/%J.out # output file
 #BSUB -e ../../logs/%J.err # error file
-#BSUB -M 50000  # RAM memory part 2. Default: 100MB
-#BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
+#BSUB -M 64GB  # RAM memory part 2. Default: 100MB
+#BSUB -R 'select[mem>64GB] rusage[mem=64GB]' # RAM memory part 1. Default: 100MB
 #BSUB -J 4_train_masking_Norman2019 # job name
 
 # activate conda environment
@@ -32,7 +32,7 @@ python3 $cwd/train.py \
 --tgt_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_perturbed.dataset \
 --src_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_control.h5ad \
 --tgt_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_perturbed.h5ad \
---batch_size 32 \
+--batch_size 64 \
 --epochs 50 \
 --max_len 1750 \
 --petra_lr 0.001 \
@@ -41,6 +41,5 @@ python3 $cwd/train.py \
 --mlm_probability 0.3 \
 --n_workers 20 \
 --seed 1 \
---loss_mode mse \
 --base_path /lustre/scratch126/cellgen/team361/ip14
 echo "--- Finished computing model"
