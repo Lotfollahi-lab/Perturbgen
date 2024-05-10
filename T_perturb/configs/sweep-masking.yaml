@@ -1,7 +1,8 @@
-method: grid #grid or random
+# masking attention
+method: grid
 metric:
   goal: minimize
-  name: val/perplexity
+  name: val/perplexity_epoch
 name: tune_masking
 parameters:
   train_mode:
@@ -10,28 +11,43 @@ parameters:
     value: True
   generate:
     value: False
-  num_cells:
-    value: 0
+  splitting_mode:
+    value: stratified
   epochs:
-   value: 50
+   value: 20
+  output_dir:
+    value: './T_perturb/T_perturb/plt/res/cytoimmgen'
+  src_dataset:
+    value: './T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset'
+  tgt_dataset_folder:
+    value: './T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt'
+  src_adata:
+    value: './T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad'
+  tgt_adata_folder:
+    value: './T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt'
   batch_size:
-    values: [64, 128]
+    value: 64
+  max_len:
+    value: 300
+  tgt_vocab_size:
+    value: 1261
+  condition_keys:
+    value: 'Cell_culture_batch'
   petra_lr:
-    values: [0.0001, 0.001, 0.01]
+    value: 0.0001
+  num_layers:
+    values: [6]
+  d_ff:
+    values: [16, 32, 128]
+  mlm_prob:
+    values: [0.15, 0.25, 0.4]
   petra_wd:
-    value: 0.001
-  mlm_probability:
-    values: [0.15, 0.3, 0.5]
+    values: [0.001, 0.0001]
+  # petra_lr:
+  #   distribution: log_uniform
+  #   min: 0.00001
+  #   max: 0.001
 
-
-  # lr:
-  #   distribution: loguniform
-  #   low: 0.0001
-  #   high: 0.001
-  # wd:
-  #   distribution: loguniform_values
-  #   low: 0.001
-  #   high: 0.1
   # dropout:
   #   distribution: uniform
   #   low: 0.1

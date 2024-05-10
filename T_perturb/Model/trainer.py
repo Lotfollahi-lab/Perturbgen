@@ -14,9 +14,7 @@ import scanpy as sc
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-# import torch.optim as optim
-from deepspeed.ops.adam import FusedAdam
+import torch.optim as optim
 
 # from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningModule
@@ -34,6 +32,9 @@ from T_perturb.src.losses import (
     nb,
     zinb,
 )
+
+# from deepspeed.ops.adam import FusedAdam
+
 
 if torch.cuda.is_available():
     cuda_device_name = torch.cuda.get_device_name()
@@ -192,9 +193,11 @@ class Petratrainer(LightningModule):
         return outputs
 
     def configure_optimizers(self):
-        optimizer = FusedAdam(
-            self.transformer.parameters(), lr=self.lr, weight_decay=self.weight_decay
-        )
+        parameters = [{'params': self.transformer.parameters(), 'lr': self.lr}]
+        optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
+        # optimizer = FusedAdam(
+        #     self.transformer.parameters(), lr=self.lr, weight_decay=self.weight_decay
+        # )
         # lr_scheduler = WarmupCosineLR(
         #     optimizer,
         #     total_num_steps=2000,
@@ -485,7 +488,7 @@ class CountDecodertrainer(LightningModule):
         conditions: Optional[Dict[Any, Any]] = None,
         conditions_combined: Optional[List[Any]] = None,
         dropout: float = 0.0,
-        generate: bool = True,
+        generate: bool = False,
         var_list: List[str] = ['Time_point'],
         tgt_adata: Optional[ad.AnnData] = None,
         time_steps: list = [1, 2],
@@ -830,6 +833,7 @@ class CountDecodertrainer(LightningModule):
         if self.generate:
             tgt_input_id_dict = {}
             for i in self.time_steps:
+                print(i)
                 tgt_input_id_ = torch.cat(
                     (
                         getattr(self, f'cls_token_{str(i)}').expand(
@@ -1124,8 +1128,6 @@ class CountDecodertrainer(LightningModule):
             #     columns=['Cell_type', 'Cell_population', 'Time_point', 'Donor'],
             # )
             pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs)
-            print(pred_adata.obs)
-            print(pred_adata)
             pred_adata.layers['counts'] = true_counts.numpy()
             pred_adata.obsm['cls_embeddings'] = cls_embeddings.numpy()
 
@@ -1208,9 +1210,11 @@ class CountDecodertrainer(LightningModule):
             self.test_pred_counts_list = []
 
     def configure_optimizers(self):
-        optimizer = FusedAdam(
-            self.decoder.parameters(), lr=self.lr, weight_decay=self.weight_decay
-        )
+        # optimizer = FusedAdam(
+        #     self.decoder.parameters(), lr=self.lr, weight_decay=self.weight_decay
+        # )
+        parameters = [{'params': self.decoder.parameters(), 'lr': self.lr}]
+        optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
         # lr_scheduler = WarmupCosineLR(
         #     optimizer,
         #     total_num_steps=2000,

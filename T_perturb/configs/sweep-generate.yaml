@@ -22,7 +22,6 @@ parameters:
     max: 5.0
   iterations:
     distribution: int_uniform
-
     min: 5
     max: 20
 program: /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/train.py

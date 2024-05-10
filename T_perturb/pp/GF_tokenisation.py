@@ -15,6 +15,7 @@ from T_perturb.src.utils import (
     map_ensembl_to_genename,
     map_input_ids_to_row_id,
     pairing_resting_to_activated_cells,
+    str2bool,
     subset_adata,
     tokenid_mapping,
 )
@@ -33,15 +34,15 @@ def get_args():
     parser.add_argument(
         '--h5ad_path',
         type=str,
-        default='./data/h5d_files/cytoimmgen.h5ad',
-        # default='./data/20240423_eb/EB.h5ad',
+        # default='./data/h5d_files/cytoimmgen.h5ad',
+        default='./data/20240423_eb/EB.h5ad',
         help='Path to h5ad file',
     )
     parser.add_argument(
         '--dataset',
         type=str,
-        default='cytoimmgen',
-        # default='eb',
+        # default='cytoimmgen',
+        default='eb',
         choices=['cytoimmgen', 'eb'],
     )
     parser.add_argument(
@@ -54,28 +55,28 @@ def get_args():
     parser.add_argument(
         '--var_list',
         type=list,
-        default=[
-            'Cell_population',
-            'Cell_type',
-            'Time_point',
-            'Age',
-            'Sex',
-            'batch',
-            'Cell_culture_batch',
-            'Phase',
-            'Donor',
-            'cell_pairing_index',
-        ],
         # default=[
+        #     'Cell_population',
+        #     'Cell_type',
         #     'Time_point',
+        #     'Age',
+        #     'Sex',
+        #     'batch',
+        #     'Cell_culture_batch',
+        #     'Phase',
+        #     'Donor',
+        #     'cell_pairing_index',
         # ],
+        default=[
+            'Time_point',
+        ],
         help='List of variables to keep in the dataset',
     )
     parser.add_argument(
         '--pairing_mode',
         type=str,
-        default='stratified',
-        # default='random',
+        # default='stratified',
+        default='random',
         choices=['stratified', 'random'],
         help='Cell pairing mode',
     )
@@ -88,27 +89,34 @@ def get_args():
     parser.add_argument(
         '--reference_time',
         type=str,
-        default='0h',
-        # default='Day 00-03',
+        # default='0h',
+        default='Day 00-03',
         help='Control time point for cell pairing' 'which is feed into Geneformer',
     )
     parser.add_argument(
         '--time_point_order',
-        type=list,
-        default=[
-            '0h',
-            '16h',
-            '40h',
-            '5d',
-        ],
+        type=str,
+        nargs='+',
         # default=[
-        #     'Day 00-03',
-        #     'Day 06-09',
-        #     'Day 12-15',
-        #     'Day 18-21',
-        #     'Day 24-27',
+        #     '0h',
+        #     '16h',
+        #     '40h',
+        #     '5d',
         # ],
+        default=[
+            'Day 00-03',
+            'Day 06-09',
+            'Day 12-15',
+            'Day 18-21',
+            'Day 24-27',
+        ],
         help='Order of time points in the dataset',
+    )
+    parser.add_argument(
+        '--exclude_non_GF_genes',
+        type=str2bool,
+        default=False,
+        help='Exclude genes in anndata that are not in Geneformer dictionary',
     )
     args = parser.parse_args()
     return args
@@ -157,6 +165,7 @@ else:
 (adata_subset, token_id_to_row_id_dict, row_id_to_gene_name) = tokenid_mapping(
     adata,
     './generative_modelling_omic/Geneformer/geneformer/token_dictionary.pkl',
+    exclude_non_GF_genes=False,
 )
 # save mapping dictionnary
 with open(
