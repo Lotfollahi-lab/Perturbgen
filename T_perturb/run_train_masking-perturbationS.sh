@@ -16,7 +16,9 @@ conda activate Tperturb
 
 module load cuda-12.1.1
 cd /lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb/T_perturb/T_perturb
+cwd=$(pwd)
 export WANDB_DIR=$cwd/wandb
+echo $cwd
 
 # run script
 echo "--- Start computing model"
@@ -40,5 +42,5 @@ python3 $cwd/train.py \
 --n_workers 20 \
 --seed 1 \
 --loss_mode mse \
---base_path /lustre/groups/imm01/workspace/irene.bonafonte/
+--base_path /lustre/scratch126/cellgen/team361/ip14
 echo "--- Finished computing model"

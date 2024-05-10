@@ -279,14 +279,12 @@ class Petra(nn.Module):
         base_path: str = '/lustre/groups/imm01/workspace/irene.bonafonte'
     ):
         super(Petra, self).__init__()
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
         self.perturbation_modeling = perturbation_modeling
 
-        self.cls_token = torch.tensor(
-            [tgt_vocab_size], dtype=torch.long, device=self.device
-        )  # start at 25426, because of 0 Python indexing
+        self.register_buffer('cls_token', torch.tensor([tgt_vocab_size], dtype=torch.long)) # start at 25426, because of 0 Python indexing
         total_vocab_size = tgt_vocab_size + 1
 
         self.mask_token = total_vocab_size
@@ -295,7 +293,7 @@ class Petra(nn.Module):
         # self.masked_embed = nn.Parameter(torch.zeros(1, self.embed_dim))
         print('embedding size problem')
         self.token_embedding = nn.Embedding(
-            total_vocab_size, d_model, padding_idx=0, device=self.device
+            total_vocab_size, d_model, padding_idx=0 #, device=self.device
         )
 
         print(self.token_embedding.weight.shape)
@@ -309,7 +307,7 @@ class Petra(nn.Module):
         )
         # self.decoder_layers = self.decoder_layers.to(self.device)
 
-        self.fc = nn.Linear(d_model, tgt_vocab_size, device=self.device)
+        self.fc = nn.Linear(d_model, tgt_vocab_size) #, device=self.device)
         self.dropout = nn.Dropout(dropout)
 
     def generate_pad(self, tgt):
@@ -319,7 +317,7 @@ class Petra(nn.Module):
     def generate_mask(self, tgt, tgt_pad, mlm_probability=0.15):
         labels = tgt.clone()
         probability_matrix = torch.full(
-            tgt.shape, mlm_probability, device=self.device
+            tgt.shape, mlm_probability, # device=self.device
         )
         # cls_tgt_pad = (tgt == self.cls_token) | (tgt == self.perturbation_token) | (tgt == 0)
         cls_tgt_pad = tgt_pad.clone()
@@ -523,7 +521,7 @@ class CountDecoder(nn.Module):
             self.mask_token = total_vocab_size
         self.loss_mode = loss_mode
         self.decoder = CountHead(loss_mode, tgt_vocab_size, d_model, dropout)
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.cls_embedding = None
         self.perturbation_modeling = perturbation_modeling
 
@@ -578,16 +576,16 @@ class CountDecoder(nn.Module):
         shape = (batch_size, seq_len)
         # create ids and scores matrix for each batch
         # exclude CLS token from token
-        ids = torch.full(shape, self.mask_token, dtype=torch.long, device=self.device)
+        ids = torch.full(shape, self.mask_token, dtype=torch.long, device=tgt_input_id.device)
 
         # pad ids
-        scores = torch.zeros(shape, dtype=torch.float, device=self.device)
+        scores = torch.zeros(shape, dtype=torch.float, device=tgt_input_id.device)
         starting_temperature = temperature
         demask_fn = self.pretrained_model
 
         for timestep, steps_until_x0 in tqdm(
             zip(
-                torch.linspace(0, 1, timesteps, device=self.device),
+                torch.linspace(0, 1, timesteps, device=tgt_input_id.device),
                 reversed(range(timesteps)),
             ),
             total=timesteps,

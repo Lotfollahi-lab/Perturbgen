@@ -104,9 +104,9 @@ class Petratrainer(LightningModule):
             perturbation_modeling=perturbation_modeling,
             base_path=base_path,
         )
-        self.target_device = torch.device(
-            'cuda' if torch.cuda.is_available() else 'cpu'
-        )
+        # self.target_device = torch.device(
+        #     'cuda' if torch.cuda.is_available() else 'cpu'
+        # )
         self.base_path = base_path
         self.masking_loss = nn.CrossEntropyLoss()
         self.save_hyperparameters()
@@ -307,7 +307,7 @@ class Petratrainer(LightningModule):
             }
 
             emb = torch.zeros(
-                cosine_similarity_list.shape[0], len(marker_genes_ids.keys())
+                cosine_similarity_list.shape[0], len(marker_genes_ids.keys(), device=self.gene_embeddings_list.device)
             )
             for i, gene in enumerate(marker_genes_ids.keys()):
                 cond_embs_to_fill = (self.token_id_list == marker_genes_ids[gene]).sum(
@@ -386,9 +386,9 @@ class CountDecodertrainer(LightningModule):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        self.target_device = torch.device(
-            'cuda' if torch.cuda.is_available() else 'cpu'
-        )
+        # self.target_device = torch.device(
+        #     'cuda' if torch.cuda.is_available() else 'cpu'
+        # )
         # Create an instance of your model
         checkpoint = torch.load(ckpt_path, map_location='cpu')
         self.run_id = run_id
