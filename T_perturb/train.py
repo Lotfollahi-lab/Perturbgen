@@ -37,7 +37,7 @@ def get_args():
     parser.add_argument(
         '--train_mode',
         type=str,
-        default='count',
+        default='masking',
         help='Mode [masking, count]',
     )
     parser.add_argument(
@@ -65,8 +65,8 @@ def get_args():
         '--ckpt_masking_path',
         type=str,
         default='./T_perturb/T_perturb/Model/checkpoints/'
-        '20240510_1448_petra_train_masking_lr_0.001_'
-        'wd_0.001_batch_64_mlmp_0.15_tp_1-2-3.ckpt',
+        '20240510_2102_petra_train_masking_lr_0.0001'
+        '_wd_0.0001_batch_64_mlmp_0.15_tp_1-2-3.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -118,7 +118,7 @@ def get_args():
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle')
     parser.add_argument(
-        '--epochs', type=int, default=5, help='number of training epochs'
+        '--epochs', type=int, default=1, help='number of training epochs'
     )
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
@@ -139,21 +139,21 @@ def get_args():
         # default=1737,
         help='vocab size (max token id + 1) in dataset for padding',
     )
-    parser.add_argument('--petra_lr', type=float, default=0.001, help='learning rate')
+    parser.add_argument('--petra_lr', type=float, default=0.0001, help='learning rate')
     parser.add_argument('--count_lr', type=float, default=0.0005, help='learning rate')
-    parser.add_argument('--petra_wd', type=float, default=0.001, help='weight decay')
+    parser.add_argument('--petra_wd', type=float, default=0.0001, help='weight decay')
     parser.add_argument('--count_wd', type=float, default=0.001, help='weight decay')
     parser.add_argument(
-        '--num_layers', type=int, default=2, help='number of decoder layers'
+        '--num_layers', type=int, default=6, help='number of decoder layers'
     )
-    parser.add_argument('--d_ff', type=int, default=32, help='feed forward dimension')
+    parser.add_argument('--d_ff', type=int, default=128, help='feed forward dimension')
 
     parser.add_argument('--mlm_prob', type=float, default=0.15, help='mlm probability')
     parser.add_argument(
         '--n_workers', type=int, default=32, help='number of workers'
     )  # 64
     parser.add_argument(
-        '--loss_mode', type=str, default='mse', help='loss mode [zinb, nb, mse]'
+        '--loss_mode', type=str, default='zinb', help='loss mode [zinb, nb, mse]'
     )
     parser.add_argument('--petra_dropout', type=float, default=0.0, help='dropout')
     parser.add_argument('--count_dropout', type=float, default=0.0, help='dropout')
@@ -541,6 +541,9 @@ def main() -> None:
         accelerator='auto',
         devices=-1 if torch.cuda.is_available() else 0,
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
+        # profiler=profiler,
+        # limit_train_batches=50,
+        # limit_val_batches=10,
     )
     print('Starting training...')
     if os.getcwd().split('/')[-1] != 'healthy_imm_expr':

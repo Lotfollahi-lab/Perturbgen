@@ -9,8 +9,6 @@ parameters:
     value: 'masking'
   split:
     value: True
-  generate:
-    value: False
   splitting_mode:
     value: stratified
   epochs:
@@ -38,9 +36,9 @@ parameters:
   num_layers:
     values: [6]
   d_ff:
-    values: [16, 32, 128]
+    values: [32, 128]
   mlm_prob:
-    values: [0.15, 0.25, 0.4]
+    values: [0.15, 0.3, 0.45]
   petra_wd:
     values: [0.001, 0.0001]
   # petra_lr:

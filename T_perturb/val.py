@@ -18,6 +18,7 @@ from T_perturb.src.utils import (
     label_encoder,
     randomised_split,
     read_dataset_files,
+    str2bool,
     stratified_split,
 )
 
@@ -42,22 +43,22 @@ def get_args():
     )
     parser.add_argument(
         '--split',
-        type=bool,
-        default=False,
+        type=str2bool,
+        default=True,
         help='split data for extrapolation',
     )
     parser.add_argument(
         '--output_dir',
         type=str,
-        # default='./T_perturb/T_perturb/plt/res/cytoimmgen',
-        default='./T_perturb/T_perturb/plt/res/eb',
+        default='./T_perturb/T_perturb/plt/res/cytoimmgen',
+        # default='./T_perturb/T_perturb/plt/res/eb',
         help='store dataset name',
     )
     parser.add_argument(
         '--splitting_mode',
         type=str,
-        default='random',
-        # default='stratified',
+        # default='random',
+        default='stratified',
         choices=['random', 'stratified', 'unseen_donor'],
         help='splitting mode',
     )
@@ -83,51 +84,43 @@ def get_args():
         '--ckpt_count_path',
         type=str,
         default='./T_perturb/T_perturb/Model/'
-        'checkpoints/20240510_1133_petra_train_count_lr_0.0005'
+        'checkpoints/20240510_1502_petra_train_count_lr_0.0005'
         '_wd_0.001_batch_64_mse_tp_1-2-3.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
         '--src_dataset',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset',
+        # default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset',
         # default=(
         #     './T_perturb/T_perturb/pp/res/eb/'
         #     'dataset_all_src/eb_all_Day 00-03.dataset'
         # ),
-        # default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        # 'T_perturb/T_perturb/pp/res/dataset_hvg_src/'
-        # 'cytoimmgen_tokenised_stratified_pairing_0h.dataset',
+        default='./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
         '--tgt_dataset_folder',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt',
-        # default='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        # 'T_perturb/T_perturb/pp/res/dataset_hvg_tgt/',
+        # default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt',
+        default='./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt/',
         help='path to tokenised activated data',
     )
 
     parser.add_argument(
         '--src_adata',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
-        # default=(
-        #     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-        #     'T_perturb/pp/res/h5ad_pairing_hvg_src/'
-        #     'cytoimmgen_tokenisation_stratified_pairing_0h.h5ad'
-        # ),
+        # default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
+        default=(
+            './T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad'
+        ),
         help='path to src',
     )
     parser.add_argument(
         '--tgt_adata_folder',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt',
-        # default=(
-        #     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/'
-        #     'T_perturb/pp/res/h5ad_pairing_hvg_tgt/'
-        # ),
+        # default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt',
+        default=('./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt'),
         help='path to tgt',
     )
     parser.add_argument('--batch_size', type=int, default=32, help='batch_size')
@@ -138,17 +131,17 @@ def get_args():
     parser.add_argument(
         '--max_len',
         type=int,
-        # default=400,
+        default=300,
         # default=2048,
-        default=263,
+        # default=263,
         help='max sequence length',
     )
     parser.add_argument(
         '--tgt_vocab_size',
         type=int,
-        # default=1820,
+        default=1261,
         # default=15280,
-        default=1737,
+        # default=1737,
         help='vocab size (max token id + 1) in dataset for padding',
     )
     parser.add_argument('--petra_lr', type=float, default=0.001, help='learning rate')
@@ -156,6 +149,9 @@ def get_args():
     parser.add_argument('--petra_wd', type=float, default=0.001, help='weight decay')
     parser.add_argument('--count_wd', type=float, default=0.001, help='weight decay')
     parser.add_argument('--n_workers', type=int, default=32, help='number of workers')
+    parser.add_argument(
+        '--num_layers', type=int, default=2, help='number of decoder layers'
+    )
     parser.add_argument(
         '--loss_mode', type=str, default='mse', help='loss mode [zinb, nb, mse]'
     )
@@ -184,7 +180,7 @@ def get_args():
     parser.add_argument(
         '--time_steps',
         type=list,
-        default=[3],
+        default=[1, 2, 3],
         help='time steps to include during training',
     )
     parser.add_argument(
@@ -192,13 +188,8 @@ def get_args():
         # type=list,
         nargs='+',
         type=str,
-        default=['Time_point'],
-        # default=[
-        #     'Cell_population',
-        #     'Cell_type',
-        #     'Time_point',
-        #     'Donor'
-        #     ],
+        # default=['Time_point'],
+        default=['Cell_population', 'Cell_type', 'Time_point', 'Donor'],
         help='List of variables to keep in the dataset',
     )
     args = parser.parse_args()

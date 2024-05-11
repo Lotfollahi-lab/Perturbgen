@@ -186,7 +186,6 @@ class Petratrainer(LightningModule):
         outputs = self.transformer(
             src_input_id=batch['src_input_ids'],
             tgt_input_id_dict=tgt_input_id_dict,
-            original_lens=batch['src_length'],
             cls_positions=cls_positions,
             not_masked=self.return_embeddings,
         )
@@ -542,6 +541,7 @@ class CountDecodertrainer(LightningModule):
         self.lr_scheduler_patience = lr_scheduler_patience
         # self.lr_scheduler_factor = lr_scheduler_factor
         self.loss_mode = loss_mode
+        self.max_seq_length = max_seq_length
         if (
             (self.loss_mode in ['nb', 'zinb'])
             and (conditions is not None)
@@ -639,7 +639,6 @@ class CountDecodertrainer(LightningModule):
         outputs = self.decoder(
             src_input_id=batch['src_input_ids'],
             tgt_input_id_dict=tgt_input_id_dict,
-            original_lens=batch['src_length'],
             cls_positions=cls_positions,
         )
 
@@ -651,7 +650,7 @@ class CountDecodertrainer(LightningModule):
         n_cls,
         dtype,
     ):
-        assert torch.max(idx).item() < n_cls
+        assert torch.max(idx) < n_cls
 
         if idx.dim() == 1:
             idx = idx.unsqueeze(1)
@@ -663,6 +662,17 @@ class CountDecodertrainer(LightningModule):
         self.onehot.scatter_(1, idx.long(), 1)
         return self.onehot
 
+    def compute_dispersion(self, batch):
+        dispersions = F.linear(
+            self.one_hot_encoder(
+                batch['combined_batch'],
+                self.n_conditions_combined,
+                self.theta.dtype,
+            ),
+            self.theta,
+        )
+        return torch.exp(dispersions)
+
     def compute_count_loss(
         self,
         outputs: Dict[str, torch.Tensor],
@@ -670,6 +680,9 @@ class CountDecodertrainer(LightningModule):
     ):
         loss_list = []
         count_dict = {}
+        dispersion = (
+            self.compute_dispersion(batch) if self.loss_mode in ['zinb', 'nb'] else None
+        )
         for time_step in self.time_steps:
             count_ouput = outputs[f'count_output_t{time_step}']
             true_counts = batch[f'tgt_counts_t{time_step}']
@@ -684,60 +697,31 @@ class CountDecodertrainer(LightningModule):
                     .mean()
                     .float()
                 )
-                loss_list.append(loss)
                 count_dict[time_step] = count_ouput['count_lognorm']
-
-            elif self.loss_mode == 'zinb':
-                dec_mean_gamma, dec_dropout = (
-                    count_ouput['count_mean'],
-                    count_ouput['count_dropout'],
-                )
-                size_factor_view = batch_size_factor.unsqueeze(1).expand(
-                    dec_mean_gamma.size(0), dec_mean_gamma.size(1)
-                )
-
-                dec_mean = dec_mean_gamma * size_factor_view
-                dispersion = F.linear(
-                    self.one_hot_encoder(
-                        batch['combined_batch'],
-                        self.n_conditions_combined,
-                        self.theta.dtype,
-                    ),
-                    self.theta,
-                )
-                dispersion = torch.exp(dispersion)
-                loss = (
-                    -zinb(x=true_counts, mu=dec_mean, theta=dispersion, pi=dec_dropout)
-                    .sum(dim=-1)
-                    .mean()
-                )
-                loss_list.append(loss)
-                count_dict[time_step] = dec_mean
-
-            elif self.loss_mode == 'nb':
+            elif self.loss_mode in ['zinb', 'nb']:
                 dec_mean_gamma = count_ouput['count_mean']
-
-                size_factor_view = batch_size_factor.unsqueeze(1).expand(
+                dec_mean = dec_mean_gamma * batch_size_factor.unsqueeze(1).expand(
                     dec_mean_gamma.size(0), dec_mean_gamma.size(1)
                 )
-                dec_mean = dec_mean_gamma * size_factor_view
-                dispersion = F.linear(
-                    self.one_hot_encoder(
-                        batch['combined_batch'],
-                        self.n_conditions_combined,
-                        self.theta.dtype,
-                    ),
-                    self.theta,
-                )
-                dispersion = torch.exp(dispersion)
-                loss = (
-                    -nb(x=true_counts, mu=dec_mean, theta=dispersion).sum(dim=-1).mean()
-                )
-                loss_list.append(loss)
-                count_dict[time_step] = dec_mean
 
-            else:
-                raise ValueError('Loss not supported, choose either mse or zinb')
+                if self.loss_mode == 'zinb':
+                    dec_dropout = count_ouput['count_dropout']
+                    loss = (
+                        -zinb(
+                            x=true_counts, mu=dec_mean, theta=dispersion, pi=dec_dropout
+                        )
+                        .sum(dim=-1)
+                        .mean()
+                    )
+
+                elif self.loss_mode == 'nb':
+                    loss = (
+                        -nb(x=true_counts, mu=dec_mean, theta=dispersion)
+                        .sum(dim=-1)
+                        .mean()
+                    )
+                count_dict[time_step] = dec_mean
+            loss_list.append(loss)
         loss = torch.sum(torch.stack(loss_list))
         return loss, count_dict
 
@@ -830,125 +814,46 @@ class CountDecodertrainer(LightningModule):
         self.train_pred_counts_list = []
 
     def validation_step(self, batch, *args, **kwargs):
-        if self.generate:
-            tgt_input_id_dict = {}
-            for i in self.time_steps:
-                print(i)
-                tgt_input_id_ = torch.cat(
-                    (
-                        getattr(self, f'cls_token_{str(i)}').expand(
-                            batch[f'tgt_input_ids_t{i}'].shape[0], -1
-                        ),
-                        batch[f'tgt_input_ids_t{i}'],
-                    ),
-                    dim=1,
-                )
-                tgt_input_id_dict[f'tgt_input_id_t{i}'] = tgt_input_id_
-            interval = batch[f'tgt_input_ids_t{i}'].shape[1] + 1  # as 0 is cls token
-            num_steps = len(self.time_steps)
-            cls_positions = np.arange(0, num_steps * interval, interval)
-            outputs = self.decoder.generate(
-                src_input_id=batch['src_input_ids'],
-                mask_scheduler=self.mask_scheduler,
-                tgt_input_id_dict=tgt_input_id_dict,
-                original_lens=batch['src_length'],
-                can_remask_prev_masked=False,
-                topk_filter_thres=0.9,
-                temperature=self.temperature,
-                iterations=self.iterations,
-                cls_positions=cls_positions,
-            )
-            count_loss, pred_counts_dict = self.compute_count_loss(outputs, batch)
-            self.log(
-                'val/loss',
-                count_loss,
-                on_step=True,
-                on_epoch=True,
-                prog_bar=True,
-                logger=True,
-                batch_size=batch['tgt_input_ids_t1'].shape[0],
-                sync_dist=True,
-            )
-            mse_all = []
-            for time_step in self.time_steps:
-                pred_count = pred_counts_dict[time_step]
-                true_count = batch[f'tgt_counts_t{time_step}']
-                # MSE
-                mse = self.metric['mse'](pred_count, true_count)
-                mse_all.append(mse)
-                # gather for validation step
-                self.val_true_counts_list.append(batch[f'tgt_counts_t{time_step}'])
-                self.val_true_delta_counts_list.append(
-                    (batch[f'tgt_counts_t{time_step}'] - batch['src_counts'])
-                )
-                self.val_pred_delta_counts_list.append(
-                    (pred_count - batch['src_counts'])
-                )
-                self.val_pred_counts_list.append(pred_count)
-                self.val_tgt_cell_type_list.append(batch['tgt_cell_type'])
-                self.val_tgt_cell_population_list.append(
-                    batch[f'tgt_cell_population_t{time_step}']
-                )
-                self.val_tgt_donor_list.append(batch['tgt_donor'])
-
-            mean_mse = torch.mean(torch.stack(mse_all))
-            self.log(
-                'val/mse',
-                mean_mse,
-                on_epoch=True,
-                on_step=True,
-                prog_bar=True,
-                logger=True,
-                sync_dist=True,
-            )
-
-            # self.val_tgt_cell_population_list.append(batch['tgt_cell_population'])
-
-            return count_loss
-
-        else:
-            outputs = self.forward(batch)
-            count_loss, pred_counts_dict = self.compute_count_loss(outputs, batch)
-            self.log(
-                'val/loss',
-                count_loss,
-                on_step=True,
-                on_epoch=True,
-                prog_bar=True,
-                logger=True,
-                batch_size=batch['tgt_input_ids_t1'].shape[0],
-                sync_dist=True,
-            )
+        outputs = self.forward(batch)
+        count_loss, pred_counts_dict = self.compute_count_loss(outputs, batch)
+        self.log(
+            'val/loss',
+            count_loss,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=batch['tgt_input_ids_t1'].shape[0],
+            sync_dist=True,
+        )
+        # MSE
+        mse_all = []
+        for time_step in self.time_steps:
+            pred_count = pred_counts_dict[time_step]
+            true_count = batch[f'tgt_counts_t{time_step}']
             # MSE
-            mse_all = []
-            for time_step in self.time_steps:
-                pred_count = pred_counts_dict[time_step]
-                true_count = batch[f'tgt_counts_t{time_step}']
-                # MSE
-                mse = self.metric['mse'](pred_count, true_count)
-                mse_all.append(mse)
-                # gather for validation step
-                self.val_true_counts_list.append(batch[f'tgt_counts_t{time_step}'])
-                self.val_true_delta_counts_list.append(
-                    (batch[f'tgt_counts_t{time_step}'] - batch['src_counts'])
-                )
-                self.val_pred_delta_counts_list.append(
-                    (pred_count - batch['src_counts'])
-                )
-                self.val_pred_counts_list.append(pred_count)
-
-            mean_mse = torch.mean(torch.stack(mse_all))
-            self.log(
-                'val/mse',
-                mean_mse,
-                on_epoch=True,
-                on_step=True,
-                prog_bar=True,
-                logger=True,
-                sync_dist=True,
+            mse = self.metric['mse'](pred_count, true_count)
+            mse_all.append(mse)
+            # gather for validation step
+            self.val_true_counts_list.append(batch[f'tgt_counts_t{time_step}'])
+            self.val_true_delta_counts_list.append(
+                (batch[f'tgt_counts_t{time_step}'] - batch['src_counts'])
             )
+            self.val_pred_delta_counts_list.append((pred_count - batch['src_counts']))
+            self.val_pred_counts_list.append(pred_count)
 
-            return count_loss
+        mean_mse = torch.mean(torch.stack(mse_all))
+        self.log(
+            'val/mse',
+            mean_mse,
+            on_epoch=True,
+            on_step=True,
+            prog_bar=True,
+            logger=True,
+            sync_dist=True,
+        )
+
+        return count_loss
 
     def on_validation_epoch_end(self):
         # return Pearson correlation coefficient
@@ -1046,9 +951,9 @@ class CountDecodertrainer(LightningModule):
         if self.generate:
             outputs = self.decoder.generate(
                 src_input_id=batch['src_input_ids'],
-                mask_scheduler=self.mask_scheduler,
                 tgt_input_id_dict=tgt_input_id_dict,
-                original_lens=batch['src_length'],
+                max_len=self.max_seq_length,
+                mask_scheduler=self.mask_scheduler,
                 can_remask_prev_masked=False,
                 topk_filter_thres=0.9,
                 # time_steps=self.time_steps,
