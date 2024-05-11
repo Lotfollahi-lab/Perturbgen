@@ -30,6 +30,9 @@ dataset_name = 'Norman2019'
 pp_path = 'T_perturb/T_perturb/pp/res'
 geneformer_path = f'{base_path}/../../Software/Geneformer'
 
+# seed
+seed_no = 42
+np.random.seed(seed_no)
 
 # arguments
 gene_filtering_mode = 'hvg'
@@ -271,13 +274,13 @@ dataset_ctrl_wembed = dataset_ctrl.add_column("perturbation_embedding", gene_emb
 dataset_ctrl_wembed.save_to_disk(f'{base_path}/{data_path}/{dataset_name}/dataset/filtered_tokenised_hvg_pairing_GFpert_control.dataset')
 
 # add perturbed gene embedding to the control dataset - gene2vec -----------------
-gene_embeddings = pd.read_csv(f'{base_path}/datasets/annotations/gene2vec_dim_200_iter_9.txt', sep='\t', header=None, index_col=0)
+gene_embeddings = pd.read_csv('https://github.com/jingcheng-du/Gene2vec/raw/master/pre_trained_emb/gene2vec_dim_200_iter_9.txt', sep='\t', header=None, index_col=0)
 gene_embeddings = pd.DataFrame({g: [float(dim) for dim in embeds[:-1]] for g, embeds in zip(gene_embeddings.index, gene_embeddings[1].str.split(' '))}).T
 pad_embed = gene_embeddings.mean(axis=0) # mean embedding for padding (when it's only one perturbation)
 gene_embeddings = gene_embeddings[gene_embeddings.index.isin(adata.uns['perturbation_id'].gene_name)]
 
 # change gene name by our idxs
-adata.uns['perturbation_id'].set_index('gene_name', inplace=True, drop=False)
+# adata.uns['perturbation_id'].set_index('gene_name', inplace=True, drop=False)
 gene_embeddings.index = adata.uns['perturbation_id'].loc[gene_embeddings.index,'rowidx'].values
 gene_embeddings.loc[0,:] = pad_embed.values
 gene_embeddings.head(3)

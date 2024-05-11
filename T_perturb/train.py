@@ -11,7 +11,7 @@ import torch
 from datasets import load_from_disk
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.strategies import DeepSpeedStrategy
+from pytorch_lightning.strategies import DeepSpeedStrategy, DDPStrategy
 from wandb import init  # type: ignore
 import gc
 from T_perturb.Dataloaders.datamodule import PetraDataModule
@@ -431,7 +431,8 @@ def main() -> None:
         verbose=False,
         mode=mode,
     )
-    deepspeed_strategy = DeepSpeedStrategy(stage=2)   
+    # deepspeed_strategy = DeepSpeedStrategy(stage=2)
+    deepspeed_strategy = DDPStrategy()   
     trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=[
