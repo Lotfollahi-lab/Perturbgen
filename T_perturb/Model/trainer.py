@@ -516,7 +516,7 @@ class CountDecodertrainer(LightningModule):
             checkpoint = torch.load(ckpt_masking_path, map_location='cpu')
             state_dict_ = self.modify_ckpt_state_dict(checkpoint, 'transformer.')
             pretrained_model.load_state_dict(state_dict_, strict=False)
-            # freeze the pretrained model
+            # set parameters to not trainable
             for param in pretrained_model.parameters():
                 param.requires_grad = False
 
@@ -1035,12 +1035,29 @@ class CountDecodertrainer(LightningModule):
             pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs)
             pred_adata.layers['counts'] = true_counts.numpy()
             pred_adata.obsm['cls_embeddings'] = cls_embeddings.numpy()
+            true_adata = pred_adata.copy()
+            true_adata.X = true_counts.numpy()
 
             # create output directory
             # save adata
             pred_adata.write_h5ad(
                 f'{self.output_dir}/generate_adata_{self.loss_mode}.h5ad'
             )
+            emd = evaluate_emd(true_adata, pred_adata)
+            mmd = evaluate_mmd(
+                adata=true_adata,
+                pred_adata=pred_adata,
+                n_cells=1000,
+            )
+            print(mmd)
+            self.log(
+                'test/emd',
+                emd['emd'].mean(),
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+            )
+
         else:
             # return Pearson correlation coefficient
             true_counts = torch.cat(self.test_true_counts_list)
@@ -1057,8 +1074,8 @@ class CountDecodertrainer(LightningModule):
                 X=pred_counts.numpy(), obs=test_obs, var=self.adata.var
             )
             pred_adata.layers['counts'] = true_counts.numpy()
-            # save adata
             pred_adata.write_h5ad(f'{self.output_dir}/pred_adata.h5ad')
+            # ----------------- calculate metrics -----------------
             mean_pearson = self.pearson(pred_counts, true_counts)
             # Pearson correlation coefficient
             self.log(
@@ -1079,13 +1096,7 @@ class CountDecodertrainer(LightningModule):
             )
             # MSE
             mse = self.metric['mse'](pred_counts, true_counts)
-            self.log(
-                'test/mse',
-                mse,
-                on_epoch=True,
-                prog_bar=True,
-                logger=True,
-            )
+
             metrics = pd.DataFrame(
                 {
                     'pearson': [mean_pearson.cpu().detach().numpy()],
@@ -1094,21 +1105,27 @@ class CountDecodertrainer(LightningModule):
                 }
             )
             metrics.to_csv(f'{self.output_dir}/test_metrics.csv')
-            # calculate MMD and EMD
-            condition_key = 'Cell_population'
-            mmd = evaluate_mmd(self.adata, pred_adata, condition_key=condition_key)
-            mmd['metric'] = 'mmd'
-            # rename column called mmd
-            mmd = mmd.rename(columns={'mmd': 'value'})
-            emd = evaluate_emd(self.adata, pred_adata, condition_key=condition_key)
+            # # calculate MMD and EMD
+            # mmd = evaluate_mmd(self.adata, pred_adata)
+            # mmd['metric'] = 'mmd'
+            # # rename column called mmd
+            # mmd = mmd.rename(columns={'mmd': 'value'})
+            emd = evaluate_emd(self.adata, pred_adata)
             emd['metric'] = 'emd'
             emd = emd.rename(columns={'emd': 'value'})
-            # concatenate
-            metrics = pd.concat([mmd, emd])
-            # save metrics
-            metrics.to_csv(
-                f'{self.output_dir}/test_mmd_emd_{condition_key}_metrics.csv'
+            self.log(
+                'test/emd',
+                emd['value'].mean(),
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
             )
+            # # concatenate
+            # metrics = pd.concat([mmd, emd])
+            # # save metrics
+            # metrics.to_csv(
+            #     f'{self.output_dir}/test_mmd_emd_{condition_key}_metrics.csv'
+            # )
             # set to status quo
             self.test_true_counts_list = []
             self.test_ctrl_counts_list = []

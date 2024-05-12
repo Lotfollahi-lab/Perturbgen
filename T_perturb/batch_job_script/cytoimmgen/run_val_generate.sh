@@ -1,14 +1,14 @@
 #!/bin/bash
-#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu
+#BSUB -q gpu-normal # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -gpu "mode=exclusive_process:num=1" # request for exclusive access to gpu
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
-#BSUB -o logs/masking_%J.out # output file
-#BSUB -e logs/masking_%J.err # error file
+#BSUB -o logs/generate_%J.out # output file
+#BSUB -e logs/generate_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
-#BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
-#BSUB -J cytoimmgen_masking # job name
+#BSUB -R "select[mem>50000] rusage[mem=50000]" # RAM memory part 1. Default: 100MB
+#BSUB -J cytoimmgen_generate # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -22,25 +22,30 @@ export WANDB_DIR=$cwd/wandb
 echo "--- Start computing model"
 
 # # Run python script for rna
-python3 $cwd/train.py \
---train_mode masking \
---split False \
+python3 $cwd/val.py \
+--test_mode count \
+--split True \
 --splitting_mode stratified \
+--generate True \
+--ckpt_count_path "./T_perturb/T_perturb/Model/checkpoints/"\
+"20240511_0709_petra_train_count_lr_5e-05"\
+"_wd_0.01_batch_64_mse_tp_1-2-3.ckpt" \
 --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
 --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset" \
 --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
 --src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
 --tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt" \
---mapping_dict_path  "./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl" \
 --batch_size 64 \
 --max_len 300 \
---epochs 100 \
 --tgt_vocab_size 1261 \
 --petra_lr 0.0001 \
 --petra_wd 0.0001 \
---mlm_prob 0.15 \
+--count_lr 0.00005 \
+--count_wd 0.01 \
+--num_layers 6 \
+--loss_mode mse \
 --n_workers 32 \
 --condition_keys Cell_culture_batch \
---time_steps 1 3 \
+--time_steps 1 2 3 \
 --var_list Cell_population Cell_type Time_point Donor
 echo "--- Finished computing model"
