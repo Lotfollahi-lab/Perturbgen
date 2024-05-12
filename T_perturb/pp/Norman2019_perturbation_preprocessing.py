@@ -273,6 +273,7 @@ dataset_ctrl_wembed = dataset_ctrl.add_column("perturbation_embedding", gene_emb
 # save
 dataset_ctrl_wembed.save_to_disk(f'{base_path}/{data_path}/{dataset_name}/dataset/filtered_tokenised_hvg_pairing_GFpert_control.dataset')
 
+'''
 # add perturbed gene embedding to the control dataset - gene2vec -----------------
 gene_embeddings = pd.read_csv('https://github.com/jingcheng-du/Gene2vec/raw/master/pre_trained_emb/gene2vec_dim_200_iter_9.txt', sep='\t', header=None, index_col=0)
 gene_embeddings = pd.DataFrame({g: [float(dim) for dim in embeds[:-1]] for g, embeds in zip(gene_embeddings.index, gene_embeddings[1].str.split(' '))}).T
@@ -294,6 +295,7 @@ for pg in tqdm.tqdm(cell_pairings['perturbed_gene']):
 
 dataset_ctrl_wembed = dataset_ctrl.add_column("perturbation_embedding", gene_embeddings_list)
 dataset_ctrl_wembed.save_to_disk(f'{base_path}/{data_path}/{dataset_name}/dataset/filtered_tokenised_hvg_pairing_gene2vecpert_control.dataset')
+'''
 
 # save adata --------------
 # subset adata

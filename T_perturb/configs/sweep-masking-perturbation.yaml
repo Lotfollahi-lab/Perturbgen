@@ -1,0 +1,50 @@
+# masking attention
+method: random
+metric:
+  goal: minimize
+  name: val/perplexity_epoch
+name: tune_masking
+parameters:
+  petra_lr:
+    value: [0.001, 0.0001, 0.00001]
+  petra_wd:
+    values: [0.01, 0.001, 0.0001]
+  num_layers:
+    values: 6
+  d_ff:
+    values: 128
+  mlm_prob:
+    values: 0.3
+  train_mode:
+    value: 'masking'
+  num_cells:
+    value: 0
+  split:
+    value: True
+  splitting_mode:
+    value: gears-simulation
+  epochs:
+   value: 20
+  output_dir:
+    value: './T_perturb/T_perturb/plt/res/petra'
+  src_dataset:
+    value: './datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_GFpert_control.dataset'
+  tgt_dataset_folder:
+    value: './datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_perturbed.dataset'
+  src_adata:
+    value: './datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_control.h5ad'
+  tgt_adata_folder:
+    value: './datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_perturbed.h5ad'
+  batch_size:
+    value: 45
+  max_len:
+    value: 1750
+  n_workers:
+    value: 32
+  seed:
+    value: 1
+  base_path:
+    value: '/lustre/scratch126/cellgen/team361/ip14'
+
+program: /lustre/scratch123/lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb/T_perturb/T_perturb/train.py
+project: ttransformer

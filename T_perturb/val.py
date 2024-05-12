@@ -189,7 +189,8 @@ def main() -> None:
             adata=tgt_adata,
             train_prop=0.75, test_prop=0.1, 
             seed=RANDOM_SEED, 
-            test_pert_genes=None, test_perts=None
+            test_pert_genes=None, test_perts=None,
+            base_path=args.base_path,
         )
     else:
         raise ValueError(

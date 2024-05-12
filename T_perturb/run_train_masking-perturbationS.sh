@@ -9,7 +9,7 @@
 #BSUB -M 64GB  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>64GB] rusage[mem=64GB]' # RAM memory part 1. Default: 100MB
 #BSUB -J 4_train_masking_Norman2019 # job name
-s
+
 # activate conda environment
 source ~/.bashrc
 conda activate Tperturb
@@ -27,7 +27,7 @@ python3 $cwd/train.py \
 --num_cells 0 \
 --split True \
 --splitting_mode gears-simulation \
---src_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_gene2vecpert_control.dataset \
+--src_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_GFpert_control.dataset \
 --tgt_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_perturbed.dataset \
 --src_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_control.h5ad \
 --tgt_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_perturbed.h5ad \

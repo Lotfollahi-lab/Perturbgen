@@ -7,7 +7,7 @@
 #BSUB -o ../../logs/%J.out # output file
 #BSUB -e ../../logs/%J.err # error file
 #BSUB -M 64GB  # RAM memory part 2. Default: 100MB
-#BSUB -R 'select[mem>64GB] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
+#BSUB -R 'select[mem>64GB] rusage[mem=64GB]' # RAM memory part 1. Default: 100MB
 #BSUB -J 4.1_train_count_Norman2019 # job name
 
 # activate conda environment
@@ -20,7 +20,7 @@ cwd=$(pwd)
 export WANDB_DIR=$cwd/wandb
 
 # run script
-echo "--- Start testing model"
+echo "--- Start training model"
 # # Run python script for rna
 python3 $cwd/train.py \
 --train_mode count \

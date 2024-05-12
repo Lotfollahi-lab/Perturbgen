@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH -J 3_train_masking_Norman2019
-#SBATCH -o ../../logs/3_Norman2019_train_masking.out
-#SBATCH -e ../../logs/3_Norman2019_train_masking.err
+#SBATCH -J 5_train_masking_Norman2019
+#SBATCH -o ../../logs/5_Norman2019_train_masking.out
+#SBATCH -e ../../logs/5_Norman2019_train_masking.err
 #SBATCH -t 24:00:00
 #SBATCH -p gpu_p
 #SBATCH --gres=gpu:1
@@ -28,7 +28,7 @@ python3 $cwd/train.py \
 --num_cells 0 \
 --split True \
 --splitting_mode gears-simulation \
---src_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_GFpert_control.dataset \
+--src_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_gene2vecpert_control.dataset/ \
 --tgt_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_perturbed.dataset \
 --src_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_control.h5ad \
 --tgt_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_perturbed.h5ad \

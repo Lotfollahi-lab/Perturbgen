@@ -144,6 +144,8 @@ def get_args():
     parser.add_argument(
         '--base_path', type=str, default='/lustre/groups/imm01/workspace/irene.bonafonte', help='home path'
     )
+    parser.add_argument('--num_layers', type=int, default=1, help='number of layers')
+    parser.add_argument('--d_ff', type=int, default=32, help='d_ff')
     args = parser.parse_args()
     return args
 
@@ -186,7 +188,8 @@ def main() -> None:
             adata=tgt_adata,
             train_prop=0.75, test_prop=0.1, 
             seed=RANDOM_SEED, 
-            test_pert_genes=None, test_perts=None
+            test_pert_genes=None, test_perts=None,
+            base_path=args.base_path,
         )
     else:
         raise ValueError(
@@ -287,8 +290,8 @@ def main() -> None:
             d_model=256,
             d_encoded_input=512,
             num_heads=8,
-            num_layers=1,
-            d_ff=32,
+            num_layers=args.num_layers,
+            d_ff=args.d_ff,
             max_seq_length=2000,
             dropout=args.petra_dropout,
             mlm_probability=args.mlm_probability,
