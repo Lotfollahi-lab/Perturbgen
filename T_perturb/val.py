@@ -64,13 +64,13 @@ def get_args():
     )
     parser.add_argument(
         '--generate',
-        type=bool,
+        type=str2bool,
         default=True,
         help='generate data',
     )
     parser.add_argument(
         '--return_embeddings',
-        type=bool,
+        type=str2bool,
         default=False,
         help='return embedding',
     )
@@ -83,9 +83,9 @@ def get_args():
     parser.add_argument(
         '--ckpt_count_path',
         type=str,
-        default='./T_perturb/T_perturb/Model/'
-        'checkpoints/20240510_1502_petra_train_count_lr_0.0005'
-        '_wd_0.001_batch_64_mse_tp_1-2-3.ckpt',
+        default='./T_perturb/T_perturb/Model/checkpoints/'
+        '20240511_0709_petra_train_count_lr_5e-05'
+        '_wd_0.01_batch_64_mse_tp_1-2-3.ckpt',
         help='path to checkpoint',
     )
     parser.add_argument(
@@ -123,7 +123,7 @@ def get_args():
         default=('./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt'),
         help='path to tgt',
     )
-    parser.add_argument('--batch_size', type=int, default=32, help='batch_size')
+    parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=False, help='shuffle')
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
@@ -144,14 +144,15 @@ def get_args():
         # default=1737,
         help='vocab size (max token id + 1) in dataset for padding',
     )
-    parser.add_argument('--petra_lr', type=float, default=0.001, help='learning rate')
-    parser.add_argument('--count_lr', type=float, default=0.0005, help='learning rate')
-    parser.add_argument('--petra_wd', type=float, default=0.001, help='weight decay')
-    parser.add_argument('--count_wd', type=float, default=0.001, help='weight decay')
+    parser.add_argument('--petra_lr', type=float, default=0.0001, help='learning rate')
+    parser.add_argument('--count_lr', type=float, default=0.00005, help='learning rate')
+    parser.add_argument('--petra_wd', type=float, default=0.0001, help='weight decay')
+    parser.add_argument('--count_wd', type=float, default=0.01, help='weight decay')
     parser.add_argument('--n_workers', type=int, default=32, help='number of workers')
     parser.add_argument(
-        '--num_layers', type=int, default=2, help='number of decoder layers'
+        '--num_layers', type=int, default=6, help='number of decoder layers'
     )
+    parser.add_argument('--d_ff', type=int, default=128, help='feed forward dimension')
     parser.add_argument(
         '--loss_mode', type=str, default='mse', help='loss mode [zinb, nb, mse]'
     )
@@ -179,7 +180,8 @@ def get_args():
     )
     parser.add_argument(
         '--time_steps',
-        type=list,
+        type=int,
+        nargs='+',
         default=[1, 2, 3],
         help='time steps to include during training',
     )
@@ -344,13 +346,13 @@ def main() -> None:
             tgt_vocab_size=args.tgt_vocab_size,
             d_model=256,
             num_heads=8,
-            num_layers=1,
-            d_ff=32,
+            num_layers=args.num_layers,
+            d_ff=args.d_ff,
             max_seq_length=args.max_len + 100,
             dropout=args.petra_dropout,
             weight_decay=args.petra_wd,
             lr=args.petra_lr,
-            lr_scheduler_patience=5.0,
+            # lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             return_embeddings=args.return_embeddings,
             generate=args.generate,
@@ -366,13 +368,13 @@ def main() -> None:
             tgt_vocab_size=args.tgt_vocab_size,
             d_model=256,
             num_heads=8,
-            num_layers=1,
-            d_ff=32,
+            num_layers=args.num_layers,
+            d_ff=args.d_ff,
             max_seq_length=args.max_len + 100,
             loss_mode=args.loss_mode,
             lr=args.count_lr,
             weight_decay=args.count_wd,
-            lr_scheduler_patience=5.0,
+            # lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             conditions=conditions_,
             conditions_combined=conditions_combined_,
@@ -460,6 +462,7 @@ def main() -> None:
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
         devices=1 if torch.cuda.is_available() else 0,  # infernce only on one gpu
+        limit_test_batches=10,
     )
     # Finally, kick of the training process.
     if args.test_mode == 'masking':

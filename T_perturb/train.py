@@ -118,7 +118,7 @@ def get_args():
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle')
     parser.add_argument(
-        '--epochs', type=int, default=1, help='number of training epochs'
+        '--epochs', type=int, default=50, help='number of training epochs'
     )
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
@@ -140,9 +140,9 @@ def get_args():
         help='vocab size (max token id + 1) in dataset for padding',
     )
     parser.add_argument('--petra_lr', type=float, default=0.0001, help='learning rate')
-    parser.add_argument('--count_lr', type=float, default=0.0005, help='learning rate')
+    parser.add_argument('--count_lr', type=float, default=0.00005, help='learning rate')
     parser.add_argument('--petra_wd', type=float, default=0.0001, help='weight decay')
-    parser.add_argument('--count_wd', type=float, default=0.001, help='weight decay')
+    parser.add_argument('--count_wd', type=float, default=0.01, help='weight decay')
     parser.add_argument(
         '--num_layers', type=int, default=6, help='number of decoder layers'
     )
@@ -381,7 +381,7 @@ def main() -> None:
             loss_mode=args.loss_mode,
             lr=args.count_lr,
             weight_decay=args.count_wd,
-            lr_scheduler_patience=5.0,
+            # lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             conditions=conditions_,
             conditions_combined=conditions_combined_,
@@ -528,8 +528,7 @@ def main() -> None:
     # deepspeed_strategy = DeepSpeedStrategy(
     #     stage=2,
     # )
-
-    ddp_strategy = DDPStrategy()
+    ddp_strategy = DDPStrategy(find_unused_parameters=True)
     trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=[
@@ -541,9 +540,6 @@ def main() -> None:
         accelerator='auto',
         devices=-1 if torch.cuda.is_available() else 0,
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
-        # profiler=profiler,
-        # limit_train_batches=50,
-        # limit_val_batches=10,
     )
     print('Starting training...')
     if os.getcwd().split('/')[-1] != 'healthy_imm_expr':

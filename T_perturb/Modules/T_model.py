@@ -354,18 +354,43 @@ class Petra(nn.Module):
     #     return labels, tgt_mask
 
     def generate_mask(self, tgt_input_id, tgt_pad, mlm_probability=0.15):
+        """
+        Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original.
+        Modified from Huggingface Transformers library:
+        https://github.com/huggingface/transformers/blob/main/src/transformers/data/data_collator.py#L840 # noqa
+        Accessed: 2024-05-12
+        """
+        device = tgt_input_id.device
         labels = tgt_input_id.clone()
         probability_matrix = torch.full_like(
             tgt_pad, mlm_probability, dtype=torch.float
         )
-        # add CLS token to the tokens
+        # Do not mask CLS and PAD tokens
         cls_tgt_pad = tgt_pad.clone()
         cls_tgt_pad[:, 0] = True
         probability_matrix = probability_matrix.masked_fill(cls_tgt_pad, 0)
-        tgt_mask = torch.bernoulli(probability_matrix).bool()
-        labels[~tgt_mask] = -100
+        masked_indices = torch.bernoulli(probability_matrix).bool()
+        labels[~masked_indices] = -100
 
-        return tgt_mask, labels
+        # replace 80% of the tokens with mask token,
+        # 10% with random token, 10% with original token
+        indices_masked = (
+            torch.bernoulli(torch.full(labels.shape, 0.8, device=device)).bool()
+            & masked_indices
+        )
+        tgt_input_id[indices_masked] = self.mask_token
+        indices_random = (
+            torch.bernoulli(torch.full(labels.shape, 0.5, device=device)).bool()
+            & masked_indices
+            & ~indices_masked
+        )
+        # +1 to exclude pad and cls tokens from random token selection
+        random_tokens = torch.randint(
+            1, self.tgt_vocab_size, labels.shape, dtype=torch.long, device=device
+        )
+        tgt_input_id[indices_random] = random_tokens[indices_random]
+        # 10% remain unmasked
+        return tgt_input_id, labels
 
     # def forward_with_cond_scale(
     #     self,
@@ -395,7 +420,10 @@ class Petra(nn.Module):
     #     if return_embed:
     #         return scaled_logits, embed
 
-    #     return scaled_logits
+    def generate_src_mask(self, src_input_id):
+        src_attention_mask = src_input_id == 0
+        return src_attention_mask
+
     def call_padding(
         self,
         tgt_input_id_dict,
@@ -406,24 +434,6 @@ class Petra(nn.Module):
             tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_step}']
             tgt_pad_dict[f'tgt_pad_t{time_step}'] = self.generate_pad(tgt_input_id)
         return tgt_pad_dict
-
-    def generate_src_mask(self, src_input_id):
-        src_attention_mask = src_input_id == 0
-        return src_attention_mask
-
-    def call_tgt_mask(
-        self,
-        tgt_input_id,
-        tgt_pad,
-    ):
-        tgt_mask, labels = self.generate_mask(
-            tgt_input_id,
-            tgt_pad,
-            self.mlm_probability,
-        )
-        tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
-
-        return labels, tgt_input_id
 
     def call_encoder(self, src_input_id, src_attention_mask):
         enc_output = self.encoder_layers(src_input_id, src_attention_mask.int())
@@ -465,40 +475,41 @@ class Petra(nn.Module):
             outputs['cls_positions'] = cls_positions
         return outputs
 
-    def context_padding(self, src_attention_mask, tgt_pad_dict, context_time_steps):
-        if not context_time_steps:
-            full_context_pad = src_attention_mask
-        context_pad_list = [src_attention_mask]
+    # def context_padding(self, src_attention_mask, tgt_pad_dict, context_time_steps):
+    #     if not context_time_steps:
+    #         full_context_pad = src_attention_mask
+    #     context_pad_list = [src_attention_mask]
 
-        for time_step in context_time_steps:
-            context_pad = tgt_pad_dict[f'tgt_pad_t{time_step}']
-            context_pad_list.append(context_pad)
-        full_context_pad = torch.cat(context_pad_list, dim=1)
-        return full_context_pad
+    #     for time_step in context_time_steps:
+    #         context_pad = tgt_pad_dict[f'tgt_pad_t{time_step}']
+    #         context_pad_list.append(context_pad)
+    #     full_context_pad = torch.cat(context_pad_list, dim=1)
+    #     return full_context_pad
 
     def generate_context(
         self,
         enc_output,
         src_attention_mask,
         all_time_steps,
-        tgt_time_step,
         tgt_input_id_dict,
         tgt_pad_dict,
         cls_positions=None,
         generate=False,
     ):
-        context_embedding_tmp = []
-        context_embedding_output = []
-        previous_context_pad = [src_attention_mask]
-
+        context_embedding_dict = {}
+        context_embedding_dict['context_t0'] = enc_output
+        context_pad_dict = {}
+        context_pad_dict['pad_t0'] = src_attention_mask
         # retrieve the embeddings to provide as context
         # pad the rest of the time steps
         for time_step in all_time_steps:
-            context_pad = torch.cat(previous_context_pad, dim=1)
-            if context_embedding_tmp:
-                context = torch.cat([enc_output] + context_embedding_tmp, dim=1)
+            if len(context_embedding_dict) > 1:
+                context_tensors = list(context_embedding_dict.values())
+                context = torch.cat(context_tensors, dim=1)
             else:
                 context = enc_output
+            context_pads = list(context_pad_dict.values())
+            context_pad = torch.cat(context_pads, dim=1)
             tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_step}']
             tgt_pad = tgt_pad_dict[f'tgt_pad_t{time_step}']
             if not generate:
@@ -519,49 +530,44 @@ class Petra(nn.Module):
                     labels=None,
                     cls_positions=cls_positions,
                 )
-            context_embedding_tmp.append(dec_outputs['dec_embedding'])
-            # only provide context for time
-            if time_step != tgt_time_step:
-                context_embedding_output.append(dec_outputs['dec_embedding'])
+            context_embedding_dict[f'context_t{time_step}'] = dec_outputs[
+                'dec_embedding'
+            ]
             # append the current pad to the previous context pad
-            current_pad = tgt_pad_dict[f'tgt_pad_t{time_step}']
-            previous_context_pad.append(current_pad)
-        context_embeddings = torch.cat(context_embedding_output, dim=1)
-        full_context_embedding = torch.cat([enc_output, context_embeddings], dim=1)
-        return full_context_embedding
+            context_pad_dict[f'pad_t{time_step}'] = tgt_pad
+        return context_embedding_dict, context_pad_dict
 
     def context_backprop(
         self,
-        context_embedding,
-        src_attention_mask,
-        all_time_steps,
+        context_embedding_dict,
+        context_pad_dict,
         tgt_time_step,
         tgt_input_id_dict,
-        tgt_pad_dict,
         cls_positions=None,
         generate=False,
         not_masked=False,
     ):
-        context_time_steps = [
-            tmp_time_step
-            for tmp_time_step in all_time_steps
-            if tmp_time_step != tgt_time_step
-        ]
-        context_pad = self.context_padding(
-            src_attention_mask=src_attention_mask,
-            tgt_pad_dict=tgt_pad_dict,
-            context_time_steps=context_time_steps,
-        )
-        selected_tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
+        selected_tgt_pad = context_pad_dict[f'pad_t{tgt_time_step}']
         selected_tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{tgt_time_step}']
+        # remove the selected time step from the context and pad
+        context_embedding_dict_ = context_embedding_dict.copy()
+        context_pad_dict_ = context_pad_dict.copy()
+        context_embedding_dict_.pop(f'context_t{tgt_time_step}')
+        context_pad_dict_.pop(f'pad_t{tgt_time_step}')
+        context_tensors = list(context_embedding_dict_.values())
+        context_embedding = torch.cat(context_tensors, dim=1)
+        context_pads = list(context_pad_dict_.values())
+        context_pad = torch.cat(context_pads, dim=1)
         # only create maskings for the selected time step
         if not_masked or generate:
             labels = None
             # do not mask for embeddings for testing
             masked_tgt_input_id = selected_tgt_input_id
         else:
-            labels, masked_tgt_input_id = self.call_tgt_mask(
-                selected_tgt_input_id, selected_tgt_pad
+            masked_tgt_input_id, labels = self.generate_mask(
+                selected_tgt_input_id,
+                selected_tgt_pad,
+                self.mlm_probability,
             )
         selected_tgt_embedding = self.token_embedding(masked_tgt_input_id)
         selected_dec_embedding = self.positional_encoding(
@@ -602,24 +608,21 @@ class Petra(nn.Module):
         # distinction between selected time step and rest time steps
         if not_masked:
             dec_embedding_list = []
+            context_embedding_dict, context_pad_dict = self.generate_context(
+                enc_output=enc_output,
+                src_attention_mask=src_attention_mask,
+                all_time_steps=self.time_steps,
+                tgt_input_id_dict=tgt_input_id_dict,
+                tgt_pad_dict=tgt_pad_dict,
+                cls_positions=cls_positions,
+            )
             for tgt_time_step in self.time_steps:
                 # context should be all the ones before the selected time step
-                context_embedding = self.generate_context(
-                    enc_output=enc_output,
-                    src_attention_mask=src_attention_mask,
-                    all_time_steps=self.time_steps,
-                    tgt_time_step=tgt_time_step,
-                    tgt_input_id_dict=tgt_input_id_dict,
-                    tgt_pad_dict=tgt_pad_dict,
-                    cls_positions=cls_positions,
-                )
                 outputs = self.context_backprop(
-                    context_embedding=context_embedding,
-                    src_attention_mask=src_attention_mask,
-                    all_time_steps=self.time_steps,
+                    context_embedding_dict=context_embedding_dict,
+                    context_pad_dict=context_pad_dict,
                     tgt_time_step=tgt_time_step,
                     tgt_input_id_dict=tgt_input_id_dict,
-                    tgt_pad_dict=tgt_pad_dict,
                     cls_positions=cls_positions,
                     not_masked=not_masked,
                 )
@@ -637,26 +640,23 @@ class Petra(nn.Module):
             # rest will be padded
             # ---Initialise the decoder embeddings
             # to provide as context for selected time step---
-            context_embedding = self.generate_context(
+            context_embedding_dict, context_pad_dict = self.generate_context(
                 enc_output=enc_output,
                 src_attention_mask=src_attention_mask,
                 all_time_steps=self.time_steps,
-                tgt_time_step=tgt_time_step,
                 tgt_input_id_dict=tgt_input_id_dict,
                 tgt_pad_dict=tgt_pad_dict,
                 cls_positions=cls_positions,
                 generate=generate,
             )
             outputs = self.context_backprop(
-                context_embedding=context_embedding,
-                src_attention_mask=src_attention_mask,
-                all_time_steps=self.time_steps,
+                context_embedding_dict=context_embedding_dict,
+                context_pad_dict=context_pad_dict,
                 tgt_time_step=tgt_time_step,
                 tgt_input_id_dict=tgt_input_id_dict,
-                tgt_pad_dict=tgt_pad_dict,
                 cls_positions=cls_positions,
-                generate=generate,
                 not_masked=not_masked,
+                generate=generate,
             )
 
         return outputs
@@ -744,6 +744,7 @@ class CountDecoder(nn.Module):
         cls_positions=None,
     ):
         # find length for a single time step
+        # how can I run this model in eval mode
         outputs = self.pretrained_model(
             src_input_id=src_input_id,
             tgt_input_id_dict=tgt_input_id_dict,
@@ -756,6 +757,7 @@ class CountDecoder(nn.Module):
             cls_embedding = outputs['dec_embedding'][:, cls_position, :]
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
             count_outputs[f'count_output_t{t}'] = count_outputs_tmp
+
         return count_outputs
 
     def call_padding(self, tgt_input_id_dict, time_steps):

@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import scanpy as sc
 import torch
 from scipy.sparse import issparse
 from scipy.stats import wasserstein_distance
@@ -99,8 +100,16 @@ def mmd_loss_calc(source_features, target_features, gamma):
 # Date of access: 2024.01.08
 
 
-def evaluate_mmd(adata, pred_adata, condition_key=None, de_genes_dict=None):
+def evaluate_mmd(
+    adata,
+    pred_adata,
+    condition_key=None,
+    de_genes_dict=None,
+    n_cells=None,
+):
     mmd_list = []
+    if n_cells & (n_cells < adata.shape[0]):
+        sc.pp.subsample(pred_adata, n_obs=n_cells)
     if condition_key is not None:
         for cond in pred_adata.obs[condition_key].unique():
             adata_ = adata[adata.obs[condition_key] == cond].copy()
