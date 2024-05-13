@@ -13,7 +13,6 @@
 # activate conda environment
 source ~/.bashrc
 conda activate Tperturb
-
 module load cuda-12.1.1
 cd /lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb/T_perturb/T_perturb
 cwd=$(pwd)

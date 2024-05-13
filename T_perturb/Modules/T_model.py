@@ -3,7 +3,6 @@ Mostly copy-paste from timm library.
 https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
 '''
 import math
-
 import torch
 from einops import rearrange, repeat
 from torch import einsum, nn
@@ -274,7 +273,8 @@ class Petra(nn.Module):
         max_seq_length: int = 2048,
         dropout: float = 0.0,
         mlm_probability: float = 0.3,
-        d_encoded_input=None,        
+        d_encoded_input=None,   
+        d_perturbation_embed=None,     
         perturbation_modeling=None,
         base_path: str = '/lustre/groups/imm01/workspace/irene.bonafonte'
     ):
@@ -306,7 +306,12 @@ class Petra(nn.Module):
             [DecoderLayer(dim=d_model, n_heads=num_heads, d_head=d_ff, dropout=dropout, context_dim=d_encoded_input) for _ in range(num_layers)]
         )
         # self.decoder_layers = self.decoder_layers.to(self.device)
-
+        if self.perturbation_modeling is not None:
+            if self.d_encoded_input != self.d_perturbation_embed:
+                self.fc_pertReshape = nn.Linear(self.d_perturbation_embed, self.d_encoded_input)
+            else:
+                self.fc_pertReshape = None
+    
         self.fc = nn.Linear(d_model, tgt_vocab_size) #, device=self.device)
         self.dropout = nn.Dropout(dropout)
 
@@ -315,17 +320,44 @@ class Petra(nn.Module):
         return tgt_pad
 
     def generate_mask(self, tgt, tgt_pad, mlm_probability=0.15):
+        """
+        Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original.
+        Modified from Huggingface Transformers library:
+        https://github.com/huggingface/transformers/blob/main/src/transformers/data/data_collator.py#L840 # noqa
+        Accessed: 2024-05-12
+        """
+        device = tgt.device
         labels = tgt.clone()
         probability_matrix = torch.full_like(
             tgt_pad, mlm_probability, dtype=torch.float # device=self.device
         )
         # cls_tgt_pad = (tgt == self.cls_token) | (tgt == self.perturbation_token) | (tgt == 0)
+        # Do not mask CLS and PAD tokens
         cls_tgt_pad = tgt_pad.clone()
         cls_tgt_pad[:, 0] = True
-        probability_matrix = probability_matrix.masked_fill(cls_tgt_pad, 0)  # add CLS token to the tokens
-        tgt_mask = torch.bernoulli(probability_matrix).bool()
-        labels[~tgt_mask] = -100
-        return tgt_mask, labels
+        probability_matrix = probability_matrix.masked_fill(cls_tgt_pad, 0)
+        masked_indices = torch.bernoulli(probability_matrix).bool()
+        labels[~masked_indices] = -100
+
+        # replace 80% of the tokens with mask token,
+        # 10% with random token, 10% with original token
+        indices_masked = (
+            torch.bernoulli(torch.full(labels.shape, 0.8, device=device)).bool()
+            & masked_indices
+        )
+        tgt[indices_masked] = self.mask_token
+        indices_random = (
+            torch.bernoulli(torch.full(labels.shape, 0.5, device=device)).bool()
+            & masked_indices
+            & ~indices_masked
+        )
+        # +1 to exclude pad and cls tokens from random token selection
+        random_tokens = torch.randint(
+            1, self.tgt_vocab_size, labels.shape, dtype=torch.long, device=device
+        )
+        tgt[indices_random] = random_tokens[indices_random]
+        # 10% remain unmasked
+        return tgt, labels        
 
     def prepare_tokens(self, x):
         # B, nc, d = x.shape
@@ -388,10 +420,11 @@ class Petra(nn.Module):
         tgt_pad = self.generate_pad(tgt_input_id)
 
         if generate:
+            labels = None
             tgt_mask = tgt_input_id == (self.mask_token)
             tgt_mask = tgt_mask | (tgt_input_id == 0)
         else:
-            tgt_mask, labels = self.generate_mask(
+            tgt_input_id, labels = self.generate_mask(
                 tgt_input_id, tgt_pad, self.mlm_probability
             )
 
@@ -399,6 +432,10 @@ class Petra(nn.Module):
 
         # add embedding at the begining of the src_embedding for perturbed genes and update mask
         if self.perturbation_modeling is not None:
+            # if size is different than d_model, reshape via linear layer:
+            if self.fc_pertReshape is not None:
+                perturbation_embedding = self.fc_pertReshape(perturbation_embedding)
+
             for i in range(src_input_id.shape[0]):
                 # move sentence 2 positions to the right to leave place for the perturbation embeddings
                 src_embedded[i,2:,:] = src_embedded[i,:-2,:].clone()
@@ -412,9 +449,9 @@ class Petra(nn.Module):
                 else:
                     src_attention_mask[i,:2] = 0
         
-        # overwrite tgt input id with masked token
-        if not generate:
-            tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
+        # overwrite tgt input id with masked token (already done in the generate_mask function)
+        # if not generate:
+        #    tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
         tgt_embedded_mask = self.token_embedding(tgt_input_id)
         # tgt_embedded_mask[tgt_mask, :] = self.masked_embed
 
@@ -464,11 +501,13 @@ class CountHead(nn.Module):
 
             # To-do: dropout prediction from MLP output, with a single linear+sigmoid layer
             self.zero_logit = nn.Sequential(
-                nn.Linear(d_model, d_model),
-                nn.LeakyReLU(),
-                nn.Linear(d_model, d_model),
-                nn.LeakyReLU(),
-                nn.Linear(d_model, n_genes),
+                # nn.Linear(d_model, d_model),
+                # nn.LeakyReLU(),
+                # nn.Linear(d_model, d_model),
+                # nn.LeakyReLU(),
+                # nn.Linear(d_model, n_genes),
+                nn.Linear(n_genes, n_genes),
+                nn.Sigmoid(),
             )
 
         elif self.loss_mode == 'zinb':
@@ -488,7 +527,8 @@ class CountHead(nn.Module):
         mlp_output = nn.functional.normalize(mlp_output, dim=-1, p=2)
         if self.loss_mode == 'mse':
             count_outpus['count_lognorm'] = self.relu_output(mlp_output)
-            count_outpus['zero_probs'] = torch.sigmoid(self.zero_logit(x)) # (batch, d_model-cls-) -> (batch, seq_len)
+            # count_outpus['zero_probs'] = torch.sigmoid(self.zero_logit(x)) # (batch, d_model-cls-) -> (batch, seq_len)
+            count_outpus['zero_probs'] = self.zero_logit(mlp_output)
 
         elif self.loss_mode == 'zinb':
             count_outpus['count_mean'] = self.softmax_output(mlp_output)
