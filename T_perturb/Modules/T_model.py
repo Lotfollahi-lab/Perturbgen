@@ -283,6 +283,7 @@ class Petra(nn.Module):
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
         self.perturbation_modeling = perturbation_modeling
+        self.tgt_vocab_size = tgt_vocab_size
 
         self.register_buffer('cls_token', torch.tensor([tgt_vocab_size], dtype=torch.long)) # start at 25426, because of 0 Python indexing
         total_vocab_size = tgt_vocab_size + 1
@@ -295,7 +296,6 @@ class Petra(nn.Module):
         self.token_embedding = nn.Embedding(
             total_vocab_size, d_model, padding_idx=0 #, device=self.device
         )
-
         print(self.token_embedding.weight.shape)
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
         # self.positional_encoding = self.positional_encoding.to(self.device)
@@ -307,8 +307,8 @@ class Petra(nn.Module):
         )
         # self.decoder_layers = self.decoder_layers.to(self.device)
         if self.perturbation_modeling is not None:
-            if self.d_encoded_input != self.d_perturbation_embed:
-                self.fc_pertReshape = nn.Linear(self.d_perturbation_embed, self.d_encoded_input)
+            if d_encoded_input != d_perturbation_embed:
+                self.fc_pertReshape = nn.Linear(d_perturbation_embed, d_encoded_input)
             else:
                 self.fc_pertReshape = None
     
