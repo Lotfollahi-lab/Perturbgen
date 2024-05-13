@@ -1,6 +1,6 @@
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu
+#BSUB -gpu 'mode=exclusive_process:num=3' # request for exclusive access to gpu
 #BSUB -n 32 # number of cores
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb/T_perturb/T_perturb/ # working directory
@@ -15,4 +15,4 @@ conda activate Tperturb
 cwd=$(pwd)
 export WANDB_DIR=$cwd/wandb
 
-wandb agent irene-bp/ttransformer/e93w431b
+wandb agent irene-bp/ttransformer/r66kx3ym

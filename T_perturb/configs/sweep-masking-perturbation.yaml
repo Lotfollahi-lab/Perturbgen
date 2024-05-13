@@ -10,9 +10,9 @@ parameters:
   petra_wd:
     values: [0.01, 0.001, 0.0001]
   num_layers:
-    value: 6
+    value: 5
   d_ff:
-    value: 128
+    value: 16
   mlm_prob:
     value: 0.3
   train_mode:
