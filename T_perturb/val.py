@@ -152,6 +152,8 @@ def get_args():
     parser.add_argument(
         '--base_path', type=str, default='/lustre/groups/imm01/workspace/irene.bonafonte', help='home path'
     )
+    parser.add_argument('--num_layers', type=int, default=1, help='number of layers')
+    parser.add_argument('--d_ff', type=int, default=32, help='d_ff')
     args = parser.parse_args()
     return args
 
@@ -167,6 +169,8 @@ def main() -> None:
     # Load and preprocess data
     print('Loading and preprocessing data...')
     src_dataset = load_from_disk(args.src_dataset_folder)
+    if 'perturbation_embedding' in src_dataset.features.keys():
+        d_perturbation_embed = len(src_dataset['perturbation_embedding'][0][0])
     tgt_dataset = load_from_disk(args.tgt_dataset_folder)
     src_adata = sc.read_h5ad(args.src_adata_folder)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
@@ -293,8 +297,8 @@ def main() -> None:
             d_model=256,
             d_encoded_input=512,
             num_heads=8,
-            num_layers=1,
-            d_ff=32,
+            num_layers=args.num_layers,
+            d_ff=args.d_ff,
             max_seq_length=2000,
             dropout=args.petra_dropout,
             mlm_probability=args.mlm_probability,
@@ -306,6 +310,7 @@ def main() -> None:
             dataset_info=dataset_info,
             generate=args.generate,
             perturbation_modeling='activation', # activation repression or None (if not perturbation experiment)
+            d_perturbation_embed=d_perturbation_embed,
             base_path = args.base_path,
         )
     elif args.test_mode == 'count':

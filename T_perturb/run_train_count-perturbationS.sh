@@ -13,7 +13,6 @@
 # activate conda environment
 source ~/.bashrc
 conda activate Tperturb
-
 module load cuda-12.1.1
 cd /lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb/T_perturb/T_perturb
 cwd=$(pwd)
@@ -25,7 +24,6 @@ echo "--- Start training model"
 python3 $cwd/train.py \
 --train_mode count \
 --ckpt_file "20240510_1045_petra_mode_masking_lr_0.001_wd_0.001_batch_45_mlmp_0.3_seed1_hvg_pairing_GFpert.ckpt" \
---num_cells 0 \
 --src_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_GFpert_control.dataset \
 --tgt_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_perturbed.dataset \
 --src_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_control.h5ad \

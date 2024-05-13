@@ -87,6 +87,7 @@ class Petratrainer(LightningModule):
         dataset_info: Optional[str] = None,
         perturbation_modeling=None,
         base_path: str = '',
+        d_perturbation_embed=None,
         *args,
         **kwargs,
     ) -> None:
@@ -103,6 +104,7 @@ class Petratrainer(LightningModule):
             d_encoded_input=d_encoded_input,
             perturbation_modeling=perturbation_modeling,
             base_path=base_path,
+            d_perturbation_embed=d_perturbation_embed,
         )
         # self.target_device = torch.device(
         #     'cuda' if torch.cuda.is_available() else 'cpu'
@@ -405,7 +407,9 @@ class CountDecodertrainer(LightningModule):
             d_ff=checkpoint['hyper_parameters']['d_ff'],
             max_seq_length=checkpoint['hyper_parameters']['max_seq_length'],
             d_encoded_input=checkpoint['hyper_parameters']['d_encoded_input'],
+            d_perturbation_embed=checkpoint['hyper_parameters']['d_perturbation_embed'],
             perturbation_modeling=perturbation_modeling,
+            base_path=base_path,
         )
         state_dict = checkpoint['state_dict']
         self.save_hyperparameters()

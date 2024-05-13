@@ -161,6 +161,9 @@ def main() -> None:
     # Load and preprocess data
     print('Loading and preprocessing data...')
     src_dataset = load_from_disk(args.src_dataset_folder)
+    if 'perturbation_embedding' in src_dataset.features.keys():
+        d_perturbation_embed = len(src_dataset['perturbation_embedding'][0][0])
+    d_perturbation_embed = len(src_dataset['perturbation_embedding'][0][0])
     tgt_dataset = load_from_disk(args.tgt_dataset_folder)
     src_adata = sc.read_h5ad(args.src_adata_folder)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
@@ -301,6 +304,7 @@ def main() -> None:
             # lr_scheduler_factor=0.8,
             generate=args.generate,
             perturbation_modeling='activation', # activation repression or None (if not perturbation experiment)
+            d_perturbation_embed=d_perturbation_embed,
             base_path = args.base_path,
         )
     elif args.train_mode == 'count':
@@ -435,7 +439,7 @@ def main() -> None:
         mode=mode,
     )
     # deepspeed_strategy = DeepSpeedStrategy(stage=2)
-    deepspeed_strategy = DDPStrategy()   
+    deepspeed_strategy = DDPStrategy(find_unused_parameters=True)   
     trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=[
