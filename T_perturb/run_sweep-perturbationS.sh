@@ -15,4 +15,4 @@ conda activate Tperturb
 cwd=$(pwd)
 export WANDB_DIR=$cwd/wandb
 
-wandb agent irene-bp/ttransformer/r66kx3ym
+wandb agent irene-bp/ttransformer/vcml7k3y

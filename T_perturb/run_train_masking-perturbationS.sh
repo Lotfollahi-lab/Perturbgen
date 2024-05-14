@@ -1,6 +1,6 @@
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu
+#BSUB -gpu 'mode=exclusive_process:num=3' # request for exclusive access to gpu
 #BSUB -n 32 # number of cores
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb/T_perturb/T_perturb/ # working directory
@@ -8,7 +8,7 @@
 #BSUB -e ../../logs/%J.err # error file
 #BSUB -M 64GB  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>64GB] rusage[mem=64GB]' # RAM memory part 1. Default: 100MB
-#BSUB -J 4_train_masking_Norman2019 # job name
+#BSUB -J 7_train_masking_Norman2019 # job name
 
 # activate conda environment
 source ~/.bashrc
@@ -24,7 +24,6 @@ echo "--- Start computing model"
 # # Run python script for rna
 python3 $cwd/train.py \
 --train_mode masking \
---num_cells 0 \
 --split True \
 --splitting_mode gears-simulation \
 --src_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_GFpert_control.dataset \
@@ -35,7 +34,9 @@ python3 $cwd/train.py \
 --epochs 50 \
 --max_len 1750 \
 --petra_lr 0.001 \
---petra_wd 0.001 \
+--petra_wd 0.0001 \
+--num_layers 5 \
+--d_ff 16 \
 --mlm_probability 0.3 \
 --n_workers 32 \
 --seed 1 \

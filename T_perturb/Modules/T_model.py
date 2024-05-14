@@ -283,6 +283,7 @@ class Petra(nn.Module):
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
         self.perturbation_modeling = perturbation_modeling
+        self.tgt_vocab_size = tgt_vocab_size
 
         self.register_buffer('cls_token', torch.tensor([tgt_vocab_size], dtype=torch.long)) # start at 25426, because of 0 Python indexing
         total_vocab_size = tgt_vocab_size + 1
@@ -307,8 +308,8 @@ class Petra(nn.Module):
         )
         # self.decoder_layers = self.decoder_layers.to(self.device)
         if self.perturbation_modeling is not None:
-            if self.d_encoded_input != self.d_perturbation_embed:
-                self.fc_pertReshape = nn.Linear(self.d_perturbation_embed, self.d_encoded_input)
+            if d_encoded_input != d_perturbation_embed:
+                self.fc_pertReshape = nn.Linear(d_perturbation_embed, d_encoded_input)
             else:
                 self.fc_pertReshape = None
     
@@ -444,10 +445,10 @@ class Petra(nn.Module):
                 # add perturbation/s embeddings in the first positions
                 src_embedded[i,:2,:] = perturbation_embedding[i]
                 if len(perturbation_id[i]) == 1:
-                    src_attention_mask[i,0] = 0
-                    src_attention_mask[i,0] = 1
+                    src_attention_mask[i,0] = False
+                    src_attention_mask[i,1] = True
                 else:
-                    src_attention_mask[i,:2] = 0
+                    src_attention_mask[i,:2] = False
         
         # overwrite tgt input id with masked token (already done in the generate_mask function)
         # if not generate:

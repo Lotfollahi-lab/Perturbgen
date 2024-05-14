@@ -4,6 +4,7 @@ import argparse
 import os
 import re
 from datetime import datetime
+import uuid
 
 import pytorch_lightning as pl
 import scanpy as sc
@@ -404,21 +405,20 @@ def main() -> None:
     print(torch.cuda.device_count())
     if torch.cuda.device_count() > 1:
         # multi gpu training with group logging
-        init(
-            entity='irene-bonafonte',
+        wandb_logger = WandbLogger(
             project='ttransformer',
-            # id=unique_id,  # specify id to log to same run
-            group=log_path,  # all runs are saved in one group for multi gpu training
-            # dir=f'{args.base_path}/Projects/2024Mar_Tperturb/T_perturb/T_perturb',
+            name=f'{run_id}_{str(uuid.uuid4())[:6]}',
+            save_dir=log_path,
+            log_model='all',
         )  # noqa
     else:
-        init(
-            entity='irene-bonafonte', 
-            project='ttransformer', 
-            id=run_id,
+        wandb_logger = WandbLogger(
+            project='ttransformer',
+            name=f'{run_id}',
+            save_dir=log_path,
+            log_model='all',
         )  # noqa
 
-    wandb_logger = WandbLogger(log_model='all')
 
     # In this simple example we just check if a GPU is available.
     # For training larger models in a distributed settings, this needs more care.
