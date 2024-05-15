@@ -296,7 +296,6 @@ class Petra(nn.Module):
         self.token_embedding = nn.Embedding(
             total_vocab_size, d_model, padding_idx=0 #, device=self.device
         )
-
         print(self.token_embedding.weight.shape)
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
         # self.positional_encoding = self.positional_encoding.to(self.device)
@@ -812,3 +811,4 @@ if __name__ == '__main__':
         tgt_vocab_size=10,
         seq_length=12,
     )
+'''
