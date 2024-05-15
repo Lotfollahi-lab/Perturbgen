@@ -391,7 +391,7 @@ class CountDecodertrainer(LightningModule):
         iterations: int = 18,
         run_id: str = '',
         base_path: str = '',
-        tune_pretrained=True
+        tune_pretrained=True,
         *args,
         **kwargs,
     ):
