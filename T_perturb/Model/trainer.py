@@ -391,6 +391,7 @@ class CountDecodertrainer(LightningModule):
         iterations: int = 18,
         run_id: str = '',
         base_path: str = '',
+        tune_pretrained=True
         *args,
         **kwargs,
     ):
@@ -430,6 +431,7 @@ class CountDecodertrainer(LightningModule):
             d_model=self.d_model,
             dropout=dropout,
             perturbation_modeling=perturbation_modeling,
+            tune_pretrained=tune_pretrained,
         )
         self.weight_decay = weight_decay
         self.lr = lr

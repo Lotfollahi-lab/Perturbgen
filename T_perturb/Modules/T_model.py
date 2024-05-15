@@ -418,30 +418,10 @@ class Petra(nn.Module):
         original_lens,
         generate=False,
     ):
-        # append cls token at the beginning of the input ids
-        tgt_input_id = torch.cat(
-            (
-                self.cls_token.expand(tgt_input_id.shape[0], -1),
-                tgt_input_id,
-            ),
-            dim=1,
-        )
-
         src_attention_mask = src_input_id == 0
         # convert to numeric type
-        src_attention_mask_int = src_attention_mask.int()
-        tgt_pad = self.generate_pad(tgt_input_id)
-
-        if generate:
-            labels = None
-            tgt_mask = tgt_input_id == (self.mask_token)
-            tgt_mask = tgt_mask | (tgt_input_id == 0)
-        else:
-            tgt_input_id, labels = self.generate_mask(
-                tgt_input_id, tgt_pad, self.mlm_probability
-            )
-
-        src_embedded = self.encoder_layers(src_input_id, src_attention_mask_int)
+        src_attention_mask_int = (~src_attention_mask).int()
+        src_embedded = self.encoder_layers(src_input_id, src_attention_mask_int) # 0 for padded
 
         # add embedding at the begining of the src_embedding for perturbed genes and update mask
         if self.perturbation_modeling is not None:
@@ -461,14 +441,27 @@ class Petra(nn.Module):
                     src_attention_mask[i,1] = True
                 else:
                     src_attention_mask[i,:2] = False
-        
-        # overwrite tgt input id with masked token (already done in the generate_mask function)
-        # if not generate:
-        #    tgt_input_id = tgt_input_id.masked_fill(tgt_mask, self.mask_token)
-        tgt_embedded_mask = self.token_embedding(tgt_input_id)
-        # tgt_embedded_mask[tgt_mask, :] = self.masked_embed
 
-        tgt_embedded_mask = self.prepare_tokens(tgt_embedded_mask)
+        # append cls token at the beginning of the target input ids
+        tgt_input_id = torch.cat(
+            (
+                self.cls_token.expand(tgt_input_id.shape[0], -1),
+                tgt_input_id,
+            ),
+            dim=1,
+        )
+        tgt_pad = self.generate_pad(tgt_input_id)
+
+        # Mask tokens for learning
+        if generate:
+            labels = None
+        else:
+            tgt_input_id, labels = self.generate_mask(
+                tgt_input_id, tgt_pad, self.mlm_probability
+            )
+        # tokens to embeddings
+        tgt_embedded_mask = self.token_embedding(tgt_input_id)
+        tgt_embedded_mask = self.prepare_tokens(tgt_embedded_mask) # add positional encoding
 
         enc_output = src_embedded
         dec_embedding = tgt_embedded_mask
@@ -561,11 +554,13 @@ class CountDecoder(nn.Module):
         add_mask_id: bool = True,
         dropout: float = 0.0,
         perturbation_modeling=None,
+        tune_pretrained=True
     ):
         super(CountDecoder, self).__init__()
         self.pretrained_model = pretrained_model
-        # for _, param in self.pretrained_model.named_parameters():
-        #     param.requires_grad = False
+        if not tune_pretrained:
+            for _, param in self.pretrained_model.named_parameters():
+                param.requires_grad = False
         self.embed_dim = d_model
         if add_mask_id:
             total_vocab_size = tgt_vocab_size + 1  # CLS and masked token
@@ -824,4 +819,3 @@ if __name__ == '__main__':
         tgt_vocab_size=10,
         seq_length=12,
     )
-'''

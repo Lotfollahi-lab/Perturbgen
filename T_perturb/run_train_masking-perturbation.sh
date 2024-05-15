@@ -42,5 +42,6 @@ python3 $cwd/train.py \
 --num_layers 5 \
 --d_ff 16 \
 --seed 1 \
---base_path /lustre/groups/imm01/workspace/irene.bonafonte/
+--base_path /lustre/groups/imm01/workspace/irene.bonafonte/ \
+--tune_geneformer True \
 echo "--- Finished computing model"

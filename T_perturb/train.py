@@ -23,8 +23,6 @@ print('set up')
 
 # train_dataset = 'cytoimmgen_tokenised_stratified_pairing_16h.dataset'
 # use regex to find condition between degs and .dataset
-# dataset_info = re.findall(r'(?<=tokenised_).*(?=.dataset)', train_dataset)[0]
-dataset_info = 'hvg_pairing_GFpert'
 
 def get_args():
     """Get command line arguments."""
@@ -79,7 +77,7 @@ def get_args():
         type=str,
         default=f'Projects/2024Mar_Tperturb/'
         f'T_perturb/T_perturb/pp/res/dataset_hvg/'
-        f'cytoimmgen_tokenised_{dataset_info}.dataset',
+        f'cytoimmgen_tokenised_.dataset',
         help='path to tokenised activated data',
     )
 
@@ -99,7 +97,7 @@ def get_args():
         default=(
             f'Projects/2024Mar_Tperturb/T_perturb/'
             f'T_perturb/pp/res/h5ad_pairing_hvg/'
-            f'cytoimmgen_tokenisation_{dataset_info}.h5ad'
+            f'cytoimmgen_tokenisation_.h5ad'
         ),
         help='path to tgt',
     )
@@ -148,6 +146,7 @@ def get_args():
     parser.add_argument('--num_layers', type=int, default=1, help='number of layers')
     parser.add_argument('--d_ff', type=int, default=32, help='d_ff')
     parser.add_argument('--tune_geneformer', type=bool, default=False, help='Whether to tune the geneformer encoder')
+    parser.add_argument('--tune_pretrained', type=bool, default=True, help='Whether to tune the geneformer encoder')
     args = parser.parse_args()
     return args
 
@@ -156,6 +155,7 @@ def main() -> None:
     """Run training."""
     args = get_args()
     RANDOM_SEED = args.seed
+    dataset_info = re.findall(r'(?<=tokenised_).*(?=.dataset)', args.src_dataset_folder)[0].replace('_control','')
 
     # PyTorch Lightning allows to set all necessary seeds in one function call.
     pl.seed_everything(RANDOM_SEED)
@@ -326,6 +326,7 @@ def main() -> None:
             generate=args.generate,
             perturbation_modeling='activation',
             base_path = args.base_path,
+            tune_pretrained=args.tune_pretrained,
         )
 
     else:
