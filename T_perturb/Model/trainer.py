@@ -559,6 +559,7 @@ class CountDecodertrainer(LightningModule):
         self.metric = nn.ModuleDict({'mse': MeanSquaredError()})
         total_vocab_size = tgt_vocab_size
         self.time_steps = time_steps
+        self.total_time_steps = total_time_steps  # for generation
         for i in range(1, total_time_steps + 1):
             self.register_buffer(
                 f'cls_token_{str(i)}',
@@ -934,7 +935,7 @@ class CountDecodertrainer(LightningModule):
 
     def test_step(self, batch, *args, **kwargs):
         tgt_input_id_dict = {}
-        for i in self.time_steps:
+        for i in range(1, self.total_time_steps + 1):
             tgt_input_id_ = torch.cat(
                 (
                     getattr(self, f'cls_token_{str(i)}').expand(
@@ -1018,6 +1019,7 @@ class CountDecodertrainer(LightningModule):
 
     def on_test_epoch_end(self):
         if self.generate:
+            print('---Generating anndata')
             true_counts = torch.cat(self.test_dict['true_counts']).detach().cpu()
             pred_counts = torch.cat(self.test_dict['pred_counts']).detach().cpu()
             # create dict to var_list values
@@ -1037,19 +1039,12 @@ class CountDecodertrainer(LightningModule):
             pred_adata.obsm['cls_embeddings'] = cls_embeddings.numpy()
             true_adata = pred_adata.copy()
             true_adata.X = true_counts.numpy()
-
             # create output directory
             # save adata
             pred_adata.write_h5ad(
                 f'{self.output_dir}/generate_adata_{self.loss_mode}.h5ad'
             )
             emd = evaluate_emd(true_adata, pred_adata)
-            mmd = evaluate_mmd(
-                adata=true_adata,
-                pred_adata=pred_adata,
-                n_cells=1000,
-            )
-            print(mmd)
             self.log(
                 'test/emd',
                 emd['emd'].mean(),
@@ -1057,7 +1052,19 @@ class CountDecodertrainer(LightningModule):
                 prog_bar=True,
                 logger=True,
             )
-
+            # mmd = evaluate_mmd(
+            #     adata=true_adata,
+            #     pred_adata=pred_adata,
+            #     n_cells=5000,
+            # )
+            # self.log(
+            #     'test/mmd',
+            #     mmd['mmd'].mean(),
+            #     on_epoch=True,
+            #     prog_bar=True,
+            #     logger=True,
+            # )
+            print('---anndata generation completed')
         else:
             # return Pearson correlation coefficient
             true_counts = torch.cat(self.test_true_counts_list)

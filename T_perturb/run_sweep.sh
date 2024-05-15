@@ -4,8 +4,8 @@
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
-#BSUB -o logs/sweep/%J_masking.out # output file
-#BSUB -e logs/sweep/%J_masking.err # error file
+#BSUB -o logs/sweep/%J_sweep_masking.out # output file
+#BSUB -e logs/sweep/%J_sweep_masking.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
 #BSUB -J sweep_masking # job name
@@ -21,5 +21,5 @@ export WANDB_DIR=$cwd/wandb
 # run sweep
 echo "--- Start sweep"
 #paste wandb with sweep id
-wandb agent k-ly/ttransformer_sweep/hmlg5msn
+wandb agent k-ly/ttransformer_sweep/ii7mwkir
 echo "--- Finished sweep"

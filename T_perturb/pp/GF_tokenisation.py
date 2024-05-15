@@ -54,7 +54,8 @@ def get_args():
     )
     parser.add_argument(
         '--var_list',
-        type=list,
+        type=str,
+        nargs='+',
         # default=[
         #     'Cell_population',
         #     'Cell_type',

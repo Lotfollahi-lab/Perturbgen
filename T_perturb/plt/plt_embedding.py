@@ -27,16 +27,18 @@ def get_args():
         '--res_dir',
         type=str,
         default='./T_perturb/T_perturb/plt/res/eb',
+        # default='./T_perturb/T_perturb/plt/res/cytoimmgen',
         help='Dataset to use for analysis',
     )
     parser.add_argument(
         '--full_data_dir',
         type=str,
-        # default='./T_perturb/T_perturb/pp/res/h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad',
-        default=(
-            './T_perturb/T_perturb/pp/eb/res/'
-            'h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad'
-        ),
+        default='./T_perturb/T_perturb/pp/res/'
+        'h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad',
+        # default=(
+        #     './T_perturb/T_perturb/pp/eb/res/'
+        #     'h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad'
+        # ),
         help='Dataset to use for analysis',
     )
     args = parser.parse_args()
@@ -269,7 +271,7 @@ plt.close()
 
 # Plotting generate results
 # --------------------------------
-adata = sc.read_h5ad(f'{args.res_dir}/generate_adata.h5ad')
+adata = sc.read_h5ad(f'{args.res_dir}/generate_adata_zinb.h5ad')
 del adata.uns['Cell_type_colors']
 del adata.uns['Cell_population_colors']
 del adata.uns['Time_point_colors']
@@ -418,11 +420,14 @@ df_long.groupby(['Metric', 'Type'])['Value'].mean()
 
 # EB analysis
 # ------------------------------
-adata = sc.read_h5ad(f'{args.res_dir}/generate_adata_mse.h5ad')
+adata = sc.read_h5ad(f'{args.res_dir}/generate_adata_zinb.h5ad')
 adata_true = adata.copy()
 adata_true.X = adata_true.layers['counts']
 
 emd_list = []
 mmd_list = []
 emd_df = evaluate_emd(adata_true, adata, None)
-mmd_df = evaluate_mmd(adata_true, adata, None)
+mmd_df = evaluate_mmd(adata=adata_true, pred_adata=adata)
+# concatenate results
+emd_mmd_df = pd.concat([emd_df, mmd_df], axis=1)
+emd_mmd_df.to_csv(f'{args.res_dir}/emd_mmd_generate_zinb.csv')

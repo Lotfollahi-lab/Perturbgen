@@ -4,8 +4,8 @@
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
-#BSUB -o logs/masking_%J.out # output file
-#BSUB -e logs/masking_%J.err # error file
+#BSUB -o logs/tokenisation_%J.out # output file
+#BSUB -e logs/tokenisation_%J.err # error file
 #BSUB -M 100000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>100000] rusage[mem=100000]' # RAM memory part 1. Default: 100MB
 #BSUB -J GF_tokenisation # job name

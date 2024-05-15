@@ -115,6 +115,7 @@ class PetraDataModule(LightningDataModule):
         max_len: int = 2048,
         split: bool = False,
         time_steps: list = [1, 2],
+        total_time_steps: int = 4,
         src_counts: Optional[np.ndarray] = None,
         tgt_counts_dict: Optional[np.ndarray] = None,
         condition_keys: Optional[list] = None,
@@ -156,6 +157,7 @@ class PetraDataModule(LightningDataModule):
         self.val_indices = val_indices
         self.test_indices = test_indices
         self.time_steps = time_steps
+        self.total_time_steps = total_time_steps
         self.var_list = var_list
         # create condition encoder for categorical variables in
         # form of dictionary with key: value pairs based on condition_keys
@@ -216,6 +218,8 @@ class PetraDataModule(LightningDataModule):
                 else:
                     self.val_dataset = None
         if stage == 'test' or stage is None:
+            # use all time steps to provide as context
+            self.time_steps = list(range(1, self.total_time_steps + 1))
             if self.condition_encodings is not None:
                 self.test_dataset = PetraDataset(
                     src_dataset=self.src_dataset,

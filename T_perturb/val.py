@@ -139,9 +139,9 @@ def get_args():
     parser.add_argument(
         '--tgt_vocab_size',
         type=int,
-        default=1261,
+        # default=1261,
         # default=15280,
-        # default=1737,
+        default=1997,
         help='vocab size (max token id + 1) in dataset for padding',
     )
     parser.add_argument('--petra_lr', type=float, default=0.0001, help='learning rate')
@@ -462,7 +462,7 @@ def main() -> None:
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
         devices=1 if torch.cuda.is_available() else 0,  # infernce only on one gpu
-        limit_test_batches=10,
+        # limit_test_batches=10
     )
     # Finally, kick of the training process.
     if args.test_mode == 'masking':

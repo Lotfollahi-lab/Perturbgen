@@ -95,7 +95,7 @@ def mmd_loss_calc(source_features, target_features, gamma):
     return xx.mean() + yy.mean() - 2 * xy.mean()
 
 
-# Metrics below were taken from:
+# Metrics below were adapted CellOT and CPA from:
 # https://github.com/facebookresearch/CPA/blob/main/cpa/helper.py
 # Date of access: 2024.01.08
 
@@ -108,8 +108,10 @@ def evaluate_mmd(
     n_cells=None,
 ):
     mmd_list = []
-    if n_cells & (n_cells < adata.shape[0]):
-        sc.pp.subsample(pred_adata, n_obs=n_cells)
+    if n_cells:
+        if n_cells < adata.shape[0]:
+            sc.pp.subsample(pred_adata, n_obs=n_cells)
+            sc.pp.subsample(adata, n_obs=n_cells)
     if condition_key is not None:
         for cond in pred_adata.obs[condition_key].unique():
             adata_ = adata[adata.obs[condition_key] == cond].copy()

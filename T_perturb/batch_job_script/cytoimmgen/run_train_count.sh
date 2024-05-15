@@ -1,7 +1,7 @@
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu
-#BSUB -n 32 # number of cores
+#BSUB -gpu 'mode=exclusive_process:num=4' # request for exclusive access to gpu
+#BSUB -n 64 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
 #BSUB -o logs/count_%J.out # output file
@@ -27,8 +27,8 @@ python3 $cwd/train.py \
 --splitting_mode stratified \
 --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
 --ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/"\
-"20240508_2201_petra_train_masking_lr_0.001"\
-"_wd_0.001_batch_64_mlmp_0.15_tp_1-3.ckpt" \
+"20240515_1906_petra_train_masking_lr_0.001"\
+"_wd_0.0001_batch_32_mlmp_0.15_tp_1-2-4.ckpt" \
 --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset" \
 --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
 --src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
@@ -38,12 +38,12 @@ python3 $cwd/train.py \
 --max_len 300 \
 --epochs 100 \
 --tgt_vocab_size 1261 \
---petra_lr 0.001 \
---count_lr 0.0005 \
---petra_wd 0.001 \
---count_wd 0.001 \
+--petra_lr 0.0001 \
+--count_lr 0.00005 \
+--petra_wd 0.0001 \
+--count_wd 0.01 \
 --mlm_prob 0.15 \
---n_workers 32 \
+--n_workers 64 \
 --loss_mode zinb \
 --condition_keys Cell_culture_batch \
 --time_steps 1 3 \
