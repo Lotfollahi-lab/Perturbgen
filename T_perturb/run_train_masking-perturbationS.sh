@@ -8,7 +8,7 @@
 #BSUB -e ../../logs/%J.err # error file
 #BSUB -M 64GB  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>64GB] rusage[mem=64GB]' # RAM memory part 1. Default: 100MB
-#BSUB -J 4_train_masking_Norman2019 # job name
+#BSUB -J 9_gene2vec # job name
 
 # activate conda environment
 source ~/.bashrc
@@ -24,10 +24,9 @@ echo "--- Start computing model"
 # # Run python script for rna
 python3 $cwd/train.py \
 --train_mode masking \
---num_cells 0 \
 --split True \
 --splitting_mode gears-simulation \
---src_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_GFpert_control.dataset \
+--src_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_gene2vecpert_control.dataset \
 --tgt_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_perturbed.dataset \
 --src_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_control.h5ad \
 --tgt_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_perturbed.h5ad \
@@ -35,7 +34,9 @@ python3 $cwd/train.py \
 --epochs 50 \
 --max_len 1750 \
 --petra_lr 0.001 \
---petra_wd 0.001 \
+--petra_wd 0.0001 \
+--num_layers 5 \
+--d_ff 16 \
 --mlm_probability 0.3 \
 --n_workers 32 \
 --seed 1 \

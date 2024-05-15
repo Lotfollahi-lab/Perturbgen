@@ -1,67 +1,39 @@
 #!/bin/bash
-#SBATCH -J 3.4_test_counts_Norman2019
-#SBATCH -o ../../logs/3.4_Norman2019_test_counts.out
-#SBATCH -e ../../logs/3.4_Norman2019_test_counts.err
-#SBATCH -t 12:00:00
-#SBATCH -p gpu_p
-#SBATCH --gres=gpu:1
-#SBATCH --qos=gpu_normal
-#SBATCH -c 20
-#SBATCH --mem=160G
-#SBATCH --nice=10000
-#SBATCH --constraint=a100_80gb|a100_40gb
+#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -gpu 'mode=exclusive_process:num=1' # request for exclusive access to gpu
+#BSUB -n 32 # number of cores
+#BSUB -G team361 # groupname for billing
+#BSUB -cwd /lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb/T_perturb/T_perturb/ # working directory
+#BSUB -o ../../logs/%J.out # output file
+#BSUB -e ../../logs/%J.err # error file
+#BSUB -M 64GB  # RAM memory part 2. Default: 100MB
+#BSUB -R 'select[mem>64GB] rusage[mem=64GB]' # RAM memory part 1. Default: 100MB
+#BSUB -J 7.2_testGF # job name
 
 # activate conda environment
 source ~/.bashrc
 conda activate Tperturb
-cd /lustre/groups/imm01/workspace/irene.bonafonte/Projects/2024Mar_Tperturb/T_perturb/T_perturb
+module load cuda-12.1.1
+cd /lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb/T_perturb/T_perturb
 cwd=$(pwd)
 export WANDB_DIR=$cwd/wandb
-export WANDB_API_KEY=$(cat ~/wandb_api_key.txt)
-ulimit -n 4096
 
 # run script
 echo "--- Start testing model"
 # # Run python script for rna
 python3 $cwd/val.py \
---ckpt_masking_file  \
---ckpt_count_file  \
---num_cells 0 \
+--ckpt_masking_file 20240514_1843_petra_mode_masking_lr_0.001_wd_0.0001_batch_45_mlmp_0.3_seed1_hvg_pairing_GFpert.ckpt \
+--ckpt_count_file 20240514_2202_petra_mode_count_lr_0.001_wd_0.0001_batch_55_mse_seed1_hvg_pairing_GFpert.ckpt \
 --src_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_GFpert_control.dataset \
 --tgt_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_perturbed.dataset \
 --src_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_control.h5ad \
 --tgt_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_perturbed.h5ad \
---batch_size 32 \
+--batch_size 100 \
 --split True \
 --splitting_mode gears-simulation \
---epochs 15 \
 --max_len 1750 \
---mlm_probability 0.3 \
---n_workers 16 \
---loss_mode zinb \
---petra_lr 0.001 \
---count_lr 0.001 \
---petra_wd 0.001 \
---count_wd 0.001 \
---seed 1 \
---base_path /python3 $cwd/train.py \
---train_mode masking \
---num_cells 0 \
---split True \
---splitting_mode gears-simulation \
---src_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_GFpert_control.dataset \
---tgt_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_perturbed.dataset \
---src_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_control.h5ad \
---tgt_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_perturbed.h5ad \
---batch_size 32 \
---epochs 50 \
---max_len 1750 \
---petra_lr 0.001 \
---petra_wd 0.001 \
---count_wd 0.001 \
---mlm_probability 0.3 \
---n_workers 20 \
---seed 1 \
+--n_workers 32 \
 --loss_mode mse \
+--seed 1 \
 --base_path /lustre/scratch126/cellgen/team361/ip14
 echo "--- Finished computing model"

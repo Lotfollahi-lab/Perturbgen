@@ -444,10 +444,10 @@ class Petra(nn.Module):
                 # add perturbation/s embeddings in the first positions
                 src_embedded[i,:2,:] = perturbation_embedding[i]
                 if len(perturbation_id[i]) == 1:
-                    src_attention_mask[i,0] = 0
-                    src_attention_mask[i,0] = 1
+                    src_attention_mask[i,0] = False
+                    src_attention_mask[i,1] = True
                 else:
-                    src_attention_mask[i,:2] = 0
+                    src_attention_mask[i,:2] = False
         
         # overwrite tgt input id with masked token (already done in the generate_mask function)
         # if not generate:
@@ -506,7 +506,7 @@ class CountHead(nn.Module):
                 # nn.Linear(d_model, d_model),
                 # nn.LeakyReLU(),
                 # nn.Linear(d_model, n_genes),
-                nn.Linear(n_genes, n_genes),
+                nn.Linear(d_model, n_genes),
                 nn.Sigmoid(),
             )
 
@@ -685,10 +685,10 @@ class CountDecoder(nn.Module):
         count_outputs = self.decoder.forward(outputs['cls_embedding'])
 
         # set counts to 0 based on zero counts probability - To do: should we do this?
-        if 'zero_probs' in count_outputs.keys():
-            bernoulli = torch.distributions.Bernoulli(probs=count_outputs['zero_probs'])
-            zeros = bernoulli.sample() # sample from bernoulli probabilities
-            count_outputs['count_lognorm'][zeros==0] = 0 # set 0 counts to 0            
+        # if 'zero_probs' in count_outputs.keys():
+        #    bernoulli = torch.distributions.Bernoulli(probs=count_outputs['zero_probs'])
+        #    zeros = bernoulli.sample() # sample from bernoulli probabilities
+        #    count_outputs['count_lognorm'][zeros==0] = 0 # set 0 counts to 0            
 
         return count_outputs
 
@@ -811,3 +811,4 @@ if __name__ == '__main__':
         tgt_vocab_size=10,
         seq_length=12,
     )
+'''

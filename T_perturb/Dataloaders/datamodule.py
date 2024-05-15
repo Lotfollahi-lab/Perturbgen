@@ -265,7 +265,7 @@ class PetraDataModule(LightningDataModule):
 
             if any('perturbation_id' in item['src_dataset'].keys() for item in batch):
                 perturbation_id = [d['src_dataset']['perturbation_id'] for d in batch]
-                perturbation_embedding = [torch.stack([torch.tensor(embed) for embed in d['src_dataset']['perturbation_embedding']]) for d in batch]
+                perturbation_embedding = torch.stack([torch.stack([torch.tensor(embed) for embed in d['src_dataset']['perturbation_embedding']]) for d in batch])
 
             else:
                 perturbation_id = None
