@@ -147,6 +147,7 @@ def get_args():
     )
     parser.add_argument('--num_layers', type=int, default=1, help='number of layers')
     parser.add_argument('--d_ff', type=int, default=32, help='d_ff')
+    parser.add_argument('--tune_geneformer', type=bool, default=False, help='Whether to tune the geneformer encoder')
     args = parser.parse_args()
     return args
 
@@ -307,6 +308,7 @@ def main() -> None:
             perturbation_modeling='activation', # activation repression or None (if not perturbation experiment)
             d_perturbation_embed=d_perturbation_embed,
             base_path = args.base_path,
+            tune_geneformer=args.tune_geneformer,
         )
     elif args.train_mode == 'count':
         decoder_module = CountDecodertrainer(

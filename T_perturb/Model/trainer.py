@@ -88,6 +88,7 @@ class Petratrainer(LightningModule):
         perturbation_modeling=None,
         base_path: str = '',
         d_perturbation_embed=None,
+        tune_geneformer=False,
         *args,
         **kwargs,
     ) -> None:
@@ -105,6 +106,7 @@ class Petratrainer(LightningModule):
             perturbation_modeling=perturbation_modeling,
             base_path=base_path,
             d_perturbation_embed=d_perturbation_embed,
+            tune_geneformer=tune_geneformer,
         )
         # self.target_device = torch.device(
         #     'cuda' if torch.cuda.is_available() else 'cpu'

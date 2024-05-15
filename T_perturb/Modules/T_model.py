@@ -202,22 +202,34 @@ class Geneformerwrapper(nn.Module):
         model_path='/lustre/groups/imm01/workspace/irene.bonafonte/Software/Geneformer/geneformer-12L-30M',
         output_attentions=False,
         output_hidden_states=True,
+        tune=False,
     ):
         super(Geneformerwrapper, self).__init__()
+        self.tune = tune
         self.model = BertForMaskedLM.from_pretrained(
             model_path,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
         )
-        for param in self.model.parameters():
-            param.requires_grad = False
+        if self.tune:
+            for param in self.model.parameters():
+                param.requires_grad = True            
+        else:
+            for param in self.model.parameters():
+                param.requires_grad = False
 
     def forward(self, src_input_id, src_attention_mask):
-        with torch.no_grad():
+        if self.tune:
             outputs = self.model.forward(
                 input_ids=src_input_id, attention_mask=src_attention_mask
             )
             embs = outputs.hidden_states[-1]
+        else:
+            with torch.no_grad():
+                outputs = self.model.forward(
+                    input_ids=src_input_id, attention_mask=src_attention_mask
+                )
+                embs = outputs.hidden_states[-1]
 
         return embs
 
@@ -276,7 +288,8 @@ class Petra(nn.Module):
         d_encoded_input=None,   
         d_perturbation_embed=None,     
         perturbation_modeling=None,
-        base_path: str = '/lustre/groups/imm01/workspace/irene.bonafonte'
+        base_path: str = '/lustre/groups/imm01/workspace/irene.bonafonte',
+        tune_geneformer=False,
     ):
         super(Petra, self).__init__()
         # self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -299,7 +312,7 @@ class Petra(nn.Module):
         print(self.token_embedding.weight.shape)
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
         # self.positional_encoding = self.positional_encoding.to(self.device)
-        self.encoder_layers = Geneformerwrapper(model_path=f'{base_path}/Software/Geneformer/geneformer-12L-30M')
+        self.encoder_layers = Geneformerwrapper(model_path=f'{base_path}/Software/Geneformer/geneformer-12L-30M', tune=tune_geneformer)
         # self.encoder_layers = self.encoder_layers.to(self.device)
 
         self.decoder_layers = nn.ModuleList(
