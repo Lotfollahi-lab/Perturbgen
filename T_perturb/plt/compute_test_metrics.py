@@ -8,8 +8,9 @@ from typing import Dict
 from anndata import AnnData
 from gears.inference import compute_metrics, deeper_analysis, non_dropout_analysis
 
-model = '20240513_1715_ttransformer'
-
+model = '20240515_1006_ttransformer'
+# model = '20240515_0736_ttransformer'
+# model = '20240513_1715_ttransformer'
 # model = '20240507_1018_ttransformer' # mse
 base_path = '/lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb'
 data_path = 'datasets/Norman2019'
