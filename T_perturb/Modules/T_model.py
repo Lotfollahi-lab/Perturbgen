@@ -530,6 +530,8 @@ class CountHead(nn.Module):
             count_outpus['count_dropout'] = self.linear_output(mlp_output)
         elif self.loss_mode == 'nb':
             count_outpus['count_mean'] = self.softmax_output(mlp_output)
+        # return cls as well
+        count_outpus['cls_embedding'] = x
         return count_outpus
 
 
@@ -603,7 +605,13 @@ class CountDecoder(nn.Module):
         temperature=2.0,  # keep in range 2.0-3.0
         # self_cond_prob=0.9,
         timesteps=18,  # optimal iterations found in maskgit paper
+        max_len,
     ):
+        # generate sequences of max_len
+        tgt_input_id_ = torch.ones_like(tgt_input_id)
+        if tgt_input_id_.shape[1] > max_len:
+            #set the rest of the tokens to zero
+            tgt_input_id_[:, max_len:] = 0        
         tgt_pad = self.generate_pad(tgt_input_id)
 
         batch_size = tgt_input_id.shape[0]
