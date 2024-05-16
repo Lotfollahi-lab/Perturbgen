@@ -530,6 +530,8 @@ class CountHead(nn.Module):
             count_outpus['count_dropout'] = self.linear_output(mlp_output)
         elif self.loss_mode == 'nb':
             count_outpus['count_mean'] = self.softmax_output(mlp_output)
+        # return cls as well
+        count_outpus['cls_embedding'] = x
         return count_outpus
 
 

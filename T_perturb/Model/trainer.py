@@ -489,6 +489,8 @@ class CountDecodertrainer(LightningModule):
         self.test_pred_counts_list: List[int] = []
         self.test_tgtcell_idx: List[int] = []
         self.test_srccell_idx: List[int] = []
+        self.cls_embeddings_list: List[torch.tensor] = []
+
 
         if self.perturbation_modeling is None:
             self.val_tgt_cell_type_list: List[str] = []
@@ -521,8 +523,9 @@ class CountDecodertrainer(LightningModule):
         batch: Dict[str, torch.Tensor],
     ):
         true_counts = batch['tgt_counts'].float()
-        batch_size_factor = np.array(batch['size_factor'])
-        batch_size_factor = torch.tensor(batch_size_factor)
+        batch_size_factor = batch['size_factor']
+        # batch_size_factor = np.array(batch['size_factor'])
+        # batch_size_factor = torch.tensor(batch_size_factor)
         # batch_size_factor = batch_size_factor.to(self.target_device)
 
         if self.loss_mode == 'mse':
@@ -769,6 +772,7 @@ class CountDecodertrainer(LightningModule):
                 logger=True,
                 batch_size=batch['tgt_input_ids'].shape[0],
             )
+            self.cls_embedding_list.append(outputs['cls_embedding'])
         else:
             outputs = self.forward(batch)
             count_loss, pred_count = self.compute_count_loss(outputs, batch)
@@ -805,6 +809,7 @@ class CountDecodertrainer(LightningModule):
         ctrl_counts = torch.cat(self.test_ctrl_counts_list).detach().cpu()
         pred_cts_delta = torch.stack(self.test_pred_counts_ctrl_delta_deg).detach().cpu()
         true_cts_delta = torch.stack(self.test_true_counts_ctrl_delta_deg).detach().cpu()
+        cls_embeddings = torch.cat(self.cls_embedding_list).detach().cpu()
 
         perturbation_list = ['+'.join([str(x) for x in el]) for el in list(itertools.chain.from_iterable(self.test_perturbation_list))]
         test_obs = pd.DataFrame(
@@ -815,6 +820,7 @@ class CountDecodertrainer(LightningModule):
             }
         )
         pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs)
+        pred_adata.obsm['cls_embeddings'] = cls_embeddings.numpy()
         pred_adata.layers['tgt_counts'] = true_counts.numpy()
         pred_adata.layers['src_counts'] = ctrl_counts.numpy()
 
