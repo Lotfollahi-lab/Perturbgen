@@ -509,8 +509,8 @@ class CountDecodertrainer(LightningModule):
             state_dict_ = self.modify_ckpt_state_dict(checkpoint, 'transformer.')
             pretrained_model.load_state_dict(state_dict_, strict=False)
             # set parameters to not trainable
-            for param in pretrained_model.parameters():
-                param.requires_grad = False
+            # for param in pretrained_model.parameters():
+            #     param.requires_grad = False
 
         self.decoder = CountDecoder(
             pretrained_model=pretrained_model,
@@ -694,8 +694,6 @@ class CountDecodertrainer(LightningModule):
                 count_dict[time_step] = count_ouput['count_lognorm']
             elif self.loss_mode in ['zinb', 'nb']:
                 dec_mean_gamma = count_ouput['count_mean']
-                print(dec_mean_gamma)
-                print(dec_mean_gamma.size())
 
                 dec_mean = dec_mean_gamma * batch_size_factor.unsqueeze(1).expand(
                     dec_mean_gamma.size(0), dec_mean_gamma.size(1)
@@ -708,48 +706,24 @@ class CountDecodertrainer(LightningModule):
                         theta=dispersion,
                         zi_logits=dec_dropout,
                     )
+                    loss = -zinb_distribution.log_prob(true_counts).sum(dim=-1).mean()
                     if n_samples == 1:
-                        loss = (
-                            -zinb_distribution.log_prob(true_counts).sum(dim=-1).mean()
-                        )
-                        count_dict[time_step] = dec_mean_gamma
-                        # loss = (
-                        #     -zinb(
-                        #         x=true_counts,
-                        #         mu=dec_mean,
-                        #         theta=dispersion,
-                        #         pi=dec_dropout
-                        #     )
-                        #     .sum(dim=-1)
-                        #     .mean()
-                        # )
+                        count_dict[time_step] = dec_mean
                     else:
                         # sample from distribution
-                        x_pred = []
-                        for _ in range(n_samples):
-                            x_pred.append(zinb_distribution.sample(true_counts.shape))
-                            print(x_pred)
-                        raise
-                        x_pred = torch.stack(x_pred)
+                        x_pred = zinb_distribution.sample((n_samples,))
                         count_dict[time_step] = x_pred.mean(dim=0)
+                        print(true_counts.shape)
+                        print(count_dict[time_step].shape)
 
                 elif self.loss_mode == 'nb':
                     nb_distribution = NegativeBinomial(mu=dec_mean, theta=dispersion)
+                    loss = -nb_distribution.log_prob(true_counts).sum(dim=-1).mean()
                     if n_samples == 1:
-                        loss = -nb_distribution.log_prob(true_counts).sum(dim=-1).mean()
+                        count_dict[time_step] = dec_mean
                     else:
-                        x_pred = []
-                        for _ in range(n_samples):
-                            x_pred.append(nb_distribution.sample(true_counts.shape))
-                        x_pred_stacked = torch.stack(x_pred)
-                        count_dict[time_step] = x_pred_stacked.mean(dim=0)
-                    # loss = (
-
-                    #     -nb(x=true_counts, mu=dec_mean, theta=dispersion)
-                    #     .sum(dim=-1)
-                    #     .mean()
-                    # )
-                count_dict[time_step] = dec_mean
+                        x_pred = nb_distribution.sample((n_samples,))
+                        count_dict[time_step] = x_pred.mean(dim=0)
             loss_list.append(loss)
         loss = torch.sum(torch.stack(loss_list))
         return loss, count_dict

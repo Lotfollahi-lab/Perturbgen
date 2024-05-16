@@ -26,8 +26,8 @@ def get_args():
     parser.add_argument(
         '--res_dir',
         type=str,
-        # default='./T_perturb/T_perturb/plt/res/eb',
-        default='./T_perturb/T_perturb/plt/res/cytoimmgen',
+        default='./T_perturb/T_perturb/plt/res/eb',
+        # default='./T_perturb/T_perturb/plt/res/cytoimmgen',
         help='Dataset to use for analysis',
     )
     parser.add_argument(
@@ -429,6 +429,10 @@ emd_list = []
 mmd_list = []
 emd_df = evaluate_emd(adata_true, adata, None)
 mmd_df = evaluate_mmd(adata=adata_true, pred_adata=adata)
+sc.pp.normalize_total(adata, target_sum=1e4)
+sc.pp.log1p(adata)
+sc.pp.normalize_total(adata_true, target_sum=1e4)
+sc.pp.log1p(adata_true)
 # concatenate results
 emd_mmd_df = pd.concat([emd_df, mmd_df], axis=1)
 emd_mmd_df.to_csv(f'{args.res_dir}/emd_mmd_generate_zinb.csv')
