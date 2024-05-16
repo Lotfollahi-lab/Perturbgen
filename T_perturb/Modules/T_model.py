@@ -794,8 +794,6 @@ class CountDecoder(nn.Module):
         tgt_input_id_dict,
         cls_positions=None,
     ):
-        # find length for a single time step
-        # how can I run this model in eval mode
         outputs = self.pretrained_model(
             src_input_id=src_input_id,
             tgt_input_id_dict=tgt_input_id_dict,
@@ -803,7 +801,7 @@ class CountDecoder(nn.Module):
         )
 
         count_outputs = {}
-        for i, t in enumerate(self.time_steps):
+        for _, t in enumerate(self.time_steps):
             # cls_position = cls_positions[i]
             # cls_embedding = outputs['dec_embedding'][:, cls_position, :]
             cls_embedding = outputs['mean_embedding'][t]
@@ -887,6 +885,7 @@ class CountDecoder(nn.Module):
         for i, t in enumerate(self.time_steps):
             cls_position = cls_positions[i]
             cls_embedding = outputs['dec_embedding'][:, cls_position, :]
+            # cls_embedding = outputs['mean_embedding'][t]
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
             count_outputs[f'count_output_t{t}'] = count_outputs_tmp
             count_outputs[f'cls_embedding_t{t}'] = cls_embedding

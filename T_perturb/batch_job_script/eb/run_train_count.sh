@@ -17,7 +17,7 @@ module load cuda-12.1.1
 source /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/.petra_cuda12/bin/activate
 cwd=$(pwd)
 
-# export WANDB_DIR=$cwd/wandb
+export WANDB_DIR=$cwd/wandb
 # Run python script to train count decoder
 echo '--- Start computing model'
 # python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/train.py \
@@ -44,7 +44,7 @@ python3 $cwd/train.py \
 --count_wd 0.01 \
 --mlm_prob 0.15 \
 --n_workers 64 \
---num_layers 2 \
+--num_layers 1 \
 --d_ff 16 \
 --loss_mode zinb \
 --time_steps 1 2 4 \

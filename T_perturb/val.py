@@ -360,6 +360,7 @@ def main() -> None:
             total_time_steps=n_total_timepoints,
             gene_names=tgt_adata_tmp.var['gene_name'],
             output_dir=args.output_dir,
+            var_list=args.var_list,
         )
     elif args.test_mode == 'count':
         decoder_module = CountDecodertrainer(
@@ -387,6 +388,8 @@ def main() -> None:
             iterations=args.iterations,
             mask_scheduler=args.mask_scheduler,
             output_dir=args.output_dir,
+            var_list=args.var_list,
+            n_samples=20,
         )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')
@@ -420,6 +423,7 @@ def main() -> None:
         val_indices=None,
         test_indices=test_indices,
         time_steps=args.time_steps,
+        total_time_steps=n_total_timepoints,
         var_list=args.var_list,
     )
 
@@ -462,7 +466,6 @@ def main() -> None:
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
         devices=1 if torch.cuda.is_available() else 0,  # infernce only on one gpu
-        # limit_test_batches=10
     )
     # Finally, kick of the training process.
     if args.test_mode == 'masking':

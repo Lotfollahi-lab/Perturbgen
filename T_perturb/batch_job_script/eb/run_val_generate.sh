@@ -29,7 +29,7 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --splitting_mode random \
 --generate True \
 --ckpt_count_path "./T_perturb/T_perturb/Model/checkpoints/"\
-"20240515_1927_petra_train_count_lr_5e-05"\
+"20240516_1028_petra_train_count_lr_5e-05"\
 "_wd_0.01_batch_32_zinb_tp_1-2-4.ckpt" \
 --output_dir "./T_perturb/T_perturb/plt/res/eb" \
 --src_dataset './T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset' \

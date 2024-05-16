@@ -26,8 +26,8 @@ def get_args():
     parser.add_argument(
         '--res_dir',
         type=str,
-        default='./T_perturb/T_perturb/plt/res/eb',
-        # default='./T_perturb/T_perturb/plt/res/cytoimmgen',
+        # default='./T_perturb/T_perturb/plt/res/eb',
+        default='./T_perturb/T_perturb/plt/res/cytoimmgen',
         help='Dataset to use for analysis',
     )
     parser.add_argument(
@@ -88,15 +88,16 @@ adata_cls = sc.read_h5ad(f'{args.res_dir}/cls_embeddings_cosine_similarity.h5ad'
 # plot umap of cls embeddings
 fig, ax = plt.subplots(figsize=(5, 5))
 # create umap for each time point separately
-for time_point in adata_cls.obs['time_point'].cat.categories:
-    adata_time = adata_cls[adata_cls.obs['time_point'] == time_point]
+for time_point in adata_cls.obs['Time_point'].cat.categories:
+    adata_time = adata_cls[adata_cls.obs['Time_point'] == time_point]
     sc.pp.neighbors(adata_time, n_neighbors=15, use_rep='cls_embeddings')
     sc.tl.umap(adata_time)
     sc.pl.embedding(
         adata_time,
         basis='X_umap',
         color=[
-            'cell_type',
+            'Cell_type',
+            'Cell_population',
             'batch',
         ],
         ncols=2,
@@ -105,7 +106,7 @@ for time_point in adata_cls.obs['time_point'].cat.categories:
         show=False,
     )
     plt.savefig(
-        f'./res/Petra/cls_embeddings_umap_{time_point}.pdf',
+        f'{args.res_dir}/cls_embeddings_umap_{time_point}.pdf',
         bbox_inches='tight',
     )
     plt.close()
@@ -117,9 +118,9 @@ sc.pl.embedding(
     adata_cls,
     basis='X_umap',
     color=[
-        'cell_type',
-        'cell_population',
-        'time_point',
+        'Cell_type',
+        'Cell_population',
+        'Time_point',
         'batch',
     ],
     ncols=2,

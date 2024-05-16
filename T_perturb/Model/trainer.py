@@ -18,6 +18,7 @@ import torch.optim as optim
 
 # from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningModule
+from scvi.distributions import NegativeBinomial, ZeroInflatedNegativeBinomial
 from torchmetrics import (
     CosineSimilarity,
     MeanSquaredError,
@@ -27,11 +28,7 @@ from torchmetrics.text import Perplexity
 
 from T_perturb.Model.metric import evaluate_emd, evaluate_mmd  # pearson,
 from T_perturb.Modules.T_model import CountDecoder, Petra
-from T_perturb.src.losses import (
-    mse_loss,
-    nb,
-    zinb,
-)
+from T_perturb.src.losses import mse_loss
 
 # from deepspeed.ops.adam import FusedAdam
 
@@ -92,6 +89,7 @@ class Petratrainer(LightningModule):
         time_steps: list = [1, 2],
         total_time_steps: int = 3,
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
+        var_list: List[str] = ['Time_point'],
         gene_names: Optional[List[str]] = None,
         *args,
         **kwargs,
@@ -137,16 +135,17 @@ class Petratrainer(LightningModule):
         self.return_embeddings = return_embeddings
         self.generate = generate
         self.tgt_vocab_size = tgt_vocab_size
-
         self.time_steps = time_steps
+        self.var_list = var_list
+        self.test_dict: Dict[str, List[Any]] = {
+            'true_counts': [],
+            'cls_embeddings': [],
+            'cosine_similarities': [],
+            'batch': [],
+        }
+        for var in self.var_list:
+            self.test_dict[var] = []
 
-        self.cls_embeddings_list: List[torch.tensor] = []
-        self.cosine_similarity_list: List[torch.tensor] = []
-        self.tgt_counts_list: List[torch.tensor] = []
-        self.time_point_list: List[str] = []
-        self.cell_population_list: List[str] = []
-        self.cell_type_list: List[str] = []
-        self.batch_list: List[int] = []
         self.marker_genes = None
         self.gene_names = gene_names
         # register buffer for CLS
@@ -330,6 +329,7 @@ class Petratrainer(LightningModule):
                 cls_position = outputs['cls_positions'][i]
                 cls_embeddings = outputs['dec_embedding'][:, cls_position, :]
                 token_ids = batch[f'tgt_input_ids_t{time_step}']
+                # exclude cls token from gene embeddings
                 if time_step == max(self.time_steps):
                     gene_embeddings = outputs['dec_embedding'][
                         :, (cls_position + 1) :, :
@@ -348,7 +348,6 @@ class Petratrainer(LightningModule):
                     )
                     cosine_similarity_list.append(tmp_consine_similarity)
                 cosine_similarity_list = torch.stack(cosine_similarity_list)
-
                 marker_genes = [
                     'IL7R',
                     'CD52',
@@ -415,50 +414,42 @@ class Petratrainer(LightningModule):
                         cond_select_markers[0], cond_select_markers[1]
                     ]
                 del gene_embeddings
-                self.tgt_counts_list.append(
-                    batch[f'tgt_counts_t{time_step}'].detach().cpu()
-                )
-                self.cls_embeddings_list.append(cls_embeddings.detach().cpu())
-                self.cosine_similarity_list.append(emb.detach().cpu())
-                self.time_point_list.append(batch[f'tgt_time_point_t{time_step}'])
-                self.cell_population_list.append(
-                    batch[f'tgt_cell_population_t{time_step}']
-                )
-                self.cell_type_list.append(batch['tgt_cell_type'])
-                self.batch_list.append(batch['combined_batch'].detach().cpu())
+                self.test_dict['true_counts'].append(batch[f'tgt_counts_t{time_step}'])
+                self.test_dict['cls_embeddings'].append(cls_embeddings)
+                self.test_dict['cosine_similarities'].append(emb)
+                self.test_dict['batch'].append(batch['combined_batch'])
+                for var in self.var_list:
+                    self.test_dict[var].append(batch[f'{var}_t{time_step}'])
 
             # self.tgt_output['cell_type'].append(batch['tgt_cell_type'])
             # self.tgt_output['cell_population'].append(batch['tgt_cell_population'])
             # self.time_point = batch['tgt_time_point']
 
     def on_test_epoch_end(self):
-        # return F1 score and accuracy
         if self.return_embeddings:
             print('Start saving embeddings -------------------')
-            self.cls_embeddings_list = torch.cat(self.cls_embeddings_list)
-            self.tgt_counts_list = torch.cat(self.tgt_counts_list)
-            self.cosine_similarity_list = torch.cat(self.cosine_similarity_list)
-            self.time_point_list = np.concatenate(self.time_point_list)
-            self.cell_population_list = np.concatenate(self.cell_population_list)
-            self.cell_type_list = np.concatenate(self.cell_type_list)
-            self.batch_list = torch.cat(self.batch_list)
+            cls_embeddings = torch.cat(self.test_dict['cls_embeddings']).detach().cpu()
+            true_counts = torch.cat(self.test_dict['true_counts']).detach().cpu()
+            cosine_similarities = (
+                torch.cat(self.test_dict['cosine_similarities']).detach().cpu()
+            )
+            batch = torch.cat(self.test_dict['batch']).detach().cpu()
+            var_dict = {}
+            for var in self.var_list:
+                var_dict[var] = np.concatenate(self.test_dict[var])
+            test_obs = pd.DataFrame(var_dict)
+            test_obs['batch'] = np.array(batch)
+            print(test_obs)
             adata = ad.AnnData(
-                X=self.tgt_counts_list.numpy(),
-                obs=pd.DataFrame(
-                    {
-                        'cell_type': self.cell_type_list,
-                        'cell_population': self.cell_population_list,
-                        'time_point': self.time_point_list,
-                        'batch': self.batch_list.numpy(),
-                    }
-                ),
-                obsm={'cls_embeddings': self.cls_embeddings_list.numpy()},
+                X=true_counts.numpy(),
+                obs=test_obs,
+                obsm={'cls_embeddings': cls_embeddings.numpy()},
             )
             adata.var_names = self.gene_names
             # self.adata.obsm[marker_genes[i]] = emb.numpy()
             # create a dataframe and annotate columns as marker genes
             df = pd.DataFrame(
-                self.cosine_similarity_list.numpy(), columns=self.marker_genes.keys()
+                cosine_similarities.numpy(), columns=self.marker_genes.keys()
             )
 
             df.index = adata.obs_names
@@ -494,6 +485,7 @@ class CountDecodertrainer(LightningModule):
         total_time_steps: int = 3,
         temperature: float = 2.0,
         iterations: int = 18,
+        n_samples: int = 1,
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         mask_scheduler: Optional[str] = 'cosine',
         *args,
@@ -581,7 +573,7 @@ class CountDecodertrainer(LightningModule):
             'pred_counts': [],
             'cls_embeddings': [],
         }
-
+        self.n_samples = n_samples
         self.var_list = var_list
         for var in self.var_list:
             self.test_dict[var] = []
@@ -678,6 +670,7 @@ class CountDecodertrainer(LightningModule):
         self,
         outputs: Dict[str, torch.Tensor],
         batch: Dict[str, torch.Tensor],
+        n_samples: int = 1,
     ):
         loss_list = []
         count_dict = {}
@@ -701,26 +694,61 @@ class CountDecodertrainer(LightningModule):
                 count_dict[time_step] = count_ouput['count_lognorm']
             elif self.loss_mode in ['zinb', 'nb']:
                 dec_mean_gamma = count_ouput['count_mean']
+                print(dec_mean_gamma)
+                print(dec_mean_gamma.size())
+
                 dec_mean = dec_mean_gamma * batch_size_factor.unsqueeze(1).expand(
                     dec_mean_gamma.size(0), dec_mean_gamma.size(1)
                 )
 
                 if self.loss_mode == 'zinb':
                     dec_dropout = count_ouput['count_dropout']
-                    loss = (
-                        -zinb(
-                            x=true_counts, mu=dec_mean, theta=dispersion, pi=dec_dropout
-                        )
-                        .sum(dim=-1)
-                        .mean()
+                    zinb_distribution = ZeroInflatedNegativeBinomial(
+                        mu=dec_mean,
+                        theta=dispersion,
+                        zi_logits=dec_dropout,
                     )
+                    if n_samples == 1:
+                        loss = (
+                            -zinb_distribution.log_prob(true_counts).sum(dim=-1).mean()
+                        )
+                        count_dict[time_step] = dec_mean_gamma
+                        # loss = (
+                        #     -zinb(
+                        #         x=true_counts,
+                        #         mu=dec_mean,
+                        #         theta=dispersion,
+                        #         pi=dec_dropout
+                        #     )
+                        #     .sum(dim=-1)
+                        #     .mean()
+                        # )
+                    else:
+                        # sample from distribution
+                        x_pred = []
+                        for _ in range(n_samples):
+                            x_pred.append(zinb_distribution.sample(true_counts.shape))
+                            print(x_pred)
+                        raise
+                        x_pred = torch.stack(x_pred)
+                        count_dict[time_step] = x_pred.mean(dim=0)
 
                 elif self.loss_mode == 'nb':
-                    loss = (
-                        -nb(x=true_counts, mu=dec_mean, theta=dispersion)
-                        .sum(dim=-1)
-                        .mean()
-                    )
+                    nb_distribution = NegativeBinomial(mu=dec_mean, theta=dispersion)
+                    if n_samples == 1:
+                        loss = -nb_distribution.log_prob(true_counts).sum(dim=-1).mean()
+                    else:
+                        x_pred = []
+                        for _ in range(n_samples):
+                            x_pred.append(nb_distribution.sample(true_counts.shape))
+                        x_pred_stacked = torch.stack(x_pred)
+                        count_dict[time_step] = x_pred_stacked.mean(dim=0)
+                    # loss = (
+
+                    #     -nb(x=true_counts, mu=dec_mean, theta=dispersion)
+                    #     .sum(dim=-1)
+                    #     .mean()
+                    # )
                 count_dict[time_step] = dec_mean
             loss_list.append(loss)
         loss = torch.sum(torch.stack(loss_list))
@@ -962,7 +990,12 @@ class CountDecodertrainer(LightningModule):
                 iterations=self.iterations,
                 cls_positions=cls_positions,
             )
-            count_loss, pred_counts_dict = self.compute_count_loss(outputs, batch)
+            count_loss, pred_counts_dict = self.compute_count_loss(
+                outputs=outputs,
+                batch=batch,
+                n_samples=self.n_samples,
+            )
+
             self.log(
                 'test/loss',
                 count_loss,
