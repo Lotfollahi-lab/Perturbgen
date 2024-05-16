@@ -31,6 +31,7 @@ python3 $cwd/train.py \
 --train_mode masking \
 --split True \
 --splitting_mode gears-simulation \
+--ckpt_file 20240515_1932_petra_mode_masking_lr_0.001_wd_0.0001_batch_16_mlmp_0.3_seed1_hvg_pairing_GFpert.ckpt \
 --src_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_GFpert_control.dataset \
 --tgt_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_perturbed.dataset \
 --src_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_control.h5ad \
@@ -46,5 +47,6 @@ python3 $cwd/train.py \
 --n_workers 32 \
 --seed 1 \
 --base_path /lustre/scratch126/cellgen/team361/ip14 \
---tune_geneformer True
+--tune_geneformer True \
+--retrain_masking True
 echo "--- Finished computing model"

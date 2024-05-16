@@ -600,12 +600,12 @@ class CountDecoder(nn.Module):
         original_lens,
         perturbation_id,
         perturbation_embedding,
+        max_len,
         can_remask_prev_masked=False,
         topk_filter_thres=0.9,
         temperature=2.0,  # keep in range 2.0-3.0
         # self_cond_prob=0.9,
         timesteps=18,  # optimal iterations found in maskgit paper
-        max_len,
     ):
         # generate sequences of max_len
         tgt_input_id_ = torch.ones_like(tgt_input_id)

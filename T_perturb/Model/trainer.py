@@ -18,6 +18,7 @@ from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningModule
 from torchmetrics import CosineSimilarity, MeanSquaredError  # SpearmanCorrCoef,
 from torchmetrics.text import Perplexity
+from scvi.distributions import NegativeBinomial, ZeroInflatedNegativeBinomial
 
 from T_perturb.Model.metric import evaluate_emd, pearson  # evaluate_mmd,
 from T_perturb.Modules.T_model import (
@@ -548,7 +549,6 @@ class CountDecodertrainer(LightningModule):
 
         elif self.loss_mode == 'zinb':
             combined_batch = torch.tensor(batch['combined_batch'])
-            # combined_batch = combined_batch.to(self.target_device)
             dec_mean_gamma, dec_dropout = (
                 outputs['count_mean'],
                 outputs['count_dropout'],
@@ -558,16 +558,17 @@ class CountDecodertrainer(LightningModule):
             )
 
             dec_mean = dec_mean_gamma * size_factor_view
-
             dispersion = F.linear(
                 one_hot_encoder(combined_batch, self.n_conditions_combined), self.theta
             )
             dispersion = torch.exp(dispersion)
-            loss = (
-                -zinb(x=true_counts, mu=dec_mean, theta=dispersion, pi=dec_dropout)
-                .sum(dim=-1)
-                .mean()
+            zinb_distribution = ZeroInflatedNegativeBinomial(
+                mu=dec_mean,
+                theta=dispersion,
+                zi_logits=dec_dropout,
             )
+            loss = -zinb_distribution.log_prob(true_counts).sum(dim=-1).mean()
+            
             return loss, dec_mean
 
         elif self.loss_mode == 'nb':
@@ -775,7 +776,7 @@ class CountDecodertrainer(LightningModule):
                 logger=True,
                 batch_size=batch['tgt_input_ids'].shape[0],
             )
-            self.cls_embedding_list.append(outputs['cls_embedding'])
+            self.cls_embeddings_list.append(outputs['cls_embedding'])
         else:
             outputs = self.forward(batch)
             count_loss, pred_count = self.compute_count_loss(outputs, batch)
@@ -812,7 +813,7 @@ class CountDecodertrainer(LightningModule):
         ctrl_counts = torch.cat(self.test_ctrl_counts_list).detach().cpu()
         pred_cts_delta = torch.stack(self.test_pred_counts_ctrl_delta_deg).detach().cpu()
         true_cts_delta = torch.stack(self.test_true_counts_ctrl_delta_deg).detach().cpu()
-        cls_embeddings = torch.cat(self.cls_embedding_list).detach().cpu()
+        cls_embeddings = torch.cat(self.cls_embeddings_list).detach().cpu()
 
         perturbation_list = ['+'.join([str(x) for x in el]) for el in list(itertools.chain.from_iterable(self.test_perturbation_list))]
         test_obs = pd.DataFrame(

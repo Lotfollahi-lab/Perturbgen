@@ -8,7 +8,7 @@
 #BSUB -e ../../logs/%J.err # error file
 #BSUB -M 64GB  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>64GB] rusage[mem=64GB]' # RAM memory part 1. Default: 100MB
-#BSUB -J 7.2_testGF # job name
+#BSUB -J 8.1_testGFtunMSE # job name
 
 # activate conda environment
 source ~/.bashrc
@@ -27,8 +27,8 @@ export WANDB_DATA_DIR=$cwd/wandb
 echo "--- Start testing model"
 # # Run python script for rna
 python3 $cwd/val.py \
---ckpt_masking_file 20240514_1843_petra_mode_masking_lr_0.001_wd_0.0001_batch_45_mlmp_0.3_seed1_hvg_pairing_GFpert.ckpt \
---ckpt_count_file 20240514_2202_petra_mode_count_lr_0.001_wd_0.0001_batch_55_mse_seed1_hvg_pairing_GFpert.ckpt \
+--ckpt_masking_file 20240515_1932_petra_mode_masking_lr_0.001_wd_0.0001_batch_16_mlmp_0.3_seed1_hvg_pairing_GFpert.ckpt \
+--ckpt_count_file 20240516_1303_petra_mode_count_lr_0.001_wd_0.0001_batch_55_mse_seed1_hvg_pairing_GFpert.ckpt \
 --src_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_GFpert_control.dataset \
 --tgt_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_perturbed.dataset \
 --src_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_control.h5ad \
