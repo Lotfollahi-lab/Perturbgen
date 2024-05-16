@@ -41,5 +41,6 @@ python3 $cwd/train.py \
 --petra_wd 0.0001 \
 --count_wd 0.0001 \
 --seed 1 \
+--mse_alpha 0.8 \
 --base_path /lustre/scratch126/cellgen/team361/ip14
 echo "--- Finished computing model"
