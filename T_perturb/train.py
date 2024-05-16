@@ -457,38 +457,25 @@ def main() -> None:
     )
     # deepspeed_strategy = DeepSpeedStrategy(stage=2)
     deepspeed_strategy = DDPStrategy(find_unused_parameters=True)
-    if not args.retrain_masking:   
-        trainer = pl.Trainer(
-            logger=wandb_logger,
-            callbacks=[
-                TQDMProgressBar(refresh_rate=10),
-                checkpoint_callback,
-                early_stop_callback,
-            ],
-            max_epochs=args.epochs,
-            accelerator='auto',
-            devices=-1 if torch.cuda.is_available() else 0,
-            strategy=deepspeed_strategy if torch.cuda.device_count() > 1 else 'auto',
-        )
-    else:
-         trainer = pl.Trainer(
-            logger=wandb_logger,
-            callbacks=[
-                TQDMProgressBar(refresh_rate=10),
-                checkpoint_callback,
-                early_stop_callback,
-            ],
-            max_epochs=args.epochs,
-            accelerator='auto',
-            devices=-1 if torch.cuda.is_available() else 0,
-            strategy=deepspeed_strategy if torch.cuda.device_count() > 1 else 'auto',
-            resume_from_checkpoint=f'{args.base_path}/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints/{args.ckpt_file}',
-        )       
-
+    trainer = pl.Trainer(
+        logger=wandb_logger,
+        callbacks=[
+            TQDMProgressBar(refresh_rate=10),
+            checkpoint_callback,
+            early_stop_callback,
+        ],
+        max_epochs=args.epochs,
+        accelerator='auto',
+        devices=-1 if torch.cuda.is_available() else 0,
+        strategy=deepspeed_strategy if torch.cuda.device_count() > 1 else 'auto',
+    )
 
     if args.train_mode == 'masking':
         # Finally, kick of the training process.
-        trainer.fit(pretrained_module, data_module)
+        if not args.retrain_masking:
+            trainer.fit(pretrained_module, data_module)
+        else:
+            trainer.fit(pretrained_module, data_module, ckpt_path=f'{args.base_path}/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints/{args.ckpt_file}')
     elif args.train_mode == 'count':
         trainer.fit(decoder_module, data_module)
     else:
