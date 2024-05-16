@@ -392,6 +392,7 @@ class CountDecodertrainer(LightningModule):
         run_id: str = '',
         base_path: str = '',
         tune_pretrained=True,
+        mse_alpha=0.5,
         *args,
         **kwargs,
     ):
@@ -440,6 +441,7 @@ class CountDecodertrainer(LightningModule):
         self.iterations = iterations
         # self.lr_scheduler_factor = lr_scheduler_factor
         self.loss_mode = loss_mode
+        self.mse_alpha = mse_alpha
         self.perturbation_modeling = perturbation_modeling
         self.base_path = base_path
 
@@ -535,7 +537,7 @@ class CountDecodertrainer(LightningModule):
             loss_zero_log_prob = criterion_neg_log_bernoulli_loss(
                 outputs['zero_probs'], true_counts
             )
-            loss = loss + loss_zero_log_prob
+            loss = self.mse_alpha*loss + (1-self.mse_alpha)*loss_zero_log_prob
 
             return loss, outputs['count_lognorm']
 

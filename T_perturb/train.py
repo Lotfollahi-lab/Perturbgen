@@ -146,7 +146,8 @@ def get_args():
     parser.add_argument('--num_layers', type=int, default=1, help='number of layers')
     parser.add_argument('--d_ff', type=int, default=32, help='d_ff')
     parser.add_argument('--tune_geneformer', type=bool, default=False, help='Whether to tune the geneformer encoder')
-    parser.add_argument('--tune_pretrained', type=bool, default=True, help='Whether to tune the geneformer encoder')
+    parser.add_argument('--tune_pretrained', type=bool, default=True, help='Whether to re-train the masking model')
+    parser.add_argument('--mse_alpha', type=bool, default=True, help='A')
     args = parser.parse_args()
     return args
 
@@ -327,6 +328,7 @@ def main() -> None:
             perturbation_modeling='activation',
             base_path = args.base_path,
             tune_pretrained=args.tune_pretrained,
+            mse_alpha=args.mse_alpha,
         )
 
     else:

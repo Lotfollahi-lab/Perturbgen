@@ -504,17 +504,7 @@ class CountHead(nn.Module):
         n_genes = tgt_vocab_size - 1
         if self.loss_mode == 'mse':
             self.relu_output = nn.Sequential(nn.Linear(d_model, n_genes), nn.ReLU())
-
-            # To-do: dropout prediction from MLP output, with a single linear+sigmoid layer
-            self.zero_logit = nn.Sequential(
-                # nn.Linear(d_model, d_model),
-                # nn.LeakyReLU(),
-                # nn.Linear(d_model, d_model),
-                # nn.LeakyReLU(),
-                # nn.Linear(d_model, n_genes),
-                nn.Linear(d_model, n_genes),
-                nn.Sigmoid(),
-            )
+            self.zero_logit = nn.Sequential(nn.Linear(d_model, n_genes), nn.Sigmoid())
 
         elif self.loss_mode == 'zinb':
             self.linear_output = nn.Linear(d_model, n_genes)
@@ -533,7 +523,6 @@ class CountHead(nn.Module):
         mlp_output = nn.functional.normalize(mlp_output, dim=-1, p=2)
         if self.loss_mode == 'mse':
             count_outpus['count_lognorm'] = self.relu_output(mlp_output)
-            # count_outpus['zero_probs'] = torch.sigmoid(self.zero_logit(x)) # (batch, d_model-cls-) -> (batch, seq_len)
             count_outpus['zero_probs'] = self.zero_logit(mlp_output)
 
         elif self.loss_mode == 'zinb':
@@ -554,7 +543,7 @@ class CountDecoder(nn.Module):
         add_mask_id: bool = True,
         dropout: float = 0.0,
         perturbation_modeling=None,
-        tune_pretrained=True
+        tune_pretrained=True,
     ):
         super(CountDecoder, self).__init__()
         self.pretrained_model = pretrained_model
