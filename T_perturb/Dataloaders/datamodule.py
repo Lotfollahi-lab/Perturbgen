@@ -63,7 +63,7 @@ class PetraDataset(Dataset):
             self.tgt_counts = tgt_counts[split_indices, :]
 
         if tgt_counts is not None:
-            self.size_factor = np.ravel(self.tgt_counts.sum(axis=1))
+            self.size_factor = torch.tensor(np.ravel(self.tgt_counts.sum(axis=1)))
         self.conditions = conditions
         self.conditions_combined = conditions_combined
         self.condition_encodings = condition_encodings
