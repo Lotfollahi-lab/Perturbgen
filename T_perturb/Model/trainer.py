@@ -393,6 +393,7 @@ class CountDecodertrainer(LightningModule):
         base_path: str = '',
         tune_pretrained=True,
         mse_alpha=0.5,
+        max_seq_length=2048,
         *args,
         **kwargs,
     ):
@@ -444,6 +445,7 @@ class CountDecodertrainer(LightningModule):
         self.mse_alpha = mse_alpha
         self.perturbation_modeling = perturbation_modeling
         self.base_path = base_path
+        self.max_seq_length = max_seq_length
 
         if (
             (self.loss_mode in ['nb', 'zinb'])
@@ -759,6 +761,7 @@ class CountDecodertrainer(LightningModule):
                 topk_filter_thres=0.9,
                 temperature=2.0,
                 timesteps=18,
+                max_len=self.max_seq_length,
                 perturbation_id=batch['perturbation_id'],
                 perturbation_embedding=batch['perturbation_embedding'],
             )
