@@ -17,6 +17,11 @@ module load cuda-12.1.1
 cd /lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb/T_perturb/T_perturb
 cwd=$(pwd)
 export WANDB_DIR=$cwd/wandb
+export WANDB_ARTIFACT_LOCATION=$cwd/wandb/artifacts
+export WANDB_ARTIFACT_DIR=$cwd/wandb/artifacts
+export WANDB_CACHE_DIR=$cwd/wandb/artifacts
+export WANDB_CONFIG_DIR=$cwd/wandb
+export WANDB_DATA_DIR=$cwd/wandb
 
 # run script
 echo "--- Start training model"
@@ -42,5 +47,6 @@ python3 $cwd/train.py \
 --count_wd 0.0001 \
 --seed 1 \
 --mse_alpha 0.8 \
+--tune_pretrained False \
 --base_path /lustre/scratch126/cellgen/team361/ip14
 echo "--- Finished computing model"

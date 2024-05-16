@@ -146,8 +146,9 @@ def get_args():
     parser.add_argument('--num_layers', type=int, default=1, help='number of layers')
     parser.add_argument('--d_ff', type=int, default=32, help='d_ff')
     parser.add_argument('--tune_geneformer', type=bool, default=False, help='Whether to tune the geneformer encoder')
-    parser.add_argument('--tune_pretrained', type=bool, default=True, help='Whether to re-train the masking model')
-    parser.add_argument('--mse_alpha', type=bool, default=True, help='A')
+    parser.add_argument('--tune_masking', type=bool, default=True, help='Whether to re-train the masking model')
+    parser.add_argument('--mse_alpha', type=bool, default=True, help='Weights for mse loss (relative to 0 prediction loss)')
+    parser.add_argument('--retrain_masking', type=bool, default=False, help='Whether to retrain from checkpoint masked model')
     args = parser.parse_args()
     return args
 
@@ -327,7 +328,7 @@ def main() -> None:
             generate=args.generate,
             perturbation_modeling='activation',
             base_path = args.base_path,
-            tune_pretrained=args.tune_pretrained,
+            tune_pretrained=args.tune_masking,
             mse_alpha=args.mse_alpha,
         )
 
@@ -398,14 +399,25 @@ def main() -> None:
         monitor_metric = 'val/pearson'
         mode = 'max'
 
-    checkpoint_callback = ModelCheckpoint(
-        dirpath=f'{args.base_path}/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints',
-        filename=filename,
-        save_top_k=1,
-        verbose=True,
-        monitor=monitor_metric,
-        mode=mode,
-    )
+    if not args.retrain_masking:
+        checkpoint_callback = ModelCheckpoint(
+            dirpath=f'{args.base_path}/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints',
+            filename=filename,
+            save_top_k=1,
+            verbose=True,
+            monitor=monitor_metric,
+            mode=mode,
+        )
+    else:
+        checkpoint_callback = ModelCheckpoint(
+            dirpath=f'{args.base_path}/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints',
+            filename=args.ckpt_file,
+            save_top_k=1,
+            verbose=True,
+            monitor=monitor_metric,
+            mode=mode,
+        )
+
     # The tensorboard logger allows for monitoring the progress of training
     print(torch.cuda.device_count())
     if torch.cuda.device_count() > 1:
@@ -444,19 +456,35 @@ def main() -> None:
         mode=mode,
     )
     # deepspeed_strategy = DeepSpeedStrategy(stage=2)
-    deepspeed_strategy = DDPStrategy(find_unused_parameters=True)   
-    trainer = pl.Trainer(
-        logger=wandb_logger,
-        callbacks=[
-            TQDMProgressBar(refresh_rate=10),
-            checkpoint_callback,
-            early_stop_callback,
-        ],
-        max_epochs=args.epochs,
-        accelerator='auto',
-        devices=-1 if torch.cuda.is_available() else 0,
-        strategy=deepspeed_strategy if torch.cuda.device_count() > 1 else 'auto',
-    )
+    deepspeed_strategy = DDPStrategy(find_unused_parameters=True)
+    if not args.retrain_masking:   
+        trainer = pl.Trainer(
+            logger=wandb_logger,
+            callbacks=[
+                TQDMProgressBar(refresh_rate=10),
+                checkpoint_callback,
+                early_stop_callback,
+            ],
+            max_epochs=args.epochs,
+            accelerator='auto',
+            devices=-1 if torch.cuda.is_available() else 0,
+            strategy=deepspeed_strategy if torch.cuda.device_count() > 1 else 'auto',
+        )
+    else:
+         trainer = pl.Trainer(
+            logger=wandb_logger,
+            callbacks=[
+                TQDMProgressBar(refresh_rate=10),
+                checkpoint_callback,
+                early_stop_callback,
+            ],
+            max_epochs=args.epochs,
+            accelerator='auto',
+            devices=-1 if torch.cuda.is_available() else 0,
+            strategy=deepspeed_strategy if torch.cuda.device_count() > 1 else 'auto',
+            resume_from_checkpoint=f'{args.base_path}/Projects/2024Mar_Tperturb/T_perturb/T_perturb/Model/checkpoints/{args.ckpt_file}',
+        )       
+
 
     if args.train_mode == 'masking':
         # Finally, kick of the training process.
