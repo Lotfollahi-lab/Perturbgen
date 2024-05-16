@@ -47,5 +47,6 @@ python3 $cwd/train.py \
 --count_wd 0.0001 \
 --seed 1 \
 --mse_alpha 0.8 \
+--tune_pretrained False \
 --base_path /lustre/scratch126/cellgen/team361/ip14
 echo "--- Finished computing model"
