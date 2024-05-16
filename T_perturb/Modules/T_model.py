@@ -804,7 +804,9 @@ class CountDecoder(nn.Module):
         for _, t in enumerate(self.time_steps):
             # cls_position = cls_positions[i]
             # cls_embedding = outputs['dec_embedding'][:, cls_position, :]
+            # print("cls_embedding",cls_embedding.shape)
             cls_embedding = outputs['mean_embedding'][t]
+            # print("cls_embedding",cls_embedding.shape)
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
             count_outputs[f'count_output_t{t}'] = count_outputs_tmp
 
@@ -883,9 +885,7 @@ class CountDecoder(nn.Module):
         outputs['dec_embedding'] = torch.cat(dec_embedding_list, dim=1)
         count_outputs = {}
         for i, t in enumerate(self.time_steps):
-            cls_position = cls_positions[i]
-            cls_embedding = outputs['dec_embedding'][:, cls_position, :]
-            # cls_embedding = outputs['mean_embedding'][t]
+            cls_embedding = outputs['mean_embedding']
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
             count_outputs[f'count_output_t{t}'] = count_outputs_tmp
             count_outputs[f'cls_embedding_t{t}'] = cls_embedding

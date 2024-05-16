@@ -389,7 +389,7 @@ def main() -> None:
             mask_scheduler=args.mask_scheduler,
             output_dir=args.output_dir,
             var_list=args.var_list,
-            n_samples=20,
+            n_samples=3,
         )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')
