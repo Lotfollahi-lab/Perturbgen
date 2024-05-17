@@ -1,12 +1,12 @@
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
 #BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu
-#BSUB -n 32 # number of cores
+#BSUB -n 16 # number of cores
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb/T_perturb/T_perturb/ # working directory
 #BSUB -o ../../logs/%J.out # output file
 #BSUB -e ../../logs/%J.err # error file
-#BSUB -M 64GB  # RAM memory part 2. Default: 100MB
+#BSUB -M 40GB  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>64GB] rusage[mem=64GB]' # RAM memory part 1. Default: 100MB
 #BSUB -J 8.2_trGFtunZINBcounts # job name
 
@@ -39,7 +39,7 @@ python3 $cwd/train.py \
 --epochs 30 \
 --max_len 1750 \
 --mlm_probability 0.3 \
---n_workers 32 \
+--n_workers 16 \
 --loss_mode zinb \
 --petra_lr 0.001 \
 --count_lr 0.001 \

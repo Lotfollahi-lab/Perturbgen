@@ -1,13 +1,13 @@
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
 #BSUB -gpu 'mode=exclusive_process:num=1' # request for exclusive access to gpu
-#BSUB -n 32 # number of cores
+#BSUB -n 16 # number of cores
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb/T_perturb/T_perturb/ # working directory
 #BSUB -o ../../logs/%J.out # output file
 #BSUB -e ../../logs/%J.err # error file
-#BSUB -M 64GB  # RAM memory part 2. Default: 100MB
-#BSUB -R 'select[mem>64GB] rusage[mem=64GB]' # RAM memory part 1. Default: 100MB
+#BSUB -M 40GB  # RAM memory part 2. Default: 100MB
+#BSUB -R 'select[mem>40GB] rusage[mem=40GB]' # RAM memory part 1. Default: 100MB
 #BSUB -J 8.1_testGFtunMSE # job name
 
 # activate conda environment
@@ -33,11 +33,11 @@ python3 $cwd/val.py \
 --tgt_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_perturbed.dataset \
 --src_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_control.h5ad \
 --tgt_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_perturbed.h5ad \
---batch_size 32 \
+--batch_size 100 \
 --split True \
 --splitting_mode gears-simulation \
 --max_len 1750 \
---n_workers 32 \
+--n_workers 16 \
 --loss_mode mse \
 --seed 1 \
 --base_path /lustre/scratch126/cellgen/team361/ip14

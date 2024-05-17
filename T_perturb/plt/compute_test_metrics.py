@@ -8,7 +8,8 @@ from typing import Dict
 from anndata import AnnData
 from gears.inference import compute_metrics, deeper_analysis, non_dropout_analysis
 
-model = '20240515_1502_ttransformer'
+model = '20240517_1106_ttransformer' 
+# model = '20240515_1502_ttransformer'
 # model = '20240515_1006_ttransformer'
 # model = '20240515_0736_ttransformer'
 # model = '20240513_1715_ttransformer'

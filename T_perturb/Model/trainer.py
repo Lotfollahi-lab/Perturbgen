@@ -780,7 +780,7 @@ class CountDecodertrainer(LightningModule):
                 logger=True,
                 batch_size=batch['tgt_input_ids'].shape[0],
             )
-            self.cls_embeddings_list.append(outputs['cls_embedding'])
+            self.cls_embeddings_list.append(outputs['cls_embedding'].detach().cpu())
         else:
             outputs = self.forward(batch)
             count_loss, pred_count = self.compute_count_loss(outputs, batch)
@@ -817,7 +817,7 @@ class CountDecodertrainer(LightningModule):
         ctrl_counts = torch.cat(self.test_ctrl_counts_list).detach().cpu()
         pred_cts_delta = torch.stack(self.test_pred_counts_ctrl_delta_deg).detach().cpu()
         true_cts_delta = torch.stack(self.test_true_counts_ctrl_delta_deg).detach().cpu()
-        cls_embeddings = torch.cat(self.cls_embeddings_list).detach().cpu()
+        cls_embeddings = np.concatenate(self.cls_embeddings_list)
 
         perturbation_list = ['+'.join([str(x) for x in el]) for el in list(itertools.chain.from_iterable(self.test_perturbation_list))]
         test_obs = pd.DataFrame(
@@ -828,7 +828,7 @@ class CountDecodertrainer(LightningModule):
             }
         )
         pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs)
-        pred_adata.obsm['cls_embeddings'] = cls_embeddings.numpy()
+        pred_adata.obsm['cls_embeddings'] = cls_embeddings
         pred_adata.layers['tgt_counts'] = true_counts.numpy()
         pred_adata.layers['src_counts'] = ctrl_counts.numpy()
 
