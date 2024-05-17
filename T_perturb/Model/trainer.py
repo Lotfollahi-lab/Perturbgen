@@ -524,6 +524,7 @@ class CountDecodertrainer(LightningModule):
         self,
         outputs: Dict[str, torch.Tensor],
         batch: Dict[str, torch.Tensor],
+        n_samples=3,
     ):
         true_counts = batch['tgt_counts'].float()
         batch_size_factor = batch['size_factor']
@@ -568,7 +569,10 @@ class CountDecodertrainer(LightningModule):
                 zi_logits=dec_dropout,
             )
             loss = -zinb_distribution.log_prob(true_counts).sum(dim=-1).mean()
-            
+            if n_samples > 1:
+                # sample from distribution
+                dec_mean = zinb_distribution.sample((n_samples,)).mean(dim=0)
+                
             return loss, dec_mean
 
         elif self.loss_mode == 'nb':

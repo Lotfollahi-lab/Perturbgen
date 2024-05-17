@@ -63,7 +63,7 @@ class PetraDataset(Dataset):
             self.tgt_counts = tgt_counts[split_indices, :]
 
         if tgt_counts is not None:
-            self.size_factor = torch.cat(torch.tensor(np.ravel(self.tgt_counts.sum(axis=1))))
+            self.size_factor = torch.tensor(np.ravel(self.tgt_counts.sum(axis=1)))
         self.conditions = conditions
         self.conditions_combined = conditions_combined
         self.condition_encodings = condition_encodings
@@ -327,7 +327,7 @@ class PetraDataModule(LightningDataModule):
         if any('tgt_counts' in item for item in batch):
             tgt_counts = [torch.tensor(d['tgt_counts']) for d in batch]
             tgt_counts = torch.stack(tgt_counts)
-            tgt_size_factor = [d['tgt_size_factor'] for d in batch]
+            tgt_size_factor = torch.stack([d['tgt_size_factor'] for d in batch])
             if any('testing_genes_subset' in item['tgt_dataset'].keys() for item in batch):
                 testing_genes_subset = [d['tgt_dataset']['testing_genes_subset'] for d in batch]
             else:
