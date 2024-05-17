@@ -414,10 +414,12 @@ class Petratrainer(LightningModule):
                         cond_select_markers[0], cond_select_markers[1]
                     ]
                 del gene_embeddings
-                self.test_dict['true_counts'].append(batch[f'tgt_counts_t{time_step}'])
-                self.test_dict['cls_embeddings'].append(cls_embeddings)
-                self.test_dict['cosine_similarities'].append(emb)
-                self.test_dict['batch'].append(batch['combined_batch'])
+                self.test_dict['true_counts'].append(
+                    batch[f'tgt_counts_t{time_step}'].detach().cpu()
+                )
+                self.test_dict['cls_embeddings'].append(cls_embeddings.detach().cpu())
+                self.test_dict['cosine_similarities'].append(emb.detach().cpu())
+                self.test_dict['batch'].append(batch['combined_batch'].detach().cpu())
                 for var in self.var_list:
                     self.test_dict[var].append(batch[f'{var}_t{time_step}'])
 
@@ -428,12 +430,10 @@ class Petratrainer(LightningModule):
     def on_test_epoch_end(self):
         if self.return_embeddings:
             print('Start saving embeddings -------------------')
-            cls_embeddings = torch.cat(self.test_dict['cls_embeddings']).detach().cpu()
-            true_counts = torch.cat(self.test_dict['true_counts']).detach().cpu()
-            cosine_similarities = (
-                torch.cat(self.test_dict['cosine_similarities']).detach().cpu()
-            )
-            batch = torch.cat(self.test_dict['batch']).detach().cpu()
+            cls_embeddings = torch.cat(self.test_dict['cls_embeddings'])
+            true_counts = torch.cat(self.test_dict['true_counts'])
+            cosine_similarities = torch.cat(self.test_dict['cosine_similarities'])
+            batch = torch.cat(self.test_dict['batch'])
             var_dict = {}
             for var in self.var_list:
                 var_dict[var] = np.concatenate(self.test_dict[var])

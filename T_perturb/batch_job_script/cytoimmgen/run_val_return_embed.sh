@@ -21,48 +21,15 @@ cwd=$(pwd)
 # run script
 echo "--- Start computing model"
 
-# # # Run python script for rna
-# # python3 $cwd/val.py \
-# python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
-# --test_mode masking \
-# --split True \
-# --splitting_mode stratified \
-# --return_embed True \
-# --generate False \
-# --ckpt_count_path "./T_perturb/T_perturb/Model/checkpoints/"\
-# "20240516_1621_petra_train_count_lr_0.0005"\
-# "_wd_0.01_batch_64_zinb_tp_1-2-3.ckpt" \
-# --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
-# --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset" \
-# --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
-# --src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
-# --tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt" \
-# --batch_size 64 \
-# --max_len 300 \
-# --tgt_vocab_size 1261 \
-# --petra_lr 0.001 \
-# --petra_wd 0.001 \
-# --count_lr 0.00005 \
-# --count_wd 0.01 \
-# --d_ff 32 \
-# --num_layers 1 \
-# --n_workers 32 \
-# --condition_keys Cell_culture_batch \
-# --time_steps 1 2 3 \
-# --var_list Cell_population Cell_type Time_point Donor
-# echo "--- Finished computing model"
-
 # # Run python script for rna
 # python3 $cwd/val.py \
 python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
 --test_mode masking \
---split False \
+--split True \
 --splitting_mode stratified \
 --return_embed True \
 --generate False \
---ckpt_count_path "./T_perturb/T_perturb/Model/checkpoints/"\
-"20240516_1621_petra_train_count_lr_0.0005"\
-"_wd_0.01_batch_64_zinb_tp_1-2-3.ckpt" \
+--ckpt_count_path "./T_perturb/T_perturb/Model/checkpoints/20240517_1225_petra_train_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-2-3.ckpt" \
 --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
 --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset" \
 --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
@@ -72,13 +39,42 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --max_len 300 \
 --tgt_vocab_size 1261 \
 --petra_lr 0.001 \
---petra_wd 0.0001 \
+--petra_wd 0.001 \
 --count_lr 0.00005 \
 --count_wd 0.01 \
 --d_ff 32 \
---num_layers 1 \
+--num_layers 6 \
 --n_workers 32 \
 --condition_keys Cell_culture_batch \
 --time_steps 1 2 3 \
 --var_list Cell_population Cell_type Time_point Donor
 echo "--- Finished computing model"
+
+# # # Run python script for rna
+# # python3 $cwd/val.py \
+# python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
+# --test_mode masking \
+# --split True \
+# --splitting_mode stratified \
+# --return_embed True \
+# --generate False \
+# --ckpt_count_path "./T_perturb/T_perturb/Model/checkpoints/20240517_1225_petra_train_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-2-3.ckpt" \
+# --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
+# --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset" \
+# --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
+# --src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
+# --tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt" \
+# --batch_size 64 \
+# --max_len 300 \
+# --tgt_vocab_size 1261 \
+# --petra_lr 0.001 \
+# --petra_wd 0.0001 \
+# --count_lr 0.00005 \
+# --count_wd 0.01 \
+# --d_ff 32 \
+# --num_layers 1 \
+# --n_workers 32 \
+# --condition_keys Cell_culture_batch \
+# --time_steps 1 2 3 \
+# --var_list Cell_population Cell_type Time_point Donor
+# echo "--- Finished computing model"
