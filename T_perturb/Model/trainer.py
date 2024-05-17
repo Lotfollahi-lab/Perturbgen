@@ -395,6 +395,7 @@ class CountDecodertrainer(LightningModule):
         tune_pretrained=True,
         mse_alpha=0.5,
         max_seq_length=2048,
+        ctrl_counts=None,
         *args,
         **kwargs,
     ):
@@ -447,6 +448,7 @@ class CountDecodertrainer(LightningModule):
         self.perturbation_modeling = perturbation_modeling
         self.base_path = base_path
         self.max_seq_length = max_seq_length
+        self.ctrl_counts = ctrl_counts,
 
         if (
             (self.loss_mode in ['nb', 'zinb'])
@@ -485,10 +487,10 @@ class CountDecodertrainer(LightningModule):
         self.train_true_counts_list: List[int] = []
         self.train_pred_counts_list: List[int] = []
         self.val_true_counts_list: List[int] = []
-        self.val_ctrl_counts_list: List[int] = []
+        # self.val_ctrl_counts_list: List[int] = []
         self.val_pred_counts_list: List[int] = []
         self.test_true_counts_list: List[int] = []
-        self.test_ctrl_counts_list: List[int] = []
+        # self.test_ctrl_counts_list: List[int] = []
         self.test_pred_counts_list: List[int] = []
         self.test_tgtcell_idx: List[int] = []
         self.test_srccell_idx: List[int] = []
@@ -655,9 +657,17 @@ class CountDecodertrainer(LightningModule):
         pred_counts = torch.cat(self.train_pred_counts_list).detach().cpu()
         # Pearson correlation coefficient
         mean_pearson = pearson(pred_counts=pred_counts, true_counts=true_counts)
+        mean_pearson_delta = pearson(pred_counts=pred_counts, true_counts=true_counts, ctrl_counts=self.ctrl_counts)
         self.log(
             'train/pearson',
             mean_pearson,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
+        self.log(
+            'train/pearson_delta',
+            mean_pearson_delta,
             on_epoch=True,
             prog_bar=True,
             logger=True,
@@ -699,7 +709,7 @@ class CountDecodertrainer(LightningModule):
             )
         self.val_true_counts_list.append(batch['tgt_counts'])
         self.val_pred_counts_list.append(pred_count)
-        self.val_ctrl_counts_list.append(batch['src_counts'])
+        # self.val_ctrl_counts_list.append(batch['src_counts'])
         #self.val_tgt_cell_type_list.append(batch['tgt_cell_type'])
         #self.val_tgt_cell_population_list.append(batch['tgt_cell_population'])
         #self.val_tgt_donor_list.append(batch['tgt_donor'])
@@ -709,7 +719,7 @@ class CountDecodertrainer(LightningModule):
         # return Pearson correlation coefficient
         true_counts = torch.cat(self.val_true_counts_list).detach().cpu()
         pred_counts = torch.cat(self.val_pred_counts_list).detach().cpu()
-        ctrl_counts = torch.cat(self.val_ctrl_counts_list).detach().cpu()
+        # ctrl_counts = torch.cat(self.val_ctrl_counts_list).detach().cpu()
         # tgt_cell_type = np.concatenate(self.val_tgt_cell_type_list)
         # tgt_cell_population = np.concatenate(self.val_tgt_cell_population_list)
         # tgt_donor = np.concatenate(self.val_tgt_donor_list)
@@ -731,9 +741,7 @@ class CountDecodertrainer(LightningModule):
             prog_bar=True,
             logger=True,
         )
-        mean_pearson_delta = pearson(
-            pred_counts=pred_counts, true_counts=true_counts, ctrl_counts=ctrl_counts
-        )
+        mean_pearson_delta = pearson(pred_counts=pred_counts, true_counts=true_counts, ctrl_counts=self.ctrl_counts)
         self.log(
             'val/pearson_delta',
             mean_pearson_delta,
@@ -749,7 +757,7 @@ class CountDecodertrainer(LightningModule):
         # print('EMD: ', emd)
         # set to status quo
         self.val_true_counts_list = []
-        self.val_ctrl_counts_list = []
+        # self.val_ctrl_counts_list = []
         self.val_pred_counts_list = []
         #self.val_tgt_cell_type_list = []
         #self.val_tgt_cell_population_list = []
@@ -802,7 +810,7 @@ class CountDecodertrainer(LightningModule):
 
         self.test_pred_counts_list.append(pred_count)
         self.test_true_counts_list.append(batch['tgt_counts'])
-        self.test_ctrl_counts_list.append(batch['src_counts'])
+        # self.test_ctrl_counts_list.append(batch['src_counts'])
         self.test_perturbation_list.append(batch['perturbation_id'])
         self.test_tgtcell_idx.append(batch['tgt_cell_idx'])
         self.test_srccell_idx.append(batch['src_cell_idx'])
@@ -814,7 +822,7 @@ class CountDecodertrainer(LightningModule):
         # return Pearson correlation coefficient
         true_counts = torch.cat(self.test_true_counts_list).detach().cpu()
         pred_counts = torch.cat(self.test_pred_counts_list).detach().cpu()
-        ctrl_counts = torch.cat(self.test_ctrl_counts_list).detach().cpu()
+        # ctrl_counts = torch.cat(self.test_ctrl_counts_list).detach().cpu()
         pred_cts_delta = torch.stack(self.test_pred_counts_ctrl_delta_deg).detach().cpu()
         true_cts_delta = torch.stack(self.test_true_counts_ctrl_delta_deg).detach().cpu()
         cls_embeddings = np.concatenate(self.cls_embeddings_list)
@@ -830,7 +838,7 @@ class CountDecodertrainer(LightningModule):
         pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs)
         pred_adata.obsm['cls_embeddings'] = cls_embeddings
         pred_adata.layers['tgt_counts'] = true_counts.numpy()
-        pred_adata.layers['src_counts'] = ctrl_counts.numpy()
+        # pred_adata.layers['src_counts'] = ctrl_counts.numpy()
 
         # save adata
         if self.generate:
@@ -854,7 +862,7 @@ class CountDecodertrainer(LightningModule):
             logger=True,
         )
         # Pearson delta
-        mean_pearson_delta = pearson(pred_counts, true_counts, ctrl_counts)
+        mean_pearson_delta = pearson(pred_counts, true_counts, self.ctrl_counts)
         self.log(
             'test/pearson_delta',
             mean_pearson_delta,
@@ -905,7 +913,7 @@ class CountDecodertrainer(LightningModule):
         perturbation_list = np.array(perturbation_list)
         for perturbation in np.unique(perturbation_list):
             mean_pearson = pearson(pred_counts[perturbation_list == perturbation, :], true_counts[perturbation_list == perturbation, :]).cpu().detach().numpy()
-            mean_pearson_delta = pearson(pred_counts[perturbation_list == perturbation, :], true_counts[perturbation_list == perturbation, :], ctrl_counts[perturbation_list == perturbation, :]).cpu().detach().numpy()
+            mean_pearson_delta = pearson(pred_counts[perturbation_list == perturbation, :], true_counts[perturbation_list == perturbation, :], self.ctrl_counts[perturbation_list == perturbation, :]).cpu().detach().numpy()
             mse = self.metric['mse'](pred_counts[perturbation_list == perturbation, :], true_counts[perturbation_list == perturbation, :]).cpu().detach().numpy()
             mean_pearson_delta_deg = pearson(pred_cts_delta[perturbation_list == perturbation, :], true_cts_delta[perturbation_list == perturbation, :]).cpu().detach().numpy()
             mse_delta_deg = torch.mean(self.metric['mse'](pred_cts_delta[perturbation_list == perturbation, :], true_cts_delta[perturbation_list == perturbation, :])).cpu().detach().numpy()

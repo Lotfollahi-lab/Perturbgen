@@ -171,6 +171,8 @@ def main() -> None:
     tgt_dataset = load_from_disk(args.tgt_dataset_folder)
     src_adata = sc.read_h5ad(args.src_adata_folder)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
+    ctrl_counts = sc.read_h5ad(args.src_adata_folder.replace('_pairing_control',''))
+    ctrl_counts = ctrl_counts[ctrl_counts.obs.condition == 'ctrl'].X.mean(axis=0)
 
     if not all(
         tgt_adata.obs['cell_pairing_index'] == tgt_dataset['cell_pairing_index']
@@ -331,6 +333,7 @@ def main() -> None:
             base_path = args.base_path,
             tune_pretrained=args.tune_masking,
             mse_alpha=args.mse_alpha,
+            ctrl_counts=ctrl_counts,
         )
 
     else:
@@ -397,7 +400,7 @@ def main() -> None:
             f'batch_{args.batch_size}_'
             f'{args.loss_mode}_seed{RANDOM_SEED}_{dataset_info}'
         )
-        monitor_metric = 'val/pearson'
+        monitor_metric = 'val/pearson_delta'
         mode = 'max'
 
     if not args.retrain_masking:
