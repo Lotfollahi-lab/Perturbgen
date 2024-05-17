@@ -525,6 +525,7 @@ class Petra(nn.Module):
         self,
         enc_output,
         src_attention_mask,
+        tgt_time_step,
         all_time_steps,
         tgt_input_id_dict,
         tgt_pad_dict,
@@ -538,7 +539,10 @@ class Petra(nn.Module):
         # retrieve the embeddings to provide as context
         # pad the rest of the time steps
         for time_step in all_time_steps:
-            if (generate is True) and (time_step in self.time_steps):
+            # if (generate is True) and (time_step in self.time_steps):
+            # exclude the selected time step from the context
+
+            if time_step == tgt_time_step:
                 pass
             else:
                 if len(context_embedding_dict) > 1:
@@ -558,7 +562,6 @@ class Petra(nn.Module):
 
                     # create context for the ones before the selected time step
                     # pad the rest
-
                     dec_outputs = self.call_decoder(
                         enc_output=context,
                         src_attention_mask=context_pad,
@@ -580,21 +583,26 @@ class Petra(nn.Module):
         self,
         context_embedding_dict,
         context_pad_dict,
+        tgt_pad,
         tgt_time_step,
         tgt_input_id_dict,
         cls_positions=None,
         generate=False,
         not_masked=False,
     ):
-        selected_tgt_pad = context_pad_dict[f'tgt_pad_t{tgt_time_step}']
+        # selected_tgt_pad = context_pad_dict[f'tgt_pad_t{tgt_time_step}']
         selected_tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{tgt_time_step}']
-        # remove the selected time step from the context and pad
         context_embedding_dict_ = context_embedding_dict.copy()
         context_pad_dict_ = context_pad_dict.copy()
+        # remove subsequent time steps from context and pad
+        for time_step in self.total_time_steps:
+            if time_step > tgt_time_step:
+                context_embedding_dict_.pop(f'context_t{time_step}')
+                context_pad_dict_.pop(f'tgt_pad_t{time_step}')
         # selected time step should not be included in the context for generation
-        if generate is False:
-            context_embedding_dict_.pop(f'context_t{tgt_time_step}')
-        context_pad_dict_.pop(f'tgt_pad_t{tgt_time_step}')
+        # if generate is False:
+        #     context_embedding_dict_.pop(f'context_t{tgt_time_step}')
+        # context_pad_dict_.pop(f'tgt_pad_t{tgt_time_step}')
         context_tensors = list(context_embedding_dict_.values())
         context_embedding = torch.cat(context_tensors, dim=1)
         context_pads = list(context_pad_dict_.values())
@@ -607,18 +615,19 @@ class Petra(nn.Module):
         else:
             masked_tgt_input_id, labels = self.generate_mask(
                 selected_tgt_input_id,
-                selected_tgt_pad,
+                tgt_pad,
                 self.mlm_probability,
             )
         selected_tgt_embedding = self.token_embedding(masked_tgt_input_id)
-        selected_dec_embedding = self.positional_encoding(
+
+        selected_tgt_embedding = self.positional_encoding(
             selected_tgt_embedding, tgt_time_step
         )
         outputs = self.call_decoder(
             enc_output=context_embedding,
             src_attention_mask=context_pad,
-            dec_embedding=selected_dec_embedding,
-            tgt_pad=selected_tgt_pad,
+            dec_embedding=selected_tgt_embedding,
+            tgt_pad=tgt_pad,
             time_random=tgt_time_step,
             generate=generate,
             labels=labels,
@@ -647,23 +656,28 @@ class Petra(nn.Module):
         src_attention_mask = self.generate_src_mask(src_input_id)
         # BERT mask: 1 for tokens to keep, 0 for tokens to mask. Thus, negate mask.
         enc_output = self.call_encoder(src_input_id, ~src_attention_mask)
+
         # distinction between selected time step and rest time steps
         if not_masked:
             dec_embedding_list = []
             mean_embedding_dict = {}
-            context_embedding_dict, context_pad_dict = self.generate_context(
-                enc_output=enc_output,
-                src_attention_mask=src_attention_mask,
-                all_time_steps=self.time_steps,
-                tgt_input_id_dict=tgt_input_id_dict,
-                tgt_pad_dict=tgt_pad_dict,
-                cls_positions=cls_positions,
-            )
+
             for tgt_time_step in self.time_steps:
+                tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
+                context_embedding_dict, context_pad_dict = self.generate_context(
+                    enc_output=enc_output,
+                    src_attention_mask=src_attention_mask,
+                    tgt_time_step=tgt_time_step,
+                    all_time_steps=self.time_steps,
+                    tgt_input_id_dict=tgt_input_id_dict,
+                    tgt_pad_dict=tgt_pad_dict,
+                    cls_positions=cls_positions,
+                )
                 # context should be all the ones before the selected time step
                 outputs = self.context_backprop(
                     context_embedding_dict=context_embedding_dict,
                     context_pad_dict=context_pad_dict,
+                    tgt_pad=tgt_pad,
                     tgt_time_step=tgt_time_step,
                     tgt_input_id_dict=tgt_input_id_dict,
                     cls_positions=cls_positions,
@@ -687,9 +701,11 @@ class Petra(nn.Module):
             # rest will be padded
             # ---Initialise the decoder embeddings
             # to provide as context for selected time step---
+            tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
             context_embedding_dict, context_pad_dict = self.generate_context(
                 enc_output=enc_output,
                 src_attention_mask=src_attention_mask,
+                tgt_time_step=tgt_time_step,
                 all_time_steps=context_time_steps,
                 tgt_input_id_dict=tgt_input_id_dict,
                 tgt_pad_dict=tgt_pad_dict,
@@ -703,6 +719,7 @@ class Petra(nn.Module):
             outputs = self.context_backprop(
                 context_embedding_dict=context_embedding_dict,
                 context_pad_dict=context_pad_dict,
+                tgt_pad=tgt_pad,
                 tgt_time_step=tgt_time_step,
                 tgt_input_id_dict=tgt_input_id_dict,
                 cls_positions=cls_positions,

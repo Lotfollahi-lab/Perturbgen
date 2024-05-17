@@ -26,8 +26,8 @@ def get_args():
     parser.add_argument(
         '--res_dir',
         type=str,
-        default='./T_perturb/T_perturb/plt/res/eb',
-        # default='./T_perturb/T_perturb/plt/res/cytoimmgen',
+        # default='./T_perturb/T_perturb/plt/res/eb',
+        default='./T_perturb/T_perturb/plt/res/cytoimmgen',
         help='Dataset to use for analysis',
     )
     parser.add_argument(
@@ -171,8 +171,6 @@ plt.close()
 #     bbox_inches='tight',
 # )
 # plt.close()
-
-
 var_names = adata_cls.obsm['cosine_similarity'].columns
 # filter adata to only include genes in var_names
 adata_cls = adata_cls[:, var_names]
