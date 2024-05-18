@@ -43,11 +43,11 @@ python3 $cwd/train.py \
 --petra_wd 0.0001 \
 --num_layers 5 \
 --d_ff 16 \
---mlm_probability 0.3 \
+--mlm_probability 0.5 \
 --n_workers 16 \
 --seed 1 \
 --perturbation_encoding_mode mlp compress_src \
 --base_path /lustre/scratch126/cellgen/team361/ip14 \
---tune_geneformer True \
+--tune_geneformer False \
 --retrain_masking True
 echo "--- Finished computing model"
