@@ -99,6 +99,7 @@ class CrossAttention(nn.Module):
 
         # attention, what we cannot get enough of
         attn = sim.softmax(dim=-1)
+        print(attn[0,:10,:10])
         out = einsum('b i j, b j d -> b i d', attn, v)
         out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
         return self.to_out(out)
@@ -290,6 +291,7 @@ class Petra(nn.Module):
         perturbation_modeling=None,
         base_path: str = '/lustre/groups/imm01/workspace/irene.bonafonte',
         tune_geneformer=False,
+        perturbation_encoding_mode=[],
     ):
         super(Petra, self).__init__()
         # self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -297,33 +299,31 @@ class Petra(nn.Module):
         self.mlm_probability = mlm_probability
         self.perturbation_modeling = perturbation_modeling
         self.tgt_vocab_size = tgt_vocab_size
-
+        self.perturbation_encoding_mode = perturbation_encoding_mode
         self.register_buffer('cls_token', torch.tensor([tgt_vocab_size], dtype=torch.long)) # start at 25426, because of 0 Python indexing
         total_vocab_size = tgt_vocab_size + 1
 
         self.mask_token = total_vocab_size
         total_vocab_size = total_vocab_size + 1
 
-        # self.masked_embed = nn.Parameter(torch.zeros(1, self.embed_dim))
         print('embedding size problem')
         self.token_embedding = nn.Embedding(
             total_vocab_size, d_model, padding_idx=0 #, device=self.device
         )
         print(self.token_embedding.weight.shape)
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
-        # self.positional_encoding = self.positional_encoding.to(self.device)
         self.encoder_layers = Geneformerwrapper(model_path=f'{base_path}/Software/Geneformer/geneformer-12L-30M', tune=tune_geneformer)
-        # self.encoder_layers = self.encoder_layers.to(self.device)
 
         self.decoder_layers = nn.ModuleList(
             [DecoderLayer(dim=d_model, n_heads=num_heads, d_head=d_ff, dropout=dropout, context_dim=d_encoded_input) for _ in range(num_layers)]
         )
-        # self.decoder_layers = self.decoder_layers.to(self.device)
         if self.perturbation_modeling is not None:
             if d_encoded_input != d_perturbation_embed:
                 self.fc_pertReshape = nn.Linear(d_perturbation_embed, d_encoded_input)
             else:
                 self.fc_pertReshape = None
+            if 'mlp' in self.perturbation_encoding_mode:
+                self.mlp_pertEmbed = Mlp(in_features = d_perturbation_embed, out_features=d_encoded_input)
     
         self.fc = nn.Linear(d_model, tgt_vocab_size) #, device=self.device)
         self.dropout = nn.Dropout(dropout)
@@ -344,7 +344,6 @@ class Petra(nn.Module):
         probability_matrix = torch.full_like(
             tgt_pad, mlm_probability, dtype=torch.float # device=self.device
         )
-        # cls_tgt_pad = (tgt == self.cls_token) | (tgt == self.perturbation_token) | (tgt == 0)
         # Do not mask CLS and PAD tokens
         cls_tgt_pad = tgt_pad.clone()
         cls_tgt_pad[:, 0] = True
@@ -373,74 +372,71 @@ class Petra(nn.Module):
         return tgt, labels        
 
     def prepare_tokens(self, x):
-        # B, nc, d = x.shape
-        # add positional encoding to each token
-        # x = x + self.positional_encoding(x)
         x = self.positional_encoding(x)
         return x
+    
+    def mean_nonpadding_embs(self, embs, pad, dim=1, mask_i0=False):
+            """
+            Compute the mean of the non-padding embeddings.
+            Modified from Geneformer:
+            https://huggingface.co/ctheodoris/Geneformer/blob/main/geneformer/perturber_utils.py # noqa
+            Accessed: 2024-05-14
+            """
+            # create a mask tensor based on padding lengths
+            # create a tensor of original lengths
+            original_lens = (~pad).sum(dim=1)
+            if mask_i0:
+                # create CLS token mask (no cls in src)
+                pad[:, 0] = True
+            if embs.dim() == 3:
+                # fill the masked positions in embs with zeros
+                masked_embs = embs.masked_fill(pad.unsqueeze(2), 0.0)
 
-    # def forward_with_cond_scale(
-    #     self,
-    #     *args,
-    #     cond_scale = 3.,
-    #     return_embed = False,
-    #     generate = False,
-    #     **kwargs
-    # ):
-    # if cond_scale == 1:
-    #     return self.forward(
-    #         *args,
-    #         return_embed = return_embed,
-    #         cond_drop_prob = 0., **kwargs
-    #         )
+                # compute the mean across the non-padding dimensions
+                mean_embs = masked_embs.sum(dim) / original_lens.view(-1, 1).float()
 
-    # logits, embed = self.forward(
-    #     *args,
-    #     return_embed = True,
-    #     cond_drop_prob = 0., **kwargs
-    #     )
-
-    #     null_logits = self.forward(*args, cond_drop_prob = 1., **kwargs)
-
-    #     scaled_logits = null_logits + (logits - null_logits) * cond_scale
-
-    #     if return_embed:
-    #         return scaled_logits, embed
-
-    #     return scaled_logits
+            elif embs.dim() == 2:
+                masked_embs = embs.masked_fill(pad, 0.0)
+                mean_embs = masked_embs.sum(dim) / original_lens.float()
+            return mean_embs
 
     def forward(
         self,
         src_input_id,
         tgt_input_id,
-        perturbation_id,
         perturbation_embedding,
+        n_perturbations_bool,
         original_lens,
         generate=False,
     ):
-        src_attention_mask = src_input_id == 0
+        src_attention_mask = src_input_id == 0 # True for padded
         # convert to numeric type
         src_attention_mask_int = (~src_attention_mask).int()
         src_embedded = self.encoder_layers(src_input_id, src_attention_mask_int) # 0 for padded
 
         # add embedding at the begining of the src_embedding for perturbed genes and update mask
         if self.perturbation_modeling is not None:
-            # if size is different than d_model, reshape via linear layer:
-            if self.fc_pertReshape is not None:
-                perturbation_embedding = self.fc_pertReshape(perturbation_embedding)
+            if not 'mlp' in self.perturbation_encoding_mode:
+                if self.fc_pertReshape is not None:
+                    # if size is different than d_model, reshape via linear layer:
+                    perturbation_embedding = self.fc_pertReshape(perturbation_embedding)
+            else:
+                # improve condition embedding via mlp
+                perturbation_embedding = self.mlp_pertEmbed(perturbation_embedding)
 
-            for i in range(src_input_id.shape[0]):
+            if not 'compress_src' in self.perturbation_encoding_mode:
                 # move sentence 2 positions to the right to leave place for the perturbation embeddings
-                src_embedded[i,2:,:] = src_embedded[i,:-2,:].clone()
-                src_attention_mask[i,2:] = src_attention_mask[i,:-2].clone()
-            
+                src_embedded[:,2:,:] = src_embedded[:,:-2,:].clone()
+                src_attention_mask[:,2:] = src_attention_mask[:,:-2].clone()
                 # add perturbation/s embeddings in the first positions
-                src_embedded[i,:2,:] = perturbation_embedding[i]
-                if len(perturbation_id[i]) == 1:
-                    src_attention_mask[i,0] = False
-                    src_attention_mask[i,1] = True
-                else:
-                    src_attention_mask[i,:2] = False
+                src_embedded[:,:2,:] = perturbation_embedding
+                src_attention_mask[:,:2] = n_perturbations_bool
+
+            # context is the two genes encodings + mean gene embeddings of the src
+            else:
+                src_embedded_mean = self.mean_nonpadding_embs(embs=src_embedded, pad=src_attention_mask) # flatten src to cell embedding
+                src_embedded = torch.cat((perturbation_embedding, torch.unsqueeze(src_embedded_mean, 1)), dim=1) # concat to pert embeddings
+                src_attention_mask = torch.zeros((src_attention_mask.shape[0], 3), dtype=torch.bool) # False for values to be attended
 
         # append cls token at the beginning of the target input ids
         tgt_input_id = torch.cat(
@@ -491,11 +487,9 @@ class CountHead(nn.Module):
         tgt_vocab_size: int = 25426,
         d_model: int = 256,
         dropout: float = 0.0,
-        perturbation_modeling: str = None,
     ):
         super(CountHead, self).__init__()
         self.loss_mode = loss_mode
-        self.perturbation_modeling = perturbation_modeling
         self.mlp = Mlp(
             in_features=d_model,
             hidden_features=d_model,
@@ -524,7 +518,6 @@ class CountHead(nn.Module):
         if self.loss_mode == 'mse':
             count_outpus['count_lognorm'] = self.relu_output(mlp_output)
             count_outpus['zero_probs'] = self.zero_logit(mlp_output)
-
         elif self.loss_mode == 'zinb':
             count_outpus['count_mean'] = self.softmax_output(mlp_output)
             count_outpus['count_dropout'] = self.linear_output(mlp_output)
@@ -598,8 +591,9 @@ class CountDecoder(nn.Module):
         noise_schedule,
         tgt_input_id,
         original_lens,
-        perturbation_id,
+        n_perturbations_bool,
         perturbation_embedding,
+        perturbation_id,
         max_len,
         can_remask_prev_masked=False,
         topk_filter_thres=0.9,
@@ -657,7 +651,7 @@ class CountDecoder(nn.Module):
                 # self_cond_embed = self_cond_embed,
                 tgt_input_id=ids,  # change to token id
                 original_lens=original_lens,
-                perturbation_id=perturbation_id,
+                n_perturbations_bool=n_perturbations_bool,
                 perturbation_embedding=perturbation_embedding,
                 generate=True,
             )

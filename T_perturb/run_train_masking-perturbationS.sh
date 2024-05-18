@@ -46,6 +46,7 @@ python3 $cwd/train.py \
 --mlm_probability 0.3 \
 --n_workers 16 \
 --seed 1 \
+--perturbation_encoding_mode mlp compress_src \
 --base_path /lustre/scratch126/cellgen/team361/ip14 \
 --tune_geneformer True \
 --retrain_masking True
