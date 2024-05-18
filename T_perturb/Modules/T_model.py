@@ -406,6 +406,7 @@ class Petra(nn.Module):
         tgt_input_id,
         perturbation_embedding,
         n_perturbations_bool,
+        perturbation_id,
         original_lens,
         generate=False,
     ):
@@ -436,7 +437,7 @@ class Petra(nn.Module):
             else:
                 src_embedded_mean = self.mean_nonpadding_embs(embs=src_embedded, pad=src_attention_mask) # flatten src to cell embedding
                 src_embedded = torch.cat((perturbation_embedding, torch.unsqueeze(src_embedded_mean, 1)), dim=1) # concat to pert embeddings
-                src_attention_mask = torch.zeros((src_attention_mask.shape[0], 3), dtype=torch.bool) # False for values to be attended
+                src_attention_mask = torch.zeros((src_attention_mask.shape[0], 3), dtype=torch.bool, device=src_attention_mask.device) # False for values to be attended
 
         # append cls token at the beginning of the target input ids
         tgt_input_id = torch.cat(

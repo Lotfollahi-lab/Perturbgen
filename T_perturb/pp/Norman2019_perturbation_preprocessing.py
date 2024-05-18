@@ -30,7 +30,7 @@ dataset_name = 'Norman2019'
 pp_path = 'T_perturb/T_perturb/pp/res'
 geneformer_path = f'{base_path}/../../Software/Geneformer'
 
-subset_dataset=True
+subset_dataset=False
 
 # seed
 seed_no = 42
@@ -208,6 +208,8 @@ print(f'Number of perturbations after filtering: {len(include)}')
 if subset_dataset:
     include = ['KLF1','BPGM','CEBPA','CEBPB','CEBPE','COL1A1','COL1A2','IRF1','FOXA3']
     subset_prefix = 'subsetted_'
+else:
+    subset_prefix = ''
 
 # initiate dictionary to store cell pairings
 cell_pairings: Dict[str, List[int]] = {'control': [], 'perturbed': [], 'perturbed_gene': []}
