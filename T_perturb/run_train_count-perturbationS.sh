@@ -7,7 +7,7 @@
 #BSUB -o ../../logs/%J.out # output file
 #BSUB -e ../../logs/%J.err # error file
 #BSUB -M 40GB  # RAM memory part 2. Default: 100MB
-#BSUB -R 'select[mem>64GB] rusage[mem=64GB]' # RAM memory part 1. Default: 100MB
+#BSUB -R 'select[mem>40GB] rusage[mem=40GB]' # RAM memory part 1. Default: 100MB
 #BSUB -J 8.2_trGFtunZINBcounts # job name
 
 # activate conda environment
@@ -28,7 +28,7 @@ echo "--- Start training model"
 # # Run python script for rna
 python3 $cwd/train.py \
 --train_mode count \
---ckpt_file "20240515_1932_petra_mode_masking_lr_0.001_wd_0.0001_batch_16_mlmp_0.3_seed1_hvg_pairing_GFpert.ckpt" \
+--ckpt_file "20240515_1932_petra_mode_masking_lr_0.001_wd_0.0001_batch_16_mlmp_0.3_seed1_hvg_pairing_GFpert.ckpt.ckpt" \
 --src_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_GFpert_control.dataset \
 --tgt_dataset_folder ../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_perturbed.dataset \
 --src_adata_folder ../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_control.h5ad \
@@ -36,7 +36,7 @@ python3 $cwd/train.py \
 --batch_size 55 \
 --split True \
 --splitting_mode gears-simulation \
---epochs 30 \
+--epochs 50 \
 --max_len 1750 \
 --mlm_probability 0.3 \
 --n_workers 16 \

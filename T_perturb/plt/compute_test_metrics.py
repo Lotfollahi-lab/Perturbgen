@@ -8,7 +8,8 @@ from typing import Dict
 from anndata import AnnData
 from gears.inference import compute_metrics, deeper_analysis, non_dropout_analysis
 
-model = '20240517_1106_ttransformer' 
+model = '20240517_1436_ttransformer'
+# model = '20240517_1106_ttransformer' 
 # model = '20240515_1502_ttransformer'
 # model = '20240515_1006_ttransformer'
 # model = '20240515_0736_ttransformer'
@@ -18,6 +19,7 @@ base_path = '/lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb'
 data_path = 'datasets/Norman2019'
 pp_path = 'T_perturb/T_perturb/pp/res'
 
+zinb_loss = True
 mse_loss = True
 
 def compute_perturbation_metrics(
@@ -240,6 +242,12 @@ adata.uns['non_zeros_gene_idx'] = {k.replace('A549_','').replace('_1+1',''): v f
 adata.uns['non_dropout_gene_idx'] = {k.replace('A549_','').replace('_1+1',''): v for k, v in adata.uns['non_dropout_gene_idx'].items()}
 adata.obs = adata.obs.drop(columns=['tgt_cell_idx','src_cell_idx','perturbation_id'])
 
+if zinb_loss:
+    # sc.pp.normalize_total(adata_, target_sum=1e4)
+    sc.pp.log1p(adata)
+    # sc.pp.normalize_total(adata, layer='tgt_counts', target_sum=1e4)
+    sc.pp.log1p(adata, layer='tgt_counts')
+
 results = {}
 results['pert_cat'] = adata.obs['condition']
 results["pred"] = adata.X
@@ -269,9 +277,9 @@ adata_.obs = pd.DataFrame(
     }, index=adata_.obs.cell_pairing_index)
 
 # if model in ['20240428_1333', '20240430_1104']: # normalize ctrls for mse-trained decoders
-if mse_loss:
-    sc.pp.normalize_total(adata_, target_sum=1e4)
-    sc.pp.log1p(adata_)
+# if mse_loss:
+sc.pp.normalize_total(adata_, target_sum=1e4)
+sc.pp.log1p(adata_)
 
 adata_.uns = adata.uns
 adata_.var = adata.var
