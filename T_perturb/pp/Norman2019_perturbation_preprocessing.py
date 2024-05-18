@@ -30,6 +30,8 @@ dataset_name = 'Norman2019'
 pp_path = 'T_perturb/T_perturb/pp/res'
 geneformer_path = f'{base_path}/../../Software/Geneformer'
 
+subset_dataset=True
+
 # seed
 seed_no = 42
 np.random.seed(seed_no)
@@ -203,6 +205,10 @@ for f, v in filters.items():
         include.remove(el)
 print(f'Number of perturbations after filtering: {len(include)}')
 
+if subset_dataset:
+    include = ['KLF1','BPGM','CEBPA','CEBPB','CEBPE','COL1A1','COL1A2','IRF1','FOXA3']
+    subset_prefix = 'subsetted_'
+
 # initiate dictionary to store cell pairings
 cell_pairings: Dict[str, List[int]] = {'control': [], 'perturbed': [], 'perturbed_gene': []}
 
@@ -244,7 +250,25 @@ dataset_perturbed = dataset_perturbed.add_column("perturbation_id", cell_pairing
 
 # add list of genes to use for testing in the perturbed dataset
 dataset_perturbed = dataset_perturbed.add_column("testing_genes_subset", [adata.uns['top_non_dropout_de_20'][p] for p in dataset_perturbed['perturbation_name']])
-dataset_perturbed.save_to_disk(f'{base_path}/{data_path}/{dataset_name}/dataset/filtered_tokenised_hvg_pairing_perturbed.dataset')
+dataset_perturbed.save_to_disk(f'{base_path}/{data_path}/{dataset_name}/dataset/{subset_prefix}filtered_tokenised_hvg_pairing_perturbed.dataset')
+
+# add perturbed gene embedding to the control dataset - Binary -----------------
+gene_embeddings_list = []
+n_perturbations_list = []
+for pg in tqdm.tqdm(cell_pairings['perturbed_gene']):
+    binary_embed_one, binary_embed_two = np.zeros(adata.shape[1]), np.zeros(adata.shape[1])
+    binary_embed_one[pg[0]] = 1
+    if len(pg) == 1:
+        pg = pg + [0]
+        n_perturbations_list.append(np.array([False, True]))
+    else:
+        n_perturbations_list.append(np.array([False, False]))
+        binary_embed_two[pg[1]] = 1
+    gene_embeddings_list.append([binary_embed_one,binary_embed_two])
+
+dataset_ctrl_wembed = dataset_ctrl.add_column("perturbation_embedding", gene_embeddings_list)
+dataset_ctrl_wembed = dataset_ctrl_wembed.add_column("n_perturbations_bool", n_perturbations_list)
+dataset_ctrl_wembed.save_to_disk(f'{base_path}/{data_path}/{dataset_name}/dataset/{subset_prefix}filtered_tokenised_hvg_pairing_binarypert_control.dataset')
 
 # add perturbed gene embedding to the control dataset - Geneformer -----------------
 gf = BertForMaskedLM.from_pretrained(
@@ -263,17 +287,21 @@ gene_embeddings = pd.DataFrame(
 # store gene embedding of each perturbed gene (list of embeddings)
 # if only one perturbation, add a padded value in 2nd position
 gene_embeddings_list = []
+n_perturbations_list = []
 for pg in tqdm.tqdm(cell_pairings['perturbed_gene']):
     if len(pg) == 1:
         pg = pg + [0]
+        n_perturbations_list.append(np.array([False, True]))
+    else:
+        n_perturbations_list.append(np.array([False, False]))
     gene_embeddings_list.append([embed.values for row, embed in gene_embeddings.loc[pg].iterrows()])
 
 dataset_ctrl_wembed = dataset_ctrl.add_column("perturbation_embedding", gene_embeddings_list)
+dataset_ctrl_wembed = dataset_ctrl_wembed.add_column("n_perturbations_bool", n_perturbations_list)
 
 # save
-dataset_ctrl_wembed.save_to_disk(f'{base_path}/{data_path}/{dataset_name}/dataset/filtered_tokenised_hvg_pairing_GFpert_control.dataset')
+dataset_ctrl_wembed.save_to_disk(f'{base_path}/{data_path}/{dataset_name}/dataset/{subset_prefix}filtered_tokenised_hvg_pairing_GFpert_control.dataset')
 
-'''
 # add perturbed gene embedding to the control dataset - gene2vec -----------------
 gene_embeddings = pd.read_csv('https://github.com/jingcheng-du/Gene2vec/raw/master/pre_trained_emb/gene2vec_dim_200_iter_9.txt', sep='\t', header=None, index_col=0)
 gene_embeddings = pd.DataFrame({g: [float(dim) for dim in embeds[:-1]] for g, embeds in zip(gene_embeddings.index, gene_embeddings[1].str.split(' '))}).T
@@ -281,21 +309,25 @@ pad_embed = gene_embeddings.mean(axis=0) # mean embedding for padding (when it's
 gene_embeddings = gene_embeddings[gene_embeddings.index.isin(adata.uns['perturbation_id'].gene_name)]
 
 # change gene name by our idxs
-# adata.uns['perturbation_id'].set_index('gene_name', inplace=True, drop=False)
+adata.uns['perturbation_id'].set_index('gene_name', inplace=True, drop=False)
 gene_embeddings.index = adata.uns['perturbation_id'].loc[gene_embeddings.index,'rowidx'].values
 gene_embeddings.loc[0,:] = pad_embed.values
 gene_embeddings.head(3)
 
 # store gene embedding of each perturbed gene 
 gene_embeddings_list = []
+n_perturbations_list = []
 for pg in tqdm.tqdm(cell_pairings['perturbed_gene']):
     if len(pg) == 1:
         pg = pg + [0]
+        n_perturbations_list.append(np.array([False, True]))
+    else:
+        n_perturbations_list.append(np.array([False, False]))
     gene_embeddings_list.append([embed.values for row, embed in gene_embeddings.loc[pg].iterrows()])
 
 dataset_ctrl_wembed = dataset_ctrl.add_column("perturbation_embedding", gene_embeddings_list)
-dataset_ctrl_wembed.save_to_disk(f'{base_path}/{data_path}/{dataset_name}/dataset/filtered_tokenised_hvg_pairing_gene2vecpert_control.dataset')
-'''
+dataset_ctrl_wembed = dataset_ctrl_wembed.add_column("n_perturbations_bool", n_perturbations_list)
+dataset_ctrl_wembed.save_to_disk(f'{base_path}/{data_path}/{dataset_name}/dataset/{subset_prefix}filtered_tokenised_hvg_pairing_gene2vecpert_control.dataset')
 
 # save adata --------------
 # subset adata
@@ -303,6 +335,6 @@ adata_ctrl = subset_adata(adata, cell_pairings['control'])
 adata_perturbed = subset_adata(adata, cell_pairings['perturbed'])
 
 # save
-adata_ctrl.write_h5ad(f'{base_path}/{data_path}/{dataset_name}/adata/filtered_tokenised_hvg_pairing_control.h5ad')
-adata_perturbed.write_h5ad(f'{base_path}/{data_path}/{dataset_name}/adata/filtered_tokenised_hvg_pairing_perturbed.h5ad')
+adata_ctrl.write_h5ad(f'{base_path}/{data_path}/{dataset_name}/adata/{subset_prefix}filtered_tokenised_hvg_pairing_control.h5ad')
+adata_perturbed.write_h5ad(f'{base_path}/{data_path}/{dataset_name}/adata/{subset_prefix}filtered_tokenised_hvg_pairing_perturbed.h5ad')
 

@@ -149,6 +149,7 @@ def get_args():
     parser.add_argument('--tune_masking', type=bool, default=True, help='Whether to re-train the masking model')
     parser.add_argument('--mse_alpha', type=bool, default=True, help='Weights for mse loss (relative to 0 prediction loss)')
     parser.add_argument('--retrain_masking', type=bool, default=False, help='Whether to retrain from checkpoint masked model')
+    parser.add_argument('--perturbation_encoding_mode', type=str, nargs='*', help='none, mlp, compress_src')
     args = parser.parse_args()
     return args
 
@@ -167,13 +168,12 @@ def main() -> None:
     src_dataset = load_from_disk(args.src_dataset_folder)
     if 'perturbation_embedding' in src_dataset.features.keys():
         d_perturbation_embed = len(src_dataset['perturbation_embedding'][0][0])
-    d_perturbation_embed = len(src_dataset['perturbation_embedding'][0][0])
     tgt_dataset = load_from_disk(args.tgt_dataset_folder)
     src_adata = sc.read_h5ad(args.src_adata_folder)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
     ctrl_counts = sc.read_h5ad(args.src_adata_folder.replace('_pairing_control',''))
-    # sc.pp.normalize_total(ctrl_counts, target_sum=1e4)
-    # sc.pp.log1p(ctrl_counts)
+    sc.pp.normalize_total(ctrl_counts, target_sum=1e4)
+    sc.pp.log1p(ctrl_counts)
     ctrl_counts = ctrl_counts[ctrl_counts.obs.condition == 'ctrl'].X.mean(axis=0)
 
     if not all(
@@ -315,6 +315,7 @@ def main() -> None:
             d_perturbation_embed=d_perturbation_embed,
             base_path = args.base_path,
             tune_geneformer=args.tune_geneformer,
+            perturbation_encoding_mode=args.perturbation_encoding_mode,
         )
     elif args.train_mode == 'count':
         decoder_module = CountDecodertrainer(

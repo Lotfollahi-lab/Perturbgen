@@ -90,6 +90,7 @@ class Petratrainer(LightningModule):
         base_path: str = '',
         d_perturbation_embed=None,
         tune_geneformer=False,
+        perturbation_encoding_mode=[],
         *args,
         **kwargs,
     ) -> None:
@@ -108,6 +109,7 @@ class Petratrainer(LightningModule):
             base_path=base_path,
             d_perturbation_embed=d_perturbation_embed,
             tune_geneformer=tune_geneformer,
+            perturbation_encoding_mode=perturbation_encoding_mode,
         )
         # self.target_device = torch.device(
         #     'cuda' if torch.cuda.is_available() else 'cpu'
@@ -151,6 +153,7 @@ class Petratrainer(LightningModule):
             tgt_input_id=batch['tgt_input_ids'],
             original_lens=batch['src_length'],
             perturbation_id=batch['perturbation_id'],
+            n_perturbations_bool=batch['n_perturbations_bool'],
             perturbation_embedding= batch['perturbation_embedding'],
             generate=self.generate,
         )
@@ -415,6 +418,7 @@ class CountDecodertrainer(LightningModule):
             max_seq_length=checkpoint['hyper_parameters']['max_seq_length'],
             d_encoded_input=checkpoint['hyper_parameters']['d_encoded_input'],
             d_perturbation_embed=checkpoint['hyper_parameters']['d_perturbation_embed'],
+            perturbation_encoding_mode=checkpoint['hyper_parameters']['perturbation_encoding_mode'],
             perturbation_modeling=perturbation_modeling,
             base_path=base_path,
         )
@@ -448,7 +452,7 @@ class CountDecodertrainer(LightningModule):
         self.perturbation_modeling = perturbation_modeling
         self.base_path = base_path
         self.max_seq_length = max_seq_length
-        self.ctrl_counts = ctrl_counts,
+        self.ctrl_counts = ctrl_counts
 
         if (
             (self.loss_mode in ['nb', 'zinb'])
@@ -565,16 +569,13 @@ class CountDecodertrainer(LightningModule):
                 one_hot_encoder(combined_batch, self.n_conditions_combined), self.theta
             )
             dispersion = torch.exp(dispersion)
-            zinb_distribution = ZeroInflatedNegativeBinomial(
-                mu=dec_mean,
-                theta=dispersion,
-                zi_logits=dec_dropout,
-            )
+            zinb_distribution = ZeroInflatedNegativeBinomial(mu=dec_mean, theta=dispersion, zi_logits=dec_dropout)
             loss = -zinb_distribution.log_prob(true_counts).sum(dim=-1).mean()
+            
+            # sample from distribution
             if n_samples > 1:
-                # sample from distribution
                 dec_mean = zinb_distribution.sample((n_samples,)).mean(dim=0)
-                
+
             return loss, dec_mean
 
         elif self.loss_mode == 'nb':
@@ -590,7 +591,13 @@ class CountDecodertrainer(LightningModule):
                 one_hot_encoder(combined_batch, self.n_conditions_combined), self.theta
             )
             dispersion = torch.exp(dispersion)
-            loss = -nb(x=true_counts, mu=dec_mean, theta=dispersion).sum(dim=-1).mean()
+            nb_distribution = NegativeBinomial(mu=dec_mean, theta=dispersion)
+            loss = -nb_distribution.log_prob(true_counts).sum(dim=-1).mean()
+
+            # sample from distribution
+            if n_samples > 1:
+                dec_mean = nb_distribution.sample((n_samples,)).mean(dim=0)
+
             return loss, dec_mean
 
         else:
@@ -652,12 +659,14 @@ class CountDecodertrainer(LightningModule):
         return count_loss
 
     def on_train_epoch_end(self):
-        ctrl_counts = np.concatenate([self.ctrl_counts for i in range(len(true_counts))])
         true_counts = torch.cat(self.train_true_counts_list).detach().cpu()
         pred_counts = torch.cat(self.train_pred_counts_list).detach().cpu()
-
-        # if self.loss_mode=='zinb':
-            # log normalize
+        ctrl_counts = np.concatenate([self.ctrl_counts for i in range(len(true_counts))])   
+        
+        # log normalize
+        if self.loss_mode in ['zinb', 'nb']:
+            true_counts = torch.log(1e4*torch.div(true_counts.T, true_counts.sum(axis=1)).T + 1)
+            pred_counts = torch.log(1e4*torch.div(pred_counts.T, pred_counts.sum(axis=1)).T + 1)
 
         # Pearson correlation coefficient
         mean_pearson = pearson(pred_counts=pred_counts, true_counts=true_counts)
@@ -721,10 +730,15 @@ class CountDecodertrainer(LightningModule):
 
     def on_validation_epoch_end(self):
         # return Pearson correlation coefficient
-        ctrl_counts = np.concatenate([self.ctrl_counts for i in range(len(true_counts))])
         true_counts = torch.cat(self.val_true_counts_list).detach().cpu()
         pred_counts = torch.cat(self.val_pred_counts_list).detach().cpu()
-        
+        ctrl_counts = np.concatenate([self.ctrl_counts for i in range(len(true_counts))])
+
+        # log normalize
+        if self.loss_mode in ['zinb', 'nb']:
+            true_counts = torch.log(1e4*torch.div(true_counts.T, true_counts.sum(axis=1)).T + 1)
+            pred_counts = torch.log(1e4*torch.div(pred_counts.T, pred_counts.sum(axis=1)).T + 1)
+
         # ctrl_counts = torch.cat(self.val_ctrl_counts_list).detach().cpu()
         # tgt_cell_type = np.concatenate(self.val_tgt_cell_type_list)
         # tgt_cell_population = np.concatenate(self.val_tgt_cell_population_list)
@@ -781,8 +795,9 @@ class CountDecodertrainer(LightningModule):
                 temperature=2.0,
                 timesteps=18,
                 max_len=self.max_seq_length,
-                perturbation_id=batch['perturbation_id'],
+                n_perturbations_bool=batch['n_perturbations_bool'],
                 perturbation_embedding=batch['perturbation_embedding'],
+                perturbation_id=batch['perturbation_id'],
             )
             count_loss, pred_count = self.compute_count_loss(outputs, batch)
             self.log(
@@ -809,13 +824,21 @@ class CountDecodertrainer(LightningModule):
             )
 
         # difference between perturbed and ctrl counts for perturbation DEG
+        # log normalize
+        if self.loss_mode in ['zinb', 'nb']:
+            log_tgt = torch.log(1e4*torch.div(batch['tgt_counts'].T, batch['tgt_counts'].sum(axis=1)).T + 1)
+            log_pred = torch.log(1e4*torch.div(pred_count.T, pred_count.sum(axis=1)).T + 1)
+        else:
+            log_tgt = batch['tgt_counts']
+            log_pred = pred_count
+
         for i in range(len(batch['testing_genes_subset'])):
             deg_idx = batch['testing_genes_subset'][i]
-            self.test_pred_counts_ctrl_delta_deg.append(pred_count[i,deg_idx] - batch['src_counts'][i,deg_idx])
-            self.test_true_counts_ctrl_delta_deg.append(batch['tgt_counts'][i,deg_idx] - batch['src_counts'][i,deg_idx])
+            self.test_pred_counts_ctrl_delta_deg.append(log_pred[i,deg_idx] - self.ctrl_counts[deg_idx])
+            self.test_true_counts_ctrl_delta_deg.append(log_tgt[i,deg_idx] - self.ctrl_counts[deg_idx])
 
-        self.test_pred_counts_list.append(pred_count)
-        self.test_true_counts_list.append(batch['tgt_counts'])
+        self.test_pred_counts_list.append(log_pred)
+        self.test_true_counts_list.append(log_tgt)
         # self.test_ctrl_counts_list.append(batch['src_counts'])
         self.test_perturbation_list.append(batch['perturbation_id'])
         self.test_tgtcell_idx.append(batch['tgt_cell_idx'])
@@ -826,12 +849,11 @@ class CountDecodertrainer(LightningModule):
 
     def on_test_epoch_end(self):
         # return Pearson correlation coefficient
-        ctrl_counts = np.concatenate([self.ctrl_counts for i in range(len(true_counts))])
         true_counts = torch.cat(self.test_true_counts_list).detach().cpu()
         pred_counts = torch.cat(self.test_pred_counts_list).detach().cpu()
-        # ctrl_counts = torch.cat(self.test_ctrl_counts_list).detach().cpu()
-        pred_cts_delta = torch.stack(self.test_pred_counts_ctrl_delta_deg).detach().cpu()
-        true_cts_delta = torch.stack(self.test_true_counts_ctrl_delta_deg).detach().cpu()
+        ctrl_counts = np.concatenate([self.ctrl_counts for i in range(len(true_counts))])
+        pred_cts_delta = torch.cat(self.test_pred_counts_ctrl_delta_deg).detach().cpu()
+        true_cts_delta = torch.cat(self.test_true_counts_ctrl_delta_deg).detach().cpu()
         cls_embeddings = np.concatenate(self.cls_embeddings_list)
 
         perturbation_list = ['+'.join([str(x) for x in el]) for el in list(itertools.chain.from_iterable(self.test_perturbation_list))]

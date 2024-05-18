@@ -174,7 +174,11 @@ def main() -> None:
     tgt_dataset = load_from_disk(args.tgt_dataset_folder)
     src_adata = sc.read_h5ad(args.src_adata_folder)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
-
+    ctrl_counts = sc.read_h5ad(args.src_adata_folder.replace('_pairing_control',''))
+    sc.pp.normalize_total(ctrl_counts, target_sum=1e4)
+    sc.pp.log1p(ctrl_counts)
+    ctrl_counts = ctrl_counts[ctrl_counts.obs.condition == 'ctrl'].X.mean(axis=0)
+    
     # Splitting to avoid loading anndata into data module ---------------
     if args.splitting_mode == 'stratified':
         train_indices, val_indices, test_indices = stratified_split(
@@ -331,6 +335,7 @@ def main() -> None:
             perturbation_modeling='activation', # activation repression or None (if not perturbation experiment)
             run_id = run_id,
             base_path = args.base_path,
+            ctrl_counts=ctrl_counts,
         )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')
