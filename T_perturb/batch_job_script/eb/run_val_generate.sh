@@ -28,9 +28,7 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --split False \
 --splitting_mode random \
 --generate True \
---ckpt_count_path "./T_perturb/T_perturb/Model/checkpoints/"\
-"20240516_1028_petra_train_count_lr_5e-05"\
-"_wd_0.01_batch_32_zinb_tp_1-2-4.ckpt" \
+--ckpt_count_path "./T_perturb/T_perturb/Model/checkpoints/20240518_1412_petra_train_count_lr_0.0001_wd_0.0001_batch_32_zinb_tp_1-2-4.ckpt" \
 --output_dir "./T_perturb/T_perturb/plt/res/eb" \
 --src_dataset './T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset' \
 --tgt_dataset_folder './T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt' \
@@ -41,8 +39,8 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --tgt_vocab_size 2001 \
 --petra_lr 0.001 \
 --petra_wd 0.0001 \
---count_lr 0.00005 \
---count_wd 0.01 \
+--count_lr 0.0001 \
+--count_wd 0.0001 \
 --num_layers 2 \
 --d_ff 16 \
 --loss_mode zinb \

@@ -1,7 +1,14 @@
+from typing import (
+    Any,
+    Dict,
+    Optional,
+)
+
 import numpy as np
 import pandas as pd
 import scanpy as sc
 import torch
+from scipy import stats
 from scipy.sparse import issparse
 from scipy.stats import wasserstein_distance
 from sklearn.metrics.pairwise import rbf_kernel
@@ -214,3 +221,58 @@ def evaluate_emd(
         emd_list.append({'emd': np.mean(wd)})
         emd_df = pd.DataFrame(emd_list)
     return emd_df
+
+
+def lin_reg_summary(
+    true_adata: sc.AnnData,
+    pred_adata: sc.AnnData,
+    condition_key: Optional[str] = None,
+    de_genes_dict: Optional[Dict[Any, Any]] = None,
+):
+    if condition_key is not None:
+        lin_reg_list = []
+        for cond in pred_adata.obs[condition_key].unique():
+            adata_ = true_adata[true_adata.obs[condition_key] == cond].copy()
+            pred_adata_ = pred_adata[pred_adata.obs[condition_key] == cond].copy()
+            if issparse(adata_.X):
+                adata_.X = adata_.X.A
+            if issparse(pred_adata_.X):
+                pred_adata_.X = pred_adata_.X.A
+            if de_genes_dict:
+                de_genes = de_genes_dict[cond]
+                adata_ = adata_[:, de_genes]
+                pred_adata_ = pred_adata_[:, de_genes]
+            x_true = np.average(adata_.X, axis=0)
+            x_pred = np.average(pred_adata.X, axis=0)
+            slope, intercept, r_value, p_value, std_err = stats.linregress(
+                x_true, x_pred
+            )
+            pearson_r = r_value**2
+            lin_reg_list.append(
+                {
+                    'condition': cond,
+                    'slope': slope,
+                    'intercept': intercept,
+                    'r_value': r_value,
+                    'p_value': p_value,
+                    'std_err': std_err,
+                    'pearson_r': pearson_r,
+                }
+            )
+        lin_reg_df = pd.DataFrame(lin_reg_list).set_index('condition')
+    else:
+        x_true = np.average(true_adata.X, axis=0)
+        x_pred = np.average(pred_adata.X, axis=0)
+        slope, intercept, r_value, p_value, std_err = stats.linregress(x_true, x_pred)
+        pearson_r = r_value**2
+        lin_reg_df = pd.DataFrame(
+            {
+                'slope': slope,
+                'intercept': intercept,
+                'r_value': r_value,
+                'p_value': p_value,
+                'std_err': std_err,
+                'pearson_r': pearson_r,
+            }
+        )
+    return lin_reg_df

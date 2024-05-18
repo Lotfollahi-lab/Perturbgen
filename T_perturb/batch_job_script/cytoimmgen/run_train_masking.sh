@@ -17,14 +17,14 @@ module load cuda-12.1.1
 source /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/.petra_cuda12/bin/activate
 cwd=$(pwd)
 
-# export WANDB_DIR=$cwd/wandb
+export WANDB_DIR=$cwd/wandb
 # run script
 echo "--- Start computing model"
 
 # # Run python script for rna
 python3 $cwd/train.py \
 --train_mode masking \
---split True \
+--split False \
 --splitting_mode stratified \
 --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
 --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset" \
@@ -34,7 +34,7 @@ python3 $cwd/train.py \
 --mapping_dict_path  "./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl" \
 --batch_size 64 \
 --max_len 300 \
---epochs 100 \
+--epochs 50 \
 --tgt_vocab_size 1261 \
 --petra_lr 0.0001 \
 --petra_wd 0.0001 \
@@ -43,7 +43,7 @@ python3 $cwd/train.py \
 --d_ff 128 \
 --num_layers 6 \
 --condition_keys Cell_culture_batch \
---time_steps 1 2 3 \
+--time_steps 1 3 \
 --var_list Cell_population Cell_type Time_point Donor
 echo "--- Finished computing model"
 # Run python script for rna
