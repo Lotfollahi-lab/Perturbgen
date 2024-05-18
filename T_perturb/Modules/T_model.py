@@ -536,15 +536,14 @@ class Petra(nn.Module):
         context_embedding_dict['context_t0'] = enc_output
         context_pad_dict = {}
         context_pad_dict['src_pad'] = src_attention_mask
+
         # retrieve the embeddings to provide as context
         # pad the rest of the time steps
         for time_step in all_time_steps:
-            # if (generate is True) and (time_step in self.time_steps):
-            # exclude the selected time step from the context
-
-            if time_step == tgt_time_step:
-                pass
-            else:
+            # exclude tgt_time_step from the context
+            if time_step != tgt_time_step:
+                # if (generate is True) and (time_step in self.time_steps):
+                # only provide previous time steps as context
                 if len(context_embedding_dict) > 1:
                     context_tensors = list(context_embedding_dict.values())
                     context = torch.cat(context_tensors, dim=1)
@@ -595,15 +594,18 @@ class Petra(nn.Module):
         context_embedding_dict_ = context_embedding_dict.copy()
         context_pad_dict_ = context_pad_dict.copy()
         # remove subsequent time steps from context and pad
-        for time_step in self.total_time_steps:
-            if time_step > tgt_time_step:
-                context_embedding_dict_.pop(f'context_t{time_step}')
-                context_pad_dict_.pop(f'tgt_pad_t{time_step}')
-        # selected time step should not be included in the context for generation
+        # if not generate:
+        #     for time_step in self.time_steps:
+        #         if time_step >= tgt_time_step:
+        #             context_embedding_dict_.pop(f'context_t{time_step}')
+        #             context_pad_dict_.pop(f'tgt_pad_t{time_step}')
+        # # selected time step should not be included in the context for generation
         # if generate is False:
         #     context_embedding_dict_.pop(f'context_t{tgt_time_step}')
-        # context_pad_dict_.pop(f'tgt_pad_t{tgt_time_step}')
+        if generate:
+            context_pad_dict_.pop(f'tgt_pad_t{tgt_time_step}')
         context_tensors = list(context_embedding_dict_.values())
+
         context_embedding = torch.cat(context_tensors, dim=1)
         context_pads = list(context_pad_dict_.values())
         context_pad = torch.cat(context_pads, dim=1)
@@ -661,7 +663,6 @@ class Petra(nn.Module):
         if not_masked:
             dec_embedding_list = []
             mean_embedding_dict = {}
-
             for tgt_time_step in self.time_steps:
                 tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
                 context_embedding_dict, context_pad_dict = self.generate_context(
@@ -673,6 +674,7 @@ class Petra(nn.Module):
                     tgt_pad_dict=tgt_pad_dict,
                     cls_positions=cls_positions,
                 )
+
                 # context should be all the ones before the selected time step
                 outputs = self.context_backprop(
                     context_embedding_dict=context_embedding_dict,
@@ -713,7 +715,6 @@ class Petra(nn.Module):
                 generate=generate,
             )
             if generate:
-                src_attention_mask
                 context_pad_dict = generate_pad_dict
 
             outputs = self.context_backprop(

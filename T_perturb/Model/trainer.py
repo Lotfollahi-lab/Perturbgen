@@ -111,7 +111,6 @@ class Petratrainer(LightningModule):
 
         self.masking_loss = nn.CrossEntropyLoss()
         self.timepoint_loss = nn.CrossEntropyLoss()
-        self.alpha = 0.75
 
         self.weight_decay = weight_decay
         self.lr = lr
@@ -222,12 +221,6 @@ class Petratrainer(LightningModule):
         labels = labels.contiguous().view(-1)
 
         masking_loss = self.masking_loss(dec_logits, labels)
-        # moe_loss = 0
-        # for i in range(len(moe_logits)):
-        #     moe_loss += self.timepoint_loss(
-        #         moe_logits[i], batch[f'tgt_time_point_t{time_step}']
-        #     )
-        # combined_loss = self.alpha * masking_loss + (1 - self.alpha) * moe_loss
 
         self.log(
             'train/masking_loss',
@@ -291,12 +284,6 @@ class Petratrainer(LightningModule):
         dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
         labels = labels.contiguous().view(-1)
         masking_loss = self.masking_loss(dec_logits, labels)
-        # moe_loss = 0
-        # for i in range(len(moe_logits)):
-        #     moe_loss += self.timepoint_loss(
-        #         moe_logits[i], batch[f'tgt_time_point_t{time_step}']
-        #     )
-        # combined_loss = self.alpha * masking_loss + (1 - self.alpha) * moe_loss
 
         self.log(
             'val/loss',
@@ -439,7 +426,6 @@ class Petratrainer(LightningModule):
                 var_dict[var] = np.concatenate(self.test_dict[var])
             test_obs = pd.DataFrame(var_dict)
             test_obs['batch'] = np.array(batch)
-            print(test_obs)
             adata = ad.AnnData(
                 X=true_counts.numpy(),
                 obs=test_obs,
@@ -509,8 +495,8 @@ class CountDecodertrainer(LightningModule):
             state_dict_ = self.modify_ckpt_state_dict(checkpoint, 'transformer.')
             pretrained_model.load_state_dict(state_dict_, strict=False)
             # set parameters to not trainable
-            # for param in pretrained_model.parameters():
-            #     param.requires_grad = False
+            for param in pretrained_model.parameters():
+                param.requires_grad = False
 
         self.decoder = CountDecoder(
             pretrained_model=pretrained_model,
@@ -694,7 +680,6 @@ class CountDecodertrainer(LightningModule):
                 count_dict[time_step] = count_ouput['count_lognorm']
             elif self.loss_mode in ['zinb', 'nb']:
                 dec_mean_gamma = count_ouput['count_mean']
-
                 dec_mean = dec_mean_gamma * batch_size_factor.unsqueeze(1).expand(
                     dec_mean_gamma.size(0), dec_mean_gamma.size(1)
                 )
@@ -713,8 +698,6 @@ class CountDecodertrainer(LightningModule):
                         # sample from distribution
                         x_pred = zinb_distribution.sample((n_samples,))
                         count_dict[time_step] = x_pred.mean(dim=0)
-                        print(true_counts.shape)
-                        print(count_dict[time_step].shape)
 
                 elif self.loss_mode == 'nb':
                     nb_distribution = NegativeBinomial(mu=dec_mean, theta=dispersion)
@@ -818,7 +801,11 @@ class CountDecodertrainer(LightningModule):
 
     def validation_step(self, batch, *args, **kwargs):
         outputs = self.forward(batch)
-        count_loss, pred_counts_dict = self.compute_count_loss(outputs, batch)
+        count_loss, pred_counts_dict = self.compute_count_loss(
+            outputs,
+            batch,
+            n_samples=self.n_samples,
+        )
         self.log(
             'val/loss',
             count_loss,
@@ -839,10 +826,6 @@ class CountDecodertrainer(LightningModule):
             mse_all.append(mse)
             # gather for validation step
             self.val_true_counts_list.append(batch[f'tgt_counts_t{time_step}'])
-            self.val_true_delta_counts_list.append(
-                (batch[f'tgt_counts_t{time_step}'] - batch['src_counts'])
-            )
-            self.val_pred_delta_counts_list.append((pred_count - batch['src_counts']))
             self.val_pred_counts_list.append(pred_count)
 
         mean_mse = torch.mean(torch.stack(mse_all))
@@ -862,8 +845,6 @@ class CountDecodertrainer(LightningModule):
         # return Pearson correlation coefficient
         true_counts = torch.cat(self.val_true_counts_list)
         pred_counts = torch.cat(self.val_pred_counts_list)
-        pred_delta_counts = torch.cat(self.val_pred_delta_counts_list)
-        true_delta_counts = torch.cat(self.val_true_delta_counts_list)
 
         # create adata for mmd and emd
         if self.generate:
@@ -917,17 +898,7 @@ class CountDecodertrainer(LightningModule):
                 logger=True,
                 sync_dist=True,
             )
-            mean_pearson_delta = self.pearson(
-                pred_counts=pred_delta_counts, true_counts=true_delta_counts
-            )
-            self.log(
-                'val/pearson_delta',
-                mean_pearson_delta,
-                on_epoch=True,
-                prog_bar=True,
-                logger=True,
-                sync_dist=True,
-            )
+
         self.val_true_counts_list = []
         self.val_ctrl_counts_list = []
         self.val_pred_counts_list = []
@@ -1049,7 +1020,8 @@ class CountDecodertrainer(LightningModule):
             # create output directory
             # save adata
             pred_adata.write_h5ad(
-                f'{self.output_dir}/generate_adata_{self.loss_mode}.h5ad'
+                f'{self.output_dir}/generate_adata'
+                f'_{self.loss_mode}_{self.n_samples}.h5ad'
             )
             emd = evaluate_emd(true_adata, pred_adata)
             self.log(

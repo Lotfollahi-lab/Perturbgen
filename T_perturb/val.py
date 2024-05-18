@@ -83,9 +83,7 @@ def get_args():
     parser.add_argument(
         '--ckpt_count_path',
         type=str,
-        default='./T_perturb/T_perturb/Model/checkpoints/'
-        '20240511_0709_petra_train_count_lr_5e-05'
-        '_wd_0.01_batch_64_mse_tp_1-2-3.ckpt',
+        default=None,
         help='path to checkpoint',
     )
     parser.add_argument(

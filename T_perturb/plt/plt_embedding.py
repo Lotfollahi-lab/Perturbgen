@@ -9,7 +9,11 @@ import scanpy as sc
 import seaborn as sns
 from matplotlib import style
 
-from T_perturb.Model.metric import evaluate_emd, evaluate_mmd
+from T_perturb.Model.metric import (
+    evaluate_emd,
+    evaluate_mmd,
+    lin_reg_summary,
+)
 
 np.random.seed(42)
 random.seed(42)
@@ -28,7 +32,7 @@ def get_args():
         type=str,
         # default='./T_perturb/T_perturb/plt/res/eb',
         default='./T_perturb/T_perturb/plt/res/cytoimmgen',
-        help='Dataset to use for analysis',
+        # help='Dataset to use for analysis',
     )
     parser.add_argument(
         '--full_data_dir',
@@ -270,7 +274,7 @@ plt.close()
 
 # Plotting generate results
 # --------------------------------
-adata = sc.read_h5ad(f'{args.res_dir}/generate_adata_zinb.h5ad')
+adata = sc.read_h5ad(f'{args.res_dir}/generate_adata_zinb_5.h5ad')
 del adata.uns['Cell_type_colors']
 del adata.uns['Cell_population_colors']
 del adata.uns['Time_point_colors']
@@ -419,18 +423,26 @@ df_long.groupby(['Metric', 'Type'])['Value'].mean()
 
 # EB analysis
 # ------------------------------
-adata = sc.read_h5ad(f'{args.res_dir}/generate_adata_zinb.h5ad')
+adata = sc.read_h5ad(f'{args.res_dir}/generate_adata_zinb_5.h5ad')
 adata_true = adata.copy()
 adata_true.X = adata_true.layers['counts']
 
 emd_list = []
 mmd_list = []
+# print emd and mmd before normalisation
 emd_df = evaluate_emd(adata_true, adata, None)
-mmd_df = evaluate_mmd(adata=adata_true, pred_adata=adata)
+mmd_df = evaluate_mmd(adata=adata_true, pred_adata=adata, n_cells=10000)
+lin_reg_df = lin_reg_summary(adata_true, adata)
+print('EMD before normalisation: ', emd_df)
+print('MMD before normalisation: ', mmd_df)
 sc.pp.normalize_total(adata, target_sum=1e4)
 sc.pp.log1p(adata)
 sc.pp.normalize_total(adata_true, target_sum=1e4)
 sc.pp.log1p(adata_true)
+emd_df = evaluate_emd(adata_true, adata, None)
+mmd_df = evaluate_mmd(adata=adata_true, pred_adata=adata, n_cells=10000)
+print('EMD after normalisation: ', emd_df)
+print('MMD after normalisation: ', mmd_df)
 # concatenate results
 emd_mmd_df = pd.concat([emd_df, mmd_df], axis=1)
 emd_mmd_df.to_csv(f'{args.res_dir}/emd_mmd_generate_zinb.csv')

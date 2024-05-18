@@ -65,10 +65,11 @@ def get_args():
         '--ckpt_masking_path',
         type=str,
         default='./T_perturb/T_perturb/Model/checkpoints/'
-        '20240510_2102_petra_train_masking_lr_0.0001'
-        '_wd_0.0001_batch_64_mlmp_0.15_tp_1-2-3.ckpt',
+        '20240517_2134_petra_train_masking_lr_0.001'
+        '_wd_0.0001_batch_32_mlmp_0.15_tp_1-2-4.ckpt',
         help='path to checkpoint',
     )
+
     parser.add_argument(
         '--src_dataset',
         type=str,
