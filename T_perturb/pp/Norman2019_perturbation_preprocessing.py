@@ -30,7 +30,7 @@ dataset_name = 'Norman2019'
 pp_path = 'T_perturb/T_perturb/pp/res'
 geneformer_path = f'{base_path}/../../Software/Geneformer'
 
-subset_dataset=False
+subset_dataset=True
 
 # seed
 seed_no = 42
@@ -207,6 +207,7 @@ print(f'Number of perturbations after filtering: {len(include)}')
 
 if subset_dataset:
     include = ['KLF1','BPGM','CEBPA','CEBPB','CEBPE','COL1A1','COL1A2','IRF1','FOXA3']
+    include = adata.uns['perturbations'].gene_name[adata.uns['perturbations'].gene_name.str.contains(('|').join(include))].values.tolist()
     subset_prefix = 'subsetted_'
 else:
     subset_prefix = ''
@@ -336,6 +337,7 @@ dataset_ctrl_wembed.save_to_disk(f'{base_path}/{data_path}/{dataset_name}/datase
 adata_ctrl = subset_adata(adata, cell_pairings['control'])
 adata_perturbed = subset_adata(adata, cell_pairings['perturbed'])
 
+print(adata_ctrl.shape, adata_perturbed.shape)
 # save
 adata_ctrl.write_h5ad(f'{base_path}/{data_path}/{dataset_name}/adata/{subset_prefix}filtered_tokenised_hvg_pairing_control.h5ad')
 adata_perturbed.write_h5ad(f'{base_path}/{data_path}/{dataset_name}/adata/{subset_prefix}filtered_tokenised_hvg_pairing_perturbed.h5ad')

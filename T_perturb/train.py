@@ -18,6 +18,7 @@ import gc
 from T_perturb.Dataloaders.datamodule import PetraDataModule
 from T_perturb.Model.trainer import CountDecodertrainer, Petratrainer
 from T_perturb.src.utils import label_encoder, stratified_split, gears_splitter, randomised_split
+from lightning.pytorch.profilers import AdvancedProfiler, PyTorchProfiler
 
 print('set up')
 
@@ -462,6 +463,8 @@ def main() -> None:
         verbose=False,
         mode=mode,
     )
+    # profiler = AdvancedProfiler(dirpath='../../logs', filename=f'{run_id}_profiler')
+#    profiler = PyTorchProfiler(output_filename=f'../../logs/{run_id}_profiler', profile_memory=True)
     # deepspeed_strategy = DeepSpeedStrategy(stage=2)
     deepspeed_strategy = DDPStrategy(find_unused_parameters=True)
     trainer = pl.Trainer(
@@ -473,6 +476,8 @@ def main() -> None:
         ],
         max_epochs=args.epochs,
         accelerator='auto',
+#        profiler=profiler,
+#        limit_train_batches=2,
         devices=-1 if torch.cuda.is_available() else 0,
         strategy=deepspeed_strategy if torch.cuda.device_count() > 1 else 'auto',
     )

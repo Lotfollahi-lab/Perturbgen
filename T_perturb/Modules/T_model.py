@@ -99,7 +99,7 @@ class CrossAttention(nn.Module):
 
         # attention, what we cannot get enough of
         attn = sim.softmax(dim=-1)
-        print(attn[0,:10,:10])
+        # print(attn[0,:10,:10])
         out = einsum('b i j, b j d -> b i d', attn, v)
         out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
         return self.to_out(out)
@@ -316,14 +316,16 @@ class Petra(nn.Module):
 
         self.decoder_layers = nn.ModuleList(
             [DecoderLayer(dim=d_model, n_heads=num_heads, d_head=d_ff, dropout=dropout, context_dim=d_encoded_input) for _ in range(num_layers)]
-        )
+        )   
+        
         if self.perturbation_modeling is not None:
-            if d_encoded_input != d_perturbation_embed:
-                self.fc_pertReshape = nn.Linear(d_perturbation_embed, d_encoded_input)
-            else:
-                self.fc_pertReshape = None
             if 'mlp' in self.perturbation_encoding_mode:
                 self.mlp_pertEmbed = Mlp(in_features = d_perturbation_embed, out_features=d_encoded_input)
+            else:
+                if d_encoded_input != d_perturbation_embed:
+                    self.fc_pertReshape = nn.Linear(d_perturbation_embed, d_encoded_input)
+                else:
+                    self.fc_pertReshape = None
     
         self.fc = nn.Linear(d_model, tgt_vocab_size) #, device=self.device)
         self.dropout = nn.Dropout(dropout)
