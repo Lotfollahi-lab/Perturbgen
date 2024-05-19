@@ -34,15 +34,15 @@ def get_args():
     parser.add_argument(
         '--h5ad_path',
         type=str,
-        # default='./data/h5d_files/cytoimmgen.h5ad',
-        default='./data/20240423_eb/EB.h5ad',
+        default='./data/h5d_files/cytoimmgen.h5ad',
+        # default='./data/20240423_eb/EB.h5ad',
         help='Path to h5ad file',
     )
     parser.add_argument(
         '--dataset',
         type=str,
-        # default='cytoimmgen',
-        default='eb',
+        default='cytoimmgen',
+        # default='eb',
         choices=['cytoimmgen', 'eb'],
     )
     parser.add_argument(
@@ -56,28 +56,28 @@ def get_args():
         '--var_list',
         type=str,
         nargs='+',
-        # default=[
-        #     'Cell_population',
-        #     'Cell_type',
-        #     'Time_point',
-        #     'Age',
-        #     'Sex',
-        #     'batch',
-        #     'Cell_culture_batch',
-        #     'Phase',
-        #     'Donor',
-        #     'cell_pairing_index',
-        # ],
         default=[
+            'Cell_population',
+            'Cell_type',
             'Time_point',
+            'Age',
+            'Sex',
+            'batch',
+            'Cell_culture_batch',
+            'Phase',
+            'Donor',
+            'cell_pairing_index',
         ],
+        # default=[
+        #     'Time_point',
+        # ],
         help='List of variables to keep in the dataset',
     )
     parser.add_argument(
         '--pairing_mode',
         type=str,
-        # default='stratified',
-        default='random',
+        default='stratified',
+        # default='random',
         choices=['stratified', 'random'],
         help='Cell pairing mode',
     )
@@ -90,27 +90,27 @@ def get_args():
     parser.add_argument(
         '--reference_time',
         type=str,
-        # default='0h',
-        default='Day 00-03',
+        default='0h',
+        # default='Day 00-03',
         help='Control time point for cell pairing' 'which is feed into Geneformer',
     )
     parser.add_argument(
         '--time_point_order',
         type=str,
         nargs='+',
-        # default=[
-        #     '0h',
-        #     '16h',
-        #     '40h',
-        #     '5d',
-        # ],
         default=[
-            'Day 00-03',
-            'Day 06-09',
-            'Day 12-15',
-            'Day 18-21',
-            'Day 24-27',
+            '0h',
+            '16h',
+            '40h',
+            '5d',
         ],
+        # default=[
+        #     'Day 00-03',
+        #     'Day 06-09',
+        #     'Day 12-15',
+        #     'Day 18-21',
+        #     'Day 24-27',
+        # ],
         help='Order of time points in the dataset',
     )
     parser.add_argument(
@@ -118,6 +118,13 @@ def get_args():
         type=str2bool,
         default=False,
         help='Exclude genes in anndata that are not in Geneformer dictionary',
+    )
+    parser.add_argument(
+        '--src_mode',
+        type=str,
+        default='Geneformer',
+        choices=['Geneformer', 'Transformer'],
+        help='Mode for tokenisation',
     )
     args = parser.parse_args()
     return args
@@ -239,6 +246,13 @@ cell_pairings = pairing_resting_to_activated_cells(
 paired_dataset_dir = (
     f'./T_perturb/T_perturb/res/{args.dataset}/' f'dataset_{args.gene_filtering_mode}'
 )
+token_id_to_row_id_dict = pickle.load(
+    open(
+        f'./T_perturb/T_perturb/pp/res/{args.dataset}/'
+        f'tokenid_to_rowid_{args.gene_filtering_mode}.pkl',
+        'rb',
+    )
+)
 if not os.path.exists(paired_dataset_dir):
     os.makedirs(paired_dataset_dir)
 dataset_mapped = dataset.map(
@@ -262,8 +276,16 @@ for time_point in tqdm.tqdm(args.time_point_order):
         adata_tmp.write_h5ad(f'./{paired_h5ad_dir}_src/{time_point}.h5ad')
         # do not map input ids to row ids for Geneformer input
         # Geneformer needs initial token ids to extract correct embeddings
-        dataset_tmp = dataset.select(cell_pairings[time_point])
-        dataset_tmp.save_to_disk(f'{output_dir}_src/{time_point}.dataset')
+        if args.src_mode == 'Geneformer':
+            dataset_tmp = dataset.select(cell_pairings[time_point])
+            dataset_tmp.save_to_disk(f'{output_dir}_src/{time_point}.dataset')
+        else:
+            if not os.path.exists(f'{output_dir}_src_transformer'):
+                os.makedirs(f'{output_dir}_src_transformer')
+            dataset_tmp = dataset_mapped.select(cell_pairings[time_point])
+            dataset_tmp.save_to_disk(
+                f'{output_dir}_src_transformer/{time_point}.dataset'
+            )
     else:
         adata_tmp.write_h5ad(
             f'{paired_h5ad_dir}_tgt/' f'{n_tgt_iter}_{time_point}.h5ad'

@@ -463,7 +463,7 @@ def main() -> None:
         logger=wandb_logger,
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
-        devices=1 if torch.cuda.is_available() else 0,  # infernce only on one gpu
+        devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
     )
     # Finally, kick of the training process.
     if args.test_mode == 'masking':

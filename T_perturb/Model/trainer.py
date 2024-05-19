@@ -90,6 +90,7 @@ class Petratrainer(LightningModule):
         total_time_steps: int = 3,
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         var_list: List[str] = ['Time_point'],
+        mode: str = 'GF_fine_tuned',
         gene_names: Optional[List[str]] = None,
         *args,
         **kwargs,
@@ -107,6 +108,7 @@ class Petratrainer(LightningModule):
             mlm_probability=mlm_probability,
             time_steps=time_steps,
             total_time_steps=total_time_steps,
+            mode=mode,
         )
 
         self.masking_loss = nn.CrossEntropyLoss()
@@ -474,6 +476,7 @@ class CountDecodertrainer(LightningModule):
         n_samples: int = 1,
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         mask_scheduler: Optional[str] = 'cosine',
+        mode: str = 'GF_fine_tuned',
         *args,
         **kwargs,
     ):
@@ -488,6 +491,7 @@ class CountDecodertrainer(LightningModule):
             max_seq_length=max_seq_length,
             time_steps=time_steps,
             total_time_steps=total_time_steps,
+            mode=mode,
         )
         # load PETRA checkpoint
         if ckpt_masking_path is not None:
@@ -1020,7 +1024,7 @@ class CountDecodertrainer(LightningModule):
             # create output directory
             # save adata
             pred_adata.write_h5ad(
-                f'{self.output_dir}/generate_adata'
+                f'{self.output_dir}/generate_adata_interpolate_ckp19_GF_fine_tuned'
                 f'_{self.loss_mode}_{self.n_samples}.h5ad'
             )
             emd = evaluate_emd(true_adata, pred_adata)

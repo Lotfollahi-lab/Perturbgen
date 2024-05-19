@@ -8,6 +8,7 @@ import numpy as np
 import torch
 from einops import rearrange, repeat
 from torch import einsum, nn
+from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from tqdm import tqdm
 from transformers import BertForMaskedLM
 
@@ -171,13 +172,18 @@ class Block(nn.Module):
 
 
 class SinusoidalPositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_seq_length, n_time_steps):
+    def __init__(self, d_model, max_seq_length, n_time_steps, mode='GF_fine_tuned'):
         # train time steps and interpolation timestep
         # TODO: separate timestep positional encoding
         # and positional encoding for the ranks
         super(SinusoidalPositionalEncoding, self).__init__()
         self.max_seq_length = max_seq_length
-        total_seq_length = n_time_steps * max_seq_length
+        if mode in ['GF_frozen', 'GF_fine_tuned']:
+            total_seq_length = n_time_steps * max_seq_length
+        elif mode == 'Transformer_encoder':
+            # add one time step to included src time step
+            total_seq_length = (n_time_steps + 1) * max_seq_length
+        self.mode = mode
         pe = torch.zeros(total_seq_length, d_model)
         position = torch.arange(0, total_seq_length, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(
@@ -188,12 +194,18 @@ class SinusoidalPositionalEncoding(nn.Module):
         self.register_buffer('pe', pe.unsqueeze(0))
 
     def forward(self, x, tgt_time_step=None):
+        if self.mode in ['GF_frozen', 'GF_fine_tuned']:
+            tgt_time_step_ = tgt_time_step - 1
+        elif self.mode == 'Transformer_encoder':
+            # start from 0 to include src time step
+            tgt_time_step_ = tgt_time_step
         if tgt_time_step is not None:
-            start_pos = (tgt_time_step - 1) * self.max_seq_length
+            start_pos = (tgt_time_step_) * self.max_seq_length
             end_pos = start_pos + x.size(1)
             pe = self.pe[:, start_pos:end_pos]
         else:
             pe = self.pe[:, : x.size(1)]
+
         return x + pe
 
 
@@ -221,26 +233,91 @@ class Geneformerwrapper(nn.Module):
         'generative_modelling_omic/Geneformer/',
         output_attentions=False,
         output_hidden_states=True,
+        mode='GF_frozen',
     ):
         super(Geneformerwrapper, self).__init__()
-        self.model = BertForMaskedLM.from_pretrained(
-            model_path,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-        )
-        for param in self.model.parameters():
-            param.requires_grad = False
+        if mode in ['GF_frozen', 'GF_fine_tuned']:
+            self.model = BertForMaskedLM.from_pretrained(
+                model_path,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+            )
+        self.mode = mode
+        if self.mode == 'GF_frozen':
+            for param in self.model.parameters():
+                param.requires_grad = False
 
     def forward(self, src_input_id, src_attention_mask):
-        with torch.no_grad():
+        if self.mode == 'GF_frozen':
+            with torch.no_grad():
+                outputs = self.model.forward(
+                    input_ids=src_input_id, attention_mask=src_attention_mask
+                )
+
+        elif self.mode == 'GF_fine_tuned':
             outputs = self.model.forward(
                 input_ids=src_input_id, attention_mask=src_attention_mask
             )
-            embs = outputs.hidden_states[-1]
-
-        # do we need to set this to eval ?
-
+        embs = outputs.hidden_states[-1]
         return embs
+
+
+class Encoder(nn.Module):
+    '''
+    Transformer encoder modified from
+    URL: https://pytorch.org/tutorials/beginner/transformer_tutorial.html # noqa
+    Last accessed: 2024-05-19
+    '''
+
+    def __init__(
+        self,
+        total_vocab_size: int,
+        max_seq_length: int,
+        n_time_steps: int,
+        d_model: int = 256,
+        nhead: int = 4,
+        nlayers: int = 6,
+        dropout: float = 0.02,
+        d_ff: int = 512,
+    ):
+        super().__init__()
+        self.positional_encoding = SinusoidalPositionalEncoding(
+            d_model=d_model,
+            max_seq_length=max_seq_length,
+            n_time_steps=n_time_steps,
+            mode='Transformer_encoder',
+        )
+        encoder_layers = TransformerEncoderLayer(
+            d_model=d_model, nhead=nhead, dim_feedforward=d_ff, dropout=dropout
+        )
+        self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
+        self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
+        self.d_model = d_model
+
+        self.init_weights()
+
+    def init_weights(self) -> None:
+        initrange = 0.1
+        self.token_embedding.weight.data.uniform_(-initrange, initrange)
+
+    def forward(self, src: torch.Tensor, src_mask: torch.Tensor = None) -> torch.Tensor:
+        """
+        Arguments:
+            src: Tensor, shape ``[seq_len, batch_size]``
+            src_mask: Tensor, shape ``[seq_len, seq_len]``
+
+        Returns:
+            output Tensor of shape ``[seq_len, batch_size, total_vocab_size]``
+        """
+        src = self.token_embedding(src) * math.sqrt(self.d_model)
+        src = self.positional_encoding(x=src, tgt_time_step=0)
+        # transpose src:
+        # [batch_size, seq_len, d_model] -> [seq_len, batch_size, d_model]
+        src = src.transpose(0, 1)
+        output = self.transformer_encoder(src, src_key_padding_mask=src_mask)
+        # reverse transpose
+        output = output.transpose(0, 1)
+        return output
 
 
 def uniform(shape, min=0, max=1, device=None):
@@ -291,6 +368,7 @@ class Petra(nn.Module):
         mlm_probability: float = 0.3,
         time_steps: list = [1, 2],
         total_time_steps: int = 3,
+        mode='GF_frozen',
     ):
         super(Petra, self).__init__()
         self.num_features = self.embed_dim = d_model
@@ -313,8 +391,20 @@ class Petra(nn.Module):
             d_model=d_model,
             max_seq_length=max_seq_length,  # Specify the GPU device
             n_time_steps=total_time_steps,
+            mode=mode,
         )
-        self.encoder_layers = Geneformerwrapper()
+        if mode in ['GF_frozen', 'GF_fine_tuned']:
+            self.encoder_layers = Geneformerwrapper(mode=mode)
+        elif mode == 'Transformer_encoder':
+            self.encoder_layers = Encoder(
+                total_vocab_size=total_vocab_size,
+                max_seq_length=max_seq_length,
+                n_time_steps=total_time_steps,
+            )
+        else:
+            raise ValueError(f'Invalid encoder mode: {mode}')
+        self.mode = mode
+
         self.decoder_block = nn.ModuleList(
             [
                 Block(
@@ -360,21 +450,23 @@ class Petra(nn.Module):
         https://huggingface.co/ctheodoris/Geneformer/blob/main/geneformer/perturber_utils.py # noqa
         Accessed: 2024-05-14
         """
-        # create a mask tensor based on padding lengths
-
-        # create a tensor of original lengths
-        original_lens = pad.sum(dim=1)
-        # create CLS token mask
+        # mask should be opposite of pad
         pad[:, 0] = True
+        # our mask is the opposite of BERT mask
+        pad_mask = ~pad
+        # create a tensor of original lengths
+        original_lens = pad_mask.sum(dim=1)
+
+        # create CLS token mask
         if embs.dim() == 3:
             # fill the masked positions in embs with zeros
-            masked_embs = embs.masked_fill(~pad.unsqueeze(2), 0.0)
+            masked_embs = embs.masked_fill(~pad_mask.unsqueeze(2), 0.0)
 
             # compute the mean across the non-padding dimensions
             mean_embs = masked_embs.sum(dim) / original_lens.view(-1, 1).float()
 
         elif embs.dim() == 2:
-            masked_embs = embs.masked_fill(~pad, 0.0)
+            masked_embs = embs.masked_fill(~pad_mask, 0.0)
             mean_embs = masked_embs.sum(dim) / original_lens.float()
         return mean_embs
 
@@ -462,7 +554,13 @@ class Petra(nn.Module):
         return tgt_pad_dict
 
     def call_encoder(self, src_input_id, src_attention_mask):
-        enc_output = self.encoder_layers(src_input_id, src_attention_mask.int())
+        if self.mode in ['GF_frozen', 'GF_fine_tuned']:
+            # reverse src mask for BERT
+            src_attention_mask = ~src_attention_mask
+            enc_output = self.encoder_layers(src_input_id, src_attention_mask.int())
+        else:
+            # different mask for transformer encoder
+            enc_output = self.encoder_layers(src_input_id, src_attention_mask)
         return enc_output
 
     def call_decoder(
@@ -657,7 +755,7 @@ class Petra(nn.Module):
 
         src_attention_mask = self.generate_src_mask(src_input_id)
         # BERT mask: 1 for tokens to keep, 0 for tokens to mask. Thus, negate mask.
-        enc_output = self.call_encoder(src_input_id, ~src_attention_mask)
+        enc_output = self.call_encoder(src_input_id, src_attention_mask)
 
         # distinction between selected time step and rest time steps
         if not_masked:

@@ -22,11 +22,37 @@ cwd=$(pwd)
 # Run python script to PETRA
 echo '--- Start computing model'
 
+# # # interpolation
+# # python3 $cwd/train.py \
+# python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/train.py \
+# --train_mode masking \
+# --split False \
+# --splitting_mode random \
+# --src_dataset './T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset' \
+# --tgt_dataset_folder './T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt' \
+# --src_adata './T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad' \
+# --tgt_adata_folder './T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt' \
+# --mapping_dict_path  './T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl' \
+# --batch_size 32 \
+# --max_len 263 \
+# --epochs 100 \
+# --tgt_vocab_size 2001 \
+# --petra_lr 0.001 \
+# --petra_wd 0.0001 \
+# --mlm_prob 0.15 \
+# --n_workers 64 \
+# --num_layers 2 \
+# --d_ff 16 \
+# --time_steps 1 2 4 \
+# --var_list Time_point \
 
+# echo '--- Finished computing model'
+
+# extrapolation
 # python3 $cwd/train.py \
 python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/train.py \
 --train_mode masking \
---split True \
+--split False \
 --splitting_mode random \
 --src_dataset './T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset' \
 --tgt_dataset_folder './T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt' \
@@ -43,7 +69,7 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --n_workers 64 \
 --num_layers 2 \
 --d_ff 16 \
---time_steps 1 2 4 \
+--time_steps 1 2 \
 --var_list Time_point \
 
 echo '--- Finished computing model'

@@ -195,6 +195,27 @@ def get_args():
         # default=['Cell_population', 'Cell_type', 'Time_point', 'Donor'],
         help='List of variables to keep in the dataset',
     )
+    parser.add_argument(
+        '--train_prop',
+        type=float,
+        default=0.8,
+    )
+    parser.add_argument(
+        '--test_prop',
+        type=float,
+        default=0.1,
+    )
+    parser.add_argument(
+        '--mode',
+        default='GF_fine_tuned',
+        type=str,
+        choices=[
+            'GF_fine_tuned',
+            'GF_frozen',
+            'Transformer_encoder',
+        ],
+        help='mode of encoder',
+    )
     args = parser.parse_args()
     return args
 
@@ -224,8 +245,8 @@ def main() -> None:
             # start preprocessing to avoid loading anndata into datamodule
             train_indices, val_indices, test_indices = stratified_split(
                 tgt_adata=tgt_adata_tmp,
-                train_prop=0.8,  # 0.8,0.1,0.1 train, val, test
-                test_prop=0.1,
+                train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
+                test_prop=args.test_prop,
                 groups=['Cell_type', 'Donor'],
                 seed=RANDOM_SEED,
             )
@@ -237,8 +258,8 @@ def main() -> None:
         elif args.splitting_mode == 'random':
             train_indices, val_indices, test_indices = randomised_split(
                 adata=tgt_adata_tmp,
-                train_prop=0.8,  # 0.8,0.1,0.1 train, val, test
-                test_prop=0.1,
+                train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
+                test_prop=args.test_prop,
                 seed=RANDOM_SEED,
             )
         # elif split == 'unseen_donor':
@@ -368,6 +389,7 @@ def main() -> None:
             total_time_steps=n_total_timepoints,
             mapping_dict_path=args.mapping_dict_path,
             output_dir=args.output_dir,
+            mode=args.mode,
         )
     elif args.train_mode == 'count':
         decoder_module = CountDecodertrainer(
@@ -394,6 +416,7 @@ def main() -> None:
             iterations=args.iterations,
             mask_scheduler=args.mask_scheduler,
             output_dir=args.output_dir,
+            mode=args.mode,
         )
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
@@ -487,10 +510,11 @@ def main() -> None:
     checkpoint_path = './T_perturb/T_perturb/Model/checkpoints'
     checkpoint_callback = ModelCheckpoint(
         dirpath=checkpoint_path,
-        filename=filename,
-        save_top_k=1,
+        filename=f'{filename}-' + '{epoch:02d}',
+        save_top_k=-1,
+        every_n_epochs=10,
         verbose=True,
-        monitor=monitor_metric,
+        # monitor=monitor_metric,
         mode=mode,
     )
     # The tensorboard logger allows for monitoring the progress of training

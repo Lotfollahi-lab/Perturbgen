@@ -274,7 +274,7 @@ plt.close()
 
 # Plotting generate results
 # --------------------------------
-adata = sc.read_h5ad(f'{args.res_dir}/generate_adata_zinb_5.h5ad')
+adata = sc.read_h5ad(f'{args.res_dir}/generate_adata_zinb_3.h5ad')
 del adata.uns['Cell_type_colors']
 del adata.uns['Cell_population_colors']
 del adata.uns['Time_point_colors']
@@ -423,7 +423,9 @@ df_long.groupby(['Metric', 'Type'])['Value'].mean()
 
 # EB analysis
 # ------------------------------
-adata = sc.read_h5ad(f'{args.res_dir}/generate_adata_zinb_5.h5ad')
+adata = sc.read_h5ad(
+    f'{args.res_dir}/generate_adata_interpolate_ckp19_GF_fine_tuned_zinb_3.h5ad'
+)
 adata_true = adata.copy()
 adata_true.X = adata_true.layers['counts']
 
@@ -445,4 +447,6 @@ print('EMD after normalisation: ', emd_df)
 print('MMD after normalisation: ', mmd_df)
 # concatenate results
 emd_mmd_df = pd.concat([emd_df, mmd_df], axis=1)
-emd_mmd_df.to_csv(f'{args.res_dir}/emd_mmd_generate_zinb.csv')
+emd_mmd_df.to_csv(
+    f'{args.res_dir}/emd_mmd_generate_zinb_3_interpolate_GF_fine_tuned.csv'
+)
