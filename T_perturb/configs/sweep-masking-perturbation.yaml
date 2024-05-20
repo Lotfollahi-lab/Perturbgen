@@ -9,14 +9,16 @@ parameters:
     values: [0.001, 0.0001, 0.00001]
   petra_wd:
     values: [0.01, 0.001, 0.0001]
+  mlm_prob:
+    values: [0.3, 0.5, 0.7]
   num_layers:
     value: 5
   d_ff:
     value: 16
-  mlm_prob:
-    value: 0.3
   train_mode:
     value: 'masking'
+  perturbation_encoding_mode:
+    value: mlp compress_src
   num_cells:
     value: 0
   split:
@@ -34,11 +36,11 @@ parameters:
   tgt_adata_folder:
     value: '../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_perturbed.h5ad'
   batch_size:
-    value: 45
+    value: 55
   max_len:
     value: 1750
   n_workers:
-    value: 32
+    value: 16
   seed:
     value: 1
   base_path:
