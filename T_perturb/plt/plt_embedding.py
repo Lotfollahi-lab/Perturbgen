@@ -18,6 +18,7 @@ from T_perturb.Model.metric import (
 np.random.seed(42)
 random.seed(42)
 
+
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
     os.chdir('/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/')
@@ -32,7 +33,7 @@ def get_args():
         type=str,
         default='./T_perturb/T_perturb/plt/res/eb',
         # default='./T_perturb/T_perturb/plt/res/cytoimmgen',
-        # help='Dataset to use for analysis',
+        help='Dataset to use for analysis',
     )
     parser.add_argument(
         '--full_data_dir',
@@ -244,13 +245,29 @@ adata_cls.obs['Activation_level'] = None
 # if .obs['cell_population'] endswith LA then
 # Activation_level = lowly active else highly active
 adata_cls.obs.loc[
-    adata_cls.obs['cell_population'].str.endswith('LA'), 'Activation_level'
+    adata_cls.obs['Cell_population'].str.endswith('LA'), 'Activation_level'
 ] = 'Lowly active'
 adata_cls.obs.loc[
-    ~adata_cls.obs['cell_population'].str.endswith('LA'), 'Activation_level'
+    ~adata_cls.obs['Cell_population'].str.endswith('LA'), 'Activation_level'
 ] = 'Highly active'
 # only for 16h time point
-adata_cls_16h = adata_cls[adata_cls.obs['time_point'] == '16h']
+adata_cls_16h = adata_cls[adata_cls.obs['Time_point'] == '16h']
+# plot umap
+sc.pp.neighbors(adata_cls_16h, n_neighbors=15, use_rep='cls_embeddings')
+sc.tl.umap(adata_cls_16h)
+sc.pl.embedding(
+    adata_cls_16h,
+    basis='X_umap',
+    color=[
+        'Activation_level',
+    ],
+    frameon=False,
+    show=False,
+)
+plt.savefig(
+    f'{args.res_dir}/cls_embeddings_umap_activation_lvl_16h.pdf',
+    bbox_inches='tight',
+)
 fig, ax = plt.subplots(figsize=(4, 10))
 sc.pl.dotplot(
     adata_cls_16h,
@@ -425,9 +442,7 @@ df_long.groupby(['Metric', 'Type'])['Value'].mean()
 
 # EB analysis
 # ------------------------------
-adata = sc.read_h5ad(
-    f'{args.res_dir}/generate_adata_no_context_GF_fine_tuned_zinb_3.h5ad'
-)
+adata = sc.read_h5ad(f'{args.res_dir}/generate_adata_test_GF_fine_tuned_zinb_3.h5ad')
 adata_true = adata.copy()
 adata_true.X = adata_true.layers['counts']
 
@@ -450,6 +465,93 @@ print('EMD after normalisation: ', emd_df)
 print('MMD after normalisation: ', mmd_df)
 # concatenate results
 emd_mmd_df = pd.concat([emd_df, mmd_df], axis=1)
-emd_mmd_df.to_csv(
-    f'{args.res_dir}/emd_mmd_no_context_interpolate_GF_fine_tuned_zinb_3.csv'
+emd_mmd_df.to_csv(f'{args.res_dir}/emd_mmd_Transformer_encoder_zinb_3.csv')
+
+# extrapolation of timepoints experiment
+# -------------------------------------
+adata_t2 = sc.read_h5ad(
+    f'{args.res_dir}/generate_adata_extrapolate_t2_GF_frozen_zinb_3.h5ad'
 )
+adata_t3 = sc.read_h5ad(
+    f'{args.res_dir}/generate_adata_extrapolate_t3_GF_frozen_zinb_3.h5ad'
+)
+adata_t4 = sc.read_h5ad(
+    f'{args.res_dir}/generate_adata_extrapolate_t4_GF_frozen_zinb_3.h5ad'
+)
+
+
+def evaluate_extrapolation(adata_true, adata_pred, time_point):
+    """Evaluate the extrapolation of time points."""
+    sc.pp.normalize_total(adata_true, target_sum=1e4)
+    sc.pp.log1p(adata_true)
+    sc.pp.normalize_total(adata_pred, target_sum=1e4)
+    sc.pp.log1p(adata_pred)
+    emd_df = evaluate_emd(adata_true, adata_pred)
+    mmd_df = evaluate_mmd(adata_true, adata_pred)
+    emd_df['Time_point'] = time_point
+    mmd_df['Time_point'] = time_point
+    return emd_df, mmd_df
+
+
+emd_list = []
+mmd_list = []
+lin_reg_list = []
+t2 = adata_t2.obs['Time_point'].unique()
+t3 = adata_t3.obs['Time_point'].unique()
+t4 = adata_t4.obs['Time_point'].unique()
+for time_point, adata_pred in zip([t2, t3, t4], [adata_t2, adata_t3, adata_t4]):
+    emd_df, mmd_df = evaluate_extrapolation(adata_true, adata_pred, time_point)
+    emd_list.append(emd_df)
+    mmd_list.append(mmd_df)
+    lin_reg_list.append(lin_reg_summary(adata_true, adata_pred))
+# create barplot from emd and mmd
+emd_df = pd.concat(emd_list)
+mmd_df = pd.concat(mmd_list)
+lin_reg_df = pd.concat(lin_reg_list)
+# create one dataframe
+df = pd.concat([emd_df, mmd_df, lin_reg_df], axis=1)
+# delete duplicated columns
+df = df.loc[:, ~df.columns.duplicated()]
+# plot barplot with two metrics [mmd, rmse] and separate by time point
+df_long = pd.melt(
+    df,
+    id_vars=['Time_point'],
+    var_name='Metric',
+    value_name='Value',
+)
+# create two separate plots one for RMSE and one for MMD
+fig, ax = plt.subplots(1, 2, figsize=(12, 5))
+sns.barplot(
+    x='Time_point',
+    y='Value',
+    hue='Metric',
+    data=df_long[df_long['Metric'] == 'mmd'],
+    ax=ax[0],
+    errorbar=None,
+    legend=False,
+    palette='dark:#e0e0e0',
+    alpha=0.5,
+)
+ax[0].set_ylabel('MMD')
+ax[0].set_xlabel('Time point')
+sns.barplot(
+    x='Time_point',
+    y='Value',
+    hue='Metric',
+    data=df_long[df_long['Metric'] == 'rmse'],
+    ax=ax[1],
+    errorbar=None,
+    legend=False,
+    palette='dark:#e0e0e0',
+    alpha=0.5,
+)
+ax[1].set_ylabel('RMSE')
+ax[1].set_xlabel('Time point')
+# rotate x labels
+for a in ax:
+    a.set_xticklabels(a.get_xticklabels(), rotation=60)
+plt.subplots_adjust(wspace=0.5)
+# set max number of y ticks to 4
+plt.locator_params(axis='y', nbins=4)
+plt.savefig(f'{args.res_dir}/extrapolation_timepoint.pdf', bbox_inches='tight')
+plt.close()

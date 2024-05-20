@@ -512,7 +512,7 @@ def main() -> None:
         dirpath=checkpoint_path,
         filename=f'{filename}-' + '{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=50,
+        every_n_epochs=25,
         verbose=True,
         # monitor=monitor_metric,
         mode=mode,

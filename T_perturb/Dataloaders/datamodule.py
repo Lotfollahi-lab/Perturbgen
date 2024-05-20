@@ -340,6 +340,9 @@ class PetraDataModule(LightningDataModule):
             length = [d[dataset]['length'] for d in batch]
             out[f'tgt_length_t{time_step}'] = torch.tensor(length)
             model_input_size = torch.max(out[f'tgt_length_t{time_step}'])
+            out[f'tgt_cell_idx_t{time_step}'] = [
+                d[dataset]['cell_pairing_index'] for d in batch
+            ]
             for var in self.var_list:
                 out[f'{var}_t{time_step}'] = [d[dataset][var] for d in batch]
 

@@ -11,6 +11,7 @@ import torch
 from scipy import stats
 from scipy.sparse import issparse
 from scipy.stats import wasserstein_distance
+from sklearn.metrics import root_mean_squared_error
 from sklearn.metrics.pairwise import rbf_kernel
 
 
@@ -265,14 +266,17 @@ def lin_reg_summary(
         x_pred = np.average(pred_adata.X, axis=0)
         slope, intercept, r_value, p_value, std_err = stats.linregress(x_true, x_pred)
         pearson_r = r_value**2
+        rmse = root_mean_squared_error(x_true, x_pred)
         lin_reg_df = pd.DataFrame(
             {
-                'slope': slope,
-                'intercept': intercept,
-                'r_value': r_value,
-                'p_value': p_value,
-                'std_err': std_err,
-                'pearson_r': pearson_r,
-            }
+                'slope': [slope],
+                'intercept': [intercept],
+                'r_value': [r_value],
+                'p_value': [p_value],
+                'std_err': [std_err],
+                'pearson_r': [pearson_r],
+                'rmse': [rmse],
+            },
+            index=[0],
         )
-    return lin_reg_df
+        return lin_reg_df

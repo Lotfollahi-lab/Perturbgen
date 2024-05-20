@@ -143,6 +143,7 @@ class Petratrainer(LightningModule):
             'cls_embeddings': [],
             'cosine_similarities': [],
             'batch': [],
+            'cell_idx': [],
         }
         for var in self.var_list:
             self.test_dict[var] = []
@@ -318,6 +319,7 @@ class Petratrainer(LightningModule):
                 cls_position = outputs['cls_positions'][i]
                 cls_embeddings = outputs['dec_embedding'][:, cls_position, :]
                 token_ids = batch[f'tgt_input_ids_t{time_step}']
+                cell_ids = batch[f'tgt_cell_idx_t{time_step}']
                 # exclude cls token from gene embeddings
                 if time_step == max(self.time_steps):
                     gene_embeddings = outputs['dec_embedding'][
@@ -409,6 +411,7 @@ class Petratrainer(LightningModule):
                 self.test_dict['cls_embeddings'].append(cls_embeddings.detach().cpu())
                 self.test_dict['cosine_similarities'].append(emb.detach().cpu())
                 self.test_dict['batch'].append(batch['combined_batch'].detach().cpu())
+                self.test_dict['cell_idx'].append(cell_ids)
                 for var in self.var_list:
                     self.test_dict[var].append(batch[f'{var}_t{time_step}'])
 
@@ -423,11 +426,14 @@ class Petratrainer(LightningModule):
             true_counts = torch.cat(self.test_dict['true_counts'])
             cosine_similarities = torch.cat(self.test_dict['cosine_similarities'])
             batch = torch.cat(self.test_dict['batch'])
+            cell_ids = np.concatenate(self.test_dict['cell_idx'])
             var_dict = {}
             for var in self.var_list:
                 var_dict[var] = np.concatenate(self.test_dict[var])
             test_obs = pd.DataFrame(var_dict)
             test_obs['batch'] = np.array(batch)
+            test_obs['cell_idx'] = cell_ids
+            print(test_obs)
             adata = ad.AnnData(
                 X=true_counts.numpy(),
                 obs=test_obs,
@@ -1025,7 +1031,7 @@ class CountDecodertrainer(LightningModule):
             # create output directory
             # save adata
             pred_adata.write_h5ad(
-                f'{self.output_dir}/generate_adata_no_context_{self.mode}'
+                f'{self.output_dir}/generate_adata_extrapolate_t4_{self.mode}'
                 f'_{self.loss_mode}_{self.n_samples}.h5ad'
             )
             emd = evaluate_emd(true_adata, pred_adata)

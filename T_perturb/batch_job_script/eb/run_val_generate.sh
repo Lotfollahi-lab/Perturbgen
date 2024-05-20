@@ -30,8 +30,8 @@ python3 $cwd/val.py \
 --splitting_mode random \
 --generate True \
 --ckpt_count_path './T_perturb/T_perturb/Model/checkpoints/'\
-'20240520_0936_eb_no_context_lr_0.0001'\
-'_wd_0.0001_batch_32_zinb_tp_1-2-4-epoch=99.ckpt' \
+'20240520_1446_extrapolate_lr_0.0001'\
+'_wd_0.0001_batch_32_zinb_tp_1-epoch=99.ckpt' \
 --output_dir './T_perturb/T_perturb/plt/res/eb' \
 --src_dataset './T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset' \
 --tgt_dataset_folder './T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt' \
@@ -48,7 +48,7 @@ python3 $cwd/val.py \
 --d_ff 16 \
 --loss_mode zinb \
 --n_workers 32 \
---time_steps 3 \
+--time_steps 4 \
 --var_list Time_point
 echo '--- Finished computing model'
 
