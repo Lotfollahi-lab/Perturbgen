@@ -8,7 +8,15 @@ from typing import Dict
 from anndata import AnnData
 from gears.inference import compute_metrics, deeper_analysis, non_dropout_analysis
 
-model = '20240517_1436_ttransformer'
+model = '20240520_2006_ttransformer'
+# model = '20240520_1455_ttransformer'
+# model = '20240520_1453_ttransformer'
+# model = '20240520_1443_ttransformer'
+# model = '20240520_1448_ttransformer'
+# model = '20240520_1450_ttransformer'
+# model='20240520_1416_ttransformer'
+# model = '20240520_1422_ttransformer'
+# model = '20240517_1436_ttransformer'
 # model = '20240517_1106_ttransformer' 
 # model = '20240515_1502_ttransformer'
 # model = '20240515_1006_ttransformer'
@@ -19,8 +27,9 @@ base_path = '/lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb'
 data_path = 'datasets/Norman2019'
 pp_path = 'T_perturb/T_perturb/pp/res'
 
+subsetted = True
 zinb_loss = True
-mse_loss = True
+# mse_loss = True
 
 def compute_perturbation_metrics(
     results: Dict,
@@ -207,14 +216,19 @@ adata.uns['perturbation_id'].index = adata.uns['perturbation_id'].index.astype(s
 adata.var = adata_.var.set_index('rowidx', drop=False)
 adata.obs.index = adata.obs.tgt_cell_idx
 
-# del adata_
-gc.collect()
-
-with open(f'{base_path}/{pp_path}/Petra/pert_test_split_seed1.pkl', 'rb') as f:
-    subgroup = pickle.load(f)
+if subsetted:
+    with open(f'{base_path}/{pp_path}/Petra/subsetted_pert_test_split_seed1.pkl', 'rb') as f:
+        subgroup = pickle.load(f)
+else:
+    with open(f'{base_path}/{pp_path}/Petra/pert_test_split_seed1.pkl', 'rb') as f:
+        subgroup = pickle.load(f)
 
 all_perts = subgroup['test_subgroup']['combo_seen0'] + subgroup['test_subgroup']['combo_seen1'] + subgroup['test_subgroup']['combo_seen2'] + subgroup['test_subgroup']['unseen_single']
 subgroup['test_subgroup']['all'] = all_perts
+subgroup['test_subgroup']['train'] = [pert for pert in adata.uns['top_non_dropout_de_20'].keys() if not pert in all_perts]
+subgroup['test_subgroup']['train'] = [pert+'+ctrl' if not '+' in pert else pert for pert in subgroup['test_subgroup']['train']]
+all_perts = subgroup['test_subgroup']['all'] + subgroup['test_subgroup']['train']
+all_perts = list(set(all_perts))
 
 pert_idx = adata.obs['perturbation_id'].unique()
 idx2gene = {}
@@ -229,7 +243,6 @@ for idx, gene in idx2gene.items():
     if gene in reverse:
         idx2gene[idx] = '+'.join(adata.uns['perturbation_id'].loc[idx.split('+'),'gene_name'][::-1])
         
-[pert for pert in idx2gene.values() if not pert in all_perts]
 adata.obs['condition'] = adata.obs['perturbation_id'].map(idx2gene)
 
 for pert in all_perts:
@@ -243,16 +256,15 @@ adata.uns['non_dropout_gene_idx'] = {k.replace('A549_','').replace('_1+1',''): v
 adata.obs = adata.obs.drop(columns=['tgt_cell_idx','src_cell_idx','perturbation_id'])
 
 if zinb_loss:
-    # sc.pp.normalize_total(adata_, target_sum=1e4)
-    sc.pp.log1p(adata)
-    # sc.pp.normalize_total(adata, layer='tgt_counts', target_sum=1e4)
+    sc.pp.normalize_total(adata, target_sum=1e4, layer='pred_counts')
+    sc.pp.log1p(adata, layer='pred_counts')
+    sc.pp.normalize_total(adata, layer='tgt_counts', target_sum=1e4)
     sc.pp.log1p(adata, layer='tgt_counts')
 
 results = {}
 results['pert_cat'] = adata.obs['condition']
-results["pred"] = adata.X
+results["pred"] = adata.layers['pred_counts']
 results["truth"] = adata.layers['tgt_counts']
-
 results["pred_de"] = []
 results["truth_de"] = []
 
@@ -266,8 +278,9 @@ results["truth_de"] = np.stack(results["truth_de"])
 
 adata.X = adata.layers['tgt_counts']
 adata.obs['condition_name'] = adata.obs['condition']
-del adata.layers['src_counts']
 del adata.layers['tgt_counts']
+del adata.layers['tgt_logcounts']
+del adata.layers['pred_counts']
 
 adata_ = adata_[adata_.obs.condition == 'ctrl']
 adata_.obs = pd.DataFrame(
@@ -276,8 +289,7 @@ adata_.obs = pd.DataFrame(
         'condition_name': 'ctrl'
     }, index=adata_.obs.cell_pairing_index)
 
-# if model in ['20240428_1333', '20240430_1104']: # normalize ctrls for mse-trained decoders
-# if mse_loss:
+# normalize ctrls
 sc.pp.normalize_total(adata_, target_sum=1e4)
 sc.pp.log1p(adata_)
 
@@ -306,17 +318,17 @@ for name in subgroup["test_subgroup"].keys():
     subgroup_analysis[name] = {}
     for m in metrics:
         subgroup_analysis[name][m] = []
-
     for m in metrics_non_dropout:
         subgroup_analysis[name][m] = []
 
 for name, pert_list in subgroup["test_subgroup"].items():
     for pert in pert_list:
-        for m in metrics:
-            subgroup_analysis[name][m].append(deeper_res[pert][m])
+        if pert in deeper_res.keys():
+            for m in metrics:
+                subgroup_analysis[name][m].append(deeper_res[pert][m])
 
-        for m in metrics_non_dropout:
-            subgroup_analysis[name][m].append(non_dropout_res[pert][m])
+            for m in metrics_non_dropout:
+                subgroup_analysis[name][m].append(non_dropout_res[pert][m])
 
 for name, result in subgroup_analysis.items():
     for m in result.keys():

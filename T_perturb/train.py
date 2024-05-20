@@ -208,7 +208,7 @@ def main() -> None:
             "split is not available, must be either '"
             "random','stratified', 'unseen_donor' or 'gears-*"
         )
-    idx = tgt_adata.obs.drop(columns='level_0').reset_index().loc[(tgt_adata.obs.perturbation_name=='IRF1+SET').values,:].index[0:64].values
+    # idx = tgt_adata.obs.drop(columns='level_0').reset_index().loc[(tgt_adata.obs.perturbation_name=='IRF1+SET').values,:].index[0:64].values
 
     # check that indices are unique to avoid data leakage
     assert len(set(train_indices).intersection(val_indices)) == 0

@@ -836,8 +836,8 @@ class CountDecodertrainer(LightningModule):
 
         for i in range(len(batch['testing_genes_subset'])):
             deg_idx = batch['testing_genes_subset'][i]
-            self.test_pred_counts_ctrl_delta_deg.append(log_pred[i,deg_idx] - self.ctrl_counts[deg_idx])
-            self.test_true_counts_ctrl_delta_deg.append(log_tgt[i,deg_idx] - self.ctrl_counts[deg_idx])
+            self.test_pred_counts_ctrl_delta_deg.append(log_pred[i,deg_idx].detach().cpu() - self.ctrl_counts[:,deg_idx][0])
+            self.test_true_counts_ctrl_delta_deg.append(log_tgt[i,deg_idx].detach().cpu() - self.ctrl_counts[:,deg_idx][0])
 
         self.test_pred_counts_list.append(pred_count)
         self.test_true_counts_list.append(batch['tgt_counts'])
@@ -876,8 +876,8 @@ class CountDecodertrainer(LightningModule):
         # compute umap based on cls
         sc.pp.neighbors(pred_adata, use_rep='cls_embeddings')
         sc.tl.umap(pred_adata)
-        fig = sc.pl.umap(pred_adata, color=['perturbation_id'], return_fig=True)
-        self.log({"umap": fig})
+        fig = sc.pl.umap(pred_adata, color=['perturbation_id'], size=5, return_fig=True)
+        self.logger.log_image(key='test/umap', images=[fig])
 
         # save adata
         if self.generate:

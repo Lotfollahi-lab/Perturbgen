@@ -131,12 +131,17 @@ ens2idx = adata_gears.var['rowidx'].to_dict()
 
 # add to adata
 adata.uns['top_non_dropout_de_20'] = {gears2gene[p]: np.vectorize(ens2idx.__getitem__)(g) for p, g in adata_gears.uns['top_non_dropout_de_20'].items()}
+adata.uns['top_non_zero_de_20'] = {gears2gene[p]: np.vectorize(ens2idx.__getitem__)(g) for p, g in adata_gears.uns['top_non_zero_de_20'].items()}
+adata.uns['non_zeros_gene_idx'] = adata_gears.uns['non_zeros_gene_idx']
+adata.uns['non_dropout_gene_idx'] = adata_gears.uns['non_dropout_gene_idx']
+adata.uns['rank_genes_groups_cov_all'] = {gears2gene[p]: np.vectorize(ens2idx.__getitem__)(g) for p, g in adata_gears.uns['rank_genes_groups_cov_all'].items()}
 del adata_gears
 gc.collect()
 
+print('saving adata')
 # Save pre-processed object
 adata.write_h5ad(f'{base_path}/{data_path}/{dataset_name}/adata/filtered_tokenised_hvg.h5ad')
-
+print('saved adata')
 # Tokenize ---------
 print('tokenize')
 var_list = [var for var in ['guide_identity', 'perturbation_name', 'perturbation_annotation', 'n_perturbations','perturbation1_name', 'perturbation2_name', 'leiden', 'pct_counts_mt', 'n_genes_by_counts', 'n_counts', 'cell_pairing_index'] if var in adata.obs.columns]

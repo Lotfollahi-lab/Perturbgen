@@ -216,7 +216,6 @@ class Geneformerwrapper(nn.Module):
             for param in self.model.parameters():
                 param.requires_grad = True            
         else:
-            print('freeze')
             for param in self.model.parameters():
                 param.requires_grad = False
 
@@ -228,7 +227,6 @@ class Geneformerwrapper(nn.Module):
             embs = outputs.hidden_states[-1]
         else:
             with torch.no_grad():
-                print('freeze2')
                 outputs = self.model.forward(
                     input_ids=src_input_id, attention_mask=src_attention_mask
                 )

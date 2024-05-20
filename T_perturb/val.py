@@ -206,15 +206,15 @@ def main() -> None:
             "random','stratified', 'unseen_donor' or 'gears-*"
         )
      
-    idx = tgt_adata.obs.drop(columns='level_0').reset_index().loc[(tgt_adata.obs.perturbation_name=='KLF1').values,:].index[0:64].values
+    # idx = tgt_adata.obs.drop(columns='level_0').reset_index().loc[(tgt_adata.obs.perturbation_name=='KLF1').values,:].index[0:64].values
 
     # check that indices are unique to avoid data leakage
     assert len(set(train_indices).intersection(val_indices)) == 0
     assert len(set(train_indices).intersection(test_indices)) == 0
     assert len(set(val_indices).intersection(test_indices)) == 0
 
-    train_indices, val_indices, test_indices = idx, idx, idx
-
+    # train_indices, val_indices, test_indices = idx, idx, idx
+    # test_indices = train_indices
     print(
         f'Number of samples in train set: {len(train_indices)}\n'
         f'Number of samples in val set: {len(val_indices)}\n'

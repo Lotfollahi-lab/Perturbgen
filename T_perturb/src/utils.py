@@ -305,7 +305,8 @@ def gears_splitter(mode: str, train_prop: float, test_prop: float, seed: int, ad
     if mode in ['simulation', 'simulation_single']:
         DS = DataSplitter(adata, split_type=mode)
         adata, subgroup = DS.split_data(train_gene_set_size = train_prop, combo_seen2_train_frac = train_prop, seed=seed, test_perts=test_perts, only_test_set_perts = False)
-        pickle.dump(subgroup, open(f'{base_path}/Projects/2024Mar_Tperturb/T_perturb/T_perturb/pp/res/Petra/pert_test_split_seed{seed}.pkl', "wb"))
+        if seed != 1:
+            pickle.dump(subgroup, open(f'{base_path}/Projects/2024Mar_Tperturb/T_perturb/T_perturb/pp/res/Petra/pert_test_split_seed{seed}.pkl', "wb"))
 
     elif mode[:5] == 'combo':
         # combo perturbation
