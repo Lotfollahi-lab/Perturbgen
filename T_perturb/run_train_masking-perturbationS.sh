@@ -8,7 +8,7 @@
 #BSUB -e ../../logs/%J.err # error file
 #BSUB -M 40GB  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>40GB] rusage[mem=40GB]' # RAM memory part 1. Default: 100MB
-#BSUB -J 13_subBiMlpSrcC # job name
+#BSUB -J 19_BiMlpSrcCsub # job name
 
 # activate conda environment
 source ~/.bashrc
@@ -35,8 +35,8 @@ python3 $cwd/train.py \
 --tgt_dataset_folder ../../datasets/Norman2019/dataset/subsetted_filtered_tokenised_hvg_pairing_perturbed.dataset \
 --src_adata_folder ../../datasets/Norman2019/adata/subsetted_filtered_tokenised_hvg_pairing_control.h5ad \
 --tgt_adata_folder ../../datasets/Norman2019/adata/subsetted_filtered_tokenised_hvg_pairing_perturbed.h5ad \
---batch_size 16 \
---epochs 50 \
+--batch_size 40 \
+--epochs 100 \
 --max_len 1750 \
 --petra_lr 0.001 \
 --petra_wd 0.0001 \
@@ -47,6 +47,5 @@ python3 $cwd/train.py \
 --seed 1 \
 --perturbation_encoding_mode mlp compress_src \
 --base_path /lustre/scratch126/cellgen/team361/ip14 \
---tune_geneformer False \
---perturbation_encoding_mode mlp compress_src
+--tune_geneformer False
 echo "--- Finished computing model"

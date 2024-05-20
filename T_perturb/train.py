@@ -148,7 +148,7 @@ def get_args():
     parser.add_argument('--d_ff', type=int, default=32, help='d_ff')
     parser.add_argument('--tune_geneformer', type=bool, default=False, help='Whether to tune the geneformer encoder')
     parser.add_argument('--tune_masking', type=bool, default=True, help='Whether to re-train the masking model')
-    parser.add_argument('--mse_alpha', type=bool, default=True, help='Weights for mse loss (relative to 0 prediction loss)')
+    parser.add_argument('--mse_alpha', type=float, default=0.5, help='Weights for mse loss (relative to 0 prediction loss)')
     parser.add_argument('--retrain_masking', type=bool, default=False, help='Whether to retrain from checkpoint masked model')
     parser.add_argument('--perturbation_encoding_mode', type=str, nargs='*', help='none, mlp, compress_src')
     args = parser.parse_args()
@@ -208,18 +208,20 @@ def main() -> None:
             "split is not available, must be either '"
             "random','stratified', 'unseen_donor' or 'gears-*"
         )
-    
+    idx = tgt_adata.obs.drop(columns='level_0').reset_index().loc[(tgt_adata.obs.perturbation_name=='IRF1+SET').values,:].index[0:64].values
+
     # check that indices are unique to avoid data leakage
     assert len(set(train_indices).intersection(val_indices)) == 0
     assert len(set(train_indices).intersection(test_indices)) == 0
     assert len(set(val_indices).intersection(test_indices)) == 0
 
+    # train_indices, val_indices, test_indices = idx, idx, idx
     print(
         f'Number of samples in train set: {len(train_indices)}\n'
         f'Number of samples in val set: {len(val_indices)}\n'
         f'Number of samples in test set: {len(test_indices)}'
     )
-
+    print(args.tune_geneformer)
     # Conditions preprocessing for ZINB count loss ---------------------------------
     # create dummy batch variable for when there are no conditions
     if args.condition_keys is None and args.conditions is None and args.conditions_combined is None:
@@ -300,7 +302,7 @@ def main() -> None:
         pretrained_module = Petratrainer(
             tgt_vocab_size=5028,  # 704 for degs, 1819 for tokenised, 5027 for HVG in peturbation assay +1 (padding)
             d_model=256,
-            d_encoded_input=512,
+            d_encoded_input=256,
             num_heads=8,
             num_layers=args.num_layers,
             d_ff=args.d_ff,
@@ -404,7 +406,7 @@ def main() -> None:
             f'batch_{args.batch_size}_'
             f'{args.loss_mode}_seed{RANDOM_SEED}_{dataset_info}'
         )
-        monitor_metric = 'val/pearson_delta'
+        monitor_metric = 'val/pearson'
         mode = 'max'
 
     if not args.retrain_masking:

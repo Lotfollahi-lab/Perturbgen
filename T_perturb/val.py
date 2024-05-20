@@ -174,7 +174,7 @@ def main() -> None:
     tgt_dataset = load_from_disk(args.tgt_dataset_folder)
     src_adata = sc.read_h5ad(args.src_adata_folder)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
-    ctrl_counts = sc.read_h5ad(args.src_adata_folder.replace('_pairing_control',''))
+    ctrl_counts = sc.read_h5ad(args.src_adata_folder.replace('_pairing_control','').replace('subsetted_',''))
     sc.pp.normalize_total(ctrl_counts, target_sum=1e4)
     sc.pp.log1p(ctrl_counts)
     ctrl_counts = ctrl_counts[ctrl_counts.obs.condition == 'ctrl'].X.mean(axis=0)
@@ -205,11 +205,15 @@ def main() -> None:
             "split is not available, must be either '"
             "random','stratified', 'unseen_donor' or 'gears-*"
         )
-    
+     
+#    idx = tgt_adata.obs.drop(columns='level_0').reset_index().loc[(tgt_adata.obs.perturbation_name=='KLF1').values,:].index[0:64].values
+
     # check that indices are unique to avoid data leakage
     assert len(set(train_indices).intersection(val_indices)) == 0
     assert len(set(train_indices).intersection(test_indices)) == 0
     assert len(set(val_indices).intersection(test_indices)) == 0
+
+#    train_indices, val_indices, test_indices = idx, idx, idx
 
     print(
         f'Number of samples in train set: {len(train_indices)}\n'

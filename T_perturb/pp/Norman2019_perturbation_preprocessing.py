@@ -275,7 +275,7 @@ dataset_ctrl_wembed.save_to_disk(f'{base_path}/{data_path}/{dataset_name}/datase
 
 # add perturbed gene embedding to the control dataset - Geneformer -----------------
 gf = BertForMaskedLM.from_pretrained(
-            f'{geneformer_path}/geneformer-12L-30M',
+            f'{geneformer_path}',
             output_attentions=False,
             output_hidden_states=True
 )

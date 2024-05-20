@@ -200,7 +200,7 @@ class PositionalEncoding(nn.Module):
 class Geneformerwrapper(nn.Module):
     def __init__(
         self,
-        model_path='/lustre/groups/imm01/workspace/irene.bonafonte/Software/Geneformer/geneformer-12L-30M',
+        model_path='/lustre/groups/imm01/workspace/irene.bonafonte/Software/Geneformer',
         output_attentions=False,
         output_hidden_states=True,
         tune=False,
@@ -216,6 +216,7 @@ class Geneformerwrapper(nn.Module):
             for param in self.model.parameters():
                 param.requires_grad = True            
         else:
+            print('freeze')
             for param in self.model.parameters():
                 param.requires_grad = False
 
@@ -227,6 +228,7 @@ class Geneformerwrapper(nn.Module):
             embs = outputs.hidden_states[-1]
         else:
             with torch.no_grad():
+                print('freeze2')
                 outputs = self.model.forward(
                     input_ids=src_input_id, attention_mask=src_attention_mask
                 )
@@ -312,7 +314,7 @@ class Petra(nn.Module):
         )
         print(self.token_embedding.weight.shape)
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
-        self.encoder_layers = Geneformerwrapper(model_path=f'{base_path}/Software/Geneformer/geneformer-12L-30M', tune=tune_geneformer)
+        self.encoder_layers = Geneformerwrapper(model_path=f'{base_path}/Software/Geneformer', tune=False)
 
         self.decoder_layers = nn.ModuleList(
             [DecoderLayer(dim=d_model, n_heads=num_heads, d_head=d_ff, dropout=dropout, context_dim=d_encoded_input) for _ in range(num_layers)]
@@ -320,7 +322,7 @@ class Petra(nn.Module):
         
         if self.perturbation_modeling is not None:
             if 'mlp' in self.perturbation_encoding_mode:
-                self.mlp_pertEmbed = Mlp(in_features = d_perturbation_embed, out_features=d_encoded_input)
+                self.mlp_pertEmbed = Mlp(in_features = d_perturbation_embed, hidden_features=d_encoded_input, out_features=d_encoded_input)
             else:
                 if d_encoded_input != d_perturbation_embed:
                     self.fc_pertReshape = nn.Linear(d_perturbation_embed, d_encoded_input)
@@ -416,7 +418,7 @@ class Petra(nn.Module):
         # convert to numeric type
         src_attention_mask_int = (~src_attention_mask).int()
         src_embedded = self.encoder_layers(src_input_id, src_attention_mask_int) # 0 for padded
-
+        
         # add embedding at the begining of the src_embedding for perturbed genes and update mask
         if self.perturbation_modeling is not None:
             if not 'mlp' in self.perturbation_encoding_mode:
@@ -571,6 +573,7 @@ class CountDecoder(nn.Module):
         original_lens,
         perturbation_id,
         perturbation_embedding,
+        n_perturbations_bool,
         generate=False,
     ):
         outputs = self.pretrained_model.forward(
@@ -579,6 +582,7 @@ class CountDecoder(nn.Module):
             original_lens=original_lens,
             perturbation_id=perturbation_id,
             perturbation_embedding=perturbation_embedding,
+            n_perturbations_bool=n_perturbations_bool,
             generate=generate,
         )
         cls_embedding = outputs['dec_embedding'][:, 0, :]
@@ -654,6 +658,7 @@ class CountDecoder(nn.Module):
                 # self_cond_embed = self_cond_embed,
                 tgt_input_id=ids,  # change to token id
                 original_lens=original_lens,
+                perturbation_id=perturbation_id,
                 n_perturbations_bool=n_perturbations_bool,
                 perturbation_embedding=perturbation_embedding,
                 generate=True,

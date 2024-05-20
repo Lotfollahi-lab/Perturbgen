@@ -522,6 +522,7 @@ class CountDecodertrainer(LightningModule):
             perturbation_id=batch['perturbation_id'],
             perturbation_embedding=batch['perturbation_embedding'],
             original_lens=batch['src_length'],
+            n_perturbations_bool=batch['n_perturbations_bool'],
         )
 
         return outputs
