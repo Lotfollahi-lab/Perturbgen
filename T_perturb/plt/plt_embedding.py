@@ -18,7 +18,6 @@ from T_perturb.Model.metric import (
 np.random.seed(42)
 random.seed(42)
 
-
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
     os.chdir('/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/')
@@ -31,19 +30,19 @@ def get_args():
     parser.add_argument(
         '--res_dir',
         type=str,
-        default='./T_perturb/T_perturb/plt/res/eb',
-        # default='./T_perturb/T_perturb/plt/res/cytoimmgen',
+        # default='./T_perturb/T_perturb/plt/res/eb',
+        default='./T_perturb/T_perturb/plt/res/cytoimmgen',
         help='Dataset to use for analysis',
     )
     parser.add_argument(
         '--full_data_dir',
         type=str,
-        # default='./T_perturb/T_perturb/pp/res/'
-        # 'h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad',
-        default=(
-            './T_perturb/T_perturb/pp/eb/res/'
-            'h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad'
-        ),
+        default='./T_perturb/T_perturb/pp/res/'
+        'h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad',
+        # default=(
+        #     './T_perturb/T_perturb/pp/eb/res/'
+        #     'h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad'
+        # ),
         help='Dataset to use for analysis',
     )
     args = parser.parse_args()
@@ -181,6 +180,7 @@ var_names = adata_cls.obsm['cosine_similarity'].columns
 adata_cls = adata_cls[:, var_names]
 # create highly active and lowly active column
 adata_cls.layers['cosine_similarity'] = adata_cls.obsm['cosine_similarity']
+del adata_cls.obsm['cosine_similarity']
 # categorise time points [16h, 40h, 5d]
 adata_cls.obs['time_point'] = adata_cls.obs['time_point'].cat.reorder_categories(
     ['16h', '40h', '5d']
@@ -198,13 +198,10 @@ marker_genes = [
     'SOCS3',
     'IL4R',
     'CD69',
-    'DDX21',
     'TNFRSF4',
     'HSP90AA1',
-    'HSP90AB1',
     'FABP5',
     'TUBA1B',
-    'PCNA',
     'IL2RA',
     'BATF',
     'CORO1B',
@@ -225,7 +222,7 @@ sc.pl.dotplot(
     adata_cls,
     marker_genes,
     use_raw=False,
-    groupby=['time_point', 'cell_type'],
+    groupby=['Time_point', 'Cell_type'],
     dendrogram=False,
     layer='cosine_similarity',
     show=False,
@@ -287,6 +284,37 @@ plt.savefig(
     bbox_inches='tight',
 )
 plt.close()
+# plot gene embeddings
+# --------------------------------
+# plot gene embedding for each gene separately
+for gene, i in adata_cls.uns['activation_genes'].items():
+    print(i)
+    # filter gene embeddings with non-zero values
+    gene_embedding = adata_cls.obsm['gene_embeddings'][:, i, :]
+    # filter embeddings with non-zero values
+    non_zero_mask = np.all(gene_embedding != 0, axis=1)
+    gene_embedding_non_zero = gene_embedding[non_zero_mask,]
+    adata_non_zero = adata_cls[non_zero_mask,]
+    adata_non_zero.obsm['gene_embeddings'] = gene_embedding_non_zero
+    # print gene embedding umap
+    sc.pp.neighbors(adata_non_zero, n_neighbors=15, use_rep='gene_embeddings')
+    sc.tl.umap(adata_non_zero)
+    sc.pl.embedding(
+        adata_non_zero,
+        basis='X_umap',
+        color=[
+            'Cell_type',
+            'Cell_population',
+            'Time_point',
+        ],
+        frameon=False,
+        show=False,
+    )
+    plt.savefig(
+        f'{args.res_dir}/gene_embeddings_umap_{gene}.pdf',
+        bbox_inches='tight',
+    )
+    plt.close()
 
 
 # Plotting generate results
@@ -442,7 +470,9 @@ df_long.groupby(['Metric', 'Type'])['Value'].mean()
 
 # EB analysis
 # ------------------------------
-adata = sc.read_h5ad(f'{args.res_dir}/generate_adata_test_GF_fine_tuned_zinb_3.h5ad')
+adata = sc.read_h5ad(
+    f'{args.res_dir}/generate_adata_interpolate_hyperparam_GF_fine_tuned_zinb_3.h5ad'
+)
 adata_true = adata.copy()
 adata_true.X = adata_true.layers['counts']
 
@@ -460,6 +490,7 @@ sc.pp.normalize_total(adata_true, target_sum=1e4)
 sc.pp.log1p(adata_true)
 emd_df = evaluate_emd(adata_true, adata, None)
 mmd_df = evaluate_mmd(adata=adata_true, pred_adata=adata, n_cells=10000)
+lin_reg_df = lin_reg_summary(adata_true, adata)
 
 print('EMD after normalisation: ', emd_df)
 print('MMD after normalisation: ', mmd_df)

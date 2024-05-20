@@ -173,7 +173,7 @@ else:
 (adata_subset, token_id_to_row_id_dict, row_id_to_gene_name) = tokenid_mapping(
     adata,
     './generative_modelling_omic/Geneformer/geneformer/token_dictionary.pkl',
-    exclude_non_GF_genes=False,
+    exclude_non_GF_genes=True,
 )
 # save mapping dictionnary
 with open(
@@ -189,6 +189,7 @@ with open(
     'wb',
 ) as f:
     pickle.dump(row_id_to_gene_name, f)
+
 adata_subset.layers['counts'] = adata_subset.X.copy()
 # make new directory to store h5ad files
 paired_h5ad_dir = (

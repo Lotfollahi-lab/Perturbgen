@@ -87,6 +87,13 @@ def get_args():
         help='path to checkpoint',
     )
     parser.add_argument(
+        '--mapping_dict_path',
+        type=str,
+        # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl',
+        # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
+        default='./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl',
+    )
+    parser.add_argument(
         '--src_dataset',
         type=str,
         # default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset',
@@ -367,6 +374,7 @@ def main() -> None:
             generate=args.generate,
             time_steps=args.time_steps,
             total_time_steps=n_total_timepoints,
+            mapping_dict_path=args.mapping_dict_path,
             gene_names=tgt_adata_tmp.var['gene_name'],
             output_dir=args.output_dir,
             var_list=args.var_list,
