@@ -1,6 +1,6 @@
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-cellgeni-a100)
-#BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu
+#BSUB -gpu 'mode=exclusive_process:num=4' # request for exclusive access to gpu
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
@@ -21,5 +21,5 @@ export WANDB_DIR=$cwd/wandb
 # run sweep
 echo "--- Start sweep"
 #paste wandb with sweep id
-wandb agent k-ly/ttransformer_sweep/hekvpdqn
+wandb agent k-ly/ttransformer_sweep/4vcvrori
 echo "--- Finished sweep"

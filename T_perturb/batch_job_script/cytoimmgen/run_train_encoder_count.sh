@@ -4,11 +4,11 @@
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
-#BSUB -o logs/count_%J.out # output file
-#BSUB -e logs/count_%J.err # error file
+#BSUB -o logs/interpolate_count_%J.out # output file
+#BSUB -e logs/interpolate_count_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
-#BSUB -J cytoimmgen_count # job name
+#BSUB -J cytoimmgen_count_interpolate # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -59,9 +59,10 @@ echo "--- Finished computing model"
 # --split False \
 # --splitting_mode stratified \
 # --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
-# --ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240519_1114_Tcell"\
-# "_extrapol_GF_fine_tuned_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-2-epoch=49.ckpt" \
-# --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset" \
+# --ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/"\
+# "20240519_2020_Tcell_extrapolate"\
+# "_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-2-epoch=49.ckpt" \
+# --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_transformer/0h.dataset" \
 # --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
 # --src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
 # --tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt" \

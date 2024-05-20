@@ -65,8 +65,8 @@ def get_args():
         '--ckpt_masking_path',
         type=str,
         default='./T_perturb/T_perturb/Model/checkpoints/'
-        '20240517_2134_petra_train_masking_lr_0.001'
-        '_wd_0.0001_batch_32_mlmp_0.15_tp_1-2-4.ckpt',
+        '20240518_2328_embedding_lr_0.0001'
+        '_wd_0.0001_batch_64_mlmp_0.15_tp_1-2-3-epoch=49.ckpt',
         help='path to checkpoint',
     )
 
@@ -112,9 +112,9 @@ def get_args():
     parser.add_argument(
         '--mapping_dict_path',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl',
+        # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl',
         # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
-        # default='./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl',
+        default='./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl',
     )
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle')
@@ -183,7 +183,7 @@ def get_args():
         # type=list,
         nargs='+',
         type=int,
-        default=[1, 2, 3, 4],
+        default=[1, 2, 3],
         help='time steps to include during training',
     )
     parser.add_argument(
@@ -191,8 +191,8 @@ def get_args():
         # type=list,
         nargs='+',
         type=str,
-        default=['Time_point'],
-        # default=['Cell_population', 'Cell_type', 'Time_point', 'Donor'],
+        # default=['Time_point'],
+        default=['Cell_population', 'Cell_type', 'Time_point', 'Donor'],
         help='List of variables to keep in the dataset',
     )
     parser.add_argument(
@@ -207,7 +207,7 @@ def get_args():
     )
     parser.add_argument(
         '--mode',
-        default='GF_fine_tuned',
+        default='GF_frozen',
         type=str,
         choices=[
             'GF_fine_tuned',
@@ -512,7 +512,7 @@ def main() -> None:
         dirpath=checkpoint_path,
         filename=f'{filename}-' + '{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=10,
+        every_n_epochs=50,
         verbose=True,
         # monitor=monitor_metric,
         mode=mode,

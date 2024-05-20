@@ -30,19 +30,19 @@ def get_args():
     parser.add_argument(
         '--res_dir',
         type=str,
-        # default='./T_perturb/T_perturb/plt/res/eb',
-        default='./T_perturb/T_perturb/plt/res/cytoimmgen',
+        default='./T_perturb/T_perturb/plt/res/eb',
+        # default='./T_perturb/T_perturb/plt/res/cytoimmgen',
         # help='Dataset to use for analysis',
     )
     parser.add_argument(
         '--full_data_dir',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/'
-        'h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad',
-        # default=(
-        #     './T_perturb/T_perturb/pp/eb/res/'
-        #     'h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad'
-        # ),
+        # default='./T_perturb/T_perturb/pp/res/'
+        # 'h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad',
+        default=(
+            './T_perturb/T_perturb/pp/eb/res/'
+            'h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad'
+        ),
         help='Dataset to use for analysis',
     )
     args = parser.parse_args()
@@ -274,7 +274,9 @@ plt.close()
 
 # Plotting generate results
 # --------------------------------
-adata = sc.read_h5ad(f'{args.res_dir}/generate_adata_zinb_3.h5ad')
+adata = sc.read_h5ad(
+    f'{args.res_dir}/generate_adata_no_context_GF_fine_tuned_zinb_3.h5ad'
+)
 del adata.uns['Cell_type_colors']
 del adata.uns['Cell_population_colors']
 del adata.uns['Time_point_colors']
@@ -424,7 +426,7 @@ df_long.groupby(['Metric', 'Type'])['Value'].mean()
 # EB analysis
 # ------------------------------
 adata = sc.read_h5ad(
-    f'{args.res_dir}/generate_adata_interpolate_ckp19_GF_fine_tuned_zinb_3.h5ad'
+    f'{args.res_dir}/generate_adata_no_context_GF_fine_tuned_zinb_3.h5ad'
 )
 adata_true = adata.copy()
 adata_true.X = adata_true.layers['counts']
@@ -443,10 +445,11 @@ sc.pp.normalize_total(adata_true, target_sum=1e4)
 sc.pp.log1p(adata_true)
 emd_df = evaluate_emd(adata_true, adata, None)
 mmd_df = evaluate_mmd(adata=adata_true, pred_adata=adata, n_cells=10000)
+
 print('EMD after normalisation: ', emd_df)
 print('MMD after normalisation: ', mmd_df)
 # concatenate results
 emd_mmd_df = pd.concat([emd_df, mmd_df], axis=1)
 emd_mmd_df.to_csv(
-    f'{args.res_dir}/emd_mmd_generate_zinb_3_interpolate_GF_fine_tuned.csv'
+    f'{args.res_dir}/emd_mmd_no_context_interpolate_GF_fine_tuned_zinb_3.csv'
 )

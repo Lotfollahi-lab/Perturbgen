@@ -1,7 +1,7 @@
 method: grid
 metric:
-  goal: maximize
-  name: val/pearson
+  goal: minimize
+  name: val/mse_epoch
 name: tune_count
 parameters:
   train_mode:
@@ -39,11 +39,11 @@ parameters:
   mlm_prob:
     value: 0.15
   loss_mode:
-    values: ['zinb', 'nb', 'mse']
+    value: 'zinb'
   count_lr:
-    values: [0.00005, 0.0001, 0.001]
+    values: [0.00005, 0.0001, 0.005]
   count_wd:
-    values: [0.01, 0.001, 0.0001]
+    values: [0.01, 0.005, 0.001]
   batch_size:
     value: 64
 program: /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/train.py

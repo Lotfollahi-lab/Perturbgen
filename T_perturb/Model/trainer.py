@@ -582,6 +582,7 @@ class CountDecodertrainer(LightningModule):
         self.val_tgt_cell_type_list: List[str] = []
         self.val_tgt_cell_population_list: List[str] = []
         self.val_tgt_donor_list: List[str] = []
+        self.mode = mode
 
     def modify_ckpt_state_dict(
         self,
@@ -1024,7 +1025,7 @@ class CountDecodertrainer(LightningModule):
             # create output directory
             # save adata
             pred_adata.write_h5ad(
-                f'{self.output_dir}/generate_adata_interpolate_ckp19_GF_fine_tuned'
+                f'{self.output_dir}/generate_adata_no_context_{self.mode}'
                 f'_{self.loss_mode}_{self.n_samples}.h5ad'
             )
             emd = evaluate_emd(true_adata, pred_adata)

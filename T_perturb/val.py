@@ -192,6 +192,17 @@ def get_args():
         default=['Cell_population', 'Cell_type', 'Time_point', 'Donor'],
         help='List of variables to keep in the dataset',
     )
+    parser.add_argument(
+        '--mode',
+        default='GF_frozen',
+        type=str,
+        choices=[
+            'GF_fine_tuned',
+            'GF_frozen',
+            'Transformer_encoder',
+        ],
+        help='mode of encoder',
+    )
     args = parser.parse_args()
     return args
 
@@ -359,6 +370,7 @@ def main() -> None:
             gene_names=tgt_adata_tmp.var['gene_name'],
             output_dir=args.output_dir,
             var_list=args.var_list,
+            mode=args.mode,
         )
     elif args.test_mode == 'count':
         decoder_module = CountDecodertrainer(
@@ -388,6 +400,7 @@ def main() -> None:
             output_dir=args.output_dir,
             var_list=args.var_list,
             n_samples=3,
+            mode=args.mode,
         )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')

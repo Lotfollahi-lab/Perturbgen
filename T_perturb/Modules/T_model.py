@@ -744,6 +744,7 @@ class Petra(nn.Module):
         tgt_time_step=None,
         cls_positions=None,
         not_masked=False,
+        context_mode=True,
     ):
         if tgt_input_id_dict:
             tgt_pad_dict = self.call_padding(
@@ -756,24 +757,65 @@ class Petra(nn.Module):
         src_attention_mask = self.generate_src_mask(src_input_id)
         # BERT mask: 1 for tokens to keep, 0 for tokens to mask. Thus, negate mask.
         enc_output = self.call_encoder(src_input_id, src_attention_mask)
+        if context_mode:
+            # distinction between selected time step and rest time steps
+            if not_masked:
+                dec_embedding_list = []
+                mean_embedding_dict = {}
+                for tgt_time_step in self.time_steps:
+                    tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
+                    context_embedding_dict, context_pad_dict = self.generate_context(
+                        enc_output=enc_output,
+                        src_attention_mask=src_attention_mask,
+                        tgt_time_step=tgt_time_step,
+                        all_time_steps=self.time_steps,
+                        tgt_input_id_dict=tgt_input_id_dict,
+                        tgt_pad_dict=tgt_pad_dict,
+                        cls_positions=cls_positions,
+                    )
 
-        # distinction between selected time step and rest time steps
-        if not_masked:
-            dec_embedding_list = []
-            mean_embedding_dict = {}
-            for tgt_time_step in self.time_steps:
+                    # context should be all the ones before the selected time step
+                    outputs = self.context_backprop(
+                        context_embedding_dict=context_embedding_dict,
+                        context_pad_dict=context_pad_dict,
+                        tgt_pad=tgt_pad,
+                        tgt_time_step=tgt_time_step,
+                        tgt_input_id_dict=tgt_input_id_dict,
+                        cls_positions=cls_positions,
+                        not_masked=not_masked,
+                    )
+                    dec_embedding_list.append(outputs['dec_embedding'])
+                    mean_embedding_dict[tgt_time_step] = outputs['mean_embedding']
+                outputs['mean_embedding'] = mean_embedding_dict
+                outputs['dec_embedding'] = torch.cat(dec_embedding_list, dim=1)
+
+            else:
+                if tgt_time_step is None:
+                    tgt_time_step = np.random.choice(self.time_steps)
+                    generate = False
+                    context_time_steps = self.time_steps
+                else:
+                    tgt_input_id_dict = generate_id_dict
+                    generate = True
+                    context_time_steps = self.total_time_steps
+                # only extract context for all the ones before the selected time step
+                # rest will be padded
+                # ---Initialise the decoder embeddings
+                # to provide as context for selected time step---
                 tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
                 context_embedding_dict, context_pad_dict = self.generate_context(
                     enc_output=enc_output,
                     src_attention_mask=src_attention_mask,
                     tgt_time_step=tgt_time_step,
-                    all_time_steps=self.time_steps,
+                    all_time_steps=context_time_steps,
                     tgt_input_id_dict=tgt_input_id_dict,
                     tgt_pad_dict=tgt_pad_dict,
                     cls_positions=cls_positions,
+                    generate=generate,
                 )
+                if generate:
+                    context_pad_dict = generate_pad_dict
 
-                # context should be all the ones before the selected time step
                 outputs = self.context_backprop(
                     context_embedding_dict=context_embedding_dict,
                     context_pad_dict=context_pad_dict,
@@ -782,50 +824,64 @@ class Petra(nn.Module):
                     tgt_input_id_dict=tgt_input_id_dict,
                     cls_positions=cls_positions,
                     not_masked=not_masked,
+                    generate=generate,
                 )
-                dec_embedding_list.append(outputs['dec_embedding'])
-                mean_embedding_dict[tgt_time_step] = outputs['mean_embedding']
-            outputs['mean_embedding'] = mean_embedding_dict
-            outputs['dec_embedding'] = torch.cat(dec_embedding_list, dim=1)
-
         else:
-            if tgt_time_step is None:
-                tgt_time_step = np.random.choice(self.time_steps)
-                generate = False
-                context_time_steps = self.time_steps
+            if not_masked:
+                dec_embedding_list = []
+                mean_embedding_dict = {}
+                for tgt_time_step in self.time_steps:
+                    tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
+                    tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{tgt_time_step}']
+                    tgt_input_id = tgt_input_id.masked_fill(tgt_pad, 0)
+                    tgt_embedding = self.token_embedding(tgt_input_id)
+                    tgt_embedding = self.positional_encoding(
+                        tgt_embedding, tgt_time_step
+                    )
+                    outputs = self.call_decoder(
+                        enc_output=enc_output,
+                        src_attention_mask=src_attention_mask,
+                        dec_embedding=tgt_embedding,
+                        tgt_pad=tgt_pad,
+                        time_random=tgt_time_step,
+                        generate=False,
+                        labels=None,
+                        cls_positions=cls_positions,
+                    )
+                    dec_embedding_list.append(outputs['dec_embedding'])
+                    mean_embedding_dict[tgt_time_step] = outputs['mean_embedding']
+                outputs['mean_embedding'] = mean_embedding_dict
+                outputs['dec_embedding'] = torch.cat(dec_embedding_list, dim=1)
             else:
-                tgt_input_id_dict = generate_id_dict
-                generate = True
-                context_time_steps = self.total_time_steps
-            # only extract context for all the ones before the selected time step
-            # rest will be padded
-            # ---Initialise the decoder embeddings
-            # to provide as context for selected time step---
-            tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
-            context_embedding_dict, context_pad_dict = self.generate_context(
-                enc_output=enc_output,
-                src_attention_mask=src_attention_mask,
-                tgt_time_step=tgt_time_step,
-                all_time_steps=context_time_steps,
-                tgt_input_id_dict=tgt_input_id_dict,
-                tgt_pad_dict=tgt_pad_dict,
-                cls_positions=cls_positions,
-                generate=generate,
-            )
-            if generate:
-                context_pad_dict = generate_pad_dict
-
-            outputs = self.context_backprop(
-                context_embedding_dict=context_embedding_dict,
-                context_pad_dict=context_pad_dict,
-                tgt_pad=tgt_pad,
-                tgt_time_step=tgt_time_step,
-                tgt_input_id_dict=tgt_input_id_dict,
-                cls_positions=cls_positions,
-                not_masked=not_masked,
-                generate=generate,
-            )
-
+                if tgt_time_step is None:
+                    tgt_time_step = np.random.choice(self.time_steps)
+                    generate = False
+                    tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
+                    tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{tgt_time_step}']
+                    tgt_input_id = tgt_input_id.masked_fill(tgt_pad, 0)
+                    tgt_input_id, labels = self.generate_mask(
+                        tgt_input_id,
+                        tgt_pad,
+                        self.mlm_probability,
+                    )
+                else:
+                    tgt_input_id_dict = generate_id_dict
+                    generate = True
+                    tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
+                    labels = None
+                    tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{tgt_time_step}']
+                tgt_embedding = self.token_embedding(tgt_input_id)
+                tgt_embedding = self.positional_encoding(tgt_embedding, tgt_time_step)
+                outputs = self.call_decoder(
+                    enc_output=enc_output,
+                    src_attention_mask=src_attention_mask,
+                    dec_embedding=tgt_embedding,
+                    tgt_pad=tgt_pad,
+                    time_random=tgt_time_step,
+                    generate=generate,
+                    labels=labels,
+                    cls_positions=cls_positions,
+                )
         return outputs
 
 

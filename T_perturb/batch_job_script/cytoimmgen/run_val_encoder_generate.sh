@@ -17,22 +17,20 @@ module load cuda-12.1.1
 source /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/.petra_cuda12/bin/activate
 cwd=$(pwd)
 
-export WANDB_DIR=$cwd/wandb
+# export WANDB_DIR=$cwd/wandb
 # run script
 echo "--- Start computing model"
 
-# Interpolate
-# # python3 $cwd/val.py \
 # python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
 # --test_mode count \
 # --split False \
 # --splitting_mode stratified \
 # --generate True \
 # --ckpt_count_path "./T_perturb/T_perturb/Model/checkpoints/"\
-# "20240519_0943_Tcell_interpol_GF_fine_tuned_lr_5e-05"\
+# "20240519_1627_petra_train_count_lr_5e-05"\
 # "_wd_0.01_batch_64_zinb_tp_1-3-epoch=19.ckpt" \
 # --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
-# --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset" \
+# --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_transformer/0h.dataset" \
 # --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
 # --src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
 # --tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt" \
@@ -49,7 +47,7 @@ echo "--- Start computing model"
 # --condition_keys Cell_culture_batch \
 # --time_steps 2 \
 # --var_list Cell_population Cell_type Time_point Donor \
-# --mode GF_fine_tuned
+# --mode Transformer_encoder
 # echo "--- Finished computing model"
 
 # Extrapolate
@@ -59,10 +57,9 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --split False \
 --splitting_mode stratified \
 --generate True \
---ckpt_count_path "./T_perturb/T_perturb/Model/checkpoints/"\
-"20240520_0726_Tcell_extrapol_GF_fine_tuned_lr_0.005_wd_0.001_batch_64_zinb_tp_1-2-epoch=09.ckpt" \
+--ckpt_count_path "./T_perturb/T_perturb/Model/checkpoints/20240519_2211_Tcell_extrapolate_Encoder_lr_5e-05_wd_0.01_batch_64_zinb_tp_1-2-epoch=19.ckpt" \
 --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
---src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset" \
+--src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_transformer/0h.dataset" \
 --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
 --src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
 --tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt" \
@@ -79,5 +76,5 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --condition_keys Cell_culture_batch \
 --time_steps 3 \
 --var_list Cell_population Cell_type Time_point Donor \
---mode GF_fine_tuned
+--mode Transformer_encoder
 echo "--- Finished computing model"
