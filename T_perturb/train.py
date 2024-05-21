@@ -172,7 +172,8 @@ def main() -> None:
     tgt_dataset = load_from_disk(args.tgt_dataset_folder)
     src_adata = sc.read_h5ad(args.src_adata_folder)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
-    if args.train_mode == 'count':
+    tgt_vocab_size = tgt_adata.shape[1]
+    if args.train_mode == 'count' and args.dataset_name != 'adamson':
         ref_logcounts = sc.read_h5ad(args.src_adata_folder.replace('_pairing_control',''))
         sc.pp.normalize_total(ref_logcounts, target_sum=1e4)
         sc.pp.log1p(ref_logcounts)
@@ -285,7 +286,7 @@ def main() -> None:
         tgt_adata.X = tgt_adata.X.A
     if src_adata.X.__class__.__name__ == 'csr_matrix':
         src_adata.X = src_adata.X.A
-    if args.loss_mode == 'mse':
+    if args.loss_mode == 'mse' and args.dataset_name != 'adamson':
         # log normalize data only for mse loss
         sc.pp.normalize_total(src_adata, target_sum=1e4)
         sc.pp.log1p(src_adata)
@@ -301,7 +302,7 @@ def main() -> None:
     # ----------------------------------------------------------------------------------
     if args.train_mode == 'masking':
         pretrained_module = Petratrainer(
-            tgt_vocab_size=5028,  # 704 for degs, 1819 for tokenised, 5027 for HVG in peturbation assay +1 (padding)
+            tgt_vocab_size=tgt_vocab_size+1, 
             d_model=256,
             d_encoded_input=256,
             num_heads=8,
@@ -332,7 +333,7 @@ def main() -> None:
             # lr_scheduler_factor=0.8,
             conditions=conditions_,
             conditions_combined=conditions_combined_,
-            tgt_vocab_size=5028,  # 704 for degs, 1819 for tokenised
+            tgt_vocab_size=tgt_vocab_size+1,
             dropout=args.count_dropout,
             d_model=256,
             generate=args.generate,
