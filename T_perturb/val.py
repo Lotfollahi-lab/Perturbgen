@@ -344,7 +344,6 @@ def main() -> None:
             perturbation_modeling='activation', # activation repression or None (if not perturbation experiment)
             run_id = run_id,
             base_path = args.base_path,
-            ctrl_counts=ctrl_counts,
             n_samples=args.n_samples_loss,
             ref_logcounts=ref_logcounts,
             )

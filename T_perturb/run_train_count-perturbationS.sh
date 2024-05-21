@@ -1,6 +1,6 @@
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu
+#BSUB -gpu 'mode=exclusive_process:num=1' # request for exclusive access to gpu
 #BSUB -n 16 # number of cores
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb/T_perturb/T_perturb/ # working directory
@@ -36,11 +36,11 @@ python3 $cwd/train.py \
 --batch_size 64 \
 --split True \
 --splitting_mode gears-simulation \
---epochs 100 \
+--epochs 3 \
 --max_len 1750 \
 --mlm_probability 0.5 \
 --n_workers 16 \
---loss_mode zinb \
+--loss_mode mse \
 --petra_lr 0.001 \
 --count_lr 0.001 \
 --petra_wd 0.0001 \

@@ -480,7 +480,7 @@ def main() -> None:
         max_epochs=args.epochs,
         accelerator='auto',
 #        profiler=profiler,
-#        limit_train_batches=2,
+        limit_train_batches=2,
         devices=-1 if torch.cuda.is_available() else 0,
         strategy=deepspeed_strategy if torch.cuda.device_count() > 1 else 'auto',
     )
