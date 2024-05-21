@@ -805,7 +805,7 @@ class CountDecodertrainer(LightningModule):
         # return Pearson correlation coefficient
         true_counts = torch.cat(self.test_true_counts_list).detach().cpu()
         pred_counts = torch.cat(self.test_pred_counts_list).detach().cpu()
-        true_logs = np.concatenate(self.test_true_logcounts_list)
+        true_logs = np.array(np.concatenate(self.test_true_logcounts_list))
         pred_logs = torch.cat(self.test_pred_logcounts_list).detach().cpu()
         ctrl_counts = np.concatenate([self.ref_logcounts['control'] for i in range(len(true_counts))])
         pred_cts_delta =  np.concatenate(self.test_pred_counts_ctrl_delta_deg)
@@ -823,7 +823,7 @@ class CountDecodertrainer(LightningModule):
         pred_adata = ad.AnnData(X=pred_logs.numpy(), obs=test_obs)
         pred_adata.obsm['cls_embeddings'] = cls_embeddings
         pred_adata.layers['tgt_counts'] = true_counts.numpy()
-        pred_adata.layers['tgt_logcounts'] = true_logs.numpy()
+        pred_adata.layers['tgt_logcounts'] = true_logs
         pred_adata.layers['pred_counts'] = pred_counts.numpy()
 
         # compute umap based on cls
@@ -863,7 +863,7 @@ class CountDecodertrainer(LightningModule):
             logger=True,
         )
         # MSE
-        mse = self.metric['mse'](pred_logs, true_logs)
+        mse = self.metric['mse'](pred_logs, torch.tensor(true_logs))
         mean_mse = torch.mean(mse)
         self.log(
             'test/mse',
@@ -873,7 +873,7 @@ class CountDecodertrainer(LightningModule):
             logger=True,
         )
         # Pearson correlation coefficient - DEG
-        mean_pearson_delta_deg = pearson(pred_cts_delta, true_cts_delta)
+        mean_pearson_delta_deg = pearson(torch.tensor(pred_cts_delta), true_cts_delta)
         self.log(
             'test/pearson_delta-DEG',
             mean_pearson_delta_deg,
@@ -882,7 +882,7 @@ class CountDecodertrainer(LightningModule):
             logger=True,
         )
         # MSE
-        mse_delta_deg = torch.mean(self.metric['mse'](pred_cts_delta, true_cts_delta))
+        mse_delta_deg = torch.mean(self.metric['mse'](torch.tensor(pred_cts_delta), torch.tensor(true_cts_delta)))
         self.log(
             'test/mse_delta-DEG',
             mse_delta_deg,
@@ -906,9 +906,9 @@ class CountDecodertrainer(LightningModule):
         for perturbation in np.unique(perturbation_list):
             mean_pearson = pearson(pred_logs[perturbation_list == perturbation, :], true_logs[perturbation_list == perturbation, :]).cpu().detach().numpy()
             mean_pearson_delta = pearson(pred_logs[perturbation_list == perturbation, :], true_logs[perturbation_list == perturbation, :], ctrl_counts[perturbation_list == perturbation, :]).cpu().detach().numpy()
-            mse = self.metric['mse'](pred_logs[perturbation_list == perturbation, :], true_logs[perturbation_list == perturbation, :]).cpu().detach().numpy()
-            mean_pearson_delta_deg = pearson(pred_cts_delta[perturbation_list == perturbation, :], true_cts_delta[perturbation_list == perturbation, :]).cpu().detach().numpy()
-            mse_delta_deg = torch.mean(self.metric['mse'](pred_cts_delta[perturbation_list == perturbation, :], true_cts_delta[perturbation_list == perturbation, :])).cpu().detach().numpy()
+            mse = self.metric['mse'](torch.tensor(pred_logs)[perturbation_list == perturbation, :], torch.tensor(true_logs)[perturbation_list == perturbation, :]).cpu().detach().numpy()
+            mean_pearson_delta_deg = pearson(torch.tensor(pred_cts_delta)[perturbation_list == perturbation, :], true_cts_delta[perturbation_list == perturbation, :]).cpu().detach().numpy()
+            mse_delta_deg = torch.mean(self.metric['mse'](torch.tensor(pred_cts_delta)[perturbation_list == perturbation, :], torch.tensor(true_cts_delta)[perturbation_list == perturbation, :])).cpu().detach().numpy()
 
             metrics.loc[perturbation,:] = [mean_pearson, mean_pearson_delta, mse, mean_pearson_delta_deg, mse_delta_deg, np.sum(perturbation_list == perturbation)]            
 

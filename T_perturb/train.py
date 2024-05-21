@@ -173,8 +173,8 @@ def main() -> None:
     src_adata = sc.read_h5ad(args.src_adata_folder)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
     tgt_vocab_size = tgt_adata.shape[1]
-    if args.train_mode == 'count' and args.dataset_name != 'adamson':
-        ref_logcounts = sc.read_h5ad(args.src_adata_folder.replace('_pairing_control',''))
+    if args.train_mode == 'count':
+        ref_logcounts = sc.read_h5ad(args.src_adata_folder.replace('_pairing_control','').replace('subsetted_', ''))
         sc.pp.normalize_total(ref_logcounts, target_sum=1e4)
         sc.pp.log1p(ref_logcounts)
         ref_logcounts = {c: ref_logcounts[ref_logcounts.obs.perturbation_name==c,:].X.mean(0)[0] for c in ref_logcounts.obs.perturbation_name.unique()} # (n_conditions, n_genes)
@@ -286,7 +286,7 @@ def main() -> None:
         tgt_adata.X = tgt_adata.X.A
     if src_adata.X.__class__.__name__ == 'csr_matrix':
         src_adata.X = src_adata.X.A
-    if args.loss_mode == 'mse' and args.dataset_name != 'adamson':
+    if args.loss_mode == 'mse':
         # log normalize data only for mse loss
         sc.pp.normalize_total(src_adata, target_sum=1e4)
         sc.pp.log1p(src_adata)

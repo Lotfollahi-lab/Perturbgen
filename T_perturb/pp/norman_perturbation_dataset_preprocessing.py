@@ -130,20 +130,22 @@ adata[:,~adata.var.token_id.isna()].write_h5ad(f'{base_path}/{data_path}/{datase
 print('tokenize')
 var_list = [var for var in ['perturbation_name', 'n_perturbations','perturbation1_name', 'perturbation2_name', 'n_counts', 'cell_pairing_index'] if var in adata.obs.columns]
 var_to_keep: Dict[str, str] = {v: v for v in var_list}.copy()
+'''
 tk = TranscriptomeTokenizer(var_to_keep, nproc=8) #, model_input_size=5000)
 tk.tokenize_data(
-    f'{base_path}/{data_path}/adata',  # input directory - all h5ad files in this directory will be tokenised
+    f'{base_path}/{data_path}/{dataset_name}/adata',  # input directory - all h5ad files in this directory will be tokenised
     f'{base_path}/{data_path}/{dataset_name}/dataset',  # output directory - tokenised h5ad files will be saved here
     f'filtered_tokenised_{gene_filtering_mode}',  # name of output file
     file_format='h5ad',  # format [loom, h5ad]
 )
-
+'''
 # Pairing --------
 print('pairing')
 # load
 dataset = load_from_disk(f'{base_path}/{data_path}/{dataset_name}/dataset/filtered_tokenised_{gene_filtering_mode}.dataset')
 adata = sc.read_h5ad(f'{base_path}/{data_path}/{dataset_name}/adata/filtered_tokenised_{gene_filtering_mode}.h5ad')
 adata.obs = adata.obs.reset_index()
+adata.obs = adata.obs.rename(columns={'cell_barcode':'index'})
 
 # new df to store info about perturbation occurrance
 multiple_perturb = adata.obs[adata.obs.n_perturbations>1].perturbation_name.unique()
@@ -235,7 +237,6 @@ gene_embeddings = pd.DataFrame(
     np.squeeze(gf._modules['bert'].embeddings.word_embeddings(tensor(np.insert(adata.uns['perturbation_id'].token_id.values, 0, 0).astype(int))).detach().numpy()), 
     index=np.insert(adata.uns['perturbation_id'].rowidx.values, 0, 0)
 )
-
 # store gene embedding of each perturbed gene (list of embeddings)
 # if only one perturbation, add a padded value in 2nd position
 gene_embeddings_list = []
@@ -263,8 +264,10 @@ gene_embeddings = gene_embeddings[gene_embeddings.index.isin(adata.uns['perturba
 # change gene name by our idxs
 adata.uns['perturbation_id'].set_index('gene_name', inplace=True, drop=False)
 gene_embeddings.index = adata.uns['perturbation_id'].loc[gene_embeddings.index,'rowidx'].values
+missing = adata.uns['perturbation_id'].rowidx[~adata.uns['perturbation_id'].rowidx.isin(gene_embeddings.index)].values.tolist()
 gene_embeddings.loc[0,:] = pad_embed.values
-gene_embeddings.head(3)
+for pg in missing:
+    gene_embeddings.loc[pg] = pad_embed.values
 
 # store gene embedding of each perturbed gene 
 gene_embeddings_list = []
