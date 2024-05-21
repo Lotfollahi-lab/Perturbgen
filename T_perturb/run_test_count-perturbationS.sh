@@ -8,7 +8,7 @@
 #BSUB -e ../../logs/%J.err # error file
 #BSUB -M 40GB  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>40GB] rusage[mem=40GB]' # RAM memory part 1. Default: 100MB
-#BSUB -J 22.3_s10GfZinb # job name
+#BSUB -J 22.3_s10Gfmse # job name
 
 # activate conda environment
 source ~/.bashrc
@@ -28,7 +28,7 @@ echo "--- Start testing model"
 # # Run python script for rna
 python3 $cwd/val.py \
 --ckpt_masking_file 20240521_0110_petra_mode_masking_lr_0.001_wd_0.0001_batch_45_mlmp_0.7_seed1_hvg_pairing_GFpert.ckpt \
---ckpt_count_file 20240521_0202_petra_mode_count_lr_0.001_wd_0.0001_batch_64_zinb_seed1_hvg_pairing_GFpert.ckpt \
+--ckpt_count_file 20240521_0201_petra_mode_count_lr_0.001_wd_0.0001_batch_64_mse_seed1_hvg_pairing_GFpert.ckpt \
 --src_dataset_folder ../../datasets/Norman2019/dataset/subsetted_filtered_tokenised_hvg_pairing_GFpert_control.dataset \
 --tgt_dataset_folder ../../datasets/Norman2019/dataset/subsetted_filtered_tokenised_hvg_pairing_perturbed.dataset \
 --src_adata_folder ../../datasets/Norman2019/adata/subsetted_filtered_tokenised_hvg_pairing_control.h5ad \
@@ -38,8 +38,7 @@ python3 $cwd/val.py \
 --splitting_mode gears-simulation \
 --max_len 1750 \
 --n_workers 16 \
---loss_mode zinb \
+--loss_mode mse \
 --seed 1 \
---n_samples_loss 10 \
 --base_path /lustre/scratch126/cellgen/team361/ip14
 echo "--- Finished computing model"

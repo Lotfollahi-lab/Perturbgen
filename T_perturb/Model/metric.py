@@ -15,7 +15,7 @@ def pearson(
     """
     Pearson correlation coefficient
     """
-    if not true_counts.is_tensor():
+    if not torch.is_tensor(true_counts):
         true_counts = torch.tensor(true_counts, device=pred_counts.device)
     if ctrl_counts is not None:
         pred_counts = pred_counts - ctrl_counts

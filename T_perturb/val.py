@@ -177,7 +177,7 @@ def main() -> None:
     tgt_dataset = load_from_disk(args.tgt_dataset_folder)
     src_adata = sc.read_h5ad(args.src_adata_folder)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
-    if args.train_mode == 'count':
+    if args.test_mode == 'count':
             ref_logcounts = sc.read_h5ad(args.src_adata_folder.replace('_pairing_control',''))
             sc.pp.normalize_total(ref_logcounts, target_sum=1e4)
             sc.pp.log1p(ref_logcounts)
@@ -460,6 +460,7 @@ def main() -> None:
         logger=wandb_logger,
         callbacks=[TQDMProgressBar(refresh_rate=10), checkpoint_callback],
         accelerator=accelerator,
+        limit_test_batches=2,
         devices=1 if torch.cuda.is_available() else 0,  # infernce only on one gpu
     )
     # Finally, kick of the training process.

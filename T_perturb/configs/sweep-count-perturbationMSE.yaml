@@ -12,9 +12,11 @@ parameters:
     values: [0.01, 0.001, 0.0001]
   count_dropout:
     values: [0.0, 0.05, 0.2]
+  train_mode:
+    value: count
   loss_mode:
     value: mse
-  ckpt_masking_file:
+  ckpt_file:
     value: '20240521_0110_petra_mode_masking_lr_0.001_wd_0.0001_batch_45_mlmp_0.7_seed1_hvg_pairing_GFpert.ckpt'
   src_dataset_folder:
     value: '../../datasets/Norman2019/dataset/filtered_tokenised_hvg_pairing_GFpert_control.dataset'
@@ -31,7 +33,7 @@ parameters:
   split:
     value: True
   splitting_mode:
-    value: True
+    value: gears-simulation
   epochs:
     value: 15
   max_len:

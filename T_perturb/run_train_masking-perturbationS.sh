@@ -8,7 +8,7 @@
 #BSUB -e ../../logs/%J.err # error file
 #BSUB -M 40GB  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>40GB] rusage[mem=40GB]' # RAM memory part 1. Default: 100MB
-#BSUB -J 21_G2VMlpSrcCsub # job name
+#BSUB -J f_GfMlpSrcCsub # job name
 
 # activate conda environment
 source ~/.bashrc
@@ -31,7 +31,7 @@ python3 $cwd/train.py \
 --train_mode masking \
 --split True \
 --splitting_mode gears-simulation \
---src_dataset_folder ../../datasets/Norman2019/dataset/subsetted_filtered_tokenised_hvg_pairing_gene2vecpert_control.dataset \
+--src_dataset_folder ../../datasets/Norman2019/dataset/subsetted_filtered_tokenised_hvg_pairing_GFpert_control.dataset \
 --tgt_dataset_folder ../../datasets/Norman2019/dataset/subsetted_filtered_tokenised_hvg_pairing_perturbed.dataset \
 --src_adata_folder ../../datasets/Norman2019/adata/subsetted_filtered_tokenised_hvg_pairing_control.h5ad \
 --tgt_adata_folder ../../datasets/Norman2019/adata/subsetted_filtered_tokenised_hvg_pairing_perturbed.h5ad \
@@ -42,7 +42,7 @@ python3 $cwd/train.py \
 --petra_wd 0.0001 \
 --num_layers 5 \
 --d_ff 16 \
---mlm_probability 0.5 \
+--mlm_probability 0.7 \
 --n_workers 16 \
 --seed 1 \
 --perturbation_encoding_mode mlp compress_src \
