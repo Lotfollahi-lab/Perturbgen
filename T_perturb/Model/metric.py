@@ -17,6 +17,7 @@ def pearson(
     """
     if not torch.is_tensor(true_counts):
         true_counts = torch.tensor(true_counts, device=pred_counts.device)
+        
     if ctrl_counts is not None:
         pred_counts = pred_counts - ctrl_counts
         true_counts = true_counts - ctrl_counts
