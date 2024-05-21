@@ -23,8 +23,6 @@ from T_perturb.src.utils import (
     stratified_split,
 )
 
-RANDOM_SEED = 42
-
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
     os.chdir('/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/')
@@ -216,6 +214,12 @@ def get_args():
         ],
         help='mode of encoder',
     )
+    parser.add_argument(
+        '--seed',
+        type=int,
+        default=42,
+        help='seed for reproducibility',
+    )
     args = parser.parse_args()
     return args
 
@@ -227,8 +231,8 @@ def main() -> None:
     """Run training."""
     args = get_args()
     # PyTorch Lightning allows to set all necessary seeds in one function call.
-    pl.seed_everything(RANDOM_SEED)
-    torch.manual_seed(RANDOM_SEED)
+    pl.seed_everything(args.seed)
+    torch.manual_seed(args.seed)
     # Load and preprocess data
     # ----------------------------------------------------------------------------------
     print('Loading and preprocessing data...')
@@ -248,7 +252,7 @@ def main() -> None:
                 train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
                 test_prop=args.test_prop,
                 groups=['Cell_type', 'Donor'],
-                seed=RANDOM_SEED,
+                seed=args.seed,
             )
 
             # check that indices are unique to avoid data leakage
@@ -260,7 +264,7 @@ def main() -> None:
                 adata=tgt_adata_tmp,
                 train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
                 test_prop=args.test_prop,
-                seed=RANDOM_SEED,
+                seed=args.seed,
             )
         # elif split == 'unseen_donor':
         #     train, val, test = unseen_donor_split()
@@ -417,6 +421,7 @@ def main() -> None:
             mask_scheduler=args.mask_scheduler,
             output_dir=args.output_dir,
             mode=args.mode,
+            seed=args.seed,
         )
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
@@ -512,7 +517,7 @@ def main() -> None:
         dirpath=checkpoint_path,
         filename=f'{filename}-' + '{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=25,
+        every_n_epochs=50,
         verbose=True,
         # monitor=monitor_metric,
         mode=mode,
@@ -567,6 +572,7 @@ def main() -> None:
         accelerator='auto',
         devices=-1 if torch.cuda.is_available() else 0,
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
+        limit_test_batches=50,
     )
     print('Starting training...')
     if os.getcwd().split('/')[-1] != 'healthy_imm_expr':

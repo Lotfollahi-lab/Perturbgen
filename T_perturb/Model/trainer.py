@@ -151,7 +151,6 @@ class Petratrainer(LightningModule):
 
         self.marker_genes = None
         self.gene_names = gene_names
-        self.activation_genes = None
         # register buffer for CLS
         total_vocab_size = tgt_vocab_size
         # initialize cls token for all time steps
@@ -333,8 +332,6 @@ class Petratrainer(LightningModule):
                     ]
                 cosine_similarity_list = []
                 for i in range(gene_embeddings.shape[0]):
-                    # print(gene_embeddings[i, :, :])
-                    # print(gene_embeddings[i, :, :].shape)
                     # gene level cosine similarity
                     tmp_consine_similarity = F.cosine_similarity(
                         cls_embeddings[i],
@@ -343,7 +340,6 @@ class Petratrainer(LightningModule):
                     )
                     cosine_similarity_list.append(tmp_consine_similarity)
                 cosine_similarity_list = torch.stack(cosine_similarity_list)
-                # print('dict_token_mapping',dict_token_mapping)
 
                 # extra
                 marker_genes = [
@@ -397,63 +393,50 @@ class Petratrainer(LightningModule):
                     if v in marker_genes
                 }
                 # print('token_dict',self.subset_tokenid_to_genename)
-                self.marker_genes = marker_genes_ids
 
-                emb = torch.zeros(
+                cosine_sim = torch.zeros(
                     cosine_similarity_list.shape[0],
                     len(marker_genes_ids.keys()),
                     device=gene_embeddings.device,
                 )
+                marker_gene_embeddings = torch.zeros(
+                    gene_embeddings.shape[0],
+                    len(marker_genes_ids.keys()),
+                    gene_embeddings.shape[2],
+                    device=gene_embeddings.device,
+                )
+                marker_genes_dict = {}
                 for i, gene in enumerate(marker_genes_ids.keys()):
+                    # extract cosine similarity for marker genes
+                    # ---------------------
                     cond_embs_to_fill = (token_ids == marker_genes_ids[gene]).sum(1) > 0
                     cond_select_markers = torch.where(
                         token_ids == marker_genes_ids[gene]
                     )
-                    emb[cond_embs_to_fill, i] = cosine_similarity_list[
+                    cosine_sim[cond_embs_to_fill, i] = cosine_similarity_list[
                         cond_select_markers[0], cond_select_markers[1]
                     ]
+                    # extract gene embeddings for marker genes
+                    # ---------------------
 
-                activation_genes = [
-                    'IL7R',
-                    'CD69',
-                    'IL2RA',
-                    'ISG15',
-                ]
-                # extract gene embedding for activation genes
-                activation_genes_ids = {
-                    v: k
-                    for k, v in self.subset_tokenid_to_genename.items()
-                    if v in activation_genes
-                }
-                activation_gene_embeddings = torch.zeros(
-                    gene_embeddings.shape[0],
-                    len(activation_genes_ids.keys()),
-                    gene_embeddings.shape[2],
-                    device=gene_embeddings.device,
-                )
-                activation_genes_dict = {}
-                for i, gene in enumerate(activation_genes_ids.keys()):
-                    cond_embs_to_fill = (token_ids == activation_genes_ids[gene]).sum(
-                        1
-                    ) > 0
+                    cond_embs_to_fill = (token_ids == marker_genes_ids[gene]).sum(1) > 0
                     cond_select_markers = torch.where(
-                        token_ids == activation_genes_ids[gene]
+                        token_ids == marker_genes_ids[gene]
                     )
-                    activation_gene_embeddings[cond_embs_to_fill, i] = gene_embeddings[
+                    marker_gene_embeddings[cond_embs_to_fill, i] = gene_embeddings[
                         cond_select_markers[0], cond_select_markers[1], :
                     ]
-                    activation_genes_dict[gene] = i
-                self.activation_genes = activation_genes_dict
-
+                    marker_genes_dict[gene] = i
+                self.marker_genes = marker_genes_dict
                 self.test_dict['true_counts'].append(
                     batch[f'tgt_counts_t{time_step}'].detach().cpu()
                 )
                 self.test_dict['cls_embeddings'].append(cls_embeddings.detach().cpu())
-                self.test_dict['cosine_similarities'].append(emb.detach().cpu())
+                self.test_dict['cosine_similarities'].append(cosine_sim.detach().cpu())
                 self.test_dict['batch'].append(batch['combined_batch'].detach().cpu())
                 self.test_dict['cell_idx'].append(cell_ids)
                 self.test_dict['gene_embeddings'].append(
-                    activation_gene_embeddings.detach().cpu()
+                    marker_gene_embeddings.detach().cpu()
                 )
                 for var in self.var_list:
                     self.test_dict[var].append(batch[f'{var}_t{time_step}'])
@@ -485,7 +468,7 @@ class Petratrainer(LightningModule):
                     'gene_embeddings': gene_embeddings.numpy(),
                 },
                 uns={
-                    'activation_genes': self.activation_genes,
+                    'marker_genes': self.marker_genes,
                 },
             )
             adata.var_names = self.gene_names
@@ -494,11 +477,12 @@ class Petratrainer(LightningModule):
             df = pd.DataFrame(
                 cosine_similarities.numpy(), columns=self.marker_genes.keys()
             )
-
             df.index = adata.obs_names
             adata.obsm['cosine_similarity'] = df
             # save anndata
-            adata.write_h5ad(f'{self.output_dir}/cls_embeddings_cosine_similarity.h5ad')
+            adata.write_h5ad(
+                f'{self.output_dir}/cls_embeddings_cosine_similarity_all_cells.h5ad'
+            )
             print('End saving embeddings -------------------')
 
 
@@ -532,6 +516,7 @@ class CountDecodertrainer(LightningModule):
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         mask_scheduler: Optional[str] = 'cosine',
         mode: str = 'GF_fine_tuned',
+        seed: int = 42,
         *args,
         **kwargs,
     ):
@@ -638,6 +623,7 @@ class CountDecodertrainer(LightningModule):
         self.val_tgt_cell_population_list: List[str] = []
         self.val_tgt_donor_list: List[str] = []
         self.mode = mode
+        self.seed = seed
 
     def modify_ckpt_state_dict(
         self,
@@ -1080,7 +1066,8 @@ class CountDecodertrainer(LightningModule):
             # create output directory
             # save adata
             pred_adata.write_h5ad(
-                f'{self.output_dir}/generate_adata_extrapolate_t4_{self.mode}'
+                f'{self.output_dir}/'
+                f'generate_adata_extrapolate_ckpt_19_ep_150_{self.mode}_{self.seed}'
                 f'_{self.loss_mode}_{self.n_samples}.h5ad'
             )
             emd = evaluate_emd(true_adata, pred_adata)

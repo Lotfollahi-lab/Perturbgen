@@ -22,8 +22,6 @@ from T_perturb.src.utils import (
     stratified_split,
 )
 
-RANDOM_SEED = 42
-
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
     os.chdir('/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/')
@@ -210,6 +208,12 @@ def get_args():
         ],
         help='mode of encoder',
     )
+    parser.add_argument(
+        '--seed',
+        type=int,
+        default=42,
+        help='seed for reproducibility',
+    )
     args = parser.parse_args()
     return args
 
@@ -219,8 +223,8 @@ def main() -> None:
     args = get_args()
 
     # PyTorch Lightning allows to set all necessary seeds in one function call.
-    pl.seed_everything(RANDOM_SEED)
-    torch.manual_seed(RANDOM_SEED)
+    pl.seed_everything(args.seed)
+    torch.manual_seed(args.seed)
     # Load and preprocess data
     print('Loading and preprocessing data...')
     tgt_datasets = read_dataset_files(args.tgt_dataset_folder, 'dataset')
@@ -239,7 +243,7 @@ def main() -> None:
                 train_prop=0.8,  # 0.8,0.1,0.1 train, val, test
                 test_prop=0.1,
                 groups=['Cell_type', 'Donor'],
-                seed=RANDOM_SEED,
+                seed=args.seed,
             )
 
             # check that indices are unique to avoid data leakage
@@ -251,7 +255,7 @@ def main() -> None:
                 adata=tgt_adata_tmp,
                 train_prop=0.8,  # 0.8,0.1,0.1 train, val, test
                 test_prop=0.1,
-                seed=RANDOM_SEED,
+                seed=args.seed,
             )
         # elif split == 'unseen_donor':
         #     train, val, test = unseen_donor_split()
@@ -409,6 +413,7 @@ def main() -> None:
             var_list=args.var_list,
             n_samples=3,
             mode=args.mode,
+            seed=args.seed,
         )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')

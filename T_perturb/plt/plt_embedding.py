@@ -18,6 +18,7 @@ from T_perturb.Model.metric import (
 np.random.seed(42)
 random.seed(42)
 
+
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
     os.chdir('/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/')
@@ -37,12 +38,12 @@ def get_args():
     parser.add_argument(
         '--full_data_dir',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/'
-        'h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad',
-        # default=(
-        #     './T_perturb/T_perturb/pp/eb/res/'
-        #     'h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad'
-        # ),
+        # default='./T_perturb/T_perturb/pp/res/'
+        # 'h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad',
+        default=(
+            './T_perturb/T_perturb/pp/eb/res/'
+            'h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad'
+        ),
         help='Dataset to use for analysis',
     )
     args = parser.parse_args()
@@ -88,93 +89,9 @@ sc.pl.embedding(
 )
 plt.savefig('./res/full_data_umap_log_norm.pdf', dpi=300, bbox_inches='tight')
 plt.close()
-adata_cls = sc.read_h5ad(f'{args.res_dir}/cls_embeddings_cosine_similarity.h5ad')
-# plot umap of cls embeddings
-fig, ax = plt.subplots(figsize=(5, 5))
-# create umap for each time point separately
-for time_point in adata_cls.obs['Time_point'].cat.categories:
-    adata_time = adata_cls[adata_cls.obs['Time_point'] == time_point]
-    sc.pp.neighbors(adata_time, n_neighbors=15, use_rep='cls_embeddings')
-    sc.tl.umap(adata_time)
-    sc.pl.embedding(
-        adata_time,
-        basis='X_umap',
-        color=[
-            'Cell_type',
-            'Cell_population',
-            'batch',
-        ],
-        ncols=2,
-        wspace=0.3,
-        frameon=False,
-        show=False,
-    )
-    plt.savefig(
-        f'{args.res_dir}/cls_embeddings_umap_{time_point}.pdf',
-        bbox_inches='tight',
-    )
-    plt.close()
-
-# full umap
-sc.pp.neighbors(adata_cls, n_neighbors=15, use_rep='cls_embeddings')
-sc.tl.umap(adata_cls)
-sc.pl.embedding(
-    adata_cls,
-    basis='X_umap',
-    color=[
-        'Cell_type',
-        'Cell_population',
-        'Time_point',
-        'batch',
-    ],
-    ncols=2,
-    wspace=0.3,
-    frameon=False,
-    show=False,
+adata_cls = sc.read_h5ad(
+    f'{args.res_dir}/cls_embeddings_cosine_similarity_all_cells.h5ad'
 )
-plt.savefig(
-    f'{args.res_dir}/cls_embeddings_umap.pdf',
-    bbox_inches='tight',
-)
-plt.close()
-# sc.pp.neighbors(adata, n_neighbors=15, use_rep='cls_embeddings')
-# sc.tl.umap(adata)
-# adata.obsm['X_CLS_umap'] = adata.obsm['X_umap']
-# # use colorblind friendly palette
-# # sc.pl.umap(
-# #     adata,
-# #     color=[
-# #         'Cell_type',
-# #         'Cell_population',
-# #         'Cell_culture_batch',
-# #         'Activation_level',
-# #     ],  # leave gap between cell type and cell population
-# #     wspace=0.5,
-# #     ncols=2,
-# #     #plot 2x2 grid
-
-# #     frameon=False,
-# #     show=False,
-# # )
-# sc.pl.embedding(
-#     adata,
-#     basis='X_CLS_umap',
-#     color=[
-#         'cell_type',
-#         'cell_population',
-#         'time_point',
-#         'batch',
-#     ],
-#     ncols=2,
-#     wspace=0.3,
-#     frameon=False,
-#     show=False,
-# )
-# plt.savefig(
-#     './res/Petra/full_data_cls_embeddings_umap.pdf',
-#     bbox_inches='tight',
-# )
-# plt.close()
 var_names = adata_cls.obsm['cosine_similarity'].columns
 # filter adata to only include genes in var_names
 adata_cls = adata_cls[:, var_names]
@@ -232,7 +149,7 @@ sc.pl.dotplot(
 )
 # save figure
 plt.savefig(
-    f'{args.res_dir}/cosine_similarity.pdf',
+    f'{args.res_dir}/cosine_similarity_all_cells.pdf',
     bbox_inches='tight',
 )
 plt.close()
@@ -262,7 +179,7 @@ sc.pl.embedding(
     show=False,
 )
 plt.savefig(
-    f'{args.res_dir}/cls_embeddings_umap_activation_lvl_16h.pdf',
+    f'{args.res_dir}/cls_embeddings_umap_activation_lvl_16h_all_cells.pdf',
     bbox_inches='tight',
 )
 fig, ax = plt.subplots(figsize=(4, 10))
@@ -284,6 +201,95 @@ plt.savefig(
     bbox_inches='tight',
 )
 plt.close()
+# plot umap of cls embeddings
+fig, ax = plt.subplots(figsize=(5, 5))
+# create umap for each time point separately
+for time_point in adata_cls.obs['Time_point'].cat.categories:
+    adata_time = adata_cls[adata_cls.obs['Time_point'] == time_point]
+    sc.pp.neighbors(adata_time, n_neighbors=15, use_rep='cls_embeddings')
+    sc.tl.umap(adata_time)
+    sc.pl.embedding(
+        adata_time,
+        basis='X_umap',
+        color=[
+            'Cell_type',
+            'Cell_population',
+            'Activation_level',
+            'batch',
+        ],
+        ncols=1,
+        wspace=0.3,
+        frameon=False,
+        show=False,
+    )
+    plt.savefig(
+        f'{args.res_dir}/cls_embeddings_umap_{time_point}_all_cells.pdf',
+        bbox_inches='tight',
+    )
+    plt.close()
+
+# full umap
+sc.pp.neighbors(adata_cls, n_neighbors=15, use_rep='cls_embeddings')
+sc.tl.umap(adata_cls)
+sc.pl.embedding(
+    adata_cls,
+    basis='X_umap',
+    color=[
+        'Cell_type',
+        'Cell_population',
+        'Time_point',
+        'batch',
+        'Activation_level',
+    ],
+    ncols=2,
+    wspace=0.3,
+    frameon=False,
+    show=False,
+)
+plt.savefig(
+    f'{args.res_dir}/cls_embeddings_umap.pdf',
+    bbox_inches='tight',
+)
+plt.close()
+# sc.pp.neighbors(adata, n_neighbors=15, use_rep='cls_embeddings')
+# sc.tl.umap(adata)
+# adata.obsm['X_CLS_umap'] = adata.obsm['X_umap']
+# # use colorblind friendly palette
+# # sc.pl.umap(
+# #     adata,
+# #     color=[
+# #         'Cell_type',
+# #         'Cell_population',
+# #         'Cell_culture_batch',
+# #         'Activation_level',
+# #     ],  # leave gap between cell type and cell population
+# #     wspace=0.5,
+# #     ncols=2,
+# #     #plot 2x2 grid
+
+# #     frameon=False,
+# #     show=False,
+# # )
+# sc.pl.embedding(
+#     adata,
+#     basis='X_CLS_umap',
+#     color=[
+#         'cell_type',
+#         'cell_population',
+#         'time_point',
+#         'batch',
+#     ],
+#     ncols=2,
+#     wspace=0.3,
+#     frameon=False,
+#     show=False,
+# )
+# plt.savefig(
+#     './res/Petra/full_data_cls_embeddings_umap.pdf',
+#     bbox_inches='tight',
+# )
+# plt.close()
+
 # plot gene embeddings
 # --------------------------------
 # plot gene embedding for each gene separately
@@ -306,6 +312,8 @@ for gene, i in adata_cls.uns['activation_genes'].items():
             'Cell_type',
             'Cell_population',
             'Time_point',
+            'Activation_level',
+            'batch',
         ],
         frameon=False,
         show=False,
@@ -319,9 +327,7 @@ for gene, i in adata_cls.uns['activation_genes'].items():
 
 # Plotting generate results
 # --------------------------------
-adata = sc.read_h5ad(
-    f'{args.res_dir}/generate_adata_no_context_GF_fine_tuned_zinb_3.h5ad'
-)
+adata = sc.read_h5ad(f'{args.res_dir}/')
 del adata.uns['Cell_type_colors']
 del adata.uns['Cell_population_colors']
 del adata.uns['Time_point_colors']
@@ -471,7 +477,8 @@ df_long.groupby(['Metric', 'Type'])['Value'].mean()
 # EB analysis
 # ------------------------------
 adata = sc.read_h5ad(
-    f'{args.res_dir}/generate_adata_interpolate_hyperparam_GF_fine_tuned_zinb_3.h5ad'
+    f'{args.res_dir}/'
+    'generate_adata_interpolate_encoder_ep_150_ckpt_19_Transformer_encoder_zinb_3.h5ad'
 )
 adata_true = adata.copy()
 adata_true.X = adata_true.layers['counts']
@@ -479,9 +486,8 @@ adata_true.X = adata_true.layers['counts']
 emd_list = []
 mmd_list = []
 # print emd and mmd before normalisation
-emd_df = evaluate_emd(adata_true, adata, None)
-mmd_df = evaluate_mmd(adata=adata_true, pred_adata=adata, n_cells=10000)
-lin_reg_df = lin_reg_summary(adata_true, adata)
+# emd_df = evaluate_emd(adata_true, adata, None)
+# mmd_df = evaluate_mmd(adata=adata_true, pred_adata=adata, n_cells=10000)
 print('EMD before normalisation: ', emd_df)
 print('MMD before normalisation: ', mmd_df)
 sc.pp.normalize_total(adata, target_sum=1e4)
@@ -489,14 +495,17 @@ sc.pp.log1p(adata)
 sc.pp.normalize_total(adata_true, target_sum=1e4)
 sc.pp.log1p(adata_true)
 emd_df = evaluate_emd(adata_true, adata, None)
-mmd_df = evaluate_mmd(adata=adata_true, pred_adata=adata, n_cells=10000)
 lin_reg_df = lin_reg_summary(adata_true, adata)
+
+mmd_df = evaluate_mmd(adata=adata_true, pred_adata=adata, n_cells=10000)
+
 
 print('EMD after normalisation: ', emd_df)
 print('MMD after normalisation: ', mmd_df)
 # concatenate results
-emd_mmd_df = pd.concat([emd_df, mmd_df], axis=1)
-emd_mmd_df.to_csv(f'{args.res_dir}/emd_mmd_Transformer_encoder_zinb_3.csv')
+metrics_df = pd.concat([emd_df, mmd_df, lin_reg_df], axis=1)
+metrics_df.to_csv(f'{args.res_dir}/metrics_zinb_3_extrapolation_seed_42.csv')
+
 
 # extrapolation of timepoints experiment
 # -------------------------------------
@@ -511,30 +520,33 @@ adata_t4 = sc.read_h5ad(
 )
 
 
-def evaluate_extrapolation(adata_true, adata_pred, time_point):
+def evaluate_extrapolation(adata_pred, time_point):
+    adata_true = adata_pred.copy()
+    adata_true.X = adata_true.layers['counts']
     """Evaluate the extrapolation of time points."""
-    sc.pp.normalize_total(adata_true, target_sum=1e4)
-    sc.pp.log1p(adata_true)
-    sc.pp.normalize_total(adata_pred, target_sum=1e4)
-    sc.pp.log1p(adata_pred)
+    adata
+    # sc.pp.normalize_total(adata_true, target_sum=1e4)
+    # sc.pp.log1p(adata_true)
+    # sc.pp.normalize_total(adata_pred, target_sum=1e4)
+    # sc.pp.log1p(adata_pred)
     emd_df = evaluate_emd(adata_true, adata_pred)
     mmd_df = evaluate_mmd(adata_true, adata_pred)
+    lin_reg_df = lin_reg_summary(adata_true, adata_pred)
     emd_df['Time_point'] = time_point
     mmd_df['Time_point'] = time_point
-    return emd_df, mmd_df
+    lin_reg_df['Time_point'] = time_point
+    return emd_df, mmd_df, lin_reg_df
 
 
 emd_list = []
 mmd_list = []
 lin_reg_list = []
-t2 = adata_t2.obs['Time_point'].unique()
-t3 = adata_t3.obs['Time_point'].unique()
-t4 = adata_t4.obs['Time_point'].unique()
-for time_point, adata_pred in zip([t2, t3, t4], [adata_t2, adata_t3, adata_t4]):
-    emd_df, mmd_df = evaluate_extrapolation(adata_true, adata_pred, time_point)
+
+for time_point, adata_pred in zip([2, 3, 4], [adata_t2, adata_t3, adata_t4]):
+    emd_df, mmd_df, lin_reg_df = evaluate_extrapolation(adata_pred, time_point)
     emd_list.append(emd_df)
     mmd_list.append(mmd_df)
-    lin_reg_list.append(lin_reg_summary(adata_true, adata_pred))
+    lin_reg_list.append(lin_reg_df)
 # create barplot from emd and mmd
 emd_df = pd.concat(emd_list)
 mmd_df = pd.concat(mmd_list)
@@ -550,9 +562,10 @@ df_long = pd.melt(
     var_name='Metric',
     value_name='Value',
 )
+
 # create two separate plots one for RMSE and one for MMD
 fig, ax = plt.subplots(1, 2, figsize=(12, 5))
-sns.barplot(
+sns.lineplot(
     x='Time_point',
     y='Value',
     hue='Metric',
@@ -560,12 +573,54 @@ sns.barplot(
     ax=ax[0],
     errorbar=None,
     legend=False,
-    palette='dark:#e0e0e0',
-    alpha=0.5,
+    linewidth=2.0,
 )
 ax[0].set_ylabel('MMD')
 ax[0].set_xlabel('Time point')
-sns.barplot(
+ax[0].locator_params(axis='y', nbins=4)
+sns.lineplot(
+    x='Time_point',
+    y='Value',
+    hue='Metric',
+    data=df_long[df_long['Metric'] == 'pearson_r'],
+    ax=ax[1],
+    errorbar=None,
+    legend=False,
+    linewidth=2.0,
+)
+ax[1].set_ylabel('Pearson')
+ax[1].set_xlabel('Time point')
+# limit y axis range to 0.5 to 1
+ax[1].set_ylim(0.7, 0.9)
+# set max number of y ticks to 4
+ax[1].locator_params(axis='y', nbins=4)
+plt.subplots_adjust(wspace=0.5)
+
+# set max number of y ticks to 4
+
+plt.savefig(
+    f'{args.res_dir}/extrapolation_mmd_pearson_timepoint.pdf', bbox_inches='tight'
+)
+plt.close()
+
+
+# create two separate plots one for RMSE and one for MMD
+fig, ax = plt.subplots(1, 2, figsize=(12, 5))
+sns.lineplot(
+    x='Time_point',
+    y='Value',
+    hue='Metric',
+    data=df_long[df_long['Metric'] == 'emd'],
+    ax=ax[0],
+    errorbar=None,
+    legend=False,
+    linewidth=2.0,
+)
+ax[0].set_ylabel('EMD')
+ax[0].set_xlabel('Time point')
+ax[0].locator_params(axis='y', nbins=4)
+ax[0].set_ylim([0.1, 0.2])
+sns.lineplot(
     x='Time_point',
     y='Value',
     hue='Metric',
@@ -573,16 +628,17 @@ sns.barplot(
     ax=ax[1],
     errorbar=None,
     legend=False,
-    palette='dark:#e0e0e0',
-    alpha=0.5,
+    linewidth=2.0,
 )
 ax[1].set_ylabel('RMSE')
 ax[1].set_xlabel('Time point')
-# rotate x labels
-for a in ax:
-    a.set_xticklabels(a.get_xticklabels(), rotation=60)
-plt.subplots_adjust(wspace=0.5)
+# limit y axis range to 0.5 to 1
 # set max number of y ticks to 4
-plt.locator_params(axis='y', nbins=4)
-plt.savefig(f'{args.res_dir}/extrapolation_timepoint.pdf', bbox_inches='tight')
+ax[1].locator_params(axis='y', nbins=4)
+ax[1].set_ylim([0.25, 0.4])
+plt.subplots_adjust(wspace=0.5)
+
+# set max number of y ticks to 4
+
+plt.savefig(f'{args.res_dir}/extrapolation_emd_rmse_timepoint.pdf', bbox_inches='tight')
 plt.close()
