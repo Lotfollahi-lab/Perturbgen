@@ -495,7 +495,7 @@ class CountHead(nn.Module):
         self.loss_mode = loss_mode
         self.mlp = Mlp(
             in_features=d_model,
-            hidden_features=d_model,
+            hidden_features=d_model*2,
             drop=dropout,
         )
         n_genes = tgt_vocab_size - 1
