@@ -610,6 +610,8 @@ class CountDecodertrainer(LightningModule):
     def training_step(self, batch, *args, **kwargs):
         outputs = self.forward(batch)
         count_loss, pred_count = self.compute_count_loss(outputs, batch, n_samples=1)            
+        self.train_pred_counts_list.append(pred_count)
+        self.train_true_counts_list.append(np.stack([self.ref_logcounts[b] for b in batch['perturbation_name']]))
 
         self.log(
             'train/loss',
@@ -639,31 +641,10 @@ class CountDecodertrainer(LightningModule):
                 prog_bar=True,
                 logger=True,
             )
-        # implement the split
-        # pearson delta
-
-        # pearson top20 deg
-        # random
-
-        # against random
-
-        # RMSE
-        # rmse=self.metric['rmse'](outputs['count_mean'], batch['tgt_counts'])
-        # mean_rmse = torch.mean(rmse)
-        # self.log(
-        #     'train/rmse',
-        #     mean_rmse,
-        #     on_epoch=True,
-        #     prog_bar=True,
-        #     logger=True,
-        # )
-        self.train_pred_counts_list.append(pred_count)
-        self.train_true_counts_list.append(np.stack([self.ref_logcounts[b] for b in batch['perturbation_name']]))
-
         return count_loss
 
     def on_train_epoch_end(self):
-        pred_counts = torch.cat(self.train_true_counts_list).detach().cpu()
+        pred_counts = torch.cat(self.train_pred_counts_list).detach().cpu()
         true_counts = np.concatenate(self.train_true_counts_list)
         ctrl_counts = np.concatenate([self.ref_logcounts['control'] for i in range(len(pred_counts))])   
         

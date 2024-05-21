@@ -5,7 +5,6 @@ metric:
 name: tune_counts_mse
 parameters:
   mse_alpha:
-  n_samples:
   mlm_probability:
   count_lr:
   count_wd:
