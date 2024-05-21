@@ -711,7 +711,7 @@ class CountDecodertrainer(LightningModule):
 
     def on_validation_epoch_end(self):
         # return Pearson correlation coefficient
-        true_counts = np.concatenate(self.train_true_counts_list)
+        true_counts = np.concatenate(self.val_true_counts_list)
         pred_counts = torch.cat(self.val_pred_counts_list).detach().cpu()
         ctrl_counts = np.concatenate([self.ref_logcounts['control'] for i in range(len(pred_counts))])
 
