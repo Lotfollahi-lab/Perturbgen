@@ -1,0 +1,25 @@
+method: random
+metric:
+  goal: minimize
+  name: val/pearson
+name: tune_counts_mse
+parameters:
+  mse_alpha:
+  n_samples:
+  mlm_probability:
+  count_lr:
+  count_wd:
+  loss_mode:
+  ckpt_masking_file:
+  src_dataset_folder:
+  tgt_dataset_folder:
+  src_adata_folder:
+  tgt_adata_folder:
+  batch_size:
+  split:
+  splitting_mode:
+  epochs:
+  max_len:
+  n_workers:
+  seed:
+  tune_masking:
