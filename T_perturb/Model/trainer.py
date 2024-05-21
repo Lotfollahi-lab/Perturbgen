@@ -809,8 +809,8 @@ class CountDecodertrainer(LightningModule):
 
         for i in range(len(batch['testing_genes_subset'])):
             deg_idx = batch['testing_genes_subset'][i]
-            self.test_pred_counts_ctrl_delta_deg.append(log_pred[i,deg_idx].detach().cpu() - self.ctrl_counts[:,deg_idx][0])
-            self.test_true_counts_ctrl_delta_deg.append(log_tgt[i,deg_idx] - self.ctrl_counts[:,deg_idx][0])
+            self.test_pred_counts_ctrl_delta_deg.append(log_pred[i,deg_idx].detach().cpu() - self.ref_logcounts['control'][:,deg_idx][0])
+            self.test_true_counts_ctrl_delta_deg.append(log_tgt[i,deg_idx] - self.ref_logcounts['control'][:,deg_idx][0])
 
         self.test_pred_counts_list.append(pred_count)
         self.test_true_counts_list.append(batch['tgt_counts'])
@@ -826,7 +826,7 @@ class CountDecodertrainer(LightningModule):
         pred_counts = torch.cat(self.test_pred_counts_list).detach().cpu()
         true_logs = np.concatenate(self.test_true_logcounts_list)
         pred_logs = torch.cat(self.test_pred_logcounts_list).detach().cpu()
-        ctrl_counts = np.concatenate([self.ctrl_counts for i in range(len(true_counts))])
+        ctrl_counts = np.concatenate([self.ref_logcounts['control'] for i in range(len(true_counts))])
         pred_cts_delta =  np.concatenate(self.test_pred_counts_ctrl_delta_deg)
         true_cts_delta =  np.concatenate(self.test_true_counts_ctrl_delta_deg)
         cls_embeddings = np.concatenate(self.cls_embeddings_list)
