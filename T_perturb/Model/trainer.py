@@ -694,7 +694,7 @@ class CountDecodertrainer(LightningModule):
 
     def validation_step(self, batch, *args, **kwargs):
         outputs = self.forward(batch)
-        count_loss, pred_count = self.compute_count_loss(outputs, batch)
+        count_loss, pred_count = self.compute_count_loss(outputs, batch, n_samples=1)
         self.log(
             'val/loss',
             count_loss,

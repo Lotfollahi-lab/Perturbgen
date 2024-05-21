@@ -36,7 +36,7 @@ parameters:
   tgt_adata_folder:
     value: '../../datasets/Norman2019/adata/filtered_tokenised_hvg_pairing_perturbed.h5ad'
   batch_size:
-    value: 55
+    value: 45
   max_len:
     value: 1750
   n_workers:

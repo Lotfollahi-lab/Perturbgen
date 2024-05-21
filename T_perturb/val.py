@@ -347,7 +347,7 @@ def main() -> None:
             ctrl_counts=ctrl_counts,
             n_samples=args.n_samples_loss,
             ref_logcounts=ref_logcounts,
-        )
+            )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')
 
