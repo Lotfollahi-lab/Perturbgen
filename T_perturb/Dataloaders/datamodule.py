@@ -265,6 +265,7 @@ class PetraDataModule(LightningDataModule):
 
             if any('perturbation_id' in item['src_dataset'].keys() for item in batch):
                 perturbation_id = [d['src_dataset']['perturbation_id'] for d in batch]
+                perturbation_name = [d['tgt_dataset']['perturbation_name'] for d in batch]
                 perturbation_embedding = torch.stack([torch.stack([torch.tensor(embed) for embed in d['src_dataset']['perturbation_embedding']]) for d in batch])
                 n_perturbations_bool = torch.stack([torch.stack([torch.tensor(embed) for embed in d['src_dataset']['n_perturbations_bool']]) for d in batch])
 
@@ -272,6 +273,7 @@ class PetraDataModule(LightningDataModule):
                 perturbation_id = None
                 perturbation_embedding = None
                 n_perturbations_bool = None
+                perturbation_name = None
 
             src_cell_idx = [d['src_dataset']['cell_pairing_index'] for d in batch]
 
@@ -282,6 +284,7 @@ class PetraDataModule(LightningDataModule):
             src_time_point = None
             src_donor = None
             perturbation_id = None
+            perturbation_name = None
             perturbation_embedding = None
             n_perturbations_bool = None
             src_cell_idx = None
@@ -366,6 +369,7 @@ class PetraDataModule(LightningDataModule):
             'batch': condition,
             'combined_batch': condition_combined,
             'perturbation_id': perturbation_id,
+            'perturbation_name': perturbation_name,
             'perturbation_embedding': perturbation_embedding,
             'n_perturbations_bool': n_perturbations_bool,
             'testing_genes_subset': testing_genes_subset,
