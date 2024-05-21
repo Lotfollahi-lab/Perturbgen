@@ -15,18 +15,15 @@ def pearson(
     """
     Pearson correlation coefficient
     """
+    if not true_counts.is_tensor():
+        true_counts = torch.tensor(true_counts, device=pred_counts.device)
     if ctrl_counts is not None:
         pred_counts = pred_counts - ctrl_counts
         true_counts = true_counts - ctrl_counts
     num_outputs = true_counts.shape[0]
     pearson = PearsonCorrCoef(num_outputs=num_outputs)
-    pred_counts_t = pred_counts.transpose(0, 1)
-    true_counts_t = true_counts.transpose(0, 1)
-    if torch.is_tensor(pred_counts_t):
-        pred_counts_t = pred_counts_t.contiguous()
-    if torch.is_tensor(true_counts_t):
-        true_counts_t = true_counts_t.contiguous()
-        
+    pred_counts_t = pred_counts.transpose(0, 1).contiguous()
+    true_counts_t = true_counts.transpose(0, 1).contiguous()
     pearson_output = pearson(pred_counts_t, true_counts_t)
     pearson_output = torch.nan_to_num(pearson_output, nan=0)
     mean_pearson = torch.mean(pearson_output)
