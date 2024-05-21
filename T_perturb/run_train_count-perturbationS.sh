@@ -8,7 +8,7 @@
 #BSUB -e ../../logs/%J.err # error file
 #BSUB -M 40GB  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>40GB] rusage[mem=40GB]' # RAM memory part 1. Default: 100MB
-#BSUB -J 10.1.biMse # job name
+#BSUB -J 10.1.biMse # job names
 
 # activate conda environment
 source ~/.bashrc

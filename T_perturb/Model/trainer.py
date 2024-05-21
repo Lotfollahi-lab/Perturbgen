@@ -399,7 +399,8 @@ class CountDecodertrainer(LightningModule):
         tune_pretrained=True,
         mse_alpha=0.5,
         max_seq_length=2048,
-        ctrl_counts=None,
+        ref_logcounts=None,
+        n_samples=3,
         *args,
         **kwargs,
     ):
@@ -453,7 +454,8 @@ class CountDecodertrainer(LightningModule):
         self.perturbation_modeling = perturbation_modeling
         self.base_path = base_path
         self.max_seq_length = max_seq_length
-        self.ctrl_counts = ctrl_counts
+        self.ref_logcounts = ref_logcounts
+        self.n_samples = n_samples
 
         if (
             (self.loss_mode in ['nb', 'zinb'])
@@ -655,19 +657,18 @@ class CountDecodertrainer(LightningModule):
         #     prog_bar=True,
         #     logger=True,
         # )
-        self.train_true_counts_list.append(batch['tgt_counts'])
         self.train_pred_counts_list.append(pred_count)
+        self.train_true_counts_list.append(np.stack([self.ref_logcounts[b] for b in batch['perturbation_name']]))
 
         return count_loss
 
     def on_train_epoch_end(self):
-        true_counts = torch.cat(self.train_true_counts_list).detach().cpu()
-        pred_counts = torch.cat(self.train_pred_counts_list).detach().cpu()
-        ctrl_counts = np.concatenate([self.ctrl_counts for i in range(len(true_counts))])   
+        pred_counts = torch.cat(self.train_true_counts_list).detach().cpu()
+        true_counts = np.concatenate(self.train_true_counts_list)
+        ctrl_counts = np.concatenate([self.ref_logcounts['control'] for i in range(len(pred_counts))])   
         
         # log normalize
         if self.loss_mode in ['zinb', 'nb']:
-            true_counts = torch.log(1e4*torch.div(true_counts.T, true_counts.sum(axis=1)).T + 1)
             pred_counts = torch.log(1e4*torch.div(pred_counts.T, pred_counts.sum(axis=1)).T + 1)
 
         # Pearson correlation coefficient
@@ -722,38 +723,21 @@ class CountDecodertrainer(LightningModule):
                 prog_bar=True,
                 logger=True,
             )
-        self.val_true_counts_list.append(batch['tgt_counts'])
+        
         self.val_pred_counts_list.append(pred_count)
-        # self.val_ctrl_counts_list.append(batch['src_counts'])
-        #self.val_tgt_cell_type_list.append(batch['tgt_cell_type'])
-        #self.val_tgt_cell_population_list.append(batch['tgt_cell_population'])
-        #self.val_tgt_donor_list.append(batch['tgt_donor'])
+        self.val_true_counts_list.append(np.stack([self.ref_logcounts[b] for b in batch['perturbation_name']]))
         return count_loss
 
     def on_validation_epoch_end(self):
         # return Pearson correlation coefficient
-        true_counts = torch.cat(self.val_true_counts_list).detach().cpu()
+        true_counts = np.concatenate(self.train_true_counts_list)
         pred_counts = torch.cat(self.val_pred_counts_list).detach().cpu()
-        ctrl_counts = np.concatenate([self.ctrl_counts for i in range(len(true_counts))])
+        ctrl_counts = np.concatenate([self.ref_logcounts['control'] for i in range(len(pred_counts))])
 
         # log normalize
         if self.loss_mode in ['zinb', 'nb']:
-            true_counts = torch.log(1e4*torch.div(true_counts.T, true_counts.sum(axis=1)).T + 1)
             pred_counts = torch.log(1e4*torch.div(pred_counts.T, pred_counts.sum(axis=1)).T + 1)
 
-        # ctrl_counts = torch.cat(self.val_ctrl_counts_list).detach().cpu()
-        # tgt_cell_type = np.concatenate(self.val_tgt_cell_type_list)
-        # tgt_cell_population = np.concatenate(self.val_tgt_cell_population_list)
-        # tgt_donor = np.concatenate(self.val_tgt_donor_list)
-        # val_obs = pd.DataFrame(
-        #     np.array([tgt_cell_type, tgt_cell_population, tgt_donor]).T,
-        #     columns=['Cell_type', 'Cell_population', 'Donor'],
-        # )
-        # pred_adata = ad.AnnData(
-        #     X=pred_counts.numpy(),
-        #     obs=val_obs,
-        #     var=self.adata.var
-        #     )
         # Pearson correlation coefficient
         mean_pearson = pearson(pred_counts=pred_counts, true_counts=true_counts)
         self.log(
@@ -772,18 +756,8 @@ class CountDecodertrainer(LightningModule):
             logger=True,
         )
 
-        # mmd = evaluate_mmd(self.adata, pred_adata, condition_key='Cell_type')
-        # print('MMD:', mmd)
-
-        # emd = evaluate_emd(self.adata, pred_adata, condition_key='Cell_type')
-        # print('EMD: ', emd)
-        # set to status quo
         self.val_true_counts_list = []
-        # self.val_ctrl_counts_list = []
         self.val_pred_counts_list = []
-        #self.val_tgt_cell_type_list = []
-        #self.val_tgt_cell_population_list = []
-        #self.val_tgt_donor_list = []
 
     def test_step(self, batch, *args, **kwargs):
         if self.generate:
@@ -801,7 +775,7 @@ class CountDecodertrainer(LightningModule):
                 perturbation_embedding=batch['perturbation_embedding'],
                 perturbation_id=batch['perturbation_id'],
             )
-            count_loss, pred_count = self.compute_count_loss(outputs, batch)
+            count_loss, pred_count = self.compute_count_loss(outputs, batch, self.n_samples)
             self.log(
                 'test/loss',
                 count_loss,
@@ -827,17 +801,16 @@ class CountDecodertrainer(LightningModule):
 
         # difference between perturbed and ctrl counts for perturbation DEG
         # log normalize
+        log_tgt = np.stack([self.ref_logcounts[b] for b in batch['perturbation_name']])
         if self.loss_mode in ['zinb', 'nb']:
-            log_tgt = torch.log(1e4*torch.div(batch['tgt_counts'].T, batch['tgt_counts'].sum(axis=1)).T + 1)
             log_pred = torch.log(1e4*torch.div(pred_count.T, pred_count.sum(axis=1)).T + 1)
         else:
-            log_tgt = batch['tgt_counts']
             log_pred = pred_count
 
         for i in range(len(batch['testing_genes_subset'])):
             deg_idx = batch['testing_genes_subset'][i]
             self.test_pred_counts_ctrl_delta_deg.append(log_pred[i,deg_idx].detach().cpu() - self.ctrl_counts[:,deg_idx][0])
-            self.test_true_counts_ctrl_delta_deg.append(log_tgt[i,deg_idx].detach().cpu() - self.ctrl_counts[:,deg_idx][0])
+            self.test_true_counts_ctrl_delta_deg.append(log_tgt[i,deg_idx] - self.ctrl_counts[:,deg_idx][0])
 
         self.test_pred_counts_list.append(pred_count)
         self.test_true_counts_list.append(batch['tgt_counts'])
@@ -851,11 +824,11 @@ class CountDecodertrainer(LightningModule):
         # return Pearson correlation coefficient
         true_counts = torch.cat(self.test_true_counts_list).detach().cpu()
         pred_counts = torch.cat(self.test_pred_counts_list).detach().cpu()
-        true_logs = torch.cat(self.test_true_logcounts_list).detach().cpu()
+        true_logs = np.concatenate(self.test_true_logcounts_list)
         pred_logs = torch.cat(self.test_pred_logcounts_list).detach().cpu()
         ctrl_counts = np.concatenate([self.ctrl_counts for i in range(len(true_counts))])
-        pred_cts_delta = torch.cat(self.test_pred_counts_ctrl_delta_deg).detach().cpu()
-        true_cts_delta = torch.cat(self.test_true_counts_ctrl_delta_deg).detach().cpu()
+        pred_cts_delta =  np.concatenate(self.test_pred_counts_ctrl_delta_deg)
+        true_cts_delta =  np.concatenate(self.test_true_counts_ctrl_delta_deg)
         cls_embeddings = np.concatenate(self.cls_embeddings_list)
 
         perturbation_list = ['+'.join([str(x) for x in el]) for el in list(itertools.chain.from_iterable(self.test_perturbation_list))]
@@ -871,7 +844,6 @@ class CountDecodertrainer(LightningModule):
         pred_adata.layers['tgt_counts'] = true_counts.numpy()
         pred_adata.layers['tgt_logcounts'] = true_logs.numpy()
         pred_adata.layers['pred_counts'] = pred_counts.numpy()
-        # pred_adata.layers['src_counts'] = ctrl_counts.numpy()
 
         # compute umap based on cls
         sc.pp.neighbors(pred_adata, use_rep='cls_embeddings')

@@ -19,6 +19,7 @@ from T_perturb.Dataloaders.datamodule import PetraDataModule
 from T_perturb.Model.trainer import CountDecodertrainer, Petratrainer
 from T_perturb.src.utils import label_encoder, stratified_split, gears_splitter, randomised_split
 from lightning.pytorch.profilers import AdvancedProfiler, PyTorchProfiler
+import numpy as np
 
 print('set up')
 
@@ -154,7 +155,6 @@ def get_args():
     args = parser.parse_args()
     return args
 
-
 def main() -> None:
     """Run training."""
     args = get_args()
@@ -172,10 +172,11 @@ def main() -> None:
     tgt_dataset = load_from_disk(args.tgt_dataset_folder)
     src_adata = sc.read_h5ad(args.src_adata_folder)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
-    ctrl_counts = sc.read_h5ad(args.src_adata_folder.replace('_pairing_control','').replace('subsetted_',''))
-    sc.pp.normalize_total(ctrl_counts, target_sum=1e4)
-    sc.pp.log1p(ctrl_counts)
-    ctrl_counts = ctrl_counts[ctrl_counts.obs.condition == 'ctrl'].X.mean(axis=0)
+    if args.train_mode == 'count':
+        ref_logcounts = sc.read_h5ad(args.src_adata_folder.replace('_pairing_control',''))
+        sc.pp.normalize_total(ref_logcounts, target_sum=1e4)
+        sc.pp.log1p(ref_logcounts)
+        ref_logcounts = {c: ref_logcounts[ref_logcounts.obs.perturbation_name==c,:].X.mean(0)[0] for c in ref_logcounts.obs.perturbation_name.unique()} # (n_conditions, n_genes)
 
     if not all(
         tgt_adata.obs['cell_pairing_index'] == tgt_dataset['cell_pairing_index']
@@ -339,7 +340,7 @@ def main() -> None:
             base_path = args.base_path,
             tune_pretrained=args.tune_masking,
             mse_alpha=args.mse_alpha,
-            ctrl_counts=ctrl_counts,
+            ref_logcounts=ref_logcounts,
         )
 
     else:

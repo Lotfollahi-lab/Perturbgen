@@ -12,6 +12,8 @@ from datasets import load_from_disk
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 import gc
+import numpy as np
+
 
 from wandb import init  # type: ignore
 from T_perturb.Dataloaders.datamodule import PetraDataModule
@@ -154,6 +156,7 @@ def get_args():
     )
     parser.add_argument('--num_layers', type=int, default=1, help='number of layers')
     parser.add_argument('--d_ff', type=int, default=32, help='d_ff')
+    parser.add_argument('--n_samples_loss', type=int, default=3, help='times to sample from count distribtuion')
     args = parser.parse_args()
     return args
 
@@ -174,10 +177,12 @@ def main() -> None:
     tgt_dataset = load_from_disk(args.tgt_dataset_folder)
     src_adata = sc.read_h5ad(args.src_adata_folder)
     tgt_adata = sc.read_h5ad(args.tgt_adata_folder)
-    ctrl_counts = sc.read_h5ad(args.src_adata_folder.replace('_pairing_control','').replace('subsetted_',''))
-    sc.pp.normalize_total(ctrl_counts, target_sum=1e4)
-    sc.pp.log1p(ctrl_counts)
-    ctrl_counts = ctrl_counts[ctrl_counts.obs.condition == 'ctrl'].X.mean(axis=0)
+    if args.train_mode == 'count':
+            ref_logcounts = sc.read_h5ad(args.src_adata_folder.replace('_pairing_control',''))
+            sc.pp.normalize_total(ref_logcounts, target_sum=1e4)
+            sc.pp.log1p(ref_logcounts)
+            ref_logcounts = {c: ref_logcounts[ref_logcounts.obs.perturbation_name==c,:].X.mean(0)[0] for c in ref_logcounts.obs.perturbation_name.unique()} # (n_conditions, n_genes)
+
     
     # Splitting to avoid loading anndata into data module ---------------
     if args.splitting_mode == 'stratified':
@@ -340,6 +345,8 @@ def main() -> None:
             run_id = run_id,
             base_path = args.base_path,
             ctrl_counts=ctrl_counts,
+            n_samples=args.n_samples_loss,
+            ref_logcounts=ref_logcounts,
         )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')
