@@ -8,7 +8,11 @@ from typing import Dict
 from anndata import AnnData
 from gears.inference import compute_metrics, deeper_analysis, non_dropout_analysis
 
-model = '20240520_2006_ttransformer'
+model = '20240521_1211_ttransformer'
+# model = '20240521_1008_ttransformer'
+# model = '20240520_2341_ttransformer'
+# model = '20240520_2339_ttransformer'
+# model = '20240520_2006_ttransformer'
 # model = '20240520_1455_ttransformer'
 # model = '20240520_1453_ttransformer'
 # model = '20240520_1443_ttransformer'
@@ -27,7 +31,7 @@ base_path = '/lustre/scratch126/cellgen/team361/ip14/Projects/2024Mar_Tperturb'
 data_path = 'datasets/Norman2019'
 pp_path = 'T_perturb/T_perturb/pp/res'
 
-subsetted = True
+subsetted = False
 zinb_loss = True
 # mse_loss = True
 
@@ -256,6 +260,7 @@ adata.uns['non_dropout_gene_idx'] = {k.replace('A549_','').replace('_1+1',''): v
 adata.obs = adata.obs.drop(columns=['tgt_cell_idx','src_cell_idx','perturbation_id'])
 
 if zinb_loss:
+    print(adata.layers['pred_counts'][0:10,0:10])
     sc.pp.normalize_total(adata, target_sum=1e4, layer='pred_counts')
     sc.pp.log1p(adata, layer='pred_counts')
     sc.pp.normalize_total(adata, layer='tgt_counts', target_sum=1e4)

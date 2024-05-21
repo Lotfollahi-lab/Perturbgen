@@ -154,6 +154,7 @@ def get_args():
     )
     parser.add_argument('--num_layers', type=int, default=1, help='number of layers')
     parser.add_argument('--d_ff', type=int, default=32, help='d_ff')
+    parser.add_argument('--n_samples_loss', type=int, default=3, help='times to sample from count distribtuion')
     args = parser.parse_args()
     return args
 
@@ -340,6 +341,7 @@ def main() -> None:
             run_id = run_id,
             base_path = args.base_path,
             ctrl_counts=ctrl_counts,
+            n_samples=args.n_samples_loss,
         )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')

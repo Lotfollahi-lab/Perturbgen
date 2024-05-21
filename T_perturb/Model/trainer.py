@@ -400,6 +400,7 @@ class CountDecodertrainer(LightningModule):
         mse_alpha=0.5,
         max_seq_length=2048,
         ctrl_counts=None,
+        n_samples=3,
         *args,
         **kwargs,
     ):
@@ -454,6 +455,7 @@ class CountDecodertrainer(LightningModule):
         self.base_path = base_path
         self.max_seq_length = max_seq_length
         self.ctrl_counts = ctrl_counts
+        self.n_samples = n_samples
 
         if (
             (self.loss_mode in ['nb', 'zinb'])
@@ -693,7 +695,7 @@ class CountDecodertrainer(LightningModule):
 
     def validation_step(self, batch, *args, **kwargs):
         outputs = self.forward(batch)
-        count_loss, pred_count = self.compute_count_loss(outputs, batch)
+        count_loss, pred_count = self.compute_count_loss(outputs, batch, n_samples=1)
         self.log(
             'val/loss',
             count_loss,
@@ -801,7 +803,7 @@ class CountDecodertrainer(LightningModule):
                 perturbation_embedding=batch['perturbation_embedding'],
                 perturbation_id=batch['perturbation_id'],
             )
-            count_loss, pred_count = self.compute_count_loss(outputs, batch)
+            count_loss, pred_count = self.compute_count_loss(outputs, batch, self.n_samples)
             self.log(
                 'test/loss',
                 count_loss,
