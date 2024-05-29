@@ -109,10 +109,10 @@ marker_genes = [
     'CXCR4',
     'STAT1',
     'IRF1',
-    'IFIT3',
+    # 'IFIT3',
     'GBP1',
-    'SYNE2',
-    'SOCS3',
+    # 'SYNE2',
+    # 'SOCS3',
     'IL4R',
     'CD69',
     'TNFRSF4',
@@ -121,15 +121,15 @@ marker_genes = [
     'TUBA1B',
     'IL2RA',
     'BATF',
-    'CORO1B',
+    # 'CORO1B',
     'ISG15',
-    'ALDOC',
+    # 'ALDOC',
     'DDIT4',
-    'LGALS1',
-    'S100A4',
+    # 'LGALS1',
+    # 'S100A4',
     'CD74',
-    'HLA-DRA',
-    'HLA-DRB1',
+    # 'HLA-DRA',
+    # 'HLA-DRB1',
 ]
 # reorder genes based on marker genes
 adata_cls.var
@@ -147,6 +147,7 @@ sc.pl.dotplot(
     var_group_rotation=60,
     ax=ax,
 )
+
 # save figure
 plt.savefig(
     f'{args.res_dir}/cosine_similarity_all_cells.pdf',
@@ -192,12 +193,14 @@ sc.pl.dotplot(
     layer='cosine_similarity',
     show=False,
     swap_axes=True,
-    var_group_rotation=60,
+    var_group_rotation=45,
     ax=ax,
 )
+# rotate x labels
+plt.xticks(rotation=45)
 # save figure
 plt.savefig(
-    f'{args.res_dir}/cosine_similarity_LA_HA_16h.pdf',
+    f'{args.res_dir}/cosine_similarity_LA_HA_16h_all_cells.pdf',
     bbox_inches='tight',
 )
 plt.close()
@@ -215,10 +218,10 @@ for time_point in adata_cls.obs['Time_point'].cat.categories:
             'Cell_type',
             'Cell_population',
             'Activation_level',
-            'batch',
+            # 'batch',
         ],
-        ncols=1,
-        wspace=0.3,
+        ncols=3,
+        wspace=0.15,
         frameon=False,
         show=False,
     )
@@ -312,8 +315,8 @@ for gene, i in adata_cls.uns['activation_genes'].items():
             'Cell_type',
             'Cell_population',
             'Time_point',
-            'Activation_level',
-            'batch',
+            # 'Activation_level',
+            # 'batch',
         ],
         frameon=False,
         show=False,
@@ -478,7 +481,7 @@ df_long.groupby(['Metric', 'Type'])['Value'].mean()
 # ------------------------------
 adata = sc.read_h5ad(
     f'{args.res_dir}/'
-    'generate_adata_interpolate_encoder_ep_150_ckpt_19_Transformer_encoder_zinb_3.h5ad'
+    'generate_adata_interpolate_ckpt_19_ep_150_Transformer_encoder_100_zinb_3.h5ad'
 )
 adata_true = adata.copy()
 adata_true.X = adata_true.layers['counts']
@@ -496,15 +499,15 @@ sc.pp.normalize_total(adata_true, target_sum=1e4)
 sc.pp.log1p(adata_true)
 emd_df = evaluate_emd(adata_true, adata, None)
 lin_reg_df = lin_reg_summary(adata_true, adata)
-
 mmd_df = evaluate_mmd(adata=adata_true, pred_adata=adata, n_cells=10000)
 
 
 print('EMD after normalisation: ', emd_df)
 print('MMD after normalisation: ', mmd_df)
+
 # concatenate results
 metrics_df = pd.concat([emd_df, mmd_df, lin_reg_df], axis=1)
-metrics_df.to_csv(f'{args.res_dir}/metrics_zinb_3_extrapolation_seed_42.csv')
+metrics_df.to_csv(f'{args.res_dir}/metrics_zinb_3_extrapolation_seed_100.csv')
 
 
 # extrapolation of timepoints experiment
@@ -524,7 +527,6 @@ def evaluate_extrapolation(adata_pred, time_point):
     adata_true = adata_pred.copy()
     adata_true.X = adata_true.layers['counts']
     """Evaluate the extrapolation of time points."""
-    adata
     # sc.pp.normalize_total(adata_true, target_sum=1e4)
     # sc.pp.log1p(adata_true)
     # sc.pp.normalize_total(adata_pred, target_sum=1e4)

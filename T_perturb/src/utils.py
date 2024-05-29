@@ -15,6 +15,7 @@ from datasets import DatasetDict, load_from_disk
 from geneformer import EmbExtractor
 from geneformer.emb_extractor import get_embs, label_cell_embs
 from scipy.sparse import csr_matrix
+from torch.nn.functional import cosine_similarity
 from torch.utils.data import Subset
 
 
@@ -59,6 +60,155 @@ def map_ensembl_to_genename(
     adata.var_names = adata.var['ensembl_id']
     adata.var = adata.var.drop(columns=['index', 'ensembl_id'])
     return adata
+
+
+def compute_cos_similarity(
+    outputs: dict,
+    time_step: int,
+    all_time_steps: list[int],
+):
+    """
+    Description:
+    ------------
+    This function computes cosine similarity between cls and gene embeddings.
+
+    Parameters:
+    -----------
+    outputs: `dict`
+        Dictionary containing outputs from the model.
+    time_step: `int`
+        Time step to compute cosine similarity.
+    all_time_steps: `list[int]`
+        List of all time steps.
+
+    Returns:
+    --------
+    cos_similarity: `torch.tensor`
+        Tensor of cosine similarity between cls and gene embeddings.
+    cls_embeddings: `torch.tensor`
+    gene_embeddings: `torch.tensor`
+    """
+    # check if cls position is in outputs
+    assert 'cls_positions' in outputs.keys(), 'cls position not in outputs'
+    assert 'dec_embedding' in outputs.keys(), 'dec_embedding not in outputs'
+    # get cls position and dec_embedding (index = time_step-1)
+    cls_position = outputs['cls_positions'][time_step - 1]
+    cls_embeddings = outputs['dec_embedding'][:, cls_position, :]
+    # exclude cls token from gene embeddings
+    if time_step == max(all_time_steps):
+        gene_embeddings = outputs['dec_embedding'][:, (cls_position + 1) :, :]
+    else:
+        gene_embeddings = outputs['dec_embedding'][
+            :, (cls_position + 1) : outputs['cls_positions'][time_step], :
+        ]
+    cos_similarity = []
+    for i in range(gene_embeddings.shape[0]):
+        # gene level cosine similarity
+        cos_similarity_ = cosine_similarity(
+            cls_embeddings[i],
+            gene_embeddings[i, :, :],
+            dim=1,
+        )
+        cos_similarity.append(cos_similarity_)
+    cos_similarity = torch.stack(cos_similarity)
+
+    return cos_similarity, cls_embeddings, gene_embeddings
+
+
+def return_cos_similarity(
+    marker_genes: List[str],
+    cos_similarity: torch.tensor,
+    gene_embeddings: torch.tensor,
+    mapping_dict: Dict,
+    token_ids: torch.tensor,
+) -> torch.tensor:
+    """
+    Description:
+    ------------
+    This function returns cosine similarity for marker genes.
+
+    Parameters:
+    -----------
+    marker_genes: `List[str]`
+        List of marker genes.
+    cos_similarity: `torch.tensor`
+        Tensor of cosine similarity between cls and gene embeddings.
+    gene_embeddings: `torch.tensor`
+        Tensor of gene embeddings.
+    mapping_dict: `Dict`
+        Dictionary mapping gene names to token ids.
+
+    Returns:
+    --------
+    cos_similarity_res: `torch.tensor`
+        Tensor of cosine similarity for marker genes.
+    marker_genes_dict: `Dict`
+    """
+    # filter for marker genes and swap key value
+    marker_genes_ids = {v: k for k, v in mapping_dict.items() if v in marker_genes}
+    cos_similarity_res = torch.zeros(
+        cos_similarity.shape[0],
+        len(marker_genes_ids.keys()),
+        device=gene_embeddings.device,
+    )
+    marker_genes_dict = {}
+    for i, gene in enumerate(marker_genes_ids.keys()):
+        # extract cosine similarity for marker genes
+        # ---------------------
+        cond_embs_to_fill = (token_ids == marker_genes_ids[gene]).sum(1) > 0
+        cond_select_markers = torch.where(token_ids == marker_genes_ids[gene])
+        cos_similarity_res[cond_embs_to_fill, i] = cos_similarity[
+            cond_select_markers[0], cond_select_markers[1]
+        ]
+        marker_genes_dict[gene] = i
+    return cos_similarity_res, marker_genes_dict
+
+
+def return_gene_embeddings(
+    marker_genes: List[str],
+    gene_embeddings: torch.tensor,
+    mapping_dict: Dict,
+    token_ids: torch.tensor,
+) -> torch.tensor:
+    """
+    Description:
+    ------------
+    This function returns gene embeddings from a list of marker genes.
+
+    Parameters:
+    -----------
+    marker_genes: `List[str]`
+        List of marker genes.
+    gene_embeddings: `torch.tensor`
+        Tensor of gene embeddings.
+    mapping_dict: `Dict`
+        Dictionary mapping gene names to token ids.
+    token_ids: `torch.tensor`
+        Tensor of token ids from target tensor.
+
+    Returns:
+    --------
+    gene_embeddings_res: `torch.tensor`
+    """
+    # filter for marker genes and swap key value
+    marker_genes_ids = {v: k for k, v in mapping_dict.items() if v in marker_genes}
+    gene_embeddings_res = torch.zeros(
+        gene_embeddings.shape[0],
+        len(marker_genes_ids.keys()),
+        gene_embeddings.shape[2],
+        device=gene_embeddings.device,
+    )
+    marker_genes_dict = {}
+    for i, gene in enumerate(marker_genes_ids.keys()):
+        # extract gene embeddings for marker genes
+        # ---------------------
+        cond_embs_to_fill = (token_ids == marker_genes_ids[gene]).sum(1) > 0
+        cond_select_markers = torch.where(token_ids == marker_genes_ids[gene])
+        gene_embeddings_res[cond_embs_to_fill, i, :] = gene_embeddings[
+            cond_select_markers[0], cond_select_markers[1], :
+        ]
+        marker_genes_dict[gene] = i
+    return gene_embeddings_res
 
 
 def subset_adata_dataset(
