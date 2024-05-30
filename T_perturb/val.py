@@ -12,8 +12,8 @@ from datasets import load_from_disk
 from pytorch_lightning.callbacks import TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 
-from T_perturb.Dataloaders.datamodule import PetraDataModule
-from T_perturb.Model.trainer import CountDecodertrainer, Petratrainer
+from T_perturb.Dataloaders.datamodule import CellGenDataModule
+from T_perturb.Model.trainer import CellGenTrainer, CountDecoderTrainer
 from T_perturb.src.utils import (
     label_encoder,
     randomised_split,
@@ -149,9 +149,11 @@ def get_args():
         default=1997,
         help='vocab size (max token id + 1) in dataset for padding',
     )
-    parser.add_argument('--petra_lr', type=float, default=0.0001, help='learning rate')
+    parser.add_argument(
+        '--cellgen_lr', type=float, default=0.0001, help='learning rate'
+    )
     parser.add_argument('--count_lr', type=float, default=0.00005, help='learning rate')
-    parser.add_argument('--petra_wd', type=float, default=0.0001, help='weight decay')
+    parser.add_argument('--cellgen_wd', type=float, default=0.0001, help='weight decay')
     parser.add_argument('--count_wd', type=float, default=0.01, help='weight decay')
     parser.add_argument('--n_workers', type=int, default=32, help='number of workers')
     parser.add_argument(
@@ -161,7 +163,7 @@ def get_args():
     parser.add_argument(
         '--loss_mode', type=str, default='mse', help='loss mode [zinb, nb, mse]'
     )
-    parser.add_argument('--petra_dropout', type=float, default=0.0, help='dropout')
+    parser.add_argument('--cellgen_dropout', type=float, default=0.0, help='dropout')
     parser.add_argument('--count_dropout', type=float, default=0.0, help='dropout')
     parser.add_argument(
         '--condition_keys',
@@ -364,16 +366,16 @@ def main() -> None:
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.test_mode == 'masking':
-        pretrained_module = Petratrainer(
+        pretrained_module = CellGenTrainer(
             tgt_vocab_size=args.tgt_vocab_size,
             d_model=256,
             num_heads=8,
             num_layers=args.num_layers,
             d_ff=args.d_ff,
             max_seq_length=args.max_len + 100,
-            dropout=args.petra_dropout,
-            weight_decay=args.petra_wd,
-            lr=args.petra_lr,
+            dropout=args.cellgen_dropout,
+            weight_decay=args.cellgen_wd,
+            lr=args.cellgen_lr,
             # lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             return_embeddings=args.return_embeddings,
@@ -387,7 +389,7 @@ def main() -> None:
             mode=args.mode,
         )
     elif args.test_mode == 'count':
-        decoder_module = CountDecodertrainer(
+        decoder_module = CountDecoderTrainer(
             ckpt_masking_path=args.ckpt_masking_path,
             ckpt_count_path=args.ckpt_count_path,
             tgt_vocab_size=args.tgt_vocab_size,
@@ -431,7 +433,7 @@ def main() -> None:
     for keys, tgt_adata in tgt_adatas.items():
         tgt_counts_dict[keys] = tgt_adata.X
     src_counts = src_adata.X
-    data_module = PetraDataModule(
+    data_module = CellGenDataModule(
         src_dataset=src_dataset,
         tgt_datasets=tgt_datasets,
         src_counts=src_counts,
@@ -455,7 +457,7 @@ def main() -> None:
 
     # Setup trainer
     # ----------------------------------------------------------------------------------
-    run_id = datetime.now().strftime('%Y%m%d_%H%M_petra')
+    run_id = datetime.now().strftime('%Y%m%d_%H%M_cellgen')
     log_path = os.path.join(
         './T_perturb/T_perturb/wandb/wandb',
         run_id,

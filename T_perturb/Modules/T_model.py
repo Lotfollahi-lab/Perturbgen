@@ -12,27 +12,9 @@ from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from tqdm import tqdm
 from transformers import BertForMaskedLM
 
+from T_perturb.src.utils import noise_schedule
 
-# noise schedule
-def noise_schedule(ratio, total_tokens, method, exponent=2.0):
-    '''
-    Noise schedule from Google MaskGIT paper
-    URL: https://github.com/google-research/maskgit/blob/1db23594e1bd328ee78eadcd148a19281cd0f5b8/maskgit/libml/mask_schedule.py#L21 # noqa
-    Last accessed: 2024-03-23
-    '''
-    if method == 'uniform':
-        mask_ratio = 1.0 - ratio
-    elif 'pow' in method:
-        mask_ratio = 1.0 - ratio**exponent
-    elif method == 'cosine':
-        mask_ratio = torch.cos(ratio * math.pi * 0.5)
-    elif method == 'log':
-        mask_ratio = -torch.log2(ratio) / torch.log2(total_tokens)
-    elif method == 'exp':
-        mask_ratio = 1 - torch.exp2(-torch.log2(total_tokens) * (1 - ratio))
-    # Clamps mask into [epsilon, 1)
-    mask_ratio = torch.clamp(mask_ratio, 1e-6, 1.0)
-    return mask_ratio
+# from datetime import datetime
 
 
 # def drop_path(x, drop_prob: float = 0.0, training: bool = False):
@@ -60,6 +42,67 @@ def noise_schedule(ratio, total_tokens, method, exponent=2.0):
 
 #     def forward(self, x):
 #         return drop_path(x, self.drop_prob, self.training)
+
+
+class SinusoidalPositionalEncoding(nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        max_seq_length: int,
+        n_time_steps: int,
+        mode: str = 'GF_fine_tuned',
+    ):
+        # train time steps and interpolation timestep
+        # TODO: separate timestep positional encoding
+        # and positional encoding for the ranks
+        super(SinusoidalPositionalEncoding, self).__init__()
+        self.max_seq_length = max_seq_length
+        if mode in ['GF_frozen', 'GF_fine_tuned']:
+            total_seq_length = n_time_steps * max_seq_length
+        elif mode == 'Transformer_encoder':
+            # add one time step to include src time step
+            total_seq_length = (n_time_steps + 1) * max_seq_length
+        self.mode = mode
+        pe = torch.zeros(total_seq_length, d_model)
+        position = torch.arange(0, total_seq_length, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model)
+        )
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe.unsqueeze(0))
+
+    def forward(self, x, tgt_time_step=None):
+        if self.mode in ['GF_frozen', 'GF_fine_tuned']:
+            tgt_time_step_ = tgt_time_step - 1
+        elif self.mode == 'Transformer_encoder':
+            # start from 0 to include src time step
+            tgt_time_step_ = tgt_time_step
+        if tgt_time_step is not None:
+            start_pos = (tgt_time_step_) * self.max_seq_length
+            end_pos = start_pos + x.size(1)
+            pe = self.pe[:, start_pos:end_pos]
+        else:
+            pe = self.pe[:, : x.size(1)]
+
+        return x + pe
+
+
+# class LearntPositionalEncoding(nn.Module):
+#     def __init__(self, d_model, max_seq_length):
+#         super(LearntPositionalEncoding, self).__init__()
+#         self.position_embeddings = nn.Embedding(max_seq_length, d_model)
+#         self.register_buffer(
+#             "position_ids", torch.arange(max_seq_length).expand((1, -1)),
+#             persistent=False
+#         )
+
+
+#     def forward(self, x, position_ids):
+#         #TODO: register buffer
+#         positions = torch.arange(x.size(1), device=x.device).expand(x.size(0), -1)
+
+#         return x + self.position_embeddings(x)
 
 
 class Mlp(nn.Module):
@@ -171,61 +214,6 @@ class Block(nn.Module):
         return x
 
 
-class SinusoidalPositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_seq_length, n_time_steps, mode='GF_fine_tuned'):
-        # train time steps and interpolation timestep
-        # TODO: separate timestep positional encoding
-        # and positional encoding for the ranks
-        super(SinusoidalPositionalEncoding, self).__init__()
-        self.max_seq_length = max_seq_length
-        if mode in ['GF_frozen', 'GF_fine_tuned']:
-            total_seq_length = n_time_steps * max_seq_length
-        elif mode == 'Transformer_encoder':
-            # add one time step to included src time step
-            total_seq_length = (n_time_steps + 1) * max_seq_length
-        self.mode = mode
-        pe = torch.zeros(total_seq_length, d_model)
-        position = torch.arange(0, total_seq_length, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(
-            torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model)
-        )
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        self.register_buffer('pe', pe.unsqueeze(0))
-
-    def forward(self, x, tgt_time_step=None):
-        if self.mode in ['GF_frozen', 'GF_fine_tuned']:
-            tgt_time_step_ = tgt_time_step - 1
-        elif self.mode == 'Transformer_encoder':
-            # start from 0 to include src time step
-            tgt_time_step_ = tgt_time_step
-        if tgt_time_step is not None:
-            start_pos = (tgt_time_step_) * self.max_seq_length
-            end_pos = start_pos + x.size(1)
-            pe = self.pe[:, start_pos:end_pos]
-        else:
-            pe = self.pe[:, : x.size(1)]
-
-        return x + pe
-
-
-# class LearntPositionalEncoding(nn.Module):
-#     def __init__(self, d_model, max_seq_length):
-#         super(LearntPositionalEncoding, self).__init__()
-#         self.position_embeddings = nn.Embedding(max_seq_length, d_model)
-#         self.register_buffer(
-#             "position_ids", torch.arange(max_seq_length).expand((1, -1)),
-#             persistent=False
-#         )
-
-
-#     def forward(self, x, position_ids):
-#         #TODO: register buffer
-#         positions = torch.arange(x.size(1), device=x.device).expand(x.size(0), -1)
-
-#         return x + self.position_embeddings(x)
-
-
 class Geneformerwrapper(nn.Module):
     def __init__(
         self,
@@ -288,7 +276,11 @@ class Encoder(nn.Module):
             mode='Transformer_encoder',
         )
         encoder_layers = TransformerEncoderLayer(
-            d_model=d_model, nhead=nhead, dim_feedforward=d_ff, dropout=dropout
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=d_ff,
+            dropout=dropout,
+            batch_first=True,
         )
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
         self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
@@ -301,22 +293,18 @@ class Encoder(nn.Module):
         self.token_embedding.weight.data.uniform_(-initrange, initrange)
 
     def forward(self, src: torch.Tensor, src_mask: torch.Tensor = None) -> torch.Tensor:
-        """
+        '''
         Arguments:
-            src: Tensor, shape ``[seq_len, batch_size]``
-            src_mask: Tensor, shape ``[seq_len, seq_len]``
+            src: Tensor, shape ``[batch_size, seq_len, total_vocab_size]``
+            src_mask: Tensor, shape ``[batch_size, seq_len]``
 
         Returns:
-            output Tensor of shape ``[seq_len, batch_size, total_vocab_size]``
-        """
+            output Tensor of shape ``[batch_size, seq_len, total_vocab_size]``
+        '''
         src = self.token_embedding(src) * math.sqrt(self.d_model)
         src = self.positional_encoding(x=src, tgt_time_step=0)
-        # transpose src:
-        # [batch_size, seq_len, d_model] -> [seq_len, batch_size, d_model]
-        src = src.transpose(0, 1)
         output = self.transformer_encoder(src, src_key_padding_mask=src_mask)
-        # reverse transpose
-        output = output.transpose(0, 1)
+
         return output
 
 
@@ -355,7 +343,7 @@ def gumbel_sample(t, temperature=1.0, dim=-1):
     return ((t / max(temperature, 1e-10)) + gumbel_noise(t)).argmax(dim=dim)
 
 
-class Petra(nn.Module):
+class CellGen(nn.Module):
     def __init__(
         self,
         tgt_vocab_size: int = 25426,
@@ -370,7 +358,7 @@ class Petra(nn.Module):
         total_time_steps: int = 3,
         mode='GF_frozen',
     ):
-        super(Petra, self).__init__()
+        super(CellGen, self).__init__()
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
         self.tgt_vocab_size = tgt_vocab_size
@@ -419,6 +407,11 @@ class Petra(nn.Module):
         )
         self.decoder_fc = nn.Linear(d_model, tgt_vocab_size)  # Specify the GPU device)
         self.dropout = nn.Dropout(dropout)
+        self.init_weights()
+
+    def init_weights(self) -> None:
+        initrange = 0.1
+        self.token_embedding.weight.data.uniform_(-initrange, initrange)
 
     def generate_pad(self, tgt_pad):
         tgt_pad = tgt_pad == 0
@@ -444,12 +437,12 @@ class Petra(nn.Module):
     #     return labels, tgt_mask
     # get cell embeddings excluding padding
     def mean_nonpadding_embs(self, embs, pad, dim=1):
-        """
+        '''
         Compute the mean of the non-padding embeddings.
         Modified from Geneformer:
         https://huggingface.co/ctheodoris/Geneformer/blob/main/geneformer/perturber_utils.py # noqa
         Accessed: 2024-05-14
-        """
+        '''
         # mask should be opposite of pad
         pad[:, 0] = True
         # our mask is the opposite of BERT mask
@@ -471,12 +464,12 @@ class Petra(nn.Module):
         return mean_embs
 
     def generate_mask(self, tgt_input_id, tgt_pad, mlm_probability=0.15):
-        """
+        '''
         Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original.
         Modified from Huggingface Transformers library:
         https://github.com/huggingface/transformers/blob/main/src/transformers/data/data_collator.py#L840 # noqa
         Accessed: 2024-05-12
-        """
+        '''
         device = tgt_input_id.device
         labels = tgt_input_id.clone()
         probability_matrix = torch.full_like(
@@ -1168,7 +1161,7 @@ if __name__ == '__main__':
         dropout=dropout,
         context_dim=d_model,
     )
-    transformer = Petra(tgt_vocab_size=13)
+    transformer = CellGen(tgt_vocab_size=13)
     torch.manual_seed(42)
     src_input_id = torch.tensor(
         [

@@ -1,5 +1,6 @@
 import os
 import pickle
+from datetime import datetime
 from typing import (
     Any,
     Dict,
@@ -18,18 +19,16 @@ import torch.optim as optim
 # from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningModule
 from scvi.distributions import NegativeBinomial, ZeroInflatedNegativeBinomial
-from torchmetrics import (
-    CosineSimilarity,
-    MeanSquaredError,
-    PearsonCorrCoef,
-)
+from torchmetrics import MeanSquaredError
 from torchmetrics.text import Perplexity
 
-from T_perturb.Model.metric import evaluate_emd, evaluate_mmd  # pearson,
-from T_perturb.Modules.T_model import CountDecoder, Petra
+from T_perturb.Model.metric import evaluate_emd  # pearson,
+from T_perturb.Modules.T_model import CellGen, CountDecoder
 from T_perturb.src.losses import mse_loss
 from T_perturb.src.utils import (
     compute_cos_similarity,
+    modify_ckpt_state_dict,
+    pearson,
     return_cos_similarity,
     return_gene_embeddings,
 )
@@ -44,7 +43,7 @@ if torch.cuda.is_available():
         torch.set_float32_matmul_precision('medium')
 
 
-class Petratrainer(LightningModule):
+class CellGenTrainer(LightningModule):
     def __init__(
         self,
         tgt_vocab_size: int = 25000,
@@ -74,7 +73,7 @@ class Petratrainer(LightningModule):
     ) -> None:
         super().__init__(*args, **kwargs)
         self.save_hyperparameters()
-        self.transformer = Petra(
+        self.transformer = CellGen(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
             num_heads=num_heads,
@@ -96,13 +95,7 @@ class Petratrainer(LightningModule):
         # self.lr_scheduler_patience = lr_scheduler_patience
         # self.lr_scheduler_factor = lr_scheduler_factor
         self.perplexity = Perplexity(ignore_index=-100)
-        self.metric = nn.ModuleDict(
-            {
-                'cosine_similarity': CosineSimilarity(reduction='mean'),
-                'mse': MeanSquaredError(),
-            }
-        )
-
+        self.mse = MeanSquaredError()
         with open(
             mapping_dict_path,
             'rb',
@@ -143,6 +136,7 @@ class Petratrainer(LightningModule):
         # create directory if not exist
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
+        self.date = datetime.now().strftime('%Y%m%d')
 
     def forward(self, batch):
         tgt_input_id_dict = {}
@@ -228,7 +222,6 @@ class Petratrainer(LightningModule):
         return masking_loss
 
     def on_train_epoch_end(self):
-        # return F1 score and accuracy
         pass
 
     def validation_step(self, batch, *args, **kwargs):
@@ -280,7 +273,7 @@ class Petratrainer(LightningModule):
                     outputs=outputs, time_step=time_step, all_time_steps=self.time_steps
                 )
 
-                # extra
+                # define marker gene list to extract gene embeddings
                 marker_genes = [
                     'IL7R',
                     'CD52',
@@ -354,10 +347,6 @@ class Petratrainer(LightningModule):
                 for var in self.var_list:
                     self.test_dict[var].append(batch[f'{var}_t{time_step}'])
 
-            # self.tgt_output['cell_type'].append(batch['tgt_cell_type'])
-            # self.tgt_output['cell_population'].append(batch['tgt_cell_population'])
-            # self.time_point = batch['tgt_time_point']
-
     def on_test_epoch_end(self):
         if self.return_embeddings:
             print('Start saving embeddings -------------------')
@@ -385,8 +374,6 @@ class Petratrainer(LightningModule):
                 },
             )
             adata.var_names = self.gene_names
-            # self.adata.obsm[marker_genes[i]] = emb.numpy()
-            # create a dataframe and annotate columns as marker genes
             df = pd.DataFrame(
                 cosine_similarities.numpy(), columns=self.marker_genes.keys()
             )
@@ -394,12 +381,13 @@ class Petratrainer(LightningModule):
             adata.obsm['cosine_similarity'] = df
             # save anndata
             adata.write_h5ad(
-                f'{self.output_dir}/cls_embeddings_cosine_similarity_all_cells.h5ad'
+                f'{self.output_dir}/{self.date}_'
+                f'cls_embeddings_cosine_similarity.h5ad'
             )
             print('End saving embeddings -------------------')
 
 
-class CountDecodertrainer(LightningModule):
+class CountDecoderTrainer(LightningModule):
     def __init__(
         self,
         tgt_vocab_size: int = 25000,
@@ -435,7 +423,8 @@ class CountDecodertrainer(LightningModule):
     ):
         super().__init__(*args, **kwargs)
         self.save_hyperparameters()
-        pretrained_model = Petra(
+        # Load pretrained masking transformer
+        pretrained_model = CellGen(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
             num_heads=num_heads,
@@ -446,10 +435,9 @@ class CountDecodertrainer(LightningModule):
             total_time_steps=total_time_steps,
             mode=mode,
         )
-        # load PETRA checkpoint
         if ckpt_masking_path is not None:
             checkpoint = torch.load(ckpt_masking_path, map_location='cpu')
-            state_dict_ = self.modify_ckpt_state_dict(checkpoint, 'transformer.')
+            state_dict_ = modify_ckpt_state_dict(checkpoint, 'transformer.')
             pretrained_model.load_state_dict(state_dict_, strict=False)
             # set parameters to not trainable
             for param in pretrained_model.parameters():
@@ -467,8 +455,7 @@ class CountDecodertrainer(LightningModule):
 
         if ckpt_count_path is not None:
             checkpoint = torch.load(ckpt_count_path, map_location='cpu')
-
-            state_dict_ = self.modify_ckpt_state_dict(checkpoint, 'decoder.')
+            state_dict_ = modify_ckpt_state_dict(checkpoint, 'decoder.')
             self.decoder.load_state_dict(state_dict_, strict=False)
 
         self.weight_decay = weight_decay
@@ -491,7 +478,7 @@ class CountDecodertrainer(LightningModule):
         else:
             self.theta = None
 
-        self.metric = nn.ModuleDict({'mse': MeanSquaredError()})
+        self.mse = MeanSquaredError()
         total_vocab_size = tgt_vocab_size
         self.time_steps = time_steps
         self.total_time_steps = total_time_steps  # for generation
@@ -537,24 +524,7 @@ class CountDecodertrainer(LightningModule):
         self.val_tgt_donor_list: List[str] = []
         self.mode = mode
         self.seed = seed
-
-    def modify_ckpt_state_dict(
-        self,
-        checkpoint,
-        replace_str,
-    ):
-        if 'module' in checkpoint.keys():
-            state_dict = checkpoint['module']
-        else:
-            state_dict = checkpoint['state_dict']
-
-        new_state_dict = {}
-        for k, v in state_dict.items():
-            if k.startswith(replace_str):
-                k = k.replace(replace_str, '', 1)
-            new_state_dict[k] = v
-
-        return new_state_dict
+        self.date = datetime.now().strftime('%Y%m%d')
 
     def forward(self, batch):
         tgt_input_id_dict = {}
@@ -617,6 +587,27 @@ class CountDecodertrainer(LightningModule):
         batch: Dict[str, torch.Tensor],
         n_samples: int = 1,
     ):
+        """
+        Description:
+        ------------
+        Use CLS or mean non padding embeddings to predict gene counts.
+
+        Parameters:
+        -----------
+        outputs: Dict[str, torch.Tensor]
+            model outputs
+        batch: Dict[str, torch.Tensor]
+            batch variables capturing technical batch effect variables
+        n_samples: int
+            number of samples to draw from distribution for zinb and nb
+
+        Returns:
+        --------
+        loss: torch.Tensor
+            loss value
+        count_dict: Dict[str, torch.Tensor]
+            dictionary containing predicted counts
+        """
         loss_list = []
         count_dict = {}
         dispersion = (
@@ -670,26 +661,6 @@ class CountDecodertrainer(LightningModule):
         loss = torch.sum(torch.stack(loss_list))
         return loss, count_dict
 
-    @staticmethod
-    def pearson(
-        pred_counts: torch.Tensor,
-        true_counts: torch.Tensor,
-        ctrl_counts: torch.Tensor = None,
-    ) -> torch.Tensor:
-        """
-        Pearson correlation coefficient
-        """
-        if ctrl_counts is not None:
-            pred_counts = pred_counts - ctrl_counts
-            true_counts = true_counts - ctrl_counts
-        num_outputs = true_counts.shape[0]
-        pearson = PearsonCorrCoef(num_outputs=num_outputs).to('cuda')
-        pred_counts_t = pred_counts.transpose(0, 1)
-        true_counts_t = true_counts.transpose(0, 1)
-        pearson_output = pearson(pred_counts_t, true_counts_t)
-        mean_pearson = torch.mean(pearson_output)
-        return mean_pearson
-
     def training_step(self, batch, *args, **kwargs):
         outputs = self.forward(batch)
         count_loss, pred_counts_dict = self.compute_count_loss(outputs, batch)
@@ -709,7 +680,7 @@ class CountDecodertrainer(LightningModule):
             pred_count = pred_counts_dict[time_step]
             true_count = batch[f'tgt_counts_t{time_step}']
             # MSE
-            mse = self.metric['mse'](pred_count, true_count)
+            mse = self.mse(pred_count, true_count)
             mse_all.append(mse)
             # gather for validation step
             self.train_true_counts_list.append(batch[f'tgt_counts_t{time_step}'])
@@ -727,17 +698,6 @@ class CountDecodertrainer(LightningModule):
             sync_dist=True,
         )
 
-        # RMSE
-        # rmse=self.metric['rmse'](outputs['count_mean'], batch['tgt_counts'])
-        # mean_rmse = torch.mean(rmse)
-        # self.log(
-        #     'train/rmse',
-        #     mean_rmse,
-        #     on_epoch=True,
-        #     prog_bar=True,
-        #     logger=True,
-        # )
-
         return count_loss
 
     def on_train_epoch_end(self):
@@ -745,7 +705,7 @@ class CountDecodertrainer(LightningModule):
         true_counts = torch.cat(self.train_true_counts_list)
         pred_counts = torch.cat(self.train_pred_counts_list)
         # Pearson correlation coefficient
-        mean_pearson = self.pearson(pred_counts=pred_counts, true_counts=true_counts)
+        mean_pearson = pearson(pred_counts=pred_counts, true_counts=true_counts)
         self.log(
             'train/pearson',
             mean_pearson,
@@ -781,7 +741,7 @@ class CountDecodertrainer(LightningModule):
             pred_count = pred_counts_dict[time_step]
             true_count = batch[f'tgt_counts_t{time_step}']
             # MSE
-            mse = self.metric['mse'](pred_count, true_count)
+            mse = self.mse(pred_count, true_count)
             mse_all.append(mse)
             # gather for validation step
             self.val_true_counts_list.append(batch[f'tgt_counts_t{time_step}'])
@@ -804,59 +764,15 @@ class CountDecodertrainer(LightningModule):
         # return Pearson correlation coefficient
         true_counts = torch.cat(self.val_true_counts_list)
         pred_counts = torch.cat(self.val_pred_counts_list)
-
-        # create adata for mmd and emd
-        if self.generate:
-            cell_type = np.concatenate(self.val_tgt_cell_type_list)
-            cell_population = np.concatenate(self.val_tgt_cell_population_list)
-            tgt_donor = np.concatenate(self.val_tgt_donor_list)
-            true_counts = true_counts.detach().cpu()
-            pred_counts = pred_counts.detach().cpu()
-            test_obs = pd.DataFrame(
-                np.array([cell_type, cell_population, tgt_donor]).T,
-                columns=['Cell_type', 'Cell_population', 'Donor'],
-            )
-            pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs)
-            true_adata = ad.AnnData(X=true_counts.numpy(), obs=test_obs)
-            # create mock column with the same value
-            pred_adata.obs['emd_tmp'] = 0
-            true_adata.obs['emd_tmp'] = 0
-            # calculate emd
-            emd = evaluate_emd(true_adata, pred_adata)
-            # get the value for loggin
-            print('EMD:', emd['emd'].item())
-            self.log(
-                'val/emd',
-                emd['emd'].item(),
-                on_epoch=True,
-                prog_bar=True,
-                logger=True,
-                sync_dist=True,
-            )
-
-            mmd = evaluate_mmd(true_adata, pred_adata, 'Cell_population')
-            # get mean of mmd
-            print('MMD:', mmd['mmd'].mean().item())
-            self.log(
-                'val/mmd',
-                mmd['mmd'].mean().item(),
-                on_epoch=True,
-                prog_bar=True,
-                logger=True,
-                sync_dist=True,
-            )
-        else:
-            mean_pearson = self.pearson(
-                pred_counts=pred_counts, true_counts=true_counts
-            )
-            self.log(
-                'val/pearson',
-                mean_pearson,
-                on_epoch=True,
-                prog_bar=True,
-                logger=True,
-                sync_dist=True,
-            )
+        mean_pearson = self.pearson(pred_counts=pred_counts, true_counts=true_counts)
+        self.log(
+            'val/pearson',
+            mean_pearson,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            sync_dist=True,
+        )
 
         self.val_true_counts_list = []
         self.val_ctrl_counts_list = []
@@ -914,7 +830,7 @@ class CountDecodertrainer(LightningModule):
                 pred_count = pred_counts_dict[time_step]
                 true_count = batch[f'tgt_counts_t{time_step}']
                 # MSE
-                mse = self.metric['mse'](pred_count, true_count)
+                mse = self.mse(pred_count, true_count)
                 mse_all.append(mse)
                 # gather for validation step
                 self.test_dict['pred_counts'].append(pred_count)
@@ -965,12 +881,6 @@ class CountDecodertrainer(LightningModule):
                 var_dict[var] = np.concatenate(self.test_dict[var])
             test_obs = pd.DataFrame(var_dict)
             cls_embeddings = torch.cat(self.test_dict['cls_embeddings']).detach().cpu()
-            # test_obs = pd.DataFrame(
-            #     np.array(
-            #         [tgt_cell_type, tgt_cell_population, tgt_time_point, tgt_donor]
-            #     ).T,
-            #     columns=['Cell_type', 'Cell_population', 'Time_point', 'Donor'],
-            # )
             pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs)
             pred_adata.layers['counts'] = true_counts.numpy()
             pred_adata.obsm['cls_embeddings'] = cls_embeddings.numpy()
@@ -978,11 +888,12 @@ class CountDecodertrainer(LightningModule):
             true_adata.X = true_counts.numpy()
             # create output directory
             # save adata
-            # pred_adata.write_h5ad(
-            #     f'{self.output_dir}/'
-            #     f'generate_adata_extrapolate_ckpt_19_ep_150_{self.mode}_{self.seed}'
-            #     f'_{self.loss_mode}_{self.n_samples}.h5ad'
-            # )
+            pred_adata.write_h5ad(
+                f'{self.output_dir}/{self.date}_'
+                f'generate_adata_extrapolate_'
+                f'{self.time_steps}__{self.mode}_{self.seed}_'
+                f'{self.loss_mode}_{self.n_samples}.h5ad'
+            )
             emd = evaluate_emd(true_adata, pred_adata)
             self.log(
                 'test/emd',
@@ -991,36 +902,21 @@ class CountDecodertrainer(LightningModule):
                 prog_bar=True,
                 logger=True,
             )
-            # mmd = evaluate_mmd(
-            #     adata=true_adata,
-            #     pred_adata=pred_adata,
-            #     n_cells=5000,
-            # )
-            # self.log(
-            #     'test/mmd',
-            #     mmd['mmd'].mean(),
-            #     on_epoch=True,
-            #     prog_bar=True,
-            #     logger=True,
-            # )
             print('---anndata generation completed')
         else:
             # return Pearson correlation coefficient
             true_counts = torch.cat(self.test_true_counts_list)
             pred_counts = torch.cat(self.test_pred_counts_list)
             ctrl_counts = torch.cat(self.test_ctrl_counts_list)
-            tgt_cell_type = np.concatenate(self.test_tgt_cell_type_list)
-            tgt_cell_population = np.concatenate(self.test_tgt_cell_population_list)
-            tgt_donor = np.concatenate(self.test_tgt_donor_list)
-            test_obs = pd.DataFrame(
-                np.array([tgt_cell_type, tgt_cell_population, tgt_donor]).T,
-                columns=['Cell_type', 'Cell_population', 'Donor'],
-            )
+            var_dict = {}
+            for var in self.var_list:
+                var_dict[var] = np.concatenate(self.test_dict[var])
+            test_obs = pd.DataFrame(var_dict)
             pred_adata = ad.AnnData(
                 X=pred_counts.numpy(), obs=test_obs, var=self.adata.var
             )
             pred_adata.layers['counts'] = true_counts.numpy()
-            pred_adata.write_h5ad(f'{self.output_dir}/pred_adata.h5ad')
+            pred_adata.write_h5ad(f'{self.output_dir}/{self.date}_pred_adata.h5ad')
             # ----------------- calculate metrics -----------------
             mean_pearson = self.pearson(pred_counts, true_counts)
             # Pearson correlation coefficient
@@ -1041,7 +937,7 @@ class CountDecodertrainer(LightningModule):
                 logger=True,
             )
             # MSE
-            mse = self.metric['mse'](pred_counts, true_counts)
+            mse = self.mse(pred_counts, true_counts)
 
             metrics = pd.DataFrame(
                 {
@@ -1051,11 +947,6 @@ class CountDecodertrainer(LightningModule):
                 }
             )
             metrics.to_csv(f'{self.output_dir}/test_metrics.csv')
-            # # calculate MMD and EMD
-            # mmd = evaluate_mmd(self.adata, pred_adata)
-            # mmd['metric'] = 'mmd'
-            # # rename column called mmd
-            # mmd = mmd.rename(columns={'mmd': 'value'})
             emd = evaluate_emd(self.adata, pred_adata)
             emd['metric'] = 'emd'
             emd = emd.rename(columns={'emd': 'value'})
@@ -1066,12 +957,6 @@ class CountDecodertrainer(LightningModule):
                 prog_bar=True,
                 logger=True,
             )
-            # # concatenate
-            # metrics = pd.concat([mmd, emd])
-            # # save metrics
-            # metrics.to_csv(
-            #     f'{self.output_dir}/test_mmd_emd_{condition_key}_metrics.csv'
-            # )
             # set to status quo
             self.test_true_counts_list = []
             self.test_ctrl_counts_list = []

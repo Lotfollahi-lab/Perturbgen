@@ -1,4 +1,5 @@
 import argparse
+import math
 import os
 import pickle
 from pathlib import Path
@@ -17,6 +18,7 @@ from geneformer.emb_extractor import get_embs, label_cell_embs
 from scipy.sparse import csr_matrix
 from torch.nn.functional import cosine_similarity
 from torch.utils.data import Subset
+from torchmetrics import PearsonCorrCoef
 
 
 def read_dataset_files(directory, file_type):
@@ -211,6 +213,79 @@ def return_gene_embeddings(
     return gene_embeddings_res
 
 
+def modify_ckpt_state_dict(
+    checkpoint: dict,
+    replace_str: str,
+):
+    """
+    Description:
+    ------------
+    This function modifies the state_dict of a checkpoint
+    by removing the replace_str from the keys.
+
+    Parameters:
+    -----------
+    checkpoint: `dict`
+        Checkpoint dictionary loaded using torch.load.
+    replace_str: `str`
+        String to replace in the keys.
+
+    Returns:
+    --------
+    new_state_dict: `dict`
+        Modified state_dict.
+    """
+    if 'module' in checkpoint.keys():
+        state_dict = checkpoint['module']
+    else:
+        state_dict = checkpoint['state_dict']
+
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        if k.startswith(replace_str):
+            k = k.replace(replace_str, '', 1)
+        new_state_dict[k] = v
+
+    return new_state_dict
+
+
+def pearson(
+    pred_counts: torch.Tensor,
+    true_counts: torch.Tensor,
+    ctrl_counts: torch.Tensor = None,
+) -> torch.Tensor:
+    """
+    Description:
+    ------------
+    This function computes the Pearson correlation coefficient for delta counts
+    between control and perturbed conditions.
+
+    Parameters:
+    -----------
+    pred_counts: `torch.Tensor`
+        Tensor of predicted counts.
+    true_counts: `torch.Tensor`
+        Tensor of counts from perturbed condition.
+    ctrl_counts: `torch.Tensor`
+        Tensor of counts from control condition.
+
+    Returns:
+    --------
+    mean_pearson: `torch.Tensor`
+        Mean Pearson correlation coefficient.
+    """
+    if ctrl_counts is not None:
+        pred_counts = pred_counts - ctrl_counts
+        true_counts = true_counts - ctrl_counts
+    num_outputs = true_counts.shape[0]
+    pearson = PearsonCorrCoef(num_outputs=num_outputs).to('cuda')
+    pred_counts_t = pred_counts.transpose(0, 1)
+    true_counts_t = true_counts.transpose(0, 1)
+    pearson_output = pearson(pred_counts_t, true_counts_t)
+    mean_pearson = torch.mean(pearson_output)
+    return mean_pearson
+
+
 def subset_adata_dataset(
     src_adata: ad.AnnData,
     tgt_adata: ad.AnnData,
@@ -262,6 +337,43 @@ def subset_adata_dataset(
         src_dataset = src_dataset.select(sample_idx)
         tgt_dataset = tgt_dataset.select(sample_idx)
     return src_adata, tgt_adata, src_dataset, tgt_dataset
+
+
+def noise_schedule(
+    ratio: float, total_tokens: int, method: str, exponent: float = 2.0
+) -> torch.Tensor:
+    '''
+    Description:
+    ------------
+    Noise schedule from Google MaskGIT paper
+    URL: https://github.com/google-research/maskgit/blob/1db23594e1bd328ee78eadcd148a19281cd0f5b8/maskgit/libml/mask_schedule.py#L21 # noqa
+    Last accessed: 2024-03-23
+
+    Parameters:
+    -----------
+    ratio: `float`
+        Ratio of tokens to mask.
+    total_tokens: `int`
+        Total number of tokens.
+    method: `str`
+        Method to compute mask ratio.
+        Options: 'uniform', 'pow', 'cosine', 'log', 'exp'.
+    exponent: `float`
+        Exponent for 'pow' method.
+    '''
+    if method == 'uniform':
+        mask_ratio = 1.0 - ratio
+    elif 'pow' in method:
+        mask_ratio = 1.0 - ratio**exponent
+    elif method == 'cosine':
+        mask_ratio = torch.cos(ratio * math.pi * 0.5)
+    elif method == 'log':
+        mask_ratio = -torch.log2(ratio) / torch.log2(total_tokens)
+    elif method == 'exp':
+        mask_ratio = 1 - torch.exp2(-torch.log2(total_tokens) * (1 - ratio))
+    # Clamps mask into [epsilon, 1)
+    mask_ratio = torch.clamp(mask_ratio, 1e-6, 1.0)
+    return mask_ratio
 
 
 def str2bool(v):
