@@ -376,6 +376,55 @@ def noise_schedule(
     return mask_ratio
 
 
+def uniform(shape, min=0, max=1, device=None):
+    return torch.zeros(shape, device=device).float().uniform_(min, max)
+
+
+def prob_mask_like(shape, prob, device=None):
+    if prob == 1:
+        return torch.ones(shape, device=device, dtype=torch.bool)
+    elif prob == 0:
+        return torch.zeros(shape, device=device, dtype=torch.bool)
+    else:
+        return uniform(shape, device=device) < prob
+
+
+def top_k(logits, thres=0.9):
+    k = math.ceil((1 - thres) * logits.shape[-1])
+    val, ind = logits.topk(k, dim=-1)
+    probs = torch.full_like(logits, float('-inf'))
+    probs.scatter_(2, ind, val)
+    return probs
+
+
+# sampling helper
+def log(t, eps=1e-20):
+    return torch.log(t.clamp(min=eps))
+
+
+def gumbel_noise(t):
+    noise = torch.zeros_like(t).uniform_(0, 1)
+    return -log(-log(noise))
+
+
+def gumbel_sample(t, temperature=1.0, dim=-1):
+    return ((t / max(temperature, 1e-10)) + gumbel_noise(t)).argmax(dim=dim)
+
+
+def generate_pad(tgt):
+    '''
+    Description:
+    ------------
+    Generate padding mask for target tensor.
+    For tgt tensor, pad token is 0 and non-pad token is 1.
+    Convert tgt tensor to boolean tensor,
+    where pad token is True and non-pad token is False.
+    Can also be applied to generate source padding mask.
+    '''
+    tgt_pad = tgt == 0
+    return tgt_pad
+
+
 def str2bool(v):
     if isinstance(v, bool):
         return v

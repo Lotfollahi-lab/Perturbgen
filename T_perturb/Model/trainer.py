@@ -594,18 +594,18 @@ class CountDecoderTrainer(LightningModule):
 
         Parameters:
         -----------
-        outputs: Dict[str, torch.Tensor]
+        outputs: `Dict[str, torch.Tensor]`
             model outputs
-        batch: Dict[str, torch.Tensor]
+        batch: `Dict[str, torch.Tensor]`
             batch variables capturing technical batch effect variables
-        n_samples: int
+        n_samples: `int`
             number of samples to draw from distribution for zinb and nb
 
         Returns:
         --------
-        loss: torch.Tensor
+        loss: `torch.Tensor`
             loss value
-        count_dict: Dict[str, torch.Tensor]
+        count_dict: `Dict[str, torch.Tensor]`
             dictionary containing predicted counts
         """
         loss_list = []
