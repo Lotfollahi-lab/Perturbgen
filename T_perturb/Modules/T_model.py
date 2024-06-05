@@ -1145,17 +1145,52 @@ class CountDecoder(nn.Module):
 
     def generate(
         self,
-        src_input_id,
-        tgt_input_id_dict,
-        max_len,
-        can_remask_prev_masked=False,
-        topk_filter_thres=0.9,
+        src_input_id: torch.Tensor,
+        tgt_input_id_dict: dict,
+        max_len: int,
+        can_remask_prev_masked: bool = False,
+        topk_filter_thres: float = 0.9,
         # time_steps=[1, 2, 3],
-        temperature=2.0,  # keep in range 2.0-3.0
+        temperature: float = 2.0,  # keep in range 2.0-3.0
         # self_cond_prob=0.9,
-        iterations=18,  # optimal iterations found in maskgit paper
-        mask_scheduler='cosine',
+        iterations: int = 18,  # optimal of iterations in MaskGIT
+        mask_scheduler: str = 'cosine',
     ):
+        '''
+        Description:
+        ------------
+        Generate sequences for the target tokens
+        adopted from MaskGIT using the pretrained model.
+        Use mean non-padding embeddings for count prediction.
+
+        Parameters:
+        -----------
+        src_input_id: `torch.Tensor`
+            Source token input.
+        tgt_input_id_dict: `dict`
+            Dictionary of target token inputs from different time steps.
+        max_len: `int`
+            Maximum length of the generated sequence.
+        can_remask_prev_masked: `bool`
+            Whether to remask previously masked tokens.
+        topk_filter_thres: `float`
+            Top-k filter threshold based on the logits.
+        temperature: `float`
+            Temperature to increase or decrease the randomness of the predictions.
+        iterations: `int`
+            Number of iterations until all tokens are predicted.
+        mask_scheduler: `str`
+            Mask scheduler function.
+            Options: ['uniform', 'pow', 'cosine', 'log', 'exp']
+
+        Returns:
+        --------
+        count_outputs: `dict`
+            Output dictionary containing the following keys:
+            - 'count_output_t{t}': Count prediction for time step t.
+            - 'cls_embedding_t{t}': CLS token embeddings for time step t.
+
+        '''
         generate_id_dict = {}
         generate_pad_dict = {}
         count_outputs = {}
@@ -1205,18 +1240,63 @@ class CountDecoder(nn.Module):
 
     def generate_sequence(
         self,
-        generate_id_dict,
-        generate_pad_dict,
-        src_input_id,
-        demask_fn,
-        mask_scheduler,
-        can_remask_prev_masked=False,
-        topk_filter_thres=0.9,
-        starting_temperature=2.0,
-        iterations=18,
-        scores=None,
-        tgt_time_step=1,
+        generate_id_dict: dict,
+        generate_pad_dict: dict,
+        src_input_id: torch.Tensor,
+        demask_fn: nn.Module,
+        mask_scheduler: str,
+        scores: torch.Tensor,
+        can_remask_prev_masked: bool = False,
+        topk_filter_thres: float = 0.9,
+        starting_temperature: float = 2.0,
+        iterations: int = 18,
+        tgt_time_step: Optional[int] = 1,
     ):
+        '''
+        Description:
+        ------------
+        Generate sequences for the target tokens
+        adopted from MaskGIT using the pretrained model.
+
+        Parameters:
+        -----------
+        generate_id_dict: `dict`
+            Dictionary of target token inputs for generation.
+        generate_pad_dict: `dict`
+            Dictionary of target padding masks for generation.
+        src_input_id: `torch.Tensor`
+            Source token input.
+        demask_fn: `nn.Module`
+            Pretrained model for demasking.
+        mask_scheduler: `str`
+            Mask scheduler function.
+            Options: ['uniform', 'pow', 'cosine', 'log', 'exp']
+        scores: `torch.Tensor`
+            Probability scores for the tokens.
+        can_remask_prev_masked: `bool`
+            Whether to remask previously masked tokens.
+        topk_filter_thres: `float`
+            Top-k filter threshold based on the logits.
+        starting_temperature: `float`
+            Temperature to increase or decrease the randomness of the predictions.
+        iterations: `int`
+            Number of iterations until all tokens are predicted.
+        tgt_time_step: `int`
+            Target time step to generate sequence for.
+
+        Returns:
+        --------
+        outputs: `dict`
+            Output dictionary containing the following keys:
+            - 'dec_logits': Decoder logits.
+            - 'labels': True labels for masked tokens.
+            - 'selected_time_step': Selected time step.
+            - 'dec_embedding': Decoder embeddings.
+            - 'mean_embedding': Mean embeddings for non-padding tokens.
+            - 'cls_positions': CLS token positions.
+        tmp_ids: `torch.Tensor`
+            Generated target token inputs.
+        '''
         max_neg_value = -torch.finfo().max
         tmp_ids = generate_id_dict[f'tgt_input_id_t{tgt_time_step}']
         tgt_pad = generate_pad_dict[f'tgt_pad_t{tgt_time_step}']
@@ -1291,7 +1371,7 @@ class CountDecoder(nn.Module):
             is_mask = tmp_ids_ == self.mask_token
             tmp_ids_ = torch.where(is_mask, pred_ids, tmp_ids_)
             probs_without_temperature = logits.softmax(dim=-1)
-            # avoid predicting the same token
+
             scores_ = 1 - probs_without_temperature.gather(2, pred_ids[..., None])
             scores_ = rearrange(scores_, '... 1 -> ...')
 
