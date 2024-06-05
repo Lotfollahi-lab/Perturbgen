@@ -540,14 +540,10 @@ class CountDecoderTrainer(LightningModule):
                 dim=1,
             )
             tgt_input_id_dict[f'tgt_input_id_t{i}'] = tgt_input_id_
-        interval = batch[f'tgt_input_ids_t{i}'].shape[1] + 1  # as 0 is cls token
-        num_steps = len(self.time_steps)
-        cls_positions = np.arange(0, num_steps * interval, interval)
 
         outputs = self.decoder(
             src_input_id=batch['src_input_ids'],
             tgt_input_id_dict=tgt_input_id_dict,
-            cls_positions=cls_positions,
         )
 
         return outputs
@@ -794,9 +790,7 @@ class CountDecoderTrainer(LightningModule):
                 dim=1,
             )
             tgt_input_id_dict[f'tgt_input_id_t{i}'] = tgt_input_id_
-        interval = batch[f'tgt_input_ids_t{i}'].shape[1] + 1  # as 0 is cls token
-        num_steps = len(self.time_steps)
-        cls_positions = np.arange(0, num_steps * interval, interval)
+
         if self.generate:
             outputs = self.decoder.generate(
                 src_input_id=batch['src_input_ids'],
@@ -808,7 +802,6 @@ class CountDecoderTrainer(LightningModule):
                 # time_steps=self.time_steps,
                 temperature=self.temperature,
                 iterations=self.iterations,
-                cls_positions=cls_positions,
             )
             count_loss, pred_counts_dict = self.compute_count_loss(
                 outputs=outputs,
