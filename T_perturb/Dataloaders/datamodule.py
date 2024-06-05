@@ -2,7 +2,6 @@ import pickle
 from typing import Optional
 from warnings import warn
 
-import anndata as ad
 import numpy as np
 
 # import scanpy as sc
@@ -11,9 +10,8 @@ from datasets import DatasetDict
 from geneformer.perturber_utils import pad_tensor_list
 from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningDataModule
+from scipy.sparse import csr_matrix
 from torch.utils.data import DataLoader, Dataset
-
-from T_perturb.src.utils import label_encoder, stratified_split
 
 
 # Dummy dataset
@@ -38,94 +36,108 @@ class DummyDataset(torch.utils.data.Dataset):
         }
 
 
-class PetraDataset(Dataset):
+class CellGenDataset(Dataset):
     def __init__(
         self,
         src_dataset: DatasetDict,
-        tgt_dataset: DatasetDict,
-        src_counts: ad.AnnData,
-        tgt_counts: ad.AnnData,
-        shuffle: bool = False,
+        tgt_datasets: DatasetDict,
+        time_steps: list = [1, 2],
+        src_counts: np.ndarray = None,
+        tgt_counts_dict: np.ndarray = None,
         split_indices: Optional[list] = None,
         conditions: Optional[torch.Tensor] = None,
         conditions_combined: Optional[torch.Tensor] = None,
         condition_encodings: Optional[dict] = None,
     ):
         super().__init__()
-        self.shuffle = shuffle
-        if split_indices is None:
-            self.src_dataset = src_dataset
-            self.tgt_dataset = tgt_dataset
-            self.src_counts = src_counts
-            self.tgt_counts = tgt_counts
-        else:
-            self.src_dataset = src_dataset.select(split_indices)
-            self.tgt_dataset = tgt_dataset.select(split_indices)
-            # for key, dataset in tgt_datasets.items():
-            #     tgt_datasets[key] = dataset.select(split_indices)
-            # self.tgt_datasets = tgt_datasets
-            if src_counts is not None:
-                self.src_counts = src_counts[split_indices, :]
-            if tgt_counts is not None:
-                self.tgt_counts = tgt_counts[split_indices, :]
-
-        if tgt_counts is not None:
-            self.size_factor = np.ravel(self.tgt_counts.sum(axis=1))
+        self.tgt_datasets = tgt_datasets
+        self.tgt_counts_dict = tgt_counts_dict
         self.conditions = conditions
         self.conditions_combined = conditions_combined
         self.condition_encodings = condition_encodings
+        self.time_steps = time_steps
+
+        if split_indices is not None:
+            self.src_dataset = src_dataset.select(split_indices)
+            self.tgt_datasets = {}
+            self.tgt_counts_dict = {}
+            if src_counts is not None:
+                self.src_counts = src_counts[split_indices, :]
+
+            for t in time_steps:
+                dataset_keys_ = f'tgt_dataset_t{t}'
+                count_keys_ = f'tgt_h5ad_t{t}'
+                self.tgt_datasets[dataset_keys_] = tgt_datasets[dataset_keys_].select(
+                    split_indices
+                )
+                if tgt_counts_dict is not None:
+                    self.tgt_counts_dict[count_keys_] = tgt_counts_dict[count_keys_][
+                        split_indices, :
+                    ]
+
+        if max(time_steps) > len(tgt_datasets):
+            raise ValueError('Number of time steps is greater than number of datasets')
+        src_len = len(self.src_dataset)
+        tgt_len = len(self.tgt_datasets[f'tgt_dataset_t{time_steps[0]}'])
+        if src_len != tgt_len:
+            warn('src and tgt dataset have different length')
+        self.dataset_length = min(src_len, tgt_len)
 
     def __getitem__(self, ind):
-        return {
+        out = {
             'src_dataset': self.src_dataset[ind],
-            'tgt_dataset': self.tgt_dataset[ind],
-            # 'tgt_dataset_t1': self.tgt_datasets['t1'][ind],
-            # 'tgt_dataset_t2': self.tgt_datasets['t2'][ind],
-            'tgt_counts': self.tgt_counts[ind, :],
             'src_counts': self.src_counts[ind],
-            'tgt_size_factor': self.size_factor[ind],
             'conditions': self.conditions[ind] if self.conditions is not None else None,
             'conditions_combined': self.conditions_combined[ind]
             if self.conditions_combined is not None
             else None,
         }
+        for t in self.time_steps:
+            dataset_keys_ = f'tgt_dataset_t{t}'
+            out[dataset_keys_] = self.tgt_datasets[dataset_keys_][ind]
+            out[f'tgt_counts_t{t}'] = self.tgt_counts_dict[f'tgt_h5ad_t{t}'][ind]
+
+        return out
 
     def __len__(self):
-        if len(self.src_dataset) != len(self.tgt_dataset):
-            warn('src and tgt dataset have different length')
-        return min(len(self.src_dataset), len(self.tgt_dataset))
+        return self.dataset_length
 
 
 # two dataloader vs one dataloader
-class PetraDataModule(LightningDataModule):
+class CellGenDataModule(LightningDataModule):
     def __init__(
         self,
         src_dataset: DatasetDict,
-        tgt_dataset: DatasetDict,
+        tgt_datasets: DatasetDict,
         batch_size: int = 64,
         num_workers: int = 8,
         shuffle: bool = False,
         max_len: int = 2048,
-        seed: int = 42,
-        splitting_mode: str = 'stratified',  # 'random', 'stratified', 'unseen_donor
-        src_adata: ad.AnnData = None,
-        tgt_adata: ad.AnnData = None,
+        split: bool = False,
+        time_steps: list = [1, 2],
+        total_time_steps: int = 4,
+        src_counts: Optional[np.ndarray] = None,
+        tgt_counts_dict: Optional[np.ndarray] = None,
         condition_keys: Optional[list] = None,
         condition_encodings: Optional[dict] = None,
-        conditions_combined_encodings: Optional[dict] = None,
-        drop_last: bool = False,
-        split: bool = False,
+        conditions: Optional[torch.Tensor] = None,
+        conditions_combined: Optional[torch.Tensor] = None,
+        train_indices: Optional[list[int]] = None,
+        val_indices: Optional[list[int]] = None,
+        test_indices: Optional[list[int]] = None,
+        var_list: Optional[list] = None,
     ):
         """
         Description:
         ------------
-        Custom datamodule for Petra tokenised data.
+        Custom datamodule for CellGen tokenised data.
         """
         super().__init__()
+        print('Start datamodule')
         self.src_dataset = src_dataset
-        self.tgt_dataset = tgt_dataset
-        self.src_adata = src_adata
-        self.tgt_adata = tgt_adata
+        self.tgt_datasets = tgt_datasets
+        self.src_counts = src_counts
+        self.tgt_counts_dict = tgt_counts_dict
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.shuffle = shuffle
@@ -137,68 +149,30 @@ class PetraDataModule(LightningDataModule):
         self.dataset = None
         self.condition_keys = condition_keys
         self.condition_encodings = condition_encodings
-        self.conditions_combined_encodings = conditions_combined_encodings
-        self.drop_last = drop_last
+        self.conditions = conditions
+        self.conditions_combined = conditions_combined
         # train test split
         self.split = split
-        self.splitting_mode = splitting_mode
-        self.train_indices = None
-        self.val_indices = None
-        self.test_indices = None
-        self.train_prop = 0.8
-        self.val_prop = 0.1
-        self.test_prop = 0.1
-        self.seed = seed
-
+        self.train_indices = train_indices
+        self.val_indices = val_indices
+        self.test_indices = test_indices
+        self.time_steps = time_steps
+        self.total_time_steps = total_time_steps
+        self.var_list = var_list
         # create condition encoder for categorical variables in
         # form of dictionary with key: value pairs based on condition_keys
-        if (self.condition_encodings is not None) and (self.condition_keys is not None):
-            self.conditions = [
-                label_encoder(
-                    tgt_adata,
-                    encoder=self.condition_encodings[self.condition_keys[i]],
-                    condition_key=self.condition_keys[i],
-                )
-                for i in range(len(self.condition_encodings))
-            ]
-            self.conditions = torch.tensor(self.conditions, dtype=torch.long).T
-            self.conditions_combined = label_encoder(
-                tgt_adata,
-                encoder=self.conditions_combined_encodings,
-                condition_key='conditions_combined',
-            )
-            self.conditions_combined = torch.tensor(
-                self.conditions_combined, dtype=torch.long
-            )
 
     def setup(self, stage=None):
-        if self.split:
-            if (
-                self.train_indices is None
-                and self.val_indices is None
-                and self.test_indices is None
-            ):
-                (
-                    self.train_indices,
-                    self.val_indices,
-                    self.test_indices,
-                ) = self.train_test_val_split()
-            else:
-                # return all the indices
-                self.train_indices = list(range(len(self.src_dataset)))
-                self.val_indices = None
-                self.test_indices = list(range(len(self.tgt_dataset)))
-
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
             if self.condition_encodings is not None:
-                self.train_dataset = PetraDataset(
+                self.train_dataset = CellGenDataset(
                     src_dataset=self.src_dataset,
-                    tgt_dataset=self.tgt_dataset,
+                    tgt_datasets=self.tgt_datasets,
                     split_indices=self.train_indices,
-                    src_counts=self.src_adata.X,
-                    tgt_counts=self.tgt_adata.X,
-                    shuffle=self.shuffle,
+                    src_counts=self.src_counts,
+                    tgt_counts_dict=self.tgt_counts_dict,
+                    time_steps=self.time_steps,
                     conditions=self.conditions
                     if self.condition_keys is not None
                     else None,
@@ -207,13 +181,13 @@ class PetraDataModule(LightningDataModule):
                     else None,
                 )
                 if self.val_indices is not None:
-                    self.val_dataset = PetraDataset(
+                    self.val_dataset = CellGenDataset(
                         src_dataset=self.src_dataset,
-                        tgt_dataset=self.tgt_dataset,
+                        tgt_datasets=self.tgt_datasets,
                         split_indices=self.val_indices,
-                        src_counts=self.src_adata.X,
-                        tgt_counts=self.tgt_adata.X,
-                        shuffle=self.shuffle,
+                        src_counts=self.src_counts,
+                        tgt_counts_dict=self.tgt_counts_dict,
+                        time_steps=self.time_steps,
                         conditions=self.conditions
                         if self.condition_keys is not None
                         else None,
@@ -224,34 +198,36 @@ class PetraDataModule(LightningDataModule):
                 else:
                     self.val_dataset = None
             else:
-                self.train_dataset = PetraDataset(
+                self.train_dataset = CellGenDataset(
                     src_dataset=self.src_dataset,
-                    tgt_dataset=self.tgt_dataset,
+                    tgt_datasets=self.tgt_datasets,
                     split_indices=self.train_indices,
-                    src_counts=self.src_adata.X,
-                    tgt_counts=self.tgt_adata.X,
-                    shuffle=self.shuffle,
+                    src_counts=self.src_counts,
+                    tgt_counts_dict=self.tgt_counts_dict,
+                    time_steps=self.time_steps,
                 )
                 if self.val_indices is not None:
-                    self.val_dataset = PetraDataset(
+                    self.val_dataset = CellGenDataset(
                         src_dataset=self.src_dataset,
-                        tgt_dataset=self.tgt_dataset,
+                        tgt_datasets=self.tgt_datasets,
                         split_indices=self.val_indices,
-                        src_counts=self.src_adata.X,
-                        tgt_counts=self.tgt_adata.X,
-                        shuffle=self.shuffle,
+                        src_counts=self.src_counts,
+                        tgt_counts_dict=self.tgt_counts_dict,
+                        time_steps=self.time_steps,
                     )
                 else:
                     self.val_dataset = None
         if stage == 'test' or stage is None:
+            # use all time steps to provide as context
+            self.time_steps = list(range(1, self.total_time_steps + 1))
             if self.condition_encodings is not None:
-                self.test_dataset = PetraDataset(
+                self.test_dataset = CellGenDataset(
                     src_dataset=self.src_dataset,
-                    tgt_dataset=self.tgt_dataset,
+                    tgt_datasets=self.tgt_datasets,
                     split_indices=self.test_indices,
-                    src_counts=self.src_adata.X,
-                    tgt_counts=self.tgt_adata.X,
-                    shuffle=self.shuffle,
+                    src_counts=self.src_counts,
+                    tgt_counts_dict=self.tgt_counts_dict,
+                    time_steps=self.time_steps,
                     conditions=self.conditions
                     if self.condition_keys is not None
                     else None,
@@ -260,46 +236,14 @@ class PetraDataModule(LightningDataModule):
                     else None,
                 )
             else:
-                self.test_dataset = PetraDataset(
+                self.test_dataset = CellGenDataset(
                     src_dataset=self.src_dataset,
-                    tgt_dataset=self.tgt_dataset,
+                    tgt_datasets=self.tgt_datasets,
                     split_indices=self.test_indices,
-                    src_counts=self.src_adata.X,
-                    tgt_counts=self.tgt_adata.X,
-                    shuffle=self.shuffle,
+                    src_counts=self.src_counts,
+                    tgt_counts_dict=self.tgt_counts_dict,
+                    time_steps=self.time_steps,
                 )
-
-    def train_test_val_split(self):
-        np.random.seed(self.seed)  # reproducibility
-
-        if self.splitting_mode == 'stratified':
-            train_indices, val_indices, test_indices = stratified_split(
-                self.tgt_adata,
-                self.train_prop,
-                self.test_prop,
-                ['Cell_type', 'Donor'],
-                self.seed,
-            )
-            # check that indices are unique to avoid data leakage
-            assert len(set(train_indices).intersection(val_indices)) == 0
-            assert len(set(train_indices).intersection(test_indices)) == 0
-            assert len(set(val_indices).intersection(test_indices)) == 0
-        # elif self.split == 'random':
-        #     train, val, test = self.random_split()
-        # elif self.split == 'unseen_donor':
-        #     train, val, test = self.unseen_donor_split()
-        else:
-            raise ValueError(
-                "split is not available, must be either '"
-                "random','stratified' or 'unseen_donor'"
-            )
-        print(
-            f'Number of samples in train set: {len(train_indices)}\n'
-            f'Number of samples in val set: {len(val_indices)}\n'
-            f'Number of samples in test set: {len(test_indices)}'
-        )
-
-        return train_indices, val_indices, test_indices
 
     def train_dataloader(self):
         data = DataLoader(
@@ -308,7 +252,6 @@ class PetraDataModule(LightningDataModule):
             shuffle=self.shuffle,
             num_workers=self.num_workers,
             collate_fn=self.collate,
-            drop_last=self.drop_last,
         )
         return data
 
@@ -320,7 +263,6 @@ class PetraDataModule(LightningDataModule):
                 shuffle=False,
                 num_workers=self.num_workers,
                 collate_fn=self.collate,
-                drop_last=self.drop_last,
             )
             return data
         else:
@@ -333,117 +275,96 @@ class PetraDataModule(LightningDataModule):
             shuffle=self.shuffle,
             num_workers=self.num_workers,
             collate_fn=self.collate,
-            drop_last=self.drop_last,
+            # persistent_workers=True,
         )
         return data
 
     def collate(self, batch):
-        if any('src_dataset' in item for item in batch):
-            src_input_batch_id = [
-                torch.tensor(d['src_dataset']['input_ids']) for d in batch
-            ]
-            src_length = torch.stack(
-                [torch.tensor(d['src_dataset']['length']) for d in batch]
-            )
+        src_dataset = [d['src_dataset'] for d in batch if 'src_dataset' in d]
+        if src_dataset:
+            src_input_batch_id = [torch.tensor(d['input_ids']) for d in src_dataset]
+            src_length = torch.tensor([d['length'] for d in src_dataset])
             model_input_size = torch.max(src_length)
-            src_cell_type = [d['src_dataset']['Cell_type'] for d in batch]
-            src_time_point = ([d['src_dataset']['Time_point'] for d in batch],)
-            src_donor = ([d['src_dataset']['Donor'] for d in batch],)
             src_input_batch_id = pad_tensor_list(
                 src_input_batch_id, self.max_len, self.pad_token_id, model_input_size
             )
         else:
-            src_input_batch_id = None
-            src_length = None
-            src_cell_type = None
-            src_time_point = None
-            src_donor = None
+            src_input_batch_id, src_length = None, None
+        src_counts = None
+        if 'src_counts' in batch[0]:
+            if isinstance(batch[0]['src_counts'], csr_matrix):
+                src_counts = [torch.tensor(d['src_counts'].A) for d in batch]
 
-        if any('tgt_dataset' in item for item in batch):
-            # return counts
-            tgt_input_batch_id = [
-                torch.tensor(d['tgt_dataset']['input_ids']) for d in batch
-            ]
-            tgt_length = torch.stack(
-                [torch.tensor(d['tgt_dataset']['length']) for d in batch]
-            )
-            model_input_size = torch.max(tgt_length)
-            tgt_cell_type = [d['tgt_dataset']['Cell_type'] for d in batch]
-            tgt_cell_population = [d['tgt_dataset']['Cell_population'] for d in batch]
-            tgt_time_point = [d['tgt_dataset']['Cell_population'] for d in batch]
-            tgt_donor = [d['tgt_dataset']['Donor'] for d in batch]
-            tgt_input_batch_id = pad_tensor_list(
-                tgt_input_batch_id, self.max_len, self.pad_token_id, model_input_size
-            )
-        else:
-            tgt_input_batch_id = None
-            tgt_length = None
-            tgt_cell_type = None
-            tgt_cell_population = None
-            tgt_time_point = None
-            tgt_donor = None
-
-        if any('src_counts' in item for item in batch):
-            src_counts = [torch.tensor(d['src_counts']) for d in batch]
-            src_counts = torch.stack(src_counts)
-        else:
-            src_counts = None
-
-        if any('tgt_counts' in item for item in batch):
-            tgt_counts = [torch.tensor(d['tgt_counts']) for d in batch]
-            tgt_counts = torch.stack(tgt_counts)
-            tgt_size_factor = [d['tgt_size_factor'] for d in batch]
-            if self.condition_encodings is not None:
-                condition = [d['conditions'] for d in batch]
-                condition_combined = [d['conditions_combined'] for d in batch]
             else:
-                condition = None
-                condition_combined = None
+                src_counts = [torch.tensor(d['src_counts']) for d in batch]
+            src_counts = torch.cat(src_counts, dim=0)
+        if self.condition_encodings:
+            condition = [d['conditions'] for d in batch]
+            condition_combined = torch.stack([d['conditions_combined'] for d in batch])
         else:
-            tgt_counts = None
-            tgt_size_factor = None
-
-        return {
+            condition, condition_combined = None, None
+        # compute tgt size factor
+        out = {
             'src_input_ids': src_input_batch_id,
             'src_length': src_length,
-            'src_cell_type': src_cell_type,
-            'src_time_point': src_time_point,
-            'src_donor': src_donor,
             'src_counts': src_counts,
-            'tgt_input_ids': tgt_input_batch_id,
-            'tgt_length': tgt_length,
-            'tgt_cell_type': tgt_cell_type,
-            'tgt_cell_population': tgt_cell_population,
-            'tgt_time_point': tgt_time_point,
-            'tgt_donor': tgt_donor,
-            'tgt_counts': tgt_counts,
-            'size_factor': tgt_size_factor,
             'batch': condition,
             'combined_batch': condition_combined,
         }
 
-    def gen_attention_mask(self, length):
-        attention_mask = [
-            [1] * original_len + [0] * (self.max_len - original_len)
-            if original_len <= self.max_len
-            else [1] * self.max_len
-            for original_len in length
-        ]
+        for time_step in self.time_steps:
+            if isinstance(batch[0][f'tgt_counts_t{time_step}'], csr_matrix):
+                tgt_counts = [
+                    torch.tensor(d[f'tgt_counts_t{time_step}'].A) for d in batch
+                ]
+                tgt_size_factor = [
+                    torch.tensor(np.ravel(d[f'tgt_counts_t{time_step}'].A.sum(axis=1)))
+                    for d in batch
+                ]
+            else:
+                tgt_counts = [
+                    torch.tensor(d[f'tgt_counts_t{time_step}']) for d in batch
+                ]
+                tgt_size_factor = [
+                    torch.tensor(np.ravel(d[f'tgt_counts_t{time_step}'].sum(axis=1)))
+                    for d in batch
+                ]
+            out[f'tgt_counts_t{time_step}'] = torch.cat(tgt_counts, dim=0)
+            out[f'tgt_size_factor_t{time_step}'] = torch.cat(tgt_size_factor, dim=0)
 
-        return torch.tensor(attention_mask)
-        # can change the function to make it more generic
-        # -> only return train, val and test indices
+            # create input ids
+            dataset = f'tgt_dataset_t{time_step}'
+            out[f'tgt_input_ids_t{time_step}'] = [
+                torch.tensor(d[dataset]['input_ids']) for d in batch
+            ]
+            length = [d[dataset]['length'] for d in batch]
+            out[f'tgt_length_t{time_step}'] = torch.tensor(length)
+            model_input_size = torch.max(out[f'tgt_length_t{time_step}'])
+            out[f'tgt_cell_idx_t{time_step}'] = [
+                d[dataset]['cell_pairing_index'] for d in batch
+            ]
+            for var in self.var_list:
+                out[f'{var}_t{time_step}'] = [d[dataset][var] for d in batch]
+
+            out[f'tgt_input_ids_t{time_step}'] = pad_tensor_list(
+                out[f'tgt_input_ids_t{time_step}'],
+                self.max_len,
+                self.pad_token_id,
+                model_input_size,
+            )
+
+        return out
 
 
 if __name__ == '__main__':
     # test dataloader
-    data_module = PetraDataModule(
+    data_module = CellGenDataModule(
         src_dataset=(
             '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
             'T_perturb/T_perturb/pp/res/dataset/'
             'cytoimmgen_tokenised_degs_stratified_pairing_0h.dataset'
         ),
-        tgt_dataset=(
+        tgt_datasets=(
             '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
             'T_perturb/T_perturb/pp/res/dataset/'
             'cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset'
