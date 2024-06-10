@@ -494,8 +494,11 @@ def subset_adata(adata, cell_pairings):
     return adata_subsetted
 
 
-def pairing_resting_to_activated_cells(
-    adata_subset: sc.AnnData, pairing_mode: str, seed_no: int = 42
+def pairing_src_to_tgt_cells(
+    adata_subset: sc.AnnData,
+    pairing_mode: str,
+    pairing_obs: str,
+    seed_no: int = 42,
 ):
     """
     Description:
@@ -508,6 +511,8 @@ def pairing_resting_to_activated_cells(
         Annotated data matrix subsetted to include only DEGs.
     pairing_mode: `str`
         Mode to pair cells. Choose between 'random' and 'stratified'.
+    pairing_obs: `str`
+        obs column name in anndate which is used as pairing condition
     seed: `int`
         Seed for random number generator.
 
@@ -525,9 +530,9 @@ def pairing_resting_to_activated_cells(
     cell_pairings: Dict[str, List[str]] = {}
     max_rows = 0
     max_reference_time = None
-    for adata_tmp in adata_subset_.obs['Time_point'].unique():
+    for adata_tmp in adata_subset_.obs[pairing_obs].unique():
         adata_dict[adata_tmp] = adata_subset_.obs.loc[
-            adata_subset_.obs['Time_point'] == adata_tmp, :
+            adata_subset_.obs[pairing_obs] == adata_tmp, :
         ]
         cell_pairings[adata_tmp] = []
         # Check if this adata_tmp has more rows than the current maximum
@@ -537,7 +542,7 @@ def pairing_resting_to_activated_cells(
     if pairing_mode == 'stratified':
         # drop Donor if they do not have Cell_type, Donor in all the Time_points
         adata_grouped = adata_subset_.obs[
-            adata_subset_.obs.groupby(['Donor', 'Cell_type'])['Time_point'].transform(
+            adata_subset_.obs.groupby(['Donor', 'Cell_type'])[pairing_obs].transform(
                 'nunique'
             )
             == 4
@@ -546,16 +551,16 @@ def pairing_resting_to_activated_cells(
             adata_subset.obs['Donor'].nunique() - adata_grouped['Donor'].nunique()
         )
         print(f'dropped {dropped_donors} donors')
-        resting_cells = adata_grouped.loc[adata_grouped['Time_point'] == '0h', :]
+        resting_cells = adata_grouped.loc[adata_grouped[pairing_obs] == '0h', :]
         grouped = adata_grouped.groupby(['Donor', 'Cell_type'])
         for idx, resting in tqdm.tqdm(
             resting_cells.iterrows(), total=resting_cells.shape[0]
         ):
             # get the indices of the other time points for the same cell type and donor
             group = grouped.get_group((resting['Donor'], resting['Cell_type']))
-            indices_16h = group[group['Time_point'] == '16h'].index
-            indices_40h = group[group['Time_point'] == '40h'].index
-            indices_5d = group[group['Time_point'] == '5d'].index
+            indices_16h = group[group[pairing_obs] == '16h'].index
+            indices_40h = group[group[pairing_obs] == '40h'].index
+            indices_5d = group[group[pairing_obs] == '5d'].index
             cell_pairings['0h'].append(idx)
             cell_pairings['16h'].append(np.random.choice(indices_16h))
             cell_pairings['40h'].append(np.random.choice(indices_40h))
