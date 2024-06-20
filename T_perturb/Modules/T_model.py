@@ -302,8 +302,7 @@ class Block(nn.Module):
 class Geneformerwrapper(nn.Module):
     def __init__(
         self,
-        model_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'generative_modelling_omic/Geneformer/',
+        model_path='./T_perturb/Geneformer/',
         output_attentions=False,
         output_hidden_states=True,
         mode='GF_frozen',
@@ -876,9 +875,10 @@ class CellGen(nn.Module):
             for tgt_time_step in self.time_steps:
                 tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
                 tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{tgt_time_step}']
-                tgt_embedding = self.token_qembedding(tgt_input_id)
+                tgt_embedding = self.token_embedding(tgt_input_id)
                 tgt_embedding = self.positional_encoding(tgt_embedding, tgt_time_step)
-                if context_mode:
+                if context_mode or len(self.time_steps) > 1:
+                    print('--*' * 10, 'context is provided', '--*' * 10)
                     # distinction between selected time step and rest time steps
                     context_embedding_dict, context_pad_dict = self.generate_context(
                         enc_output=enc_output,
@@ -901,6 +901,7 @@ class CellGen(nn.Module):
                         cls_positions=cls_positions,
                     )
                 else:
+                    print('--*' * 10, 'no context is provided', '--*' * 10)
                     # does not include any context
                     outputs = self.call_decoder(
                         enc_output=enc_output,
@@ -944,6 +945,7 @@ class CellGen(nn.Module):
             # to provide as context for selected time step---
 
             if context_mode:
+                print('--*' * 10, 'context is provided', '--*' * 10)
                 context_embedding_dict, context_pad_dict = self.generate_context(
                     enc_output=enc_output,
                     src_attention_mask=src_attention_mask,
@@ -968,6 +970,7 @@ class CellGen(nn.Module):
                     generate=generate,
                 )
             else:
+                print('--*' * 10, 'no context is provided', '--*' * 10)
                 tgt_embedding = self.token_embedding(tgt_input_id)
                 tgt_embedding = self.positional_encoding(tgt_embedding, tgt_time_step)
                 outputs = self.call_decoder(

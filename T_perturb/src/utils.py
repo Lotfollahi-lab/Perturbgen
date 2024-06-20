@@ -3,7 +3,11 @@ import math
 import os
 import pickle
 from pathlib import Path
-from typing import Dict, List
+from typing import (
+    Dict,
+    List,
+    Optional,
+)
 
 import anndata as ad
 import geneformer.perturber_utils as pu
@@ -498,12 +502,16 @@ def pairing_src_to_tgt_cells(
     adata_subset: sc.AnnData,
     pairing_mode: str,
     pairing_obs: str,
+    dataset_type: str,
     seed_no: int = 42,
-):
+    src_condition: Optional[str] = None,
+    tgt_conditions: Optional[List[str]] = None,
+) -> Dict[str, List[str]]:
     """
     Description:
     ------------
-    This function pairs resting cells to activated cells based on time point.
+    This function pairs control cells to perturbed cells
+    can be either single or multiple discrete timepoint.
 
     Parameters:
     -----------
@@ -511,34 +519,49 @@ def pairing_src_to_tgt_cells(
         Annotated data matrix subsetted to include only DEGs.
     pairing_mode: `str`
         Mode to pair cells. Choose between 'random' and 'stratified'.
+    dataset_type: `str`
+        Type of dataset. Choose between 'conditional' and 'temporal'.
     pairing_obs: `str`
         obs column name in anndate which is used as pairing condition
     seed: `int`
         Seed for random number generator.
+    src_condition: `Optional[str]`
+        Source/control condition for cell pairing.
+        Select a category in pairing_obs column.
+    tgt_conditions: `Optional[List[str]]`
+        Target/perturbed condition for cell pairing.
+        Select categories in pairing_obs column.
+
 
     Returns:
     --------
-    cell_pairings: `dict`
-        Dictionary containing pairing indices of resting and activated cells.
+    cell_pairings: `Dict[str, List[str]]`
+        Dictionary containing pairing indices of control and perturbed cells.
     """
     np.random.seed(seed_no)
     # replace index by row number
     adata_subset_ = adata_subset.copy()
     adata_subset_.obs = adata_subset_.obs.reset_index()
+    # initiate dict to store condition specific adata
     adata_dict = {}
     # initiate dict to store cell pairing
     cell_pairings: Dict[str, List[str]] = {}
-    max_rows = 0
-    max_reference_time = None
-    for adata_tmp in adata_subset_.obs[pairing_obs].unique():
-        adata_dict[adata_tmp] = adata_subset_.obs.loc[
-            adata_subset_.obs[pairing_obs] == adata_tmp, :
+    tgt_cell_no = 0
+    max_reference_cond = ''
+    for condition in adata_subset_.obs[pairing_obs].unique():
+        adata_dict[condition] = adata_subset_.obs.loc[
+            adata_subset_.obs[pairing_obs] == condition, :
         ]
-        cell_pairings[adata_tmp] = []
+        cell_pairings[condition] = []
+        if (dataset_type == 'conditional') and (tgt_conditions is not None):
+            if condition in tgt_conditions:
+                cell_pairings[condition] = adata_dict[condition].index.tolist()
+                tgt_cell_no += len(cell_pairings[condition])
         # Check if this adata_tmp has more rows than the current maximum
-        if len(adata_dict[adata_tmp]) > max_rows:
-            max_rows = len(adata_dict[adata_tmp])
-            max_reference_time = adata_tmp
+        elif dataset_type == 'temporal':
+            tgt_cell_no = len(adata_dict[condition])
+            max_reference_cond = condition
+
     if pairing_mode == 'stratified':
         # drop Donor if they do not have Cell_type, Donor in all the Time_points
         adata_grouped = adata_subset_.obs[
@@ -567,16 +590,34 @@ def pairing_src_to_tgt_cells(
             cell_pairings['5d'].append(np.random.choice(indices_5d))
 
     elif pairing_mode == 'random':
-        if max_reference_time is not None:
-            # randomly sample from each time point
-            ref_adata = adata_dict[max_reference_time]
-            cell_pairings[max_reference_time] = ref_adata.index.tolist()
+        if (
+            (dataset_type == 'conditional')
+            and (tgt_conditions is not None)
+            and (src_condition is not None)
+        ):
+            assert (
+                tgt_cell_no > 0
+            ), f'No target cells found for {tgt_conditions} in {pairing_obs}'
+            cell_pairings[src_condition] = np.random.choice(
+                adata_dict[src_condition].index, tgt_cell_no, replace=True
+            ).tolist()
+        elif dataset_type == 'temporal':
+            # randomly sample from each condition
+            ref_adata = adata_dict[max_reference_cond]
+            cell_pairings[max_reference_cond] = ref_adata.index.tolist()
+            for rest_time, adata_ in adata_dict.items():
+                if rest_time != max_reference_cond:
+                    cell_pairings[rest_time] = np.random.choice(
+                        adata_.index, tgt_cell_no, replace=True
+                    ).tolist()
             # remove reference time from dictionary
-            del adata_dict[max_reference_time]
+            del adata_dict[max_reference_cond]
             for rest_time, adata_ in adata_dict.items():
                 cell_pairings[rest_time] = np.random.choice(
-                    adata_.index, len(ref_adata), replace=True
+                    adata_.index, tgt_cell_no, replace=True
                 ).tolist()
+        else:
+            raise ValueError('dataset_type must be either conditional or temporal')
     else:
         raise ValueError('pairing_mode must be either random or stratified')
     return cell_pairings

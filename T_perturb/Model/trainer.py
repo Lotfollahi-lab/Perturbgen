@@ -67,6 +67,7 @@ class CellGenTrainer(LightningModule):
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         var_list: List[str] = ['Time_point'],
         mode: str = 'GF_fine_tuned',
+        context_mode: bool = False,
         gene_names: Optional[List[str]] = None,
         *args,
         **kwargs,
@@ -137,6 +138,7 @@ class CellGenTrainer(LightningModule):
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
         self.date = datetime.now().strftime('%Y%m%d')
+        self.context_mode = context_mode
 
     def forward(self, batch):
         tgt_input_id_dict = {}
@@ -159,6 +161,7 @@ class CellGenTrainer(LightningModule):
             tgt_input_id_dict=tgt_input_id_dict,
             cls_positions=cls_positions,
             not_masked=self.return_embeddings,
+            context_mode=self.context_mode,
         )
         return outputs
 
@@ -418,6 +421,7 @@ class CountDecoderTrainer(LightningModule):
         mask_scheduler: Optional[str] = 'cosine',
         mode: str = 'GF_fine_tuned',
         seed: int = 42,
+        context_mode: bool = False,
         *args,
         **kwargs,
     ):
@@ -525,6 +529,7 @@ class CountDecoderTrainer(LightningModule):
         self.mode = mode
         self.seed = seed
         self.date = datetime.now().strftime('%Y%m%d')
+        self.context_mode = context_mode
 
     def forward(self, batch):
         tgt_input_id_dict = {}

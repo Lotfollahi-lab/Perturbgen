@@ -69,7 +69,7 @@ def get_args():
     )
 
     parser.add_argument(
-        '--src_dataset_folder',
+        '--src_dataset',
         type=str,
         default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset',
         # default=(
@@ -221,6 +221,12 @@ def get_args():
         type=int,
         default=42,
         help='seed for reproducibility',
+    )
+    parser.add_argument(
+        '--context_mode',
+        type=str2bool,
+        default=False,
+        help='for timepoint data context can be provided from previous timepoints',
     )
     args = parser.parse_args()
     return args
@@ -396,6 +402,7 @@ def main() -> None:
             mapping_dict_path=args.mapping_dict_path,
             output_dir=args.output_dir,
             mode=args.mode,
+            context_mode=args.context_mode,
         )
     elif args.train_mode == 'count':
         decoder_module = CountDecoderTrainer(
@@ -424,6 +431,7 @@ def main() -> None:
             output_dir=args.output_dir,
             mode=args.mode,
             seed=args.seed,
+            context_mode=args.context_mode,
         )
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
