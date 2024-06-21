@@ -31,10 +31,10 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --generate False \
 --ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240612_1236_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1_s_42-epoch=49.ckpt" \
 --output_dir "./T_perturb/T_perturb/plt/res/covid_19" \
---src_dataset "./CellGen-reproducibility/COVID/processed_data/dataset_hvg_src_transformer/normal.dataset" \
---tgt_dataset_folder "./CellGen-reproducibility/COVID/processed_data/dataset_hvg_tgt/" \
---src_adata "./CellGen-reproducibility/COVID/processed_data/h5ad_pairing_hvg_src/normal.h5ad" \
---tgt_adata_folder "./CellGen-reproducibility/COVID/processed_data/h5ad_pairing_hvg_tgt" \
+--src_dataset "./CellGen-reproducibility/covid/processed_data/dataset_hvg_src_transformer/normal.dataset" \
+--tgt_dataset_folder "./CellGen-reproducibility/covid/processed_data/dataset_hvg_tgt/" \
+--src_adata "./CellGen-reproducibility/covid/processed_data/h5ad_pairing_hvg_src/normal.h5ad" \
+--tgt_adata_folder "./CellGen-reproducibility/covid/processed_data/h5ad_pairing_hvg_tgt" \
 --batch_size 64 \
 --max_len 900 \
 --tgt_vocab_size 5001 \

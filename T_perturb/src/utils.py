@@ -4,6 +4,7 @@ import os
 import pickle
 from pathlib import Path
 from typing import (
+    Any,
     Dict,
     List,
     Optional,
@@ -25,7 +26,7 @@ from torch.utils.data import Subset
 from torchmetrics import PearsonCorrCoef
 
 
-def read_dataset_files(directory, file_type):
+def read_dataset_files(directory: str, file_type: str):
     dataset_dict = {}
     for filename in os.listdir(directory):
         if filename.endswith(f'.{file_type}'):
@@ -38,6 +39,12 @@ def read_dataset_files(directory, file_type):
                 dataset_dict[f'tgt_{file_type}_t{filename[0]}'] = sc.read_h5ad(
                     filename_
                 )
+            elif file_type == 'pkl':
+                print(filename)
+                with open(filename_, 'rb') as f:
+                    dataset_dict[f'tgt_{file_type}_t{filename[0]}'] = pickle.load(f)
+            else:
+                raise ValueError(f'{file_type} must be either dataset or h5ad')
     return dataset_dict
 
 
@@ -499,7 +506,7 @@ def subset_adata(adata, cell_pairings):
 
 
 def pairing_src_to_tgt_cells(
-    adata_subset: sc.AnnData,
+    adata_subset: ad.AnnData,
     pairing_mode: str,
     pairing_obs: str,
     dataset_type: str,
@@ -539,30 +546,14 @@ def pairing_src_to_tgt_cells(
         Dictionary containing pairing indices of control and perturbed cells.
     """
     np.random.seed(seed_no)
-    # replace index by row number
-    adata_subset_ = adata_subset.copy()
-    adata_subset_.obs = adata_subset_.obs.reset_index()
     # initiate dict to store condition specific adata
     adata_dict = {}
     # initiate dict to store cell pairing
-    cell_pairings: Dict[str, List[str]] = {}
-    tgt_cell_no = 0
-    max_reference_cond = ''
-    for condition in adata_subset_.obs[pairing_obs].unique():
-        adata_dict[condition] = adata_subset_.obs.loc[
-            adata_subset_.obs[pairing_obs] == condition, :
-        ]
-        cell_pairings[condition] = []
-        if (dataset_type == 'conditional') and (tgt_conditions is not None):
-            if condition in tgt_conditions:
-                cell_pairings[condition] = adata_dict[condition].index.tolist()
-                tgt_cell_no += len(cell_pairings[condition])
-        # Check if this adata_tmp has more rows than the current maximum
-        elif dataset_type == 'temporal':
-            tgt_cell_no = len(adata_dict[condition])
-            max_reference_cond = condition
-
+    cell_pairings: Dict[Any, Any] = {}
     if pairing_mode == 'stratified':
+        # replace index by row number
+        adata_subset_ = adata_subset.copy()
+        adata_subset_.obs = adata_subset_.obs.reset_index()
         # drop Donor if they do not have Cell_type, Donor in all the Time_points
         adata_grouped = adata_subset_.obs[
             adata_subset_.obs.groupby(['Donor', 'Cell_type'])[pairing_obs].transform(
@@ -590,18 +581,35 @@ def pairing_src_to_tgt_cells(
             cell_pairings['5d'].append(np.random.choice(indices_5d))
 
     elif pairing_mode == 'random':
-        if (
-            (dataset_type == 'conditional')
-            and (tgt_conditions is not None)
-            and (src_condition is not None)
-        ):
-            assert (
-                tgt_cell_no > 0
-            ), f'No target cells found for {tgt_conditions} in {pairing_obs}'
-            cell_pairings[src_condition] = np.random.choice(
-                adata_dict[src_condition].index, tgt_cell_no, replace=True
-            ).tolist()
-        elif dataset_type == 'temporal':
+        max_reference_cond = ''
+        for condition in adata_subset.obs[pairing_obs].unique():
+            adata_dict[condition] = adata_subset.obs.loc[
+                adata_subset.obs[pairing_obs] == condition, :
+            ]
+            adata_dict[condition] = adata_dict[condition].reset_index()
+            if (
+                (dataset_type == 'conditional')
+                and (tgt_conditions is not None)
+                and (src_condition is not None)
+            ):
+                if condition in tgt_conditions:
+                    tgt_indices = adata_dict[condition].index.tolist()
+                    tmp_cell_no = len(tgt_indices)
+                    mapping_name = f'{src_condition}_{condition}'
+                    src_indices = np.random.choice(
+                        adata_dict[src_condition].index, tmp_cell_no, replace=True
+                    ).tolist()
+                    cell_pairings[mapping_name] = dict(zip(src_indices, tgt_indices))
+                elif condition == src_condition:
+                    pass
+                else:
+                    raise ValueError(f'{condition} not in {pairing_obs}')
+            # Check if this adata_tmp has more rows than the current maximum
+            elif dataset_type == 'temporal':
+                tgt_cell_no = len(adata_dict[condition])
+                max_reference_cond = condition
+
+        if dataset_type == 'temporal':
             # randomly sample from each condition
             ref_adata = adata_dict[max_reference_cond]
             cell_pairings[max_reference_cond] = ref_adata.index.tolist()
@@ -616,11 +624,33 @@ def pairing_src_to_tgt_cells(
                 cell_pairings[rest_time] = np.random.choice(
                     adata_.index, tgt_cell_no, replace=True
                 ).tolist()
+        elif dataset_type == 'conditional':
+            pass
         else:
             raise ValueError('dataset_type must be either conditional or temporal')
     else:
         raise ValueError('pairing_mode must be either random or stratified')
     return cell_pairings
+
+
+def filter_dataset(
+    dataset: DatasetDict, condition_key: str, condition_values: List[str]
+):
+    '''
+    Description:
+    ------------
+    Filter Huggingface dataset based on condition values.
+
+    Parameters:
+    -----------
+    dataset: `datasets.DatasetDict`
+        Huggingface dataset.
+    condition_key: `str`
+        Column name of conditions in dataset.
+    condition_values: `List[str]`
+        Condition values to filter dataset which are present in condition_key.
+    '''
+    return dataset.filter(lambda x: x[condition_key] in condition_values)
 
 
 def label_encoder(adata, encoder, condition_key=None):
@@ -667,6 +697,7 @@ def label_encoder(adata, encoder, condition_key=None):
 
 
 def randomised_split(adata: ad.AnnData, train_prop: float, test_prop: float, seed: int):
+    np.random.seed(seed)
     n_cells = adata.shape[0]
     indices = np.arange(n_cells)
     print(len(indices))
@@ -674,11 +705,6 @@ def randomised_split(adata: ad.AnnData, train_prop: float, test_prop: float, see
     # define train, val and test size
     train_size = np.round(train_prop * n_cells).astype(int)
     test_size = np.round(test_prop * n_cells).astype(int)
-    # val_size = adata.shape - train_size - test_size
-    # generator = torch.Generator().manual_seed(seed)
-    # train, val, test = random_split(
-    #     dataset, [train_size, val_size, test_size], generator=generator
-    # )
     train_indices = np.random.choice(indices, train_size, replace=False)
 
     indices_ = np.setdiff1d(indices, train_indices)
@@ -688,6 +714,47 @@ def randomised_split(adata: ad.AnnData, train_prop: float, test_prop: float, see
     val_indices = indices_
 
     return train_indices, val_indices, test_indices
+
+
+def randomised_mapping_dir_split(
+    mapping_dir: Dict[int, int],
+    train_prop: float,
+    test_prop: float,
+    seed: int,
+) -> tuple[Dict[int, int], Dict[int, int], Dict[int, int]]:
+    np.random.seed(seed)
+    n_cells = len(mapping_dir)
+    # define train, val and test size
+    train_size = int(train_prop * n_cells)
+    test_size = int(test_prop * n_cells)
+    # check uniqueness of key and values to create train-test split datasets
+    if len(set(mapping_dir.keys())) == len(mapping_dir):
+        indices = list(mapping_dir.keys())
+        index_type = 'keys'
+    elif len(set(mapping_dir.values())) == len(mapping_dir):
+        indices = list(mapping_dir.values())
+        index_type = 'values'
+    else:
+        raise ValueError('Dictionary keys and values are not unique')
+
+    train_indices = np.random.choice(indices, train_size, replace=False)
+    print(train_indices)
+    indices_ = np.setdiff1d(indices, train_indices)
+    test_indices = np.random.choice(indices_, test_size, replace=False)
+    print(test_indices)
+    indices_ = np.setdiff1d(indices_, test_indices)
+    val_indices = indices_
+    print(val_indices)
+
+    if index_type == 'keys':
+        train_dict = {k: v for k, v in mapping_dir.items() if k in train_indices}
+        val_dict = {k: v for k, v in mapping_dir.items() if k in val_indices}
+        test_dict = {k: v for k, v in mapping_dir.items() if k in test_indices}
+    elif index_type == 'values':
+        train_dict = {k: v for k, v in mapping_dir.items() if v in train_indices}
+        val_dict = {k: v for k, v in mapping_dir.items() if v in val_indices}
+        test_dict = {k: v for k, v in mapping_dir.items() if v in test_indices}
+    return train_dict, val_dict, test_dict
 
 
 def stratified_split(

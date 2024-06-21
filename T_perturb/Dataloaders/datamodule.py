@@ -1,5 +1,5 @@
 import pickle
-from typing import Optional
+from typing import Dict, Optional
 from warnings import warn
 
 import numpy as np
@@ -45,6 +45,7 @@ class CellGenDataset(Dataset):
         src_counts: np.ndarray = None,
         tgt_counts_dict: np.ndarray = None,
         split_indices: Optional[list] = None,
+        split_dict: Optional[dict] = None,
         conditions: Optional[torch.Tensor] = None,
         conditions_combined: Optional[torch.Tensor] = None,
         condition_encodings: Optional[dict] = None,
@@ -56,7 +57,24 @@ class CellGenDataset(Dataset):
         self.conditions_combined = conditions_combined
         self.condition_encodings = condition_encodings
         self.time_steps = time_steps
+        self.src_datasets = {}
+        self.src_counts = {}
+        self.tgt_datasets = {}
+        if split_dict is not None:
+            for key, mapping_dict in split_dict.items():
+                print(len(mapping_dict))
+                # src indices are stored in mapping dict keys
+                src_keys = f'src_dataset_{key}'
+                count_keys = f'src_h5ad_{key}'
+                self.src_datasets[src_keys] = src_dataset.select(mapping_dict.keys())
+                print(src_counts)
+                print(src_counts.shape)
+                self.src_counts[count_keys] = src_counts[mapping_dict.keys(), :]
+                print(self.src_counts[count_keys].shape)
+                self.tgt_datasets[key] = tgt_datasets[key].select(mapping_dict.values())
+                # tgt indices are stored in mapping dict values
 
+        raise
         if split_indices is not None:
             self.src_dataset = src_dataset.select(split_indices)
             self.tgt_datasets = {}
@@ -74,7 +92,6 @@ class CellGenDataset(Dataset):
                     self.tgt_counts_dict[count_keys_] = tgt_counts_dict[count_keys_][
                         split_indices, :
                     ]
-
         if max(time_steps) > len(tgt_datasets):
             raise ValueError('Number of time steps is greater than number of datasets')
         src_len = len(self.src_dataset)
@@ -125,6 +142,9 @@ class CellGenDataModule(LightningDataModule):
         train_indices: Optional[list[int]] = None,
         val_indices: Optional[list[int]] = None,
         test_indices: Optional[list[int]] = None,
+        train_dict: Optional[Dict] = None,
+        val_dict: Optional[Dict] = None,
+        test_dict: Optional[Dict] = None,
         var_list: Optional[list] = None,
     ):
         """
@@ -156,6 +176,9 @@ class CellGenDataModule(LightningDataModule):
         self.train_indices = train_indices
         self.val_indices = val_indices
         self.test_indices = test_indices
+        self.train_dict = train_dict
+        self.val_dict = val_dict
+        self.test_dict = test_dict
         self.time_steps = time_steps
         self.total_time_steps = total_time_steps
         self.var_list = var_list
@@ -170,6 +193,7 @@ class CellGenDataModule(LightningDataModule):
                     src_dataset=self.src_dataset,
                     tgt_datasets=self.tgt_datasets,
                     split_indices=self.train_indices,
+                    split_dict=self.train_dict,
                     src_counts=self.src_counts,
                     tgt_counts_dict=self.tgt_counts_dict,
                     time_steps=self.time_steps,
@@ -185,6 +209,7 @@ class CellGenDataModule(LightningDataModule):
                         src_dataset=self.src_dataset,
                         tgt_datasets=self.tgt_datasets,
                         split_indices=self.val_indices,
+                        split_dict=self.val_dict,
                         src_counts=self.src_counts,
                         tgt_counts_dict=self.tgt_counts_dict,
                         time_steps=self.time_steps,
@@ -202,6 +227,7 @@ class CellGenDataModule(LightningDataModule):
                     src_dataset=self.src_dataset,
                     tgt_datasets=self.tgt_datasets,
                     split_indices=self.train_indices,
+                    split_dict=self.train_dict,
                     src_counts=self.src_counts,
                     tgt_counts_dict=self.tgt_counts_dict,
                     time_steps=self.time_steps,
@@ -211,6 +237,7 @@ class CellGenDataModule(LightningDataModule):
                         src_dataset=self.src_dataset,
                         tgt_datasets=self.tgt_datasets,
                         split_indices=self.val_indices,
+                        split_dict=self.val_dict,
                         src_counts=self.src_counts,
                         tgt_counts_dict=self.tgt_counts_dict,
                         time_steps=self.time_steps,
@@ -225,6 +252,7 @@ class CellGenDataModule(LightningDataModule):
                     src_dataset=self.src_dataset,
                     tgt_datasets=self.tgt_datasets,
                     split_indices=self.test_indices,
+                    split_dict=self.test_dict,
                     src_counts=self.src_counts,
                     tgt_counts_dict=self.tgt_counts_dict,
                     time_steps=self.time_steps,
@@ -240,6 +268,7 @@ class CellGenDataModule(LightningDataModule):
                     src_dataset=self.src_dataset,
                     tgt_datasets=self.tgt_datasets,
                     split_indices=self.test_indices,
+                    split_dict=self.test_dict,
                     src_counts=self.src_counts,
                     tgt_counts_dict=self.tgt_counts_dict,
                     time_steps=self.time_steps,
