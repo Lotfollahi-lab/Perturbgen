@@ -22,11 +22,20 @@ from geneformer import EmbExtractor
 from geneformer.emb_extractor import get_embs, label_cell_embs
 from scipy.sparse import csr_matrix
 from torch.nn.functional import cosine_similarity
-from torch.utils.data import Subset
+from torch.utils.data import Subset, WeightedRandomSampler
 from torchmetrics import PearsonCorrCoef
 
 
 def read_dataset_files(directory: str, file_type: str):
+    '''
+    Description:
+    ------------
+    Read dataset files from a directory and
+    return a dictionary of datasets amd max input_id.
+
+
+
+    '''
     dataset_dict = {}
     for filename in os.listdir(directory):
         if filename.endswith(f'.{file_type}'):
@@ -631,6 +640,27 @@ def pairing_src_to_tgt_cells(
     else:
         raise ValueError('pairing_mode must be either random or stratified')
     return cell_pairings
+
+
+def weighted_sampler(dataset_list):
+    '''
+    Description:
+    ------------
+    Create weighted sampler without replacement for dataloader based on dataset lengths.
+    Samples are weighted based on the inverse of dataset lengths to balance the dataset.
+
+    Parameters:
+    -----------
+    dataset_list: `List[datasets.Dataset]`
+        List of datasets.
+    '''
+    lengths = [len(dataset) for dataset in dataset_list]
+    weights = [1.0 / length for length in lengths for _ in range(length)]
+    sampler = WeightedRandomSampler(
+        weights, num_samples=len(weights), replacement=False
+    )
+
+    return sampler
 
 
 def filter_dataset(

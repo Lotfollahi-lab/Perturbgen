@@ -1,5 +1,9 @@
 import pickle
-from typing import Dict, Optional
+from typing import (
+    Dict,
+    List,
+    Optional,
+)
 from warnings import warn
 
 import numpy as np
@@ -11,7 +15,13 @@ from geneformer.perturber_utils import pad_tensor_list
 from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningDataModule
 from scipy.sparse import csr_matrix
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import (
+    ConcatDataset,
+    DataLoader,
+    Dataset,
+)
+
+from T_perturb.src.utils import weighted_sampler
 
 
 # Dummy dataset
@@ -42,78 +52,57 @@ class CellGenDataset(Dataset):
         src_dataset: DatasetDict,
         tgt_datasets: DatasetDict,
         time_steps: list = [1, 2],
+        split_indices: Dict = {},
         src_counts: np.ndarray = None,
         tgt_counts_dict: np.ndarray = None,
-        split_indices: Optional[list] = None,
-        split_dict: Optional[dict] = None,
         conditions: Optional[torch.Tensor] = None,
         conditions_combined: Optional[torch.Tensor] = None,
-        condition_encodings: Optional[dict] = None,
+        condition_encodings: Optional[Dict] = None,
     ):
         super().__init__()
-        self.tgt_datasets = tgt_datasets
-        self.tgt_counts_dict = tgt_counts_dict
         self.conditions = conditions
         self.conditions_combined = conditions_combined
         self.condition_encodings = condition_encodings
         self.time_steps = time_steps
-        self.src_datasets = {}
-        self.src_counts = {}
-        self.tgt_datasets = {}
-        if split_dict is not None:
-            for key, mapping_dict in split_dict.items():
-                print(len(mapping_dict))
-                # src indices are stored in mapping dict keys
-                src_keys = f'src_dataset_{key}'
-                count_keys = f'src_h5ad_{key}'
-                self.src_datasets[src_keys] = src_dataset.select(mapping_dict.keys())
-                print(src_counts)
-                print(src_counts.shape)
-                self.src_counts[count_keys] = src_counts[mapping_dict.keys(), :]
-                print(self.src_counts[count_keys].shape)
-                self.tgt_datasets[key] = tgt_datasets[key].select(mapping_dict.values())
-                # tgt indices are stored in mapping dict values
 
-        raise
-        if split_indices is not None:
-            self.src_dataset = src_dataset.select(split_indices)
-            self.tgt_datasets = {}
-            self.tgt_counts_dict = {}
-            if src_counts is not None:
-                self.src_counts = src_counts[split_indices, :]
+        self.src_dataset_paired: DatasetDict = None
+        self.tgt_dataset_paired: DatasetDict = None
+        self.src_counts_paired: np.ndarray = None
+        self.tgt_counts_paired: np.ndarray = None
 
-            for t in time_steps:
-                dataset_keys_ = f'tgt_dataset_t{t}'
-                count_keys_ = f'tgt_h5ad_t{t}'
-                self.tgt_datasets[dataset_keys_] = tgt_datasets[dataset_keys_].select(
-                    split_indices
-                )
-                if tgt_counts_dict is not None:
-                    self.tgt_counts_dict[count_keys_] = tgt_counts_dict[count_keys_][
-                        split_indices, :
-                    ]
+        src_indices = list(split_indices.keys())
+        self.src_dataset_paired = src_dataset.select(src_indices)
+        if src_counts is not None:
+            self.src_counts_paired = src_counts[src_indices, :]
+
+        tgt_indices = list(split_indices.values())
+
+        self.tgt_dataset_paired = tgt_datasets.select(tgt_indices)
+        if tgt_counts_dict is not None:
+            self.tgt_counts_paired = tgt_counts_dict[tgt_indices, :]
         if max(time_steps) > len(tgt_datasets):
             raise ValueError('Number of time steps is greater than number of datasets')
-        src_len = len(self.src_dataset)
-        tgt_len = len(self.tgt_datasets[f'tgt_dataset_t{time_steps[0]}'])
+        src_len = len(self.src_dataset_paired)
+        tgt_len = len(self.tgt_dataset_paired)
         if src_len != tgt_len:
             warn('src and tgt dataset have different length')
         self.dataset_length = min(src_len, tgt_len)
 
     def __getitem__(self, ind):
         out = {
-            'src_dataset': self.src_dataset[ind],
-            'src_counts': self.src_counts[ind],
+            'src_dataset': self.src_dataset_paired[ind],
+            'src_counts': self.src_counts_paired[ind]
+            if self.src_counts_paired is not None
+            else None,
+            'tgt_dataset': self.tgt_dataset_paired[ind],
+            'tgt_counts': self.tgt_counts_paired[ind]
+            if self.tgt_counts_paired is not None
+            else None,
             'conditions': self.conditions[ind] if self.conditions is not None else None,
             'conditions_combined': self.conditions_combined[ind]
             if self.conditions_combined is not None
             else None,
         }
-        for t in self.time_steps:
-            dataset_keys_ = f'tgt_dataset_t{t}'
-            out[dataset_keys_] = self.tgt_datasets[dataset_keys_][ind]
-            out[f'tgt_counts_t{t}'] = self.tgt_counts_dict[f'tgt_h5ad_t{t}'][ind]
-
         return out
 
     def __len__(self):
@@ -182,112 +171,80 @@ class CellGenDataModule(LightningDataModule):
         self.time_steps = time_steps
         self.total_time_steps = total_time_steps
         self.var_list = var_list
+
+        self.train_dataset_list: List[Dataset] = []
+        self.val_dataset_list: List[Dataset] = []
+        self.test_dataset_list: List[Dataset] = []
         # create condition encoder for categorical variables in
         # form of dictionary with key: value pairs based on condition_keys
 
     def setup(self, stage=None):
-        # Assign train/val datasets for use in dataloaders
-        if stage == 'fit' or stage is None:
+        print(self.tgt_datasets.keys())
+
+        for i in range(1, len(self.tgt_datasets) + 1):
+            str_i = str(i)
+            dataset_params = {
+                'src_dataset': self.src_dataset,
+                'src_counts': self.src_counts,
+                'tgt_datasets': self.tgt_datasets[f'tgt_dataset_t{str_i}'],
+                'tgt_counts_dict': self.tgt_counts_dict[f'tgt_h5ad_t{str_i}'],
+                'time_steps': self.time_steps,
+            }
+
             if self.condition_encodings is not None:
-                self.train_dataset = CellGenDataset(
-                    src_dataset=self.src_dataset,
-                    tgt_datasets=self.tgt_datasets,
-                    split_indices=self.train_indices,
-                    split_dict=self.train_dict,
-                    src_counts=self.src_counts,
-                    tgt_counts_dict=self.tgt_counts_dict,
-                    time_steps=self.time_steps,
-                    conditions=self.conditions
+                condition_params = {
+                    'conditions': self.conditions
                     if self.condition_keys is not None
                     else None,
-                    conditions_combined=self.conditions_combined
+                    'conditions_combined': self.conditions_combined
                     if self.condition_keys is not None
                     else None,
+                }
+                dataset_params.update(condition_params)
+
+            mapping_dict_key = f'tgt_pkl_t{str_i}'
+            if stage == 'fit' or stage is None:
+                train_dataset = CellGenDataset(
+                    split_indices=self.train_dict[mapping_dict_key], **dataset_params
                 )
+                self.train_dataset_list.append(train_dataset)
                 if self.val_indices is not None:
                     self.val_dataset = CellGenDataset(
-                        src_dataset=self.src_dataset,
-                        tgt_datasets=self.tgt_datasets,
-                        split_indices=self.val_indices,
-                        split_dict=self.val_dict,
-                        src_counts=self.src_counts,
-                        tgt_counts_dict=self.tgt_counts_dict,
-                        time_steps=self.time_steps,
-                        conditions=self.conditions
-                        if self.condition_keys is not None
-                        else None,
-                        conditions_combined=self.conditions_combined
-                        if self.condition_keys is not None
-                        else None,
+                        split_indices=self.val_dict[mapping_dict_key], **dataset_params
                     )
                 else:
-                    self.val_dataset = None
-            else:
-                self.train_dataset = CellGenDataset(
-                    src_dataset=self.src_dataset,
-                    tgt_datasets=self.tgt_datasets,
-                    split_indices=self.train_indices,
-                    split_dict=self.train_dict,
-                    src_counts=self.src_counts,
-                    tgt_counts_dict=self.tgt_counts_dict,
-                    time_steps=self.time_steps,
+                    val_dataset = None
+                self.val_dataset_list.append(val_dataset)
+
+            if stage == 'test' or stage is None:
+                # use all time steps to provide as context
+                dataset_params['time_steps'] = list(range(1, self.total_time_steps + 1))
+
+                test_dataset = CellGenDataset(
+                    split_indices=self.test_dict[mapping_dict_key], **dataset_params
                 )
-                if self.val_indices is not None:
-                    self.val_dataset = CellGenDataset(
-                        src_dataset=self.src_dataset,
-                        tgt_datasets=self.tgt_datasets,
-                        split_indices=self.val_indices,
-                        split_dict=self.val_dict,
-                        src_counts=self.src_counts,
-                        tgt_counts_dict=self.tgt_counts_dict,
-                        time_steps=self.time_steps,
-                    )
-                else:
-                    self.val_dataset = None
-        if stage == 'test' or stage is None:
-            # use all time steps to provide as context
-            self.time_steps = list(range(1, self.total_time_steps + 1))
-            if self.condition_encodings is not None:
-                self.test_dataset = CellGenDataset(
-                    src_dataset=self.src_dataset,
-                    tgt_datasets=self.tgt_datasets,
-                    split_indices=self.test_indices,
-                    split_dict=self.test_dict,
-                    src_counts=self.src_counts,
-                    tgt_counts_dict=self.tgt_counts_dict,
-                    time_steps=self.time_steps,
-                    conditions=self.conditions
-                    if self.condition_keys is not None
-                    else None,
-                    conditions_combined=self.conditions_combined
-                    if self.condition_keys is not None
-                    else None,
-                )
-            else:
-                self.test_dataset = CellGenDataset(
-                    src_dataset=self.src_dataset,
-                    tgt_datasets=self.tgt_datasets,
-                    split_indices=self.test_indices,
-                    split_dict=self.test_dict,
-                    src_counts=self.src_counts,
-                    tgt_counts_dict=self.tgt_counts_dict,
-                    time_steps=self.time_steps,
-                )
+                self.test_dataset_list.append(test_dataset)
 
     def train_dataloader(self):
+        train_dataset = ConcatDataset(self.train_dataset_list)
+        train_sampler = weighted_sampler(self.train_dataset_list)
         data = DataLoader(
-            self.train_dataset,
+            dataset=train_dataset,
             batch_size=self.batch_size,
-            shuffle=self.shuffle,
             num_workers=self.num_workers,
             collate_fn=self.collate,
+            sampler=train_sampler,
         )
         return data
 
     def val_dataloader(self):
         if self.split:
+            if self.val_indices is not None:
+                val_dataset = ConcatDataset(self.val_dataset_list)
+            else:
+                val_dataset = None
             data = DataLoader(
-                self.val_dataset,
+                dataset=val_dataset,
                 batch_size=self.batch_size,
                 shuffle=False,
                 num_workers=self.num_workers,
@@ -298,90 +255,71 @@ class CellGenDataModule(LightningDataModule):
             return []
 
     def test_dataloader(self):
+        test_dataset = ConcatDataset(self.test_dataset_list)
         data = DataLoader(
-            self.test_dataset,
+            dataset=test_dataset,
             batch_size=self.batch_size,
             shuffle=self.shuffle,
             num_workers=self.num_workers,
             collate_fn=self.collate,
-            # persistent_workers=True,
         )
         return data
 
     def collate(self, batch):
-        src_dataset = [d['src_dataset'] for d in batch if 'src_dataset' in d]
-        if src_dataset:
-            src_input_batch_id = [torch.tensor(d['input_ids']) for d in src_dataset]
-            src_length = torch.tensor([d['length'] for d in src_dataset])
-            model_input_size = torch.max(src_length)
-            src_input_batch_id = pad_tensor_list(
-                src_input_batch_id, self.max_len, self.pad_token_id, model_input_size
-            )
-        else:
-            src_input_batch_id, src_length = None, None
+        # src
+        src_input_ids = [torch.tensor(d['src_dataset']['input_ids']) for d in batch]
+        src_length = torch.tensor([d['src_dataset']['length'] for d in batch])
+        model_input_size = torch.max(src_length)
+        src_input_ids = pad_tensor_list(
+            src_input_ids, self.max_len, self.pad_token_id, model_input_size
+        )
         src_counts = None
         if 'src_counts' in batch[0]:
             if isinstance(batch[0]['src_counts'], csr_matrix):
                 src_counts = [torch.tensor(d['src_counts'].A) for d in batch]
-
             else:
                 src_counts = [torch.tensor(d['src_counts']) for d in batch]
             src_counts = torch.cat(src_counts, dim=0)
         if self.condition_encodings:
             condition = [d['conditions'] for d in batch]
             condition_combined = torch.stack([d['conditions_combined'] for d in batch])
+            print(condition_combined.shape)
         else:
             condition, condition_combined = None, None
-        # compute tgt size factor
+
+        # tgt
+        tgt_input_ids = [torch.tensor(d['tgt_dataset']['input_ids']) for d in batch]
+        tgt_length = torch.tensor([d['tgt_dataset']['length'] for d in batch])
+        tgt_input_ids = pad_tensor_list(
+            tgt_input_ids, self.max_len, self.pad_token_id, model_input_size
+        )
+        model_input_size = torch.max(tgt_length)
+        if isinstance(batch[0]['tgt_counts'], csr_matrix):
+            tgt_counts_matrices = [d['tgt_counts'].A for d in batch]
+        else:
+            tgt_counts_matrices = [d['tgt_counts'] for d in batch]
+
+        tgt_counts = [torch.tensor(matrix) for matrix in tgt_counts_matrices]
+        tgt_size_factor = [
+            torch.tensor(np.ravel(matrix.sum(axis=1))) for matrix in tgt_counts_matrices
+        ]
+        tgt_counts = torch.cat(tgt_counts, dim=0)
+        tgt_size_factor = torch.cat(tgt_size_factor, dim=0)
+        tgt_cell_idx = [d['tgt_dataset']['cell_pairing_index'] for d in batch]
         out = {
-            'src_input_ids': src_input_batch_id,
+            'src_input_ids': src_input_ids,
             'src_length': src_length,
             'src_counts': src_counts,
             'batch': condition,
             'combined_batch': condition_combined,
+            'tgt_input_ids': tgt_input_ids,
+            'tgt_length': tgt_length,
+            'tgt_counts': tgt_counts,
+            'tgt_size_factor': tgt_size_factor,
+            'tgt_cell_idx': tgt_cell_idx,
         }
-
-        for time_step in self.time_steps:
-            if isinstance(batch[0][f'tgt_counts_t{time_step}'], csr_matrix):
-                tgt_counts = [
-                    torch.tensor(d[f'tgt_counts_t{time_step}'].A) for d in batch
-                ]
-                tgt_size_factor = [
-                    torch.tensor(np.ravel(d[f'tgt_counts_t{time_step}'].A.sum(axis=1)))
-                    for d in batch
-                ]
-            else:
-                tgt_counts = [
-                    torch.tensor(d[f'tgt_counts_t{time_step}']) for d in batch
-                ]
-                tgt_size_factor = [
-                    torch.tensor(np.ravel(d[f'tgt_counts_t{time_step}'].sum(axis=1)))
-                    for d in batch
-                ]
-            out[f'tgt_counts_t{time_step}'] = torch.cat(tgt_counts, dim=0)
-            out[f'tgt_size_factor_t{time_step}'] = torch.cat(tgt_size_factor, dim=0)
-
-            # create input ids
-            dataset = f'tgt_dataset_t{time_step}'
-            out[f'tgt_input_ids_t{time_step}'] = [
-                torch.tensor(d[dataset]['input_ids']) for d in batch
-            ]
-            length = [d[dataset]['length'] for d in batch]
-            out[f'tgt_length_t{time_step}'] = torch.tensor(length)
-            model_input_size = torch.max(out[f'tgt_length_t{time_step}'])
-            out[f'tgt_cell_idx_t{time_step}'] = [
-                d[dataset]['cell_pairing_index'] for d in batch
-            ]
-            for var in self.var_list:
-                out[f'{var}_t{time_step}'] = [d[dataset][var] for d in batch]
-
-            out[f'tgt_input_ids_t{time_step}'] = pad_tensor_list(
-                out[f'tgt_input_ids_t{time_step}'],
-                self.max_len,
-                self.pad_token_id,
-                model_input_size,
-            )
-
+        for var in self.var_list:
+            out[var] = [d['tgt_dataset'][var] for d in batch]
         return out
 
 

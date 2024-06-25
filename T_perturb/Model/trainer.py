@@ -120,19 +120,14 @@ class CellGenTrainer(LightningModule):
 
         self.marker_genes = None
         self.gene_names = gene_names
-        # register buffer for CLS
-        total_vocab_size = tgt_vocab_size
         # initialize cls token for all time steps
-        for i in range(1, total_time_steps + 1):
-            # i-1, as first token is tgt_vocab_size
-            self.register_buffer(
-                f'cls_token_{str(i)}',
-                torch.tensor(
-                    [total_vocab_size + (i - 1)],
-                    dtype=torch.long,
-                ),
-            )
-            print(f'cls_token_{str(i)}', getattr(self, f'cls_token_{str(i)}'))
+        self.register_buffer(
+            'cls_token',
+            torch.tensor(
+                [25426],
+                dtype=torch.long,
+            ),
+        )
         self.output_dir = output_dir
         # create directory if not exist
         if not os.path.exists(self.output_dir):
@@ -141,25 +136,18 @@ class CellGenTrainer(LightningModule):
         self.context_mode = context_mode
 
     def forward(self, batch):
-        tgt_input_id_dict = {}
-        for i in self.time_steps:
-            tgt_input_id_ = torch.cat(
-                (
-                    getattr(self, f'cls_token_{str(i)}').expand(
-                        batch[f'tgt_input_ids_t{i}'].shape[0], -1
-                    ),
-                    batch[f'tgt_input_ids_t{i}'],
-                ),
-                dim=1,
-            )
-            tgt_input_id_dict[f'tgt_input_id_t{i}'] = tgt_input_id_
-        interval = batch[f'tgt_input_ids_t{i}'].shape[1] + 1  # as 0 is cls token
-        num_steps = len(self.time_steps)
-        cls_positions = np.arange(0, num_steps * interval, interval)
+        condition = int(self.cls_token[0]) > torch.max(batch['tgt_input_ids'])
+        assert condition, 'CLS token is smaller than max tgt_input_id'
+        tgt_input_id = torch.cat(
+            (
+                getattr(self, 'cls_token').expand(batch['tgt_input_ids'].shape[0], -1),
+                batch['tgt_input_ids'],
+            ),
+            dim=1,
+        )
         outputs = self.transformer(
             src_input_id=batch['src_input_ids'],
-            tgt_input_id_dict=tgt_input_id_dict,
-            cls_positions=cls_positions,
+            tgt_input_id=tgt_input_id,
             not_masked=self.return_embeddings,
             context_mode=self.context_mode,
         )

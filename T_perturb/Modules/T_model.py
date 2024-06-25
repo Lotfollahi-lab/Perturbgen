@@ -822,6 +822,7 @@ class CellGen(nn.Module):
         src_input_id: torch.Tensor,
         not_masked: bool = False,
         context_mode: bool = False,
+        tgt_input_id: Optional[torch.Tensor] = None,
         cls_positions: Optional[torch.Tensor] = None,
         tgt_time_step: Optional[int] = None,
         tgt_input_id_dict: Optional[dict] = None,
@@ -836,7 +837,7 @@ class CellGen(nn.Module):
         Parameters:
         -----------
         src_input_id: `torch.Tensor`
-            Source token input.
+            Source src token ids input.
         tgt_input_id_dict: `dict`
             Dictionary of target token inputs from different time steps.
         generate_id_dict: `dict`
@@ -851,6 +852,8 @@ class CellGen(nn.Module):
             Whether to mask tokens. Should not be masked for testing and generation.
         context_mode: `bool`
             Whether to use context mode, where other time steps are used as context.
+        tgt_input_id: `Optional[dict]`
+            Dictionary of target token ids input.
 
         Returns:
         --------
