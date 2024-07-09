@@ -836,8 +836,6 @@ class CellGen(nn.Module):
             labels = None
             tgt_embedding = self.token_embedding(tgt_input_id)
             tgt_embedding = self.positional_encoding(tgt_embedding)
-
-            print('--*' * 10, 'no context is provided', '--*' * 10)
             # does not include any context
             outputs = self.call_decoder(
                 enc_output=enc_output,
@@ -866,8 +864,6 @@ class CellGen(nn.Module):
             # rest will be padded
             # ---Initialise the decoder embeddings
             # to provide as context for selected time step---
-
-            print('--*' * 10, 'no context is provided', '--*' * 10)
             tgt_embedding = self.token_embedding(tgt_input_id)
             tgt_embedding = self.positional_encoding(tgt_embedding)
             outputs = self.call_decoder(
@@ -880,8 +876,7 @@ class CellGen(nn.Module):
                 labels=labels,
                 cls_positions=cls_positions,
             )
-            print(outputs)
-            raise
+
         return outputs
 
 

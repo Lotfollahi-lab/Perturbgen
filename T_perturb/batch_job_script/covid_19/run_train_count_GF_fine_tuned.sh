@@ -23,7 +23,8 @@ export WANDB_DIR=$cwd/wandb
 echo "--- Start computing model"
 
 #interpolation
-python3 $cwd/train.py \
+# python3 $cwd/train.py \
+python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/train.py \
 --train_mode count \
 --split False \
 --splitting_mode stratified \

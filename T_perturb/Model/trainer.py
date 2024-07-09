@@ -136,6 +136,7 @@ class CellGenTrainer(LightningModule):
         self.context_mode = context_mode
 
     def forward(self, batch):
+        # Initialize an empty dictionary to count occurrences
         condition = int(self.cls_token[0]) > torch.max(batch['tgt_input_ids'])
         assert condition, 'CLS token is smaller than max tgt_input_id'
         tgt_input_id = torch.cat(
@@ -193,7 +194,7 @@ class CellGenTrainer(LightningModule):
             on_epoch=True,
             prog_bar=True,
             logger=True,
-            batch_size=batch['tgt_input_ids_t1'].shape[0],
+            batch_size=batch['src_input_ids'].shape[0],
             rank_zero_only=True,
             sync_dist=True,
         )
@@ -205,7 +206,7 @@ class CellGenTrainer(LightningModule):
             on_epoch=True,
             prog_bar=True,
             logger=True,
-            batch_size=batch['tgt_input_ids_t1'].shape[0],
+            batch_size=batch['src_input_ids'].shape[0],
             rank_zero_only=True,
             sync_dist=True,
         )
@@ -233,7 +234,7 @@ class CellGenTrainer(LightningModule):
             on_epoch=True,
             prog_bar=True,
             logger=True,
-            batch_size=batch['tgt_input_ids_t1'].shape[0],
+            batch_size=batch['src_input_ids'].shape[0],
             rank_zero_only=True,
             sync_dist=True,
         )
@@ -244,7 +245,7 @@ class CellGenTrainer(LightningModule):
             on_epoch=True,
             prog_bar=True,
             logger=True,
-            batch_size=batch['tgt_input_ids_t1'].shape[0],
+            batch_size=batch['src_input_ids'].shape[0],
             rank_zero_only=True,
             sync_dist=True,
         )
