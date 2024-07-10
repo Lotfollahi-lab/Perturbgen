@@ -84,6 +84,34 @@ def map_ensembl_to_genename(
     return adata
 
 
+def mean_nonpadding_embs(embs, pad, dim=1):
+    '''
+    Compute the mean of the non-padding embeddings.
+    Modified from Geneformer:
+    https://huggingface.co/ctheodoris/Geneformer/blob/main/geneformer/perturber_utils.py # noqa
+    Accessed: 2024-05-14
+    '''
+    # mask should be opposite of pad
+    pad[:, 0] = True
+    # our mask is the opposite of BERT mask
+    pad_mask = ~pad
+    # create a tensor of original lengths
+    original_lens = pad_mask.sum(dim=1)
+
+    # create CLS token mask
+    if embs.dim() == 3:
+        # fill the masked positions in embs with zeros
+        masked_embs = embs.masked_fill(~pad_mask.unsqueeze(2), 0.0)
+
+        # compute the mean across the non-padding dimensions
+        mean_embs = masked_embs.sum(dim) / original_lens.view(-1, 1).float()
+
+    elif embs.dim() == 2:
+        masked_embs = embs.masked_fill(~pad_mask, 0.0)
+        mean_embs = masked_embs.sum(dim) / original_lens.float()
+    return mean_embs
+
+
 def compute_cos_similarity(
     outputs: dict,
     time_step: int,
@@ -520,7 +548,7 @@ def pairing_src_to_tgt_cells(
     pairing_obs: str,
     dataset_type: str,
     seed_no: int = 42,
-    src_condition: Optional[str] = None,
+    src_condition: Optional[List[str]] = None,
     tgt_conditions: Optional[List[str]] = None,
 ) -> Dict[str, List[str]]:
     """
@@ -541,7 +569,7 @@ def pairing_src_to_tgt_cells(
         obs column name in anndate which is used as pairing condition
     seed: `int`
         Seed for random number generator.
-    src_condition: `Optional[str]`
+    src_condition: `Optional[List[str]]`
         Source/control condition for cell pairing.
         Select a category in pairing_obs column.
     tgt_conditions: `Optional[List[str]]`
@@ -591,32 +619,43 @@ def pairing_src_to_tgt_cells(
 
     elif pairing_mode == 'random':
         max_reference_cond = ''
-        for condition in adata_subset.obs[pairing_obs].unique():
-            adata_dict[condition] = adata_subset.obs.loc[
-                adata_subset.obs[pairing_obs] == condition, :
-            ]
-            adata_dict[condition] = adata_dict[condition].reset_index()
-            if (
-                (dataset_type == 'conditional')
-                and (tgt_conditions is not None)
-                and (src_condition is not None)
-            ):
-                if condition in tgt_conditions:
-                    tgt_indices = adata_dict[condition].index.tolist()
-                    tmp_cell_no = len(tgt_indices)
-                    mapping_name = f'{src_condition}_{condition}'
-                    src_indices = np.random.choice(
-                        adata_dict[src_condition].index, tmp_cell_no, replace=True
-                    ).tolist()
-                    cell_pairings[mapping_name] = dict(zip(src_indices, tgt_indices))
-                elif condition == src_condition:
-                    pass
-                else:
-                    raise ValueError(f'{condition} not in {pairing_obs}')
-            # Check if this adata_tmp has more rows than the current maximum
-            elif dataset_type == 'temporal':
-                tgt_cell_no = len(adata_dict[condition])
-                max_reference_cond = condition
+        if src_condition is not None:
+            for condition in src_condition:
+                adata_dict[condition] = adata_subset.obs.loc[
+                    adata_subset.obs[pairing_obs] == condition, :
+                ]
+                adata_dict[condition] = adata_dict[condition].reset_index()
+        if tgt_conditions is not None:
+            for condition in tgt_conditions:
+                adata_dict[condition] = adata_subset.obs.loc[
+                    adata_subset.obs[pairing_obs] == condition, :
+                ]
+                adata_dict[condition] = adata_dict[condition].reset_index()
+                if (
+                    (dataset_type == 'conditional')
+                    and (tgt_conditions is not None)
+                    and (src_condition is not None)
+                ):
+                    if condition in tgt_conditions:
+                        tgt_indices = adata_dict[condition].index.tolist()
+                        tmp_cell_no = len(tgt_indices)
+                        mapping_name = f'{src_condition[0]}_{condition}'
+                        src_indices = np.random.choice(
+                            adata_dict[src_condition[0]].index,
+                            tmp_cell_no,
+                            replace=True,
+                        ).tolist()
+                        cell_pairings[mapping_name] = dict(
+                            zip(src_indices, tgt_indices)
+                        )
+                    elif condition in src_condition:
+                        pass
+                    else:
+                        raise ValueError(f'{condition} not in {pairing_obs}')
+                # Check if this adata_tmp has more rows than the current maximum
+                elif dataset_type == 'temporal':
+                    tgt_cell_no = len(adata_dict[condition])
+                    max_reference_cond = condition
 
         if dataset_type == 'temporal':
             # randomly sample from each condition

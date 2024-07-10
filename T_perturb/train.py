@@ -429,8 +429,6 @@ def main() -> None:
         conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
 
     print('Data loaded and preprocessed.')
-    # count number of unique timepoints
-    n_total_timepoints = len(tgt_adatas)
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.train_mode == 'masking':
@@ -449,7 +447,6 @@ def main() -> None:
             # lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
             mapping_dict_path=args.gene_mapping_dir,
             output_dir=args.output_dir,
             mode=args.mode,
@@ -475,7 +472,6 @@ def main() -> None:
             dropout=args.count_dropout,
             tgt_adata=tgt_adatas,
             time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
             temperature=args.temperature,
             iterations=args.iterations,
             mask_scheduler=args.mask_scheduler,
@@ -513,7 +509,6 @@ def main() -> None:
             val_dict=val_dict,
             test_dict=test_dict,
             time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
             var_list=args.var_list,
         )
     elif args.train_mode == 'count':
@@ -538,7 +533,6 @@ def main() -> None:
             val_dict=val_dict,
             test_dict=test_dict,
             time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
             var_list=args.var_list,
         )
     # Setup trainer
@@ -636,6 +630,8 @@ def main() -> None:
         accelerator='auto',
         devices=-1 if torch.cuda.is_available() else 0,
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
+        limit_train_batches=100,
+        limit_val_batches=10,
     )
     print('Starting training...')
     if os.getcwd().split('/')[-1] != 'healthy_imm_expr':

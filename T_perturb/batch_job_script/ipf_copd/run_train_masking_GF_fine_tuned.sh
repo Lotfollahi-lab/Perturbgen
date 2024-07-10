@@ -7,7 +7,7 @@
 #BSUB -o logs/ipf_copd_masking_%J.out # output file
 #BSUB -e logs/ipf_copd_masking_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
-#BSUB -R 'span[ptile=2]'  # Allocate 4 CPU cores per node
+#BSUB -R 'span[ptile=32]'  # Allocate 4 CPU cores per node
 #BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
 #BSUB -J ipf_copd_masking # job name
 
@@ -35,14 +35,14 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --tgt_adata_folder "./CellGen-reproducibility/ipf_copd/processed_data/h5ad_pairing_hvg_tgt" \
 --cell_pairing_dir "./CellGen-reproducibility/ipf_copd/processed_data/cell_pairing" \
 --gene_mapping_dir  "./CellGen-reproducibility/ipf_copd/processed_data/tokenid_to_rowid_hvg.pkl" \
---batch_size 64 \
+--batch_size 32 \
 --max_len 1650 \
 --epochs 50 \
 --tgt_vocab_size 25426 \
 --cellgen_lr 0.0001 \
 --cellgen_wd 0.0001 \
 --mlm_prob 0.15 \
---n_workers 16 \
+--n_workers 4 \
 --d_ff 128 \
 --num_layers 6 \
 --time_steps 1 \

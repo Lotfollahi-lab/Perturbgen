@@ -8,6 +8,7 @@ from typing import Optional
 import torch
 from einops import rearrange, repeat
 from torch import einsum, nn
+from torch.functional import F
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from tqdm import tqdm
 from transformers import BertForMaskedLM
@@ -15,6 +16,7 @@ from transformers import BertForMaskedLM
 from T_perturb.src.utils import (
     generate_pad,
     gumbel_sample,
+    mean_nonpadding_embs,
     noise_schedule,
     top_k,
 )
@@ -197,6 +199,96 @@ class CrossAttention(nn.Module):
         return self.to_out(out)
 
 
+class SoftGating(nn.Module):
+    '''
+    Description:
+    ------------
+    Soft gating MoE mechanism for token routing for transformers.
+    Expert entities consist of self attention modules.
+
+    Parameters:
+    -----------
+    dim: `int`
+        Query dimension.
+    num_experts: `int`
+        Number of experts.
+    num_classes: `int`
+        Number of classes.
+    top_k: `int`
+        Number of top experts to keep.
+    dropout: `float`
+        Dropout rate.
+
+    Returns:
+    --------
+    attn_output: `torch.Tensor`
+        Output tensor.
+    moe_embs_dict: `dict`
+        Dictionary of expert embeddings aggregated by mean non-padding tokens.
+    '''
+
+    def __init__(
+        self,
+        dim: int,
+        num_experts: int,
+        num_classes: int,
+        top_k: int,
+        num_heads: int = 8,
+        d_ff: int = 64,
+        dropout: float = 0.0,
+    ):
+        super().__init__()
+        self.top_k = top_k
+        # Initialize experts
+        self.experts = nn.ModuleList(
+            [
+                CrossAttention(
+                    query_dim=dim,
+                    num_heads=num_heads,
+                    dim_head=d_ff,
+                    dropout=dropout,
+                    context_dim=None,
+                )
+                for _ in range(num_experts)
+            ]
+        )
+        # learn gate weights one on batch and one on token level
+        self.token_gating_layer = nn.Linear(dim, num_experts)
+        self.classifier_fc = nn.Linear(dim, num_classes)
+
+    def forward(self, x, tgt_mask):
+        # Filter to keep only the top-k experts active
+        gate_logits = self.token_gating_layer(x)
+
+        top_k_values, top_k_indices = torch.topk(gate_logits, self.top_k)
+        gate_probs = F.softmax(top_k_values, dim=-1)
+
+        # Soft gating token routing mechanism
+        attn_output = torch.zeros_like(x)
+        moe_embs_dict = {}
+        for i, expert in enumerate(self.experts):
+            mask = top_k_indices == (i)
+            # # compute proportion of tokens assigned to each expert
+            # proportion = mask.sum() / (mask.size(0) * mask.size(1))
+            # what happens to padding, should we prevent padding
+            if mask.any():
+                # Sum the gating probabilities for this expert
+                selected_gate_probs = (gate_probs * mask.float()).sum(dim=-1)
+                mask = mask.any(dim=-1)
+                expert_input = x * mask.unsqueeze(-1).float()
+                expert_output = expert(expert_input, mask=tgt_mask)
+                weighted_output = (
+                    expert_output
+                    * mask.unsqueeze(-1).float()
+                    * selected_gate_probs.unsqueeze(-1).float()
+                )
+                moe_embs_dict[expert] = mean_nonpadding_embs(
+                    embs=weighted_output, pad=tgt_mask
+                )
+                attn_output += weighted_output
+        return attn_output, moe_embs_dict
+
+
 class Block(nn.Module):
     def __init__(
         self,
@@ -207,7 +299,11 @@ class Block(nn.Module):
         dropout: float = 0.0,
         act_layer: nn.Module = nn.GELU,
         norm_layer: nn.Module = nn.LayerNorm,
+        moe: bool = False,
         context_dim: Optional[int] = None,
+        num_experts: int = 3,
+        num_classes: int = 3,
+        top_k: int = 2,
     ):
         '''
         Description:
@@ -241,9 +337,21 @@ class Block(nn.Module):
         '''
         super().__init__()
         self.norm1 = norm_layer(dim)
-        # self attention by not passing context dim
         self.self_attn = CrossAttention(
-            query_dim=dim, num_heads=num_heads, dim_head=d_ff, dropout=dropout
+            query_dim=dim,
+            context_dim=None,
+            num_heads=num_heads,
+            dim_head=d_ff,
+            dropout=dropout,
+        )
+        self.moe = SoftGating(
+            dim=dim,
+            num_experts=num_experts,
+            num_classes=num_classes,
+            num_heads=num_heads,
+            d_ff=d_ff,
+            top_k=top_k,
+            dropout=dropout,
         )
         self.norm2 = norm_layer(dim)
         self.cross_attn = CrossAttention(
@@ -259,15 +367,21 @@ class Block(nn.Module):
         )  # add hidden size
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None):
-        attn_output = self.self_attn(x, mask=tgt_mask)
-        x = self.norm1(x + self.dropout(attn_output))
+    def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None, moe=False):
+        if moe:
+            attn_output, moe_embs_dict = self.moe(x, tgt_mask)
+            x = self.norm1(x + self.dropout(attn_output))
+
+        else:
+            attn_output = self.self_attn(x, mask=tgt_mask)
+            x = self.norm1(x + self.dropout(attn_output))
+            moe_embs_dict = None
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
         x = self.norm2(x + self.dropout(attn_output))
         ff_output = self.feed_forward(x)
         x = self.norm3(x + self.dropout(ff_output))
 
-        return x
+        return x, moe_embs_dict
 
 
 class Geneformerwrapper(nn.Module):
@@ -421,7 +535,7 @@ class CellGen(nn.Module):
         dropout: float = 0.0,
         mlm_probability: float = 0.3,
         time_steps: list = [1, 2],
-        total_time_steps: int = 3,
+        n_task_conditions: int = 3,
         mode='GF_frozen',
     ):
         '''
@@ -450,7 +564,7 @@ class CellGen(nn.Module):
             Fraction of tokens to mask.
         time_steps: `list`
             List of time steps for training and testing.
-        total_time_steps: `int`
+        n_task_conditions: `int`
             Total number of time steps.
         mode: `str`
             Mode of the encoder.
@@ -479,10 +593,10 @@ class CellGen(nn.Module):
         self.dropout = dropout
 
         total_vocab_size = (
-            tgt_vocab_size + total_time_steps
+            tgt_vocab_size + n_task_conditions
         )  # add one for each cls token
         self.time_steps = time_steps
-        self.total_time_steps = list(range(1, total_time_steps + 1))
+        self.n_task_conditions = list(range(1, n_task_conditions + 1))
         self.mask_token = total_vocab_size
         total_vocab_size = total_vocab_size + 1  # add one for padding token
         self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
@@ -496,7 +610,7 @@ class CellGen(nn.Module):
             self.encoder_layers = Encoder(
                 total_vocab_size=total_vocab_size,
                 max_seq_length=max_seq_length,
-                n_time_steps=total_time_steps,
+                n_time_steps=n_task_conditions,
             )
         else:
             raise ValueError(f'Invalid encoder mode: {mode}')
@@ -510,6 +624,9 @@ class CellGen(nn.Module):
                     d_ff=d_ff,
                     hidden_size=d_model,
                     dropout=dropout,
+                    top_k=2,
+                    num_experts=3,
+                    num_classes=3,
                 )
                 for _ in range(num_layers)
             ]
@@ -541,32 +658,6 @@ class CellGen(nn.Module):
 
     #     return labels, tgt_mask
     # get cell embeddings excluding padding
-    def mean_nonpadding_embs(self, embs, pad, dim=1):
-        '''
-        Compute the mean of the non-padding embeddings.
-        Modified from Geneformer:
-        https://huggingface.co/ctheodoris/Geneformer/blob/main/geneformer/perturber_utils.py # noqa
-        Accessed: 2024-05-14
-        '''
-        # mask should be opposite of pad
-        pad[:, 0] = True
-        # our mask is the opposite of BERT mask
-        pad_mask = ~pad
-        # create a tensor of original lengths
-        original_lens = pad_mask.sum(dim=1)
-
-        # create CLS token mask
-        if embs.dim() == 3:
-            # fill the masked positions in embs with zeros
-            masked_embs = embs.masked_fill(~pad_mask.unsqueeze(2), 0.0)
-
-            # compute the mean across the non-padding dimensions
-            mean_embs = masked_embs.sum(dim) / original_lens.view(-1, 1).float()
-
-        elif embs.dim() == 2:
-            masked_embs = embs.masked_fill(~pad_mask, 0.0)
-            mean_embs = masked_embs.sum(dim) / original_lens.float()
-        return mean_embs
 
     def generate_mask(self, tgt_input_id, tgt_pad, mlm_probability=0.15):
         '''
@@ -653,18 +744,18 @@ class CellGen(nn.Module):
         src_attention_mask,
         dec_embedding,
         tgt_pad,
-        time_random,
         generate=False,
         labels=None,
         cls_positions=None,
     ):
         for dec_layer in self.decoder_block:
             # see if concatenation of cls embedding
-            dec_embedding = dec_layer(
+            dec_embedding, moe_embedding_dict = dec_layer(
                 x=dec_embedding,
                 src_mask=src_attention_mask,
                 tgt_mask=tgt_pad,
                 enc_output=enc_output,
+                moe=True,
             )
         # :TODO rewrite this part logits not needed for running the other timepoints
         outputs = {}
@@ -672,20 +763,22 @@ class CellGen(nn.Module):
         if labels is not None:
             outputs['dec_logits'] = decoder_logits
             outputs['labels'] = labels
-            outputs['selected_time_step'] = time_random
+
         if generate is True:
             outputs['dec_embedding'] = dec_embedding
-            outputs['mean_embedding'] = self.mean_nonpadding_embs(
+            outputs['mean_embedding'] = mean_nonpadding_embs(
                 embs=dec_embedding,
                 pad=tgt_pad,
             )
+            outputs['moe_embedding_dict'] = moe_embedding_dict
             outputs['dec_logits'] = decoder_logits[:, 1:, :]
         else:
             outputs['dec_embedding'] = dec_embedding
-            outputs['mean_embedding'] = self.mean_nonpadding_embs(
+            outputs['mean_embedding'] = mean_nonpadding_embs(
                 embs=dec_embedding,
                 pad=tgt_pad,
             )
+            outputs['moe_embedding_dict'] = moe_embedding_dict
 
         if cls_positions is not None:
             outputs['cls_positions'] = cls_positions
@@ -792,7 +885,6 @@ class CellGen(nn.Module):
         context_mode: bool = False,
         tgt_input_id: Optional[torch.Tensor] = None,
         cls_positions: Optional[torch.Tensor] = None,
-        tgt_time_step: Optional[int] = None,
         generate_id_dict: Optional[dict] = None,
         generate_pad_dict: Optional[dict] = None,
     ):
@@ -842,7 +934,6 @@ class CellGen(nn.Module):
                 src_attention_mask=src_attention_mask,
                 dec_embedding=tgt_embedding,
                 tgt_pad=tgt_pad,
-                time_random=tgt_time_step,
                 generate=False,
                 labels=labels,
                 cls_positions=cls_positions,
@@ -871,7 +962,6 @@ class CellGen(nn.Module):
                 src_attention_mask=src_attention_mask,
                 dec_embedding=tgt_embedding,
                 tgt_pad=tgt_pad,
-                time_random=tgt_time_step,
                 generate=generate,
                 labels=labels,
                 cls_positions=cls_positions,
@@ -959,7 +1049,7 @@ class CountDecoder(nn.Module):
         add_mask_id: bool = True,
         dropout: float = 0.0,
         time_steps: list = [1, 2],
-        total_time_steps: int = 3,
+        n_task_conditions: int = 3,
     ):
         '''
         Description:
@@ -999,12 +1089,12 @@ class CountDecoder(nn.Module):
         self.loss_mode = loss_mode
         # exclude pad (-1) to get the number of genes
         self.count_decoder = CountHead(loss_mode, tgt_vocab_size - 1, d_model, dropout)
-        total_vocab_size = tgt_vocab_size + total_time_steps  # add one for cls token
+        total_vocab_size = tgt_vocab_size + n_task_conditions  # add one for cls token
         if add_mask_id:
             self.mask_token = total_vocab_size
 
         self.time_steps = time_steps
-        self.total_time_steps = list(range(1, total_time_steps + 1))
+        self.n_task_conditions = list(range(1, n_task_conditions + 1))
         self.cls_embedding = None
 
     def generate_pad(self, tgt):
@@ -1092,7 +1182,7 @@ class CountDecoder(nn.Module):
         generate_pad_dict = {}
         count_outputs = {}
         tgt_pad_dict = self.call_padding(
-            src_input_id, tgt_input_id_dict, self.total_time_steps
+            src_input_id, tgt_input_id_dict, self.n_task_conditions
         )
         for time_step in self.time_steps:
             generate_id_dict = {k: v.clone() for k, v in tgt_input_id_dict.items()}

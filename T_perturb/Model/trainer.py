@@ -63,7 +63,6 @@ class CellGenTrainer(LightningModule):
             './T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
         ),
         time_steps: list = [1, 2],
-        total_time_steps: int = 3,
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         var_list: List[str] = ['Time_point'],
         mode: str = 'GF_fine_tuned',
@@ -84,7 +83,6 @@ class CellGenTrainer(LightningModule):
             dropout=dropout,
             mlm_probability=mlm_probability,
             time_steps=time_steps,
-            total_time_steps=total_time_steps,
             mode=mode,
         )
 
@@ -120,14 +118,7 @@ class CellGenTrainer(LightningModule):
 
         self.marker_genes = None
         self.gene_names = gene_names
-        # initialize cls token for all time steps
-        self.register_buffer(
-            'cls_token',
-            torch.tensor(
-                [25426],
-                dtype=torch.long,
-            ),
-        )
+        # initialize task token for different conditions (e.g. diseases)
         self.output_dir = output_dir
         # create directory if not exist
         if not os.path.exists(self.output_dir):
@@ -136,19 +127,9 @@ class CellGenTrainer(LightningModule):
         self.context_mode = context_mode
 
     def forward(self, batch):
-        # Initialize an empty dictionary to count occurrences
-        condition = int(self.cls_token[0]) > torch.max(batch['tgt_input_ids'])
-        assert condition, 'CLS token is smaller than max tgt_input_id'
-        tgt_input_id = torch.cat(
-            (
-                getattr(self, 'cls_token').expand(batch['tgt_input_ids'].shape[0], -1),
-                batch['tgt_input_ids'],
-            ),
-            dim=1,
-        )
         outputs = self.transformer(
             src_input_id=batch['src_input_ids'],
-            tgt_input_id=tgt_input_id,
+            tgt_input_id=batch['tgt_input_ids'],
             not_masked=self.return_embeddings,
             context_mode=self.context_mode,
         )
@@ -402,7 +383,6 @@ class CountDecoderTrainer(LightningModule):
         var_list: List[str] = ['Time_point'],
         tgt_adata: Optional[ad.AnnData] = None,
         time_steps: list = [1, 2],
-        total_time_steps: int = 3,
         temperature: float = 2.0,
         iterations: int = 18,
         n_samples: int = 1,
@@ -425,7 +405,6 @@ class CountDecoderTrainer(LightningModule):
             d_ff=d_ff,
             max_seq_length=max_seq_length,
             time_steps=time_steps,
-            total_time_steps=total_time_steps,
             mode=mode,
         )
         if ckpt_masking_path is not None:
@@ -443,7 +422,6 @@ class CountDecoderTrainer(LightningModule):
             d_model=d_model,
             dropout=dropout,
             time_steps=time_steps,
-            total_time_steps=total_time_steps,
         )
 
         if ckpt_count_path is not None:
@@ -472,17 +450,7 @@ class CountDecoderTrainer(LightningModule):
             self.theta = None
 
         self.mse = MeanSquaredError()
-        total_vocab_size = tgt_vocab_size
         self.time_steps = time_steps
-        self.total_time_steps = total_time_steps  # for generation
-        for i in range(1, total_time_steps + 1):
-            self.register_buffer(
-                f'cls_token_{str(i)}',
-                torch.tensor(
-                    [total_vocab_size + (i - 1)],
-                    dtype=torch.long,
-                ),
-            )
         self.generate = generate
         self.adata = tgt_adata
         # scheduler
@@ -773,17 +741,8 @@ class CountDecoderTrainer(LightningModule):
 
     def test_step(self, batch, *args, **kwargs):
         tgt_input_id_dict = {}
-        for i in range(1, self.total_time_steps + 1):
-            tgt_input_id_ = torch.cat(
-                (
-                    getattr(self, f'cls_token_{str(i)}').expand(
-                        batch[f'tgt_input_ids_t{i}'].shape[0], -1
-                    ),
-                    batch[f'tgt_input_ids_t{i}'],
-                ),
-                dim=1,
-            )
-            tgt_input_id_dict[f'tgt_input_id_t{i}'] = tgt_input_id_
+        for i in range(1, self.n_task_conditions + 1):
+            tgt_input_id_dict[f'tgt_input_id_t{i}'] = batch[f'tgt_input_ids_t{i}']
 
         if self.generate:
             outputs = self.decoder.generate(
