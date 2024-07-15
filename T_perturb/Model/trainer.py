@@ -88,6 +88,8 @@ class CellGenTrainer(LightningModule):
 
         self.masking_loss = nn.CrossEntropyLoss()
         self.timepoint_loss = nn.CrossEntropyLoss()
+        self.bce_loss = nn.BCEWithLogitsLoss()
+        self.alpha = 0.5
 
         self.weight_decay = weight_decay
         self.lr = lr
@@ -158,15 +160,55 @@ class CellGenTrainer(LightningModule):
     def training_step(self, batch, *args, **kwargs):
         # logits, labels, count_output, count_dropout = self.forward(batch)
         outputs = self.forward(batch)
+        categories = batch['disease']
+        num_classes = len(set(categories))
+
         dec_logits = outputs['dec_logits']
-        # moe_logits = outputs['moe_logits']
-        # time_step = outputs['selected_time_step']
         labels = outputs['labels']
+        expert_logits_list = outputs['expert_logits_list']
+
         perp = self.perplexity(dec_logits, labels)
         dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
         labels = labels.contiguous().view(-1)
 
+        # Create a mapping dictionary
+        category_to_int = {
+            category: idx for idx, category in enumerate(set(categories))
+        }
+        # Convert the category list to a tensor of indices
+        category_indices = torch.tensor(
+            [category_to_int[category] for category in categories],
+            device=expert_logits_list[0].device,
+        )
+        # Efficient one-hot encoding using scatter_
+        one_hot_labels = torch.zeros(
+            len(categories), num_classes, device=expert_logits_list[0].device
+        )
+        one_hot_labels.scatter_(1, category_indices.unsqueeze(1), 1)
+
+        # Calculate the BCE loss for each class
+        expert_loss = [
+            self.bce_loss(expert_logits_list[i].squeeze(-1), one_hot_labels[:, i])
+            for i in range(num_classes)
+        ]
+        moe_loss = sum(expert_loss)
+        # # Convert class_column to one-hot encoded target matrix
+        # target = torch.zeros(len(class_column), num_classes)
+        # target[torch.arange(len(class_column)), class_column] = 1
         masking_loss = self.masking_loss(dec_logits, labels)
+        total_loss = (1 - self.alpha) * masking_loss + self.alpha * moe_loss
+
+        self.log(
+            'train/moe_loss',
+            moe_loss,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=batch['src_input_ids'].shape[0],
+            rank_zero_only=True,
+            sync_dist=True,
+        )
 
         self.log(
             'train/masking_loss',
@@ -192,7 +234,7 @@ class CellGenTrainer(LightningModule):
             sync_dist=True,
         )
 
-        return masking_loss
+        return total_loss
 
     def on_train_epoch_end(self):
         pass
@@ -200,7 +242,6 @@ class CellGenTrainer(LightningModule):
     def validation_step(self, batch, *args, **kwargs):
         outputs = self.forward(batch)
         dec_logits = outputs['dec_logits']
-        # moe_logits = outputs['moe_logits']
         # time_step = outputs['selected_time_step']
         labels = outputs['labels']
         perp = self.perplexity(dec_logits, labels)

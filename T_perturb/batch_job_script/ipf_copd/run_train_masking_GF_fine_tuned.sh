@@ -42,9 +42,9 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --cellgen_lr 0.0001 \
 --cellgen_wd 0.0001 \
 --mlm_prob 0.15 \
---n_workers 4 \
+--n_workers 16 \
 --d_ff 128 \
---num_layers 6 \
+--num_layers 3 \
 --time_steps 1 \
 --var_list CellType_Category Manuscript_Identity Subclass_Cell_Identity Celltype_HLCA disease IPF_signature IPF_signature_disease profibrotic_mac_signature \
 --mode GF_frozen \
