@@ -3,7 +3,7 @@ Mostly copy-paste from timm library.
 https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
 '''
 import math
-from typing import Optional
+from typing import Literal, Optional
 
 import torch
 from einops import rearrange, repeat
@@ -34,7 +34,6 @@ from T_perturb.src.utils import (
 #     random_tensor.floor_()  # binarize
 #     output = x.div(keep_prob) * random_tensor
 #     return output
-
 
 # class DropPath(nn.Module):
 #     '''
@@ -199,7 +198,142 @@ class CrossAttention(nn.Module):
         return self.to_out(out)
 
 
-class SoftGating(nn.Module):
+class FeedForward(nn.Module):
+
+    '''
+    Description:
+    ------------
+    Feed forward network for MoE based transformers.
+    Adopted from the Mistral repository:
+    URL: https://github.com/mistralai/mistral-inference/blob/main/src/mistral_inference/transformer.py # noqa
+    Accessed: 2024-07-17
+    '''
+
+    def __init__(
+        self,
+        dim: int,
+        hidden_dim: int,
+    ):
+        super().__init__()
+        self.w1 = nn.Linear(dim, hidden_dim, bias=False)
+        self.w2 = nn.Linear(hidden_dim, dim, bias=False)
+        self.w3 = nn.Linear(dim, hidden_dim, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.w2(nn.functional.silu(self.w1(x)) * self.w3(x))  # type: ignore
+
+
+class SoftGatingFFN(nn.Module):
+    '''
+    Description:
+    ------------
+    Soft gating mechanism for feed forward network layers of transformers.
+
+    Parameters:
+    -----------
+    dim: `int`
+        Query dimension.
+    num_experts: `int`
+        Number of experts.
+    num_classes: `int`
+        Number of classes.
+    top_k: `int`
+        Number of top experts to keep.
+    dropout: `float`
+        Dropout rate.
+
+    Returns:
+    --------
+    attn_output: `torch.Tensor`
+        Output tensor.
+    moe_embs_dict: `dict`
+        Dictionary of expert embeddings aggregated by mean non-padding tokens.
+    '''
+
+    def __init__(
+        self,
+        dim: int,
+        num_experts: int,
+        num_classes: int,
+        top_k: int,
+        hidden_size: int = 64,
+    ):
+        super().__init__()
+        self.top_k = top_k
+        self.num_classes = num_classes
+        self.num_experts = num_experts
+        # Initialize experts
+        self.experts = nn.ModuleList(
+            [
+                FeedForward(
+                    dim=dim,
+                    hidden_dim=hidden_size,
+                )
+                for _ in range(num_experts)
+            ]
+        )
+        self.classifiers = nn.ModuleList(nn.Linear(dim, 1) for _ in range(num_experts))
+        # learn gate weights one on batch and one on token level
+        self.token_gating_layer = nn.Linear(dim, num_experts)
+
+    def forward(self, x, tgt_mask):
+        # Filter to keep only the top-k experts active
+        gate_logits = self.token_gating_layer(x)
+        top_k_values, top_k_indices = torch.topk(gate_logits, self.top_k)
+        gate_probs = F.softmax(top_k_values, dim=-1)
+        # Soft gating token routing mechanism
+        moe_output = torch.zeros_like(x)
+        # Store logits for each expert separately in a list
+        expert_logits_list = [
+            torch.zeros(x.size(0), 1, device=x.device) for _ in range(self.num_experts)
+        ]
+        # Gather the top-k expert indices and their corresponding weights
+        # Efficiently select outputs from the top experts
+        for i in range(self.top_k):
+            selected_expert_indices = top_k_indices[:, :, i]  # [batch_size, seq_length]
+            selected_gate_probs = gate_probs[:, :, i]  # [batch_size, seq_length]
+            for j, (expert, classifier) in enumerate(
+                zip(self.experts, self.classifiers)
+            ):
+                mask = selected_expert_indices == j  # [batch_size, seq_length]
+                # # compute proportion of tokens assigned to each expert
+                # proportion = mask.sum() / (mask.size(0) * mask.size(1))
+                # what happens to padding, should we prevent padding
+
+                if mask.any():
+                    expert_input = (
+                        x * mask.unsqueeze(-1).float()
+                    )  # Apply mask to the input
+                    expert_output = expert(
+                        expert_input
+                    )  # [seq_length, batch_size, hidden_size]
+                    weighted_output = (
+                        expert_output
+                        * mask.unsqueeze(-1).float()
+                        * selected_gate_probs.unsqueeze(-1).float()
+                    )
+                    moe_output += weighted_output
+                    expert_logits = mean_nonpadding_embs(
+                        embs=weighted_output, pad=tgt_mask
+                    )
+                    # apply classifier to the expert output
+                    expert_logits = classifier(expert_logits)
+                    # Subset selected_gate_probs based on the mask and pad mask
+                    selected_gate_probs_masked = selected_gate_probs * mask.float()
+                    if tgt_mask is not None:
+                        selected_gate_probs_masked = (
+                            selected_gate_probs_masked * (~tgt_mask).float()
+                        )
+                    selected_gate_probs_sum = selected_gate_probs_masked.sum(
+                        dim=1
+                    )  # [batch_size]
+                    expert_logits_list[j] = (
+                        selected_gate_probs_sum.unsqueeze(-1) * expert_logits
+                    )
+        return moe_output, expert_logits_list
+
+
+class SoftGatingAttention(nn.Module):
     '''
     Description:
     ------------
@@ -264,7 +398,7 @@ class SoftGating(nn.Module):
         top_k_values, top_k_indices = torch.topk(gate_logits, self.top_k)
         gate_probs = F.softmax(top_k_values, dim=-1)
         # Soft gating token routing mechanism
-        attn_output = torch.zeros_like(x)
+        moe_output = torch.zeros_like(x)
         # Store logits for each expert separately in a list
         expert_logits_list = [
             torch.zeros(x.size(0), 1, device=x.device) for _ in range(self.num_experts)
@@ -294,7 +428,7 @@ class SoftGating(nn.Module):
                         * mask.unsqueeze(-1).float()
                         * selected_gate_probs.unsqueeze(-1).float()
                     )
-                    attn_output += weighted_output
+                    moe_output += weighted_output
                     expert_logits = mean_nonpadding_embs(
                         embs=weighted_output, pad=tgt_mask
                     )
@@ -312,10 +446,7 @@ class SoftGating(nn.Module):
                     expert_logits_list[j] = (
                         selected_gate_probs_sum.unsqueeze(-1) * expert_logits
                     )
-        return attn_output, expert_logits_list
-
-
-[]
+        return moe_output, expert_logits_list
 
 
 class Block(nn.Module):
@@ -328,11 +459,11 @@ class Block(nn.Module):
         dropout: float = 0.0,
         act_layer: nn.Module = nn.GELU,
         norm_layer: nn.Module = nn.LayerNorm,
-        moe: bool = False,
         context_dim: Optional[int] = None,
         num_experts: int = 3,
         num_classes: int = 3,
         top_k: int = 2,
+        mode: Literal['moe_attention', 'none', 'moe_ffn'] = 'none',
     ):
         '''
         Description:
@@ -365,23 +496,32 @@ class Block(nn.Module):
             Output tensor.
         '''
         super().__init__()
+        self.mode = mode
         self.norm1 = norm_layer(dim)
-        self.self_attn = CrossAttention(
-            query_dim=dim,
-            context_dim=None,
-            num_heads=num_heads,
-            dim_head=d_ff,
-            dropout=dropout,
-        )
-        self.moe = SoftGating(
-            dim=dim,
-            num_experts=num_experts,
-            num_classes=num_classes,
-            num_heads=num_heads,
-            d_ff=d_ff,
-            top_k=top_k,
-            dropout=dropout,
-        )
+
+        if self.mode == 'moe_attention':
+            self.moe = SoftGatingAttention(
+                dim=dim,
+                num_experts=num_experts,
+                num_classes=num_classes,
+                num_heads=num_heads,
+                d_ff=d_ff,
+                top_k=top_k,
+                dropout=dropout,
+            )
+
+        elif (self.mode == 'none') or (self.mode == 'moe_ffn'):
+            self.self_attn = CrossAttention(
+                query_dim=dim,
+                context_dim=None,
+                num_heads=num_heads,
+                dim_head=d_ff,
+                dropout=dropout,
+            )
+        else:
+            raise ValueError(
+                f'Invalid mode: {mode}, choose from [moe_attention, none, moe_ffn]'
+            )
         self.norm2 = norm_layer(dim)
         self.cross_attn = CrossAttention(
             query_dim=dim,
@@ -391,23 +531,33 @@ class Block(nn.Module):
             dropout=dropout,
         )
         self.norm3 = norm_layer(dim)
-        self.feed_forward = Mlp(
-            in_features=dim, hidden_features=hidden_size, act_layer=act_layer
-        )  # add hidden size
+        if self.mode == 'moe_ffn':
+            self.feed_forward = SoftGatingFFN(
+                dim=dim,
+                num_experts=num_experts,
+                num_classes=num_classes,
+                top_k=top_k,
+                hidden_size=hidden_size,
+            )
+        else:
+            self.feed_forward = Mlp(
+                in_features=dim, hidden_features=hidden_size, act_layer=act_layer
+            )  # add hidden size
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None, moe=False):
-        if moe:
+    def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None):
+        if self.mode == 'moe_attention':
             attn_output, moe_embs_dict = self.moe(x, tgt_mask)
-            x = self.norm1(x + self.dropout(attn_output))
-
         else:
             attn_output = self.self_attn(x, mask=tgt_mask)
-            x = self.norm1(x + self.dropout(attn_output))
             moe_embs_dict = None
+        x = self.norm1(x + self.dropout(attn_output))
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
         x = self.norm2(x + self.dropout(attn_output))
-        ff_output = self.feed_forward(x)
+        if self.mode == 'moe_ffn':
+            ff_output, moe_embs_dict = self.feed_forward(x, tgt_mask)
+        else:
+            ff_output = self.feed_forward(x)
         x = self.norm3(x + self.dropout(ff_output))
 
         return x, moe_embs_dict
@@ -565,7 +715,10 @@ class CellGen(nn.Module):
         mlm_probability: float = 0.3,
         time_steps: list = [1, 2],
         n_task_conditions: int = 3,
-        mode='GF_frozen',
+        encoder_type: Literal[
+            'GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'
+        ] = 'GF_frozen',
+        moe_type: Literal['moe_attention', 'none', 'moe_ffn'] = 'none',
     ):
         '''
         Description:
@@ -595,7 +748,7 @@ class CellGen(nn.Module):
             List of time steps for training and testing.
         n_task_conditions: `int`
             Total number of time steps.
-        mode: `str`
+        encoder_type: `str`
             Mode of the encoder.
             Options: ['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder']
 
@@ -634,17 +787,17 @@ class CellGen(nn.Module):
             d_model=d_model,
             max_seq_length=max_seq_length,
         )
-        if mode in ['GF_frozen', 'GF_fine_tuned']:
-            self.encoder_layers = Geneformerwrapper(mode=mode)
-        elif mode == 'Transformer_encoder':
+        if encoder_type in ['GF_frozen', 'GF_fine_tuned']:
+            self.encoder_layers = Geneformerwrapper(mode=encoder_type)
+        elif encoder_type == 'Transformer_encoder':
             self.encoder_layers = Encoder(
                 total_vocab_size=total_vocab_size,
                 max_seq_length=max_seq_length,
                 n_time_steps=n_task_conditions,
             )
         else:
-            raise ValueError(f'Invalid encoder mode: {mode}')
-        self.mode = mode
+            raise ValueError(f'Invalid encoder mode: {encoder_type}')
+        self.encoder_type = encoder_type
 
         self.decoder_block = nn.ModuleList(
             [
@@ -657,6 +810,7 @@ class CellGen(nn.Module):
                     top_k=2,
                     num_experts=2,
                     num_classes=2,
+                    mode=moe_type,
                 )
                 for _ in range(num_layers)
             ]
@@ -759,7 +913,7 @@ class CellGen(nn.Module):
     #     return tgt_pad_dict
 
     def call_encoder(self, src_input_id, src_attention_mask):
-        if self.mode in ['GF_frozen', 'GF_fine_tuned']:
+        if self.encoder_type in ['GF_frozen', 'GF_fine_tuned']:
             # BERT mask: 1 for tokens to keep, 0 for tokens to mask. Thus, negate mask.
             src_attention_mask = ~src_attention_mask
             enc_output = self.encoder_layers(src_input_id, src_attention_mask.int())
@@ -785,7 +939,6 @@ class CellGen(nn.Module):
                 src_mask=src_attention_mask,
                 tgt_mask=tgt_pad,
                 enc_output=enc_output,
-                moe=True,
             )
         # :TODO rewrite this part logits not needed for running the other timepoints
         outputs = {}
@@ -912,7 +1065,6 @@ class CellGen(nn.Module):
         self,
         src_input_id: torch.Tensor,
         not_masked: bool = False,
-        context_mode: bool = False,
         tgt_input_id: Optional[torch.Tensor] = None,
         cls_positions: Optional[torch.Tensor] = None,
         generate_id_dict: Optional[dict] = None,
@@ -939,8 +1091,6 @@ class CellGen(nn.Module):
             CLS token positions.
         not_masked: `bool`
             Whether to mask tokens. Should not be masked for testing and generation.
-        context_mode: `bool`
-            Whether to use context mode, where other time steps are used as context.
 
         Returns:
         --------

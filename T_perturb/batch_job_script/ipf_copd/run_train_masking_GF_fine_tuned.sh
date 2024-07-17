@@ -1,13 +1,13 @@
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
 #BSUB -gpu 'mode=exclusive_process:num=2:block=yes' # request for exclusive access to gpu
-#BSUB -n 32 # number of cores
+#BSUB -n 16 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
 #BSUB -o logs/ipf_copd_masking_%J.out # output file
 #BSUB -e logs/ipf_copd_masking_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
-#BSUB -R 'span[ptile=32]'  # Allocate 4 CPU cores per node
+#BSUB -R 'span[ptile=16]'  # Allocate 4 CPU cores per node
 #BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
 #BSUB -J ipf_copd_masking # job name
 
@@ -35,18 +35,19 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --tgt_adata_folder "./CellGen-reproducibility/ipf_copd/processed_data/h5ad_pairing_hvg_tgt" \
 --cell_pairing_dir "./CellGen-reproducibility/ipf_copd/processed_data/cell_pairing" \
 --gene_mapping_dir  "./CellGen-reproducibility/ipf_copd/processed_data/tokenid_to_rowid_hvg.pkl" \
---batch_size 32 \
+--batch_size 16 \
 --max_len 1650 \
---epochs 50 \
+--epochs 20 \
 --tgt_vocab_size 25426 \
 --cellgen_lr 0.0001 \
 --cellgen_wd 0.0001 \
 --mlm_prob 0.15 \
---n_workers 16 \
+--n_workers 32 \
 --d_ff 128 \
---num_layers 3 \
+--num_layers 1 \
 --time_steps 1 \
 --var_list CellType_Category Manuscript_Identity Subclass_Cell_Identity Celltype_HLCA disease IPF_signature IPF_signature_disease profibrotic_mac_signature \
---mode GF_frozen \
---context_mode False
+--encoder_type GF_frozen \
+--moe_type moe_ffn \
+--alpha 0.8
 echo "--- Finished computing model"

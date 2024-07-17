@@ -5,6 +5,7 @@ from typing import (
     Any,
     Dict,
     List,
+    Literal,
     Optional,
 )
 
@@ -65,8 +66,11 @@ class CellGenTrainer(LightningModule):
         time_steps: list = [1, 2],
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         var_list: List[str] = ['Time_point'],
-        mode: str = 'GF_fine_tuned',
-        context_mode: bool = False,
+        encoder_type: Literal[
+            'GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'
+        ] = 'GF_frozen',
+        moe_type: Literal['moe_attention', 'none', 'moe_ffn'] = 'none',
+        alpha: float = 0.5,
         gene_names: Optional[List[str]] = None,
         *args,
         **kwargs,
@@ -83,13 +87,14 @@ class CellGenTrainer(LightningModule):
             dropout=dropout,
             mlm_probability=mlm_probability,
             time_steps=time_steps,
-            mode=mode,
+            encoder_type=encoder_type,
+            moe_type=moe_type,
         )
 
         self.masking_loss = nn.CrossEntropyLoss()
         self.timepoint_loss = nn.CrossEntropyLoss()
         self.bce_loss = nn.BCEWithLogitsLoss()
-        self.alpha = 0.5
+        self.alpha = alpha
 
         self.weight_decay = weight_decay
         self.lr = lr
@@ -126,14 +131,12 @@ class CellGenTrainer(LightningModule):
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
         self.date = datetime.now().strftime('%Y%m%d')
-        self.context_mode = context_mode
 
     def forward(self, batch):
         outputs = self.transformer(
             src_input_id=batch['src_input_ids'],
             tgt_input_id=batch['tgt_input_ids'],
             not_masked=self.return_embeddings,
-            context_mode=self.context_mode,
         )
         return outputs
 
@@ -171,44 +174,48 @@ class CellGenTrainer(LightningModule):
         dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
         labels = labels.contiguous().view(-1)
 
-        # Create a mapping dictionary
-        category_to_int = {
-            category: idx for idx, category in enumerate(set(categories))
-        }
-        # Convert the category list to a tensor of indices
-        category_indices = torch.tensor(
-            [category_to_int[category] for category in categories],
-            device=expert_logits_list[0].device,
-        )
-        # Efficient one-hot encoding using scatter_
-        one_hot_labels = torch.zeros(
-            len(categories), num_classes, device=expert_logits_list[0].device
-        )
-        one_hot_labels.scatter_(1, category_indices.unsqueeze(1), 1)
+        masking_loss = self.masking_loss(dec_logits, labels)
 
-        # Calculate the BCE loss for each class
-        expert_loss = [
-            self.bce_loss(expert_logits_list[i].squeeze(-1), one_hot_labels[:, i])
-            for i in range(num_classes)
-        ]
-        moe_loss = sum(expert_loss)
+        if expert_logits_list is not None:
+            # Create a mapping dictionary
+            category_to_int = {
+                category: idx for idx, category in enumerate(set(categories))
+            }
+            # Convert the category list to a tensor of indices
+            category_indices = torch.tensor(
+                [category_to_int[category] for category in categories],
+                device=expert_logits_list[0].device,
+            )
+            # Efficient one-hot encoding using scatter_
+            one_hot_labels = torch.zeros(
+                len(categories), num_classes, device=expert_logits_list[0].device
+            )
+            one_hot_labels.scatter_(1, category_indices.unsqueeze(1), 1)
+
+            # Calculate the BCE loss for each class
+            expert_loss = [
+                self.bce_loss(expert_logits_list[i].squeeze(-1), one_hot_labels[:, i])
+                for i in range(num_classes)
+            ]
+            moe_loss = sum(expert_loss)
+
+            self.log(
+                'train/moe_loss',
+                moe_loss,
+                on_step=True,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+                batch_size=batch['src_input_ids'].shape[0],
+                rank_zero_only=True,
+                sync_dist=True,
+            )
+            total_loss = (1 - self.alpha) * masking_loss + self.alpha * moe_loss
+        else:
+            total_loss = masking_loss
         # # Convert class_column to one-hot encoded target matrix
         # target = torch.zeros(len(class_column), num_classes)
         # target[torch.arange(len(class_column)), class_column] = 1
-        masking_loss = self.masking_loss(dec_logits, labels)
-        total_loss = (1 - self.alpha) * masking_loss + self.alpha * moe_loss
-
-        self.log(
-            'train/moe_loss',
-            moe_loss,
-            on_step=True,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            batch_size=batch['src_input_ids'].shape[0],
-            rank_zero_only=True,
-            sync_dist=True,
-        )
 
         self.log(
             'train/masking_loss',
@@ -286,7 +293,6 @@ class CellGenTrainer(LightningModule):
                 ) = compute_cos_similarity(
                     outputs=outputs, time_step=time_step, all_time_steps=self.time_steps
                 )
-
                 # define marker gene list to extract gene embeddings
                 marker_genes = [
                     'IL7R',
@@ -429,9 +435,11 @@ class CountDecoderTrainer(LightningModule):
         n_samples: int = 1,
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         mask_scheduler: Optional[str] = 'cosine',
-        mode: str = 'GF_fine_tuned',
+        encoder_type: Literal[
+            'GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'
+        ] = 'GF_frozen',
+        moe_type: Literal['moe_attention', 'none', 'moe_ffn'] = 'none',
         seed: int = 42,
-        context_mode: bool = False,
         *args,
         **kwargs,
     ):
@@ -446,7 +454,8 @@ class CountDecoderTrainer(LightningModule):
             d_ff=d_ff,
             max_seq_length=max_seq_length,
             time_steps=time_steps,
-            mode=mode,
+            encoder_type=encoder_type,
+            moe_type=moe_type,
         )
         if ckpt_masking_path is not None:
             checkpoint = torch.load(ckpt_masking_path, map_location='cpu')
@@ -524,10 +533,9 @@ class CountDecoderTrainer(LightningModule):
         self.val_tgt_cell_type_list: List[str] = []
         self.val_tgt_cell_population_list: List[str] = []
         self.val_tgt_donor_list: List[str] = []
-        self.mode = mode
+        self.encoder_type = encoder_type
         self.seed = seed
         self.date = datetime.now().strftime('%Y%m%d')
-        self.context_mode = context_mode
 
     def forward(self, batch):
         tgt_input_id_dict = {}
@@ -878,7 +886,7 @@ class CountDecoderTrainer(LightningModule):
             pred_adata.write_h5ad(
                 f'{self.output_dir}/{self.date}_'
                 f'generate_adata_extrapolate_'
-                f'{self.time_steps}__{self.mode}_{self.seed}_'
+                f'{self.time_steps}__{self.encoder_type}_{self.seed}_'
                 f'{self.loss_mode}_{self.n_samples}.h5ad'
             )
             emd = evaluate_emd(true_adata, pred_adata)

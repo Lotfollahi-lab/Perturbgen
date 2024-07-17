@@ -213,7 +213,7 @@ def get_args():
         default=0.1,
     )
     parser.add_argument(
-        '--mode',
+        '--encoder_type',
         default='GF_frozen',
         type=str,
         choices=[
@@ -224,16 +224,27 @@ def get_args():
         help='mode of encoder',
     )
     parser.add_argument(
+        '--moe_type',
+        default='none',
+        type=str,
+        choices=[
+            'none',
+            'moe_attention',
+            'moe_ffn',
+        ],
+        help='mode of encoder',
+    )
+    parser.add_argument(
         '--seed',
         type=int,
         default=42,
         help='seed for reproducibility',
     )
     parser.add_argument(
-        '--context_mode',
-        type=str2bool,
-        default=False,
-        help='for timepoint data context can be provided from previous timepoints',
+        '--alpha',
+        type=float,
+        default=0.5,
+        help='alpha for multi-task learning',
     )
     args = parser.parse_args()
     return args
@@ -449,8 +460,9 @@ def main() -> None:
             time_steps=args.time_steps,
             mapping_dict_path=args.gene_mapping_dir,
             output_dir=args.output_dir,
-            mode=args.mode,
-            context_mode=args.context_mode,
+            encoder_type=args.encoder_type,
+            moe_type=args.moe_type,
+            alpha=args.alpha,
         )
     elif args.train_mode == 'count':
         decoder_module = CountDecoderTrainer(
@@ -478,7 +490,6 @@ def main() -> None:
             output_dir=args.output_dir,
             mode=args.mode,
             seed=args.seed,
-            context_mode=args.context_mode,
         )
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
@@ -630,8 +641,6 @@ def main() -> None:
         accelerator='auto',
         devices=-1 if torch.cuda.is_available() else 0,
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
-        limit_train_batches=100,
-        limit_val_batches=10,
     )
     print('Starting training...')
     if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
