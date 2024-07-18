@@ -179,8 +179,6 @@ class CellGenDataModule(LightningDataModule):
         # form of dictionary with key: value pairs based on condition_keys
 
     def setup(self, stage=None):
-        print(self.tgt_datasets.keys())
-
         for i in range(1, len(self.tgt_datasets) + 1):
             str_i = str(i)
             dataset_params = {
@@ -283,7 +281,6 @@ class CellGenDataModule(LightningDataModule):
         if self.condition_encodings:
             condition = [d['conditions'] for d in batch]
             condition_combined = torch.stack([d['conditions_combined'] for d in batch])
-            print(condition_combined.shape)
         else:
             condition, condition_combined = None, None
 

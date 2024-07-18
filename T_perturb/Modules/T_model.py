@@ -274,6 +274,7 @@ class SoftGatingFFN(nn.Module):
         )
         self.classifiers = nn.ModuleList(nn.Linear(dim, 1) for _ in range(num_experts))
         # learn gate weights one on batch and one on token level
+        # :TODO: set bias of token layer to false
         self.token_gating_layer = nn.Linear(dim, num_experts)
 
     def forward(self, x, tgt_mask):

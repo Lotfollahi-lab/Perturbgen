@@ -16,6 +16,7 @@ from T_perturb.Dataloaders.datamodule import CellGenDataModule
 from T_perturb.Model.trainer import CellGenTrainer, CountDecoderTrainer
 from T_perturb.src.utils import (
     label_encoder,
+    randomised_mapping_dir_split,
     randomised_split,
     read_dataset_files,
     str2bool,
@@ -87,7 +88,7 @@ def get_args():
         help='path to checkpoint',
     )
     parser.add_argument(
-        '--mapping_dict_path',
+        '--tokenid_to_genename_dict',
         type=str,
         # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl',
         # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
@@ -111,7 +112,12 @@ def get_args():
         default='./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt/',
         help='path to tokenised activated data',
     )
-
+    parser.add_argument(
+        '--cell_pairing_dir',
+        type=str,
+        default=None,
+        help='path to pkl file used for cell pairing',
+    )
     parser.add_argument(
         '--src_adata',
         type=str,
@@ -202,13 +208,24 @@ def get_args():
         help='List of variables to keep in the dataset',
     )
     parser.add_argument(
-        '--mode',
+        '--encoder_type',
         default='GF_frozen',
         type=str,
         choices=[
             'GF_fine_tuned',
             'GF_frozen',
             'Transformer_encoder',
+        ],
+        help='mode of encoder',
+    )
+    parser.add_argument(
+        '--moe_type',
+        default='none',
+        type=str,
+        choices=[
+            'none',
+            'moe_attention',
+            'moe_ffn',
         ],
         help='mode of encoder',
     )
@@ -225,7 +242,6 @@ def get_args():
 def main() -> None:
     """Run training."""
     args = get_args()
-
     # PyTorch Lightning allows to set all necessary seeds in one function call.
     pl.seed_everything(args.seed)
     torch.manual_seed(args.seed)
@@ -235,7 +251,9 @@ def main() -> None:
     tgt_adatas = read_dataset_files(args.tgt_adata_folder, 'h5ad')
     src_dataset = load_from_disk(args.src_dataset)
     src_adata = sc.read_h5ad(args.src_adata)
-
+    # cell pairing
+    if args.cell_pairing_dir:
+        cell_pairing = read_dataset_files(args.cell_pairing_dir, 'pkl')
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
     tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.time_steps[0]}'].copy()
@@ -255,12 +273,50 @@ def main() -> None:
             assert len(set(train_indices).intersection(test_indices)) == 0
             assert len(set(val_indices).intersection(test_indices)) == 0
         elif args.splitting_mode == 'random':
-            train_indices, val_indices, test_indices = randomised_split(
-                adata=tgt_adata_tmp,
-                train_prop=0.8,  # 0.8,0.1,0.1 train, val, test
-                test_prop=0.1,
-                seed=args.seed,
-            )
+            train_indices = None
+            val_indices = None
+            test_indices = None
+            if cell_pairing:
+                train_dict = {}
+                val_dict = {}
+                test_dict = {}
+                if any(isinstance(value, dict) for value in cell_pairing.values()):
+                    for values, cell_pairing_dict in cell_pairing.items():
+                        (
+                            train_dict_,
+                            val_dict_,
+                            test_dict_,
+                        ) = randomised_mapping_dir_split(
+                            mapping_dir=cell_pairing_dict,
+                            train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
+                            test_prop=args.test_prop,
+                            seed=args.seed,
+                        )
+                        train_dict[values] = train_dict_
+                        val_dict[values] = val_dict_
+                        test_dict[values] = test_dict_
+                else:
+                    train_dict_, val_dict_, test_dict_ = randomised_mapping_dir_split(
+                        mapping_dir=cell_pairing,
+                        train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
+                        test_prop=args.test_prop,
+                        seed=args.seed,
+                    )
+                    train_dict['cell_pairing'] = train_dict_
+                    val_dict['cell_pairing'] = val_dict_
+                    test_dict['cell_pairing'] = test_dict_
+            else:
+                train_indices, val_indices, test_indices = randomised_split(
+                    adata=tgt_adata_tmp,
+                    train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
+                    test_prop=args.test_prop,
+                    seed=args.seed,
+                )
+                print(
+                    f'Number of samples in train set: {len(train_indices)}\n'
+                    f'Number of samples in val set: {len(val_indices)}\n'
+                    f'Number of samples in test set: {len(test_indices)}'
+                )
         # elif split == 'unseen_donor':
         #     train, val, test = unseen_donor_split()
         else:
@@ -274,22 +330,29 @@ def main() -> None:
             f'Number of samples in test set: {len(test_indices)}'
         )
     else:
-        # return all the indices
-        train_indices = list(range(len(src_dataset)))
-        val_indices = None
-        test_indices = list(
-            range(len(tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}']))
-        )
-    # check if the train indices are the same for both adata and dataset
-    subset_adata = tgt_adata_tmp[train_indices]
-    subset_dataset = tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}'].select(
-        train_indices
-    )
-    assert (
-        subset_adata.obs['cell_pairing_index'].tolist()
-        == subset_dataset['cell_pairing_index']
-    )
-
+        if cell_pairing:
+            train_indices = None
+            val_indices = None
+            test_indices = None
+            train_dict = cell_pairing
+            val_dict = None
+            test_dict = cell_pairing
+        else:
+            # return all the indices
+            train_indices = list(range(len(src_dataset)))
+            val_indices = None
+            test_indices = list(
+                range(len(tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}']))
+            )
+            # check if the train indices are the same for both adata and dataset
+            subset_adata = tgt_adata_tmp[train_indices]
+            subset_dataset = tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}'].select(
+                train_indices
+            )
+            assert (
+                subset_adata.obs['cell_pairing_index'].tolist()
+                == subset_dataset['cell_pairing_index']
+            )
     if args.loss_mode == 'mse':
         # log normalize data only for mse loss
         sc.pp.normalize_total(src_adata, target_sum=1e4)
@@ -361,8 +424,6 @@ def main() -> None:
         conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
 
     print('Data loaded and preprocessed.')
-    # count number of unique timepoints
-    n_total_timepoints = len(tgt_adatas)
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.test_mode == 'masking':
@@ -381,12 +442,12 @@ def main() -> None:
             return_embeddings=args.return_embeddings,
             generate=args.generate,
             time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
-            mapping_dict_path=args.mapping_dict_path,
             gene_names=tgt_adata_tmp.var['gene_name'],
             output_dir=args.output_dir,
             var_list=args.var_list,
-            mode=args.mode,
+            encoder_type=args.encoder_type,
+            moe_type=args.moe_type,
+            tokenid_to_genename_dict=args.tokenid_to_genename_dict,
         )
     elif args.test_mode == 'count':
         decoder_module = CountDecoderTrainer(
@@ -409,7 +470,6 @@ def main() -> None:
             generate=args.generate,
             tgt_adata=tgt_adatas,
             time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
             temperature=args.temperature,
             iterations=args.iterations,
             mask_scheduler=args.mask_scheduler,
@@ -442,16 +502,14 @@ def main() -> None:
         num_workers=args.n_workers,
         shuffle=args.shuffle,
         max_len=args.max_len,
-        condition_keys=condition_keys_,
-        condition_encodings=condition_encodings,
-        conditions=conditions,
-        conditions_combined=conditions_combined,
         split=args.split,
         train_indices=None,
         val_indices=None,
         test_indices=test_indices,
+        train_dict=None,
+        val_dict=None,
+        test_dict=test_dict,
         time_steps=args.time_steps,
-        total_time_steps=n_total_timepoints,
         var_list=args.var_list,
     )
 

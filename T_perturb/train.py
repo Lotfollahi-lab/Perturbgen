@@ -114,13 +114,6 @@ def get_args():
         default=None,
         help='path to pkl file used for cell pairing',
     )
-    parser.add_argument(
-        '--gene_mapping_dir',
-        type=str,
-        # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl',
-        # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
-        default='./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl',
-    )
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle')
     parser.add_argument(
@@ -228,7 +221,7 @@ def get_args():
         default='none',
         type=str,
         choices=[
-            'none',
+            'default',
             'moe_attention',
             'moe_ffn',
         ],
@@ -458,7 +451,6 @@ def main() -> None:
             # lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             time_steps=args.time_steps,
-            mapping_dict_path=args.gene_mapping_dir,
             output_dir=args.output_dir,
             encoder_type=args.encoder_type,
             moe_type=args.moe_type,

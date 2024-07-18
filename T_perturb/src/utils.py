@@ -57,33 +57,6 @@ def read_dataset_files(directory: str, file_type: str):
     return dataset_dict
 
 
-def map_ensembl_to_genename(
-    adata: ad.AnnData,
-    mapping_path: str,
-) -> ad.AnnData:
-    """
-    Description:
-    ------------
-    This function maps ensembl ids to gene names.
-    """
-    # read in .csv file to map ensembl ids to gene names
-    mapping_df = pd.read_csv(mapping_path)
-    # rename column gene_ids to ensembl_id
-    mapping_df = mapping_df.rename(columns={'gene_ids': 'ensembl_id'})
-    # left join adata.var with mapping_df to add ensembl ids to adata.var
-    adata.var['gene_name'] = adata.var_names
-    adata.var = adata.var.merge(
-        mapping_df[['index', 'ensembl_id']],
-        left_on='gene_name',
-        right_on='index',
-        how='left',
-    )
-    # create ensembl_id column and drop index and ensembl_id columns
-    adata.var_names = adata.var['ensembl_id']
-    adata.var = adata.var.drop(columns=['index', 'ensembl_id'])
-    return adata
-
-
 def mean_nonpadding_embs(embs, pad, dim=1):
     '''
     Compute the mean of the non-padding embeddings.
@@ -114,8 +87,8 @@ def mean_nonpadding_embs(embs, pad, dim=1):
 
 def compute_cos_similarity(
     outputs: dict,
-    time_step: int,
-    all_time_steps: list[int],
+    time_step: Optional[int] = None,
+    all_time_steps: Optional[List[int]] = None,
 ):
     """
     Description:
@@ -126,9 +99,9 @@ def compute_cos_similarity(
     -----------
     outputs: `dict`
         Dictionary containing outputs from the model.
-    time_step: `int`
+    time_step: `Optional[int]`
         Time step to compute cosine similarity.
-    all_time_steps: `list[int]`
+    all_time_steps: `Optional[List[int]`
         List of all time steps.
 
     Returns:
@@ -138,29 +111,44 @@ def compute_cos_similarity(
     cls_embeddings: `torch.tensor`
     gene_embeddings: `torch.tensor`
     """
-    # check if cls position is in outputs
-    assert 'cls_positions' in outputs.keys(), 'cls position not in outputs'
-    assert 'dec_embedding' in outputs.keys(), 'dec_embedding not in outputs'
-    # get cls position and dec_embedding (index = time_step-1)
-    cls_position = outputs['cls_positions'][time_step - 1]
-    cls_embeddings = outputs['dec_embedding'][:, cls_position, :]
-    # exclude cls token from gene embeddings
-    if time_step == max(all_time_steps):
-        gene_embeddings = outputs['dec_embedding'][:, (cls_position + 1) :, :]
+    if time_step is not None:
+        # check if cls position is in outputs
+        assert 'cls_positions' in outputs.keys(), 'cls position not in outputs'
+        assert 'dec_embedding' in outputs.keys(), 'dec_embedding not in outputs'
+        # get cls position and dec_embedding (index = time_step-1)
+        cls_position = outputs['cls_positions'][time_step - 1]
+        cls_embeddings = outputs['dec_embedding'][:, cls_position, :]
+        # exclude cls token from gene embeddings
+        if (time_step is not None) and (all_time_steps is not None):
+            if time_step == max(all_time_steps):
+                gene_embeddings = outputs['dec_embedding'][:, (cls_position + 1) :, :]
+            else:
+                gene_embeddings = outputs['dec_embedding'][
+                    :, (cls_position + 1) : outputs['cls_positions'][time_step], :
+                ]
+        cos_similarity = []
+        for i in range(gene_embeddings.shape[0]):
+            # gene level cosine similarity
+            cos_similarity_ = cosine_similarity(
+                cls_embeddings[i],
+                gene_embeddings[i, :, :],
+                dim=1,
+            )
+            cos_similarity.append(cos_similarity_)
+        cos_similarity = torch.stack(cos_similarity)
     else:
-        gene_embeddings = outputs['dec_embedding'][
-            :, (cls_position + 1) : outputs['cls_positions'][time_step], :
-        ]
-    cos_similarity = []
-    for i in range(gene_embeddings.shape[0]):
-        # gene level cosine similarity
-        cos_similarity_ = cosine_similarity(
-            cls_embeddings[i],
-            gene_embeddings[i, :, :],
-            dim=1,
-        )
-        cos_similarity.append(cos_similarity_)
-    cos_similarity = torch.stack(cos_similarity)
+        cls_embeddings = outputs['mean_embedding']
+        gene_embeddings = outputs['dec_embedding'][:, 1:, :]
+        cos_similarity = []
+        for i in range(gene_embeddings.shape[0]):
+            # gene level cosine similarity
+            cos_similarity_ = cosine_similarity(
+                cls_embeddings[i],
+                gene_embeddings[i, :, :],
+                dim=1,
+            )
+            cos_similarity.append(cos_similarity_)
+        cos_similarity = torch.stack(cos_similarity)
 
     return cos_similarity, cls_embeddings, gene_embeddings
 
