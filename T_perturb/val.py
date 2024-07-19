@@ -208,6 +208,16 @@ def get_args():
         help='List of variables to keep in the dataset',
     )
     parser.add_argument(
+        '--train_prop',
+        type=float,
+        default=0.8,
+    )
+    parser.add_argument(
+        '--test_prop',
+        type=float,
+        default=0.1,
+    )
+    parser.add_argument(
         '--encoder_type',
         default='GF_frozen',
         type=str,
@@ -324,11 +334,7 @@ def main() -> None:
                 "split is not available, must be either '"
                 "random','stratified' or 'unseen_donor'"
             )
-        print(
-            f'Number of samples in train set: {len(train_indices)}\n'
-            f'Number of samples in val set: {len(val_indices)}\n'
-            f'Number of samples in test set: {len(test_indices)}'
-        )
+
     else:
         if cell_pairing:
             train_indices = None

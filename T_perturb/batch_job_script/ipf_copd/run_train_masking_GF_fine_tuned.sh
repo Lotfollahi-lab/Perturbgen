@@ -1,6 +1,6 @@
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=2:block=yes' # request for exclusive access to gpu
+#BSUB -gpu 'mode=exclusive_process:num=1:block=yes' # request for exclusive access to gpu
 #BSUB -n 16 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
@@ -26,7 +26,7 @@ echo "--- Start computing model"
 # python3 $cwd/train.py \
 python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/train.py \
 --train_mode masking \
---split False \
+--split True \
 --splitting_mode random \
 --output_dir "./T_perturb/T_perturb/plt/res/ipf_copd" \
 --src_dataset "./CellGen-reproducibility/ipf_copd/processed_data/dataset_hvg_src/Control.dataset" \
@@ -34,19 +34,19 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --src_adata "./CellGen-reproducibility/ipf_copd/processed_data/h5ad_pairing_hvg_src/Control.h5ad" \
 --tgt_adata_folder "./CellGen-reproducibility/ipf_copd/processed_data/h5ad_pairing_hvg_tgt" \
 --cell_pairing_dir "./CellGen-reproducibility/ipf_copd/processed_data/cell_pairing" \
---batch_size 16 \
+--batch_size 32 \
 --max_len 1650 \
 --epochs 20 \
 --tgt_vocab_size 25426 \
 --cellgen_lr 0.0001 \
 --cellgen_wd 0.0001 \
 --mlm_prob 0.15 \
---n_workers 32 \
+--n_workers 16 \
 --d_ff 128 \
 --num_layers 1 \
 --time_steps 1 \
 --var_list CellType_Category Manuscript_Identity Subclass_Cell_Identity Celltype_HLCA disease IPF_signature IPF_signature_disease profibrotic_mac_signature \
 --encoder_type GF_frozen \
---moe_type moe_ffn \
+--moe_type none \
 --alpha 0.8
 echo "--- Finished computing model"

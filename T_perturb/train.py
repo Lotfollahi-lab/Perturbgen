@@ -221,7 +221,7 @@ def get_args():
         default='none',
         type=str,
         choices=[
-            'default',
+            'none',
             'moe_attention',
             'moe_ffn',
         ],
@@ -286,6 +286,7 @@ def main() -> None:
             val_indices = None
             test_indices = None
             if cell_pairing:
+                print('Cell paired based on mapping dictionnary')
                 train_dict = {}
                 val_dict = {}
                 test_dict = {}
@@ -304,6 +305,8 @@ def main() -> None:
                         train_dict[values] = train_dict_
                         val_dict[values] = val_dict_
                         test_dict[values] = test_dict_
+                    print('Number of samples in train set:', len(train_dict))
+                    print('Number of samples in val set:', len(val_dict))
                 else:
                     train_dict_, val_dict_, test_dict_ = randomised_mapping_dir_split(
                         mapping_dir=cell_pairing,

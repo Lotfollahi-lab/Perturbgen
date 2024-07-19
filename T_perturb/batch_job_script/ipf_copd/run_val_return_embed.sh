@@ -27,12 +27,12 @@ echo "--- Start computing model"
 # python3 $cwd/val.py \
 python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
 --test_mode masking \
---split False \
+--split True \
 --splitting_mode random \
 --return_embed True \
 --generate False \
---ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240717_0924_ipf_copd_attn_masking_lr_0.0001_wd_0.0001_batch_16_mlmp_0.15_tp_1_s_42-epoch=19.ckpt" \
---output_dir "./T_perturb/T_perturb/plt/res/ipf_copd" \
+--ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240719_1019_ipf_copd_moeattn_masking_split_lr_0.0001_wd_0.0001_batch_32_mlmp_0.15_tp_1_s_42-epoch=19.ckpt" \
+--output_dir "./CellGen-reproducibility/ipf_copd/res" \
 --src_dataset "./CellGen-reproducibility/ipf_copd/processed_data/dataset_hvg_src/Control.dataset" \
 --tgt_dataset_folder "./CellGen-reproducibility/ipf_copd/processed_data/dataset_hvg_tgt/" \
 --src_adata "./CellGen-reproducibility/ipf_copd/processed_data/h5ad_pairing_hvg_src/Control.h5ad" \
@@ -52,5 +52,5 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --time_steps 1 \
 --var_list CellType_Category Manuscript_Identity Subclass_Cell_Identity Celltype_HLCA disease IPF_signature IPF_signature_disease profibrotic_mac_signature \
 --encoder_type GF_frozen \
---moe_type none
+--moe_type moe_attention
 echo "--- Finished computing model"

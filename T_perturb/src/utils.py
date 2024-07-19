@@ -757,19 +757,14 @@ def randomised_split(adata: ad.AnnData, train_prop: float, test_prop: float, see
     np.random.seed(seed)
     n_cells = adata.shape[0]
     indices = np.arange(n_cells)
-    print(len(indices))
-
     # define train, val and test size
     train_size = np.round(train_prop * n_cells).astype(int)
     test_size = np.round(test_prop * n_cells).astype(int)
     train_indices = np.random.choice(indices, train_size, replace=False)
-
     indices_ = np.setdiff1d(indices, train_indices)
-
     test_indices = np.random.choice(indices_, test_size, replace=False)
     indices_ = np.setdiff1d(indices_, test_indices)
     val_indices = indices_
-
     return train_indices, val_indices, test_indices
 
 
@@ -795,13 +790,10 @@ def randomised_mapping_dir_split(
         raise ValueError('Dictionary keys and values are not unique')
 
     train_indices = np.random.choice(indices, train_size, replace=False)
-    print(train_indices)
     indices_ = np.setdiff1d(indices, train_indices)
     test_indices = np.random.choice(indices_, test_size, replace=False)
-    print(test_indices)
     indices_ = np.setdiff1d(indices_, test_indices)
     val_indices = indices_
-    print(val_indices)
 
     if index_type == 'keys':
         train_dict = {k: v for k, v in mapping_dir.items() if k in train_indices}

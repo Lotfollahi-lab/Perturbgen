@@ -74,7 +74,6 @@ class CellGenDataset(Dataset):
         self.src_dataset_paired = src_dataset.select(src_indices)
         if src_counts is not None:
             self.src_counts_paired = src_counts[src_indices, :]
-
         tgt_indices = list(split_indices.values())
 
         self.tgt_dataset_paired = tgt_datasets.select(tgt_indices)
@@ -142,7 +141,6 @@ class CellGenDataModule(LightningDataModule):
         Custom datamodule for CellGen tokenised data.
         """
         super().__init__()
-        print('Start datamodule')
         self.src_dataset = src_dataset
         self.tgt_datasets = tgt_datasets
         self.src_counts = src_counts
@@ -206,13 +204,13 @@ class CellGenDataModule(LightningDataModule):
                     split_indices=self.train_dict[mapping_dict_key], **dataset_params
                 )
                 self.train_dataset_list.append(train_dataset)
-                if self.val_indices is not None:
+                if self.val_dict is not None:
                     self.val_dataset = CellGenDataset(
                         split_indices=self.val_dict[mapping_dict_key], **dataset_params
                     )
+                    self.val_dataset_list.append(self.val_dataset)
                 else:
-                    val_dataset = None
-                self.val_dataset_list.append(val_dataset)
+                    self.val_dataset_list = None
 
             if stage == 'test' or stage is None:
                 # use all time steps to provide as context
@@ -226,6 +224,7 @@ class CellGenDataModule(LightningDataModule):
     def train_dataloader(self):
         train_dataset = ConcatDataset(self.train_dataset_list)
         train_sampler = weighted_sampler(self.train_dataset_list)
+
         data = DataLoader(
             dataset=train_dataset,
             batch_size=self.batch_size,
@@ -237,18 +236,18 @@ class CellGenDataModule(LightningDataModule):
 
     def val_dataloader(self):
         if self.split:
-            if self.val_indices is not None:
+            if self.val_dict is not None:
                 val_dataset = ConcatDataset(self.val_dataset_list)
+                data = DataLoader(
+                    dataset=val_dataset,
+                    batch_size=self.batch_size,
+                    shuffle=False,
+                    num_workers=self.num_workers,
+                    collate_fn=self.collate,
+                )
+                return data
             else:
-                val_dataset = None
-            data = DataLoader(
-                dataset=val_dataset,
-                batch_size=self.batch_size,
-                shuffle=False,
-                num_workers=self.num_workers,
-                collate_fn=self.collate,
-            )
-            return data
+                return []
         else:
             return []
 

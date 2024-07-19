@@ -275,7 +275,7 @@ class SoftGatingFFN(nn.Module):
         self.classifiers = nn.ModuleList(nn.Linear(dim, 1) for _ in range(num_experts))
         # learn gate weights one on batch and one on token level
         # :TODO: set bias of token layer to false
-        self.token_gating_layer = nn.Linear(dim, num_experts)
+        self.token_gating_layer = nn.Linear(dim, num_experts, bias=True)
 
     def forward(self, x, tgt_mask):
         # Filter to keep only the top-k experts active
@@ -291,6 +291,7 @@ class SoftGatingFFN(nn.Module):
         # Gather the top-k expert indices and their corresponding weights
         # Efficiently select outputs from the top experts
         for i in range(self.top_k):
+            print(gate_probs)
             selected_expert_indices = top_k_indices[:, :, i]  # [batch_size, seq_length]
             selected_gate_probs = gate_probs[:, :, i]  # [batch_size, seq_length]
             for j, (expert, classifier) in enumerate(
@@ -300,7 +301,6 @@ class SoftGatingFFN(nn.Module):
                 # # compute proportion of tokens assigned to each expert
                 # proportion = mask.sum() / (mask.size(0) * mask.size(1))
                 # what happens to padding, should we prevent padding
-
                 if mask.any():
                     expert_input = (
                         x * mask.unsqueeze(-1).float()
@@ -313,24 +313,12 @@ class SoftGatingFFN(nn.Module):
                         * mask.unsqueeze(-1).float()
                         * selected_gate_probs.unsqueeze(-1).float()
                     )
+                    print(selected_gate_probs)
                     moe_output += weighted_output
                     expert_logits = mean_nonpadding_embs(
                         embs=weighted_output, pad=tgt_mask
                     )
-                    # apply classifier to the expert output
-                    expert_logits = classifier(expert_logits)
-                    # Subset selected_gate_probs based on the mask and pad mask
-                    selected_gate_probs_masked = selected_gate_probs * mask.float()
-                    if tgt_mask is not None:
-                        selected_gate_probs_masked = (
-                            selected_gate_probs_masked * (~tgt_mask).float()
-                        )
-                    selected_gate_probs_sum = selected_gate_probs_masked.sum(
-                        dim=1
-                    )  # [batch_size]
-                    expert_logits_list[j] = (
-                        selected_gate_probs_sum.unsqueeze(-1) * expert_logits
-                    )
+                    expert_logits_list[j] = classifier(expert_logits)
         return moe_output, expert_logits_list
 
 
@@ -404,6 +392,11 @@ class SoftGatingAttention(nn.Module):
         expert_logits_list = [
             torch.zeros(x.size(0), 1, device=x.device) for _ in range(self.num_experts)
         ]
+        # Store probabilities for each expert separately in a list
+        expert_probs_list = [
+            torch.zeros(x.size(0), x.size(1), device=x.device)
+            for _ in range(self.num_experts)
+        ]
         # Gather the top-k expert indices and their corresponding weights
         # Efficiently select outputs from the top experts
         for i in range(self.top_k):
@@ -447,6 +440,8 @@ class SoftGatingAttention(nn.Module):
                     expert_logits_list[j] = (
                         selected_gate_probs_sum.unsqueeze(-1) * expert_logits
                     )
+                    expert_probs_list[j] = selected_gate_probs_masked
+
         return moe_output, expert_logits_list
 
 
