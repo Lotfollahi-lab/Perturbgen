@@ -70,6 +70,9 @@ class CellGenTrainer(LightningModule):
         alpha: float = 0.5,
         gene_names: Optional[List[str]] = None,
         tokenid_to_genename_dict: Optional[str] = None,
+        mask_scheduler: Optional[str] = 'cosine',
+        temperature: Optional[float] = 2.0,
+        iterations: Optional[int] = 18,
         *args,
         **kwargs,
     ) -> None:
@@ -129,13 +132,31 @@ class CellGenTrainer(LightningModule):
         if tokenid_to_genename_dict is not None:
             with open(tokenid_to_genename_dict, 'rb') as f:
                 self.tokenid_to_genename_dict = pickle.load(f)
+        if self.generate:
+            self.max_seq_length = max_seq_length
+            self.mask_scheduler = mask_scheduler
+            self.temperature = temperature
+            self.iterations = iterations
 
     def forward(self, batch):
-        outputs = self.transformer(
-            src_input_id=batch['src_input_ids'],
-            tgt_input_id=batch['tgt_input_ids'],
-            not_masked=self.return_embeddings,
-        )
+        if self.generate:
+            outputs = self.transformer.generate(
+                src_input_id=batch['src_input_ids'],
+                tgt_input_id=batch['tgt_input_ids'],
+                max_len=self.max_seq_length,
+                mask_scheduler=self.mask_scheduler,
+                can_remask_prev_masked=False,
+                topk_filter_thres=0.9,
+                # time_steps=self.time_steps,
+                temperature=self.temperature,
+                iterations=self.iterations,
+            )
+        else:
+            outputs = self.transformer(
+                src_input_id=batch['src_input_ids'],
+                tgt_input_id=batch['tgt_input_ids'],
+                not_masked=self.return_embeddings,
+            )
         return outputs
 
     def configure_optimizers(self):
@@ -369,7 +390,8 @@ class CellGenTrainer(LightningModule):
             adata.obsm['cosine_similarity'] = df
             # save anndata
             adata.write_h5ad(
-                f'{self.output_dir}/{self.date}_' f'cls_embeddings_{self.moe_type}.h5ad'
+                f'{self.output_dir}/{self.date}_'
+                f'cls_embeddings_{self.moe_type}_generate_{self.generate}.h5ad'
             )
             print('End saving embeddings -------------------')
 

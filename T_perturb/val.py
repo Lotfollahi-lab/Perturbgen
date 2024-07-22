@@ -454,6 +454,9 @@ def main() -> None:
             encoder_type=args.encoder_type,
             moe_type=args.moe_type,
             tokenid_to_genename_dict=args.tokenid_to_genename_dict,
+            temperature=args.temperature,
+            iterations=args.iterations,
+            mask_scheduler=args.mask_scheduler,
         )
     elif args.test_mode == 'count':
         decoder_module = CountDecoderTrainer(

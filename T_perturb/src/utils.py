@@ -447,7 +447,7 @@ def gumbel_sample(t, temperature=1.0, dim=-1):
     return ((t / max(temperature, 1e-10)) + gumbel_noise(t)).argmax(dim=dim)
 
 
-def generate_pad(tgt):
+def generate_padding(input_id):
     '''
     Description:
     ------------
@@ -456,9 +456,19 @@ def generate_pad(tgt):
     Convert tgt tensor to boolean tensor,
     where pad token is True and non-pad token is False.
     Can also be applied to generate source padding mask.
+
+    Parameters:
+    -----------
+    input_id: `torch.tensor`
+        Tensor of input ids.
+
+    Returns:
+    --------
+    pad: `torch.tensor`
+        Boolean tensor of padding mask.
     '''
-    tgt_pad = tgt == 0
-    return tgt_pad
+    pad = input_id == 0
+    return pad
 
 
 def str2bool(v):
