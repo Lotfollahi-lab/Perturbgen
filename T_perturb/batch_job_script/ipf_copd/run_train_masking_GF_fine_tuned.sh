@@ -1,6 +1,6 @@
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=1:block=yes' # request for exclusive access to gpu
+#BSUB -gpu 'mode=exclusive_process:num=4:block=yes' # request for exclusive access to gpu
 #BSUB -n 16 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
@@ -36,7 +36,7 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --cell_pairing_dir "./CellGen-reproducibility/ipf_copd/processed_data/cell_pairing" \
 --batch_size 32 \
 --max_len 1650 \
---epochs 20 \
+--epochs 50 \
 --tgt_vocab_size 25426 \
 --cellgen_lr 0.0001 \
 --cellgen_wd 0.0001 \
@@ -44,7 +44,7 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --n_workers 16 \
 --d_ff 128 \
 --num_layers 1 \
---time_steps 1 \
+--n_task_conditions 2 \
 --var_list CellType_Category Manuscript_Identity Subclass_Cell_Identity Celltype_HLCA disease IPF_signature IPF_signature_disease profibrotic_mac_signature \
 --encoder_type GF_frozen \
 --moe_type none \

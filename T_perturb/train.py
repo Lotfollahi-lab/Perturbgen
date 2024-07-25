@@ -179,12 +179,11 @@ def get_args():
         '--conditions_combined', type=list, default=None, help='conditions combined'
     )
     parser.add_argument(
-        '--time_steps',
+        '--n_task_conditions',
         # type=list,
-        nargs='+',
         type=int,
-        default=[1, 2, 3],
-        help='time steps to include during training',
+        default=2,
+        help='Number of task tokens corresponds to number of MoE classes',
     )
     parser.add_argument(
         '--var_list',
@@ -265,7 +264,7 @@ def main() -> None:
         cell_pairing = read_dataset_files(args.cell_pairing_dir, 'pkl')
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
-    tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.time_steps[0]}']
+    tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.n_task_conditions}']
     if args.split:
         if args.splitting_mode == 'stratified':
             # start preprocessing to avoid loading anndata into datamodule
@@ -349,13 +348,13 @@ def main() -> None:
             train_indices = list(range(len(src_dataset)))
             val_indices = None
             test_indices = list(
-                range(len(tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}']))
+                range(len(tgt_datasets[f'tgt_dataset_t{args.n_task_conditions}']))
             )
             # check if the train indices are the same for both adata and dataset
             subset_adata = tgt_adata_tmp[train_indices]
-            subset_dataset = tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}'].select(
-                train_indices
-            )
+            subset_dataset = tgt_datasets[
+                f'tgt_dataset_t{args.n_task_conditions}'
+            ].select(train_indices)
             assert (
                 subset_adata.obs['cell_pairing_index'].tolist()
                 == subset_dataset['cell_pairing_index']
@@ -453,11 +452,12 @@ def main() -> None:
             lr=args.cellgen_lr,
             # lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
-            time_steps=args.time_steps,
             output_dir=args.output_dir,
             encoder_type=args.encoder_type,
             moe_type=args.moe_type,
             alpha=args.alpha,
+            apply_attn_mask=True,
+            n_task_conditions=args.n_task_conditions,
         )
     elif args.train_mode == 'count':
         decoder_module = CountDecoderTrainer(
@@ -485,6 +485,7 @@ def main() -> None:
             output_dir=args.output_dir,
             mode=args.mode,
             seed=args.seed,
+            apply_attn_mask=False,
         )
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
@@ -514,7 +515,6 @@ def main() -> None:
             train_dict=train_dict,
             val_dict=val_dict,
             test_dict=test_dict,
-            time_steps=args.time_steps,
             var_list=args.var_list,
         )
     elif args.train_mode == 'count':
@@ -538,7 +538,6 @@ def main() -> None:
             train_dict=train_dict,
             val_dict=val_dict,
             test_dict=test_dict,
-            time_steps=args.time_steps,
             var_list=args.var_list,
         )
     # Setup trainer
@@ -550,13 +549,12 @@ def main() -> None:
     # Define Callbacks
     # This callback always keeps a checkpoint of the best model according to
     # validation accuracy.
-    time_steps_str_ = [str(i) for i in args.time_steps]
-    time_steps_str = '-'.join(time_steps_str_)
+
     if args.train_mode == 'masking':
         filename = (
             f'{run_id}_train_{args.train_mode}_lr_{args.cellgen_lr}_'
             f'wd_{args.cellgen_wd}_batch_{args.batch_size}_'
-            f'mlmp_{args.mlm_prob}_tp_{time_steps_str}_s_{args.seed}'
+            f'mlmp_{args.mlm_prob}_ntask_{args.n_task_conditions}_s_{args.seed}'
         )
         if args.split:
             monitor_metric = 'val/perplexity'
@@ -567,7 +565,7 @@ def main() -> None:
         filename = (
             f'{run_id}_train_{args.train_mode}_lr_{args.count_lr}_wd_{args.count_wd}_'
             f'batch_{args.batch_size}_'
-            f'{args.loss_mode}_tp_{time_steps_str}_s_{args.seed}'
+            f'{args.loss_mode}_ntask_{args.n_task_conditions}_s_{args.seed}'
         )
         if args.split:
             monitor_metric = 'val/mse'

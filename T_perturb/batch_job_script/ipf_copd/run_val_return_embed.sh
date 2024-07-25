@@ -30,8 +30,8 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --split True \
 --splitting_mode random \
 --return_embed True \
---generate True \
---ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240719_1019_ipf_copd_moeattn_masking_nosplit_lr_0.0001_wd_0.0001_batch_32_mlmp_0.15_tp_1_s_42-epoch=19.ckpt" \
+--generate False \
+--ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240717_0924_ipf_copd_attn_masking_lr_0.0001_wd_0.0001_batch_16_mlmp_0.15_tp_1_s_42-epoch=19.ckpt" \
 --output_dir "./CellGen-reproducibility/ipf_copd/res" \
 --src_dataset "./CellGen-reproducibility/ipf_copd/processed_data/dataset_hvg_src/Control.dataset" \
 --tgt_dataset_folder "./CellGen-reproducibility/ipf_copd/processed_data/dataset_hvg_tgt/" \
@@ -49,8 +49,8 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --n_workers 32 \
 --d_ff 128 \
 --num_layers 1 \
---time_steps 1 \
+--n_task_conditions 2 \
 --var_list CellType_Category Manuscript_Identity Subclass_Cell_Identity Celltype_HLCA disease IPF_signature IPF_signature_disease profibrotic_mac_signature \
 --encoder_type GF_frozen \
---moe_type moe_attention
+--moe_type none
 echo "--- Finished computing model"

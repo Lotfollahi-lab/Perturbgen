@@ -1,5 +1,7 @@
 import os
 import pickle
+
+# import re
 from datetime import datetime
 from typing import (
     Any,
@@ -16,22 +18,28 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from einops import rearrange
 
 # from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningModule
 from scvi.distributions import NegativeBinomial, ZeroInflatedNegativeBinomial
 from torchmetrics import MeanSquaredError
 from torchmetrics.text import Perplexity
+from tqdm import tqdm
 
 from T_perturb.Model.metric import evaluate_emd  # pearson,
 from T_perturb.Modules.T_model import CellGen, CountDecoder
 from T_perturb.src.losses import mse_loss
 from T_perturb.src.utils import (
     compute_cos_similarity,
+    generate_padding,
+    gumbel_sample,
     modify_ckpt_state_dict,
+    noise_schedule,
     pearson,
     return_cos_similarity,
     return_gene_embeddings,
+    top_k,
 )
 
 # from deepspeed.ops.adam import FusedAdam
@@ -60,7 +68,6 @@ class CellGenTrainer(LightningModule):
         # lr_scheduler_patience: float = 5.0,
         return_embeddings: bool = False,
         generate: bool = False,
-        time_steps: list = [1, 2],
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         var_list: List[str] = ['Time_point'],
         encoder_type: Literal[
@@ -68,11 +75,14 @@ class CellGenTrainer(LightningModule):
         ] = 'GF_frozen',
         moe_type: Literal['moe_attention', 'none', 'moe_ffn'] = 'none',
         alpha: float = 0.5,
+        n_task_conditions: int = 2,
         gene_names: Optional[List[str]] = None,
         tokenid_to_genename_dict: Optional[str] = None,
         mask_scheduler: Optional[str] = 'cosine',
         temperature: Optional[float] = 2.0,
         iterations: Optional[int] = 18,
+        apply_attn_mask: Optional[bool] = False,
+        ckpt_masking_path: Optional[str] = None,
         *args,
         **kwargs,
     ) -> None:
@@ -87,10 +97,23 @@ class CellGenTrainer(LightningModule):
             max_seq_length=max_seq_length,
             dropout=dropout,
             mlm_probability=mlm_probability,
-            time_steps=time_steps,
             encoder_type=encoder_type,
             moe_type=moe_type,
+            n_task_conditions=n_task_conditions,
         )
+        # if ckpt_masking_path is not None:
+        #     print('Start loading checkpoint of masking model')
+        #     print(ckpt_masking_path)
+        #     checkpoint = torch.load(ckpt_masking_path, map_location='cpu')
+        #     self.transformer.load_state_dict(checkpoint, strict=False)
+        #     print('Loaded checkpoint of masking model')
+        #     pattern = re.compile(r'decoder_block.0.feed_forward.fc2.weight')
+        #     state_dict = self.transformer.state_dict()
+        #     for name, param in state_dict.items():
+        #         if pattern.match(name):
+        #             if 'weight' in name:  # This checks if the parameter is a weight
+        #                 print(f"{name}: {param.data}")
+        #     print('End loading checkpoint of masking model')
 
         self.masking_loss = nn.CrossEntropyLoss()
         self.timepoint_loss = nn.CrossEntropyLoss()
@@ -102,12 +125,12 @@ class CellGenTrainer(LightningModule):
         # self.lr_scheduler_patience = lr_scheduler_patience
         # self.lr_scheduler_factor = lr_scheduler_factor
         self.perplexity = Perplexity(ignore_index=-100)
+        # self.rouge = rouge.ROUGEScore()
         self.mse = MeanSquaredError()
 
         self.return_embeddings = return_embeddings
         self.generate = generate
         self.tgt_vocab_size = tgt_vocab_size
-        self.time_steps = time_steps
         self.var_list = var_list
         self.test_dict: Dict[str, List[Any]] = {
             'true_counts': [],
@@ -116,10 +139,14 @@ class CellGenTrainer(LightningModule):
             'batch': [],
             'cell_idx': [],
             'gene_embeddings': [],
+            'router_probs': [],
         }
         for var in self.var_list:
             self.test_dict[var] = []
-
+        total_vocab_size = (
+            tgt_vocab_size + n_task_conditions
+        )  # add one for each cls token
+        self.mask_token = total_vocab_size + 1  # as defined in Geneformer
         self.marker_genes = None
         self.gene_names = gene_names
         # initialize task token for different conditions (e.g. diseases)
@@ -127,6 +154,7 @@ class CellGenTrainer(LightningModule):
         # create directory if not exist
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
+        self.apply_attn_mask = apply_attn_mask
         self.date = datetime.now().strftime('%Y%m%d')
         self.moe_type = moe_type
         if tokenid_to_genename_dict is not None:
@@ -139,24 +167,20 @@ class CellGenTrainer(LightningModule):
             self.iterations = iterations
 
     def forward(self, batch):
-        if self.generate:
-            outputs = self.transformer.generate(
-                src_input_id=batch['src_input_ids'],
-                tgt_input_id=batch['tgt_input_ids'],
-                max_len=self.max_seq_length,
-                mask_scheduler=self.mask_scheduler,
-                can_remask_prev_masked=False,
-                topk_filter_thres=0.9,
-                # time_steps=self.time_steps,
-                temperature=self.temperature,
-                iterations=self.iterations,
-            )
-        else:
-            outputs = self.transformer(
-                src_input_id=batch['src_input_ids'],
-                tgt_input_id=batch['tgt_input_ids'],
-                not_masked=self.return_embeddings,
-            )
+        outputs = self.transformer(
+            src_input_id=batch['src_input_ids'],
+            tgt_input_id=batch['tgt_input_ids'],
+            apply_attn_mask=self.apply_attn_mask,
+        )
+        # print('Loaded checkpoint of masking model')
+        # pattern = re.compile(r'decoder_fc.weight')
+        # state_dict = self.transformer.state_dict()
+        # for name, param in state_dict.items():
+        #     if pattern.match(name):
+        #         if 'weight' in name:  # This checks if the parameter is a weight
+        #             print(f"{name}: {param.data[:15,:15]}")
+        # print('End loading checkpoint of masking model')
+
         return outputs
 
     def configure_optimizers(self):
@@ -178,6 +202,223 @@ class CellGenTrainer(LightningModule):
             # 'scheduler_type': 'WarmupCosineLR',
             'monitor': 'train/masking_loss',
         }
+
+    @torch.no_grad()
+    def iterative_generate(
+        self,
+        src_input_id: torch.Tensor,
+        tgt_input_id: torch.Tensor,
+        max_len: int,
+        can_remask_prev_masked: bool = False,
+        topk_filter_thres: float = 0.9,
+        temperature: float = 2.0,  # keep in range 2.0-3.0
+        # self_cond_prob=0.9,
+        iterations: int = 18,  # optimal of iterations in MaskGIT
+        mask_scheduler: str = 'cosine',
+    ):
+        '''
+        Description:
+        ------------
+        Generate sequences for the target tokens
+        adopted from MaskGIT using the pretrained model.
+        Use mean non-padding embeddings for count prediction.
+
+        Parameters:
+        -----------
+        src_input_id: `torch.Tensor`
+            Source token input.
+        tgt_input_id_dict: `dict`
+            Dictionary of target token inputs from different time steps.
+        max_len: `int`
+            Maximum length of the generated sequence.
+        can_remask_prev_masked: `bool`
+            Whether to remask previously masked tokens.
+        topk_filter_thres: `float`
+            Top-k filter threshold based on the logits.
+        temperature: `float`
+            Temperature to increase or decrease the randomness of the predictions.
+        iterations: `int`
+            Number of iterations until all tokens are predicted.
+        mask_scheduler: `str`
+            Mask scheduler function.
+            Options: ['uniform', 'pow', 'cosine', 'log', 'exp']
+
+        Returns:
+        --------
+        count_outputs: `dict`
+            Output dictionary containing the following keys:
+            - 'count_output_t{t}': Count prediction for time step t.
+            - 'cls_embedding_t{t}': CLS token embeddings for time step t.
+
+        '''
+        # print('tgt_input_id', tgt_input_id[:5,:10])
+        # use max shape instead of genes you like to generate
+        pad_tensor = torch.ones_like(tgt_input_id)
+
+        if pad_tensor.shape[1] > max_len:
+            # set the rest of the tokens to zero
+            pad_tensor[:, max_len:] = 0
+        tgt_pad = generate_padding(pad_tensor)
+        # create ids and scores matrix for each batch
+        ids = torch.full_like(tgt_input_id, self.mask_token, dtype=torch.long)
+        # print(tgt_input_id[:5,:10])
+        # add task token to the ids
+        ids[:, 0] = tgt_input_id[:, 0]
+        scores = torch.zeros_like(tgt_input_id, dtype=torch.float)
+        # print('generate print')
+        # pattern = re.compile(r'decoder_fc.weight')
+
+        # state_dict = self.transformer.state_dict()
+        # for name, param in state_dict.items():
+        #     if pattern.match(name):
+        #         if 'weight' in name:  # This checks if the parameter is a weight
+        #             print(f"{name}: {param.data}")
+        pred_ids = self.generate_sequence(
+            ids=ids,
+            tgt_pad=tgt_pad,
+            src_input_id=src_input_id,
+            mask_scheduler=mask_scheduler,
+            can_remask_prev_masked=can_remask_prev_masked,
+            topk_filter_thres=topk_filter_thres,
+            starting_temperature=temperature,
+            iterations=iterations,
+            scores=scores,
+        )
+        # print('pred_ids', pred_ids[:15,:20])
+        outputs = self.transformer(
+            src_input_id=src_input_id,
+            apply_attn_mask=False,
+            generate_id=pred_ids,
+            generate_pad=tgt_pad,
+        )
+        return outputs
+
+    @torch.no_grad()
+    def generate_sequence(
+        self,
+        ids: torch.Tensor,
+        tgt_pad: torch.Tensor,
+        src_input_id: torch.Tensor,
+        mask_scheduler: str,
+        scores: torch.Tensor,
+        can_remask_prev_masked: bool = False,
+        topk_filter_thres: float = 0.9,
+        starting_temperature: float = 2.0,
+        iterations: int = 18,
+    ):
+        '''
+        Description:
+        ------------
+        Generate sequences for the target tokens
+        adopted from MaskGIT using the pretrained model.
+
+        Parameters:
+        -----------
+        generate_id_dict: `dict`
+            Dictionary of target token inputs for generation.
+        generate_pad_dict: `dict`
+            Dictionary of target padding masks for generation.
+        src_input_id: `torch.Tensor`
+            Source token input.
+        demask_fn: `nn.Module`
+            Pretrained model for demasking.
+        mask_scheduler: `str`
+            Mask scheduler function.
+            Options: ['uniform', 'pow', 'cosine', 'log', 'exp']
+        scores: `torch.Tensor`
+            Probability scores for the tokens.
+        can_remask_prev_masked: `bool`
+            Whether to remask previously masked tokens.
+        topk_filter_thres: `float`
+            Top-k filter threshold based on the logits.
+        starting_temperature: `float`
+            Temperature to increase or decrease the randomness of the predictions.
+        iterations: `int`
+            Number of iterations until all tokens are predicted.
+
+        Returns:
+        --------
+        outputs: `dict`
+            Output dictionary containing the following keys:
+            - 'dec_logits': Decoder logits.
+            - 'labels': True labels for masked tokens.
+            - 'selected_time_step': Selected time step.
+            - 'dec_embedding': Decoder embeddings.
+            - 'mean_embedding': Mean embeddings for non-padding tokens.
+        ids: `torch.Tensor`
+            Generated target token inputs.
+        '''
+        max_neg_value = -torch.finfo().max
+        task_token = ids[:, 0]
+        for iteration, steps_until_x0 in tqdm(
+            zip(
+                torch.linspace(0, 1, iterations),
+                reversed(range(iterations)),
+            ),
+            total=iterations,
+        ):
+            # mask scheduler function, gamma
+            rand_mask_prob = noise_schedule(
+                ratio=iteration,
+                total_tokens=ids.shape[1],
+                method=mask_scheduler,
+            )
+            scores = scores.masked_fill(tgt_pad, max_neg_value)
+            ids = ids.masked_fill(tgt_pad, 0)
+            ids_to_keep = torch.zeros_like(ids, dtype=torch.long)
+            batch_size, seq_len = scores.shape
+            num_token_masked = max(int((rand_mask_prob * seq_len).item()), 1)
+            mask = torch.zeros_like(scores, dtype=torch.bool)
+            masked_indices = torch.topk(scores, num_token_masked, dim=-1).indices
+            mask = mask.scatter(1, masked_indices, True)
+            ids = ids.masked_fill(mask, self.mask_token)
+            # keep indices which are not masked
+            ids_to_keep = torch.where(
+                mask,
+                torch.tensor(0, dtype=ids.dtype, device=ids.device),
+                ids,
+            )
+            ids[:, 0] = task_token
+            # demask tokens
+            outputs = self.transformer(
+                src_input_id=src_input_id,
+                apply_attn_mask=False,
+                generate_id=ids,
+                generate_pad=tgt_pad,
+            )
+            logits = outputs['dec_logits']
+            # exclude cls token
+            ids_ = ids[:, 1:]
+            scores_ = scores[:, 1:]
+            ids_to_keep_ = ids_to_keep[:, 1:]
+            # avoid predicting already predicted tokens
+            # thus set the logits to max_neg_value
+            unique_ids_per_sample = [torch.unique(ids) for ids in ids_to_keep_]
+            # Create a mask for the logits to set specific positions to max_neg_value
+            logits_mask = torch.zeros_like(logits).bool()
+
+            for i, unique_ids in enumerate(unique_ids_per_sample):
+                logits_mask[i, :, unique_ids] = True
+            logits[logits_mask] = max_neg_value
+
+            filtered_logits = top_k(logits, topk_filter_thres)
+            temperature = starting_temperature * (
+                steps_until_x0 / iteration
+            )  # temperature is annealed
+
+            pred_ids = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
+            is_mask = ids_ == self.mask_token
+            ids_ = torch.where(is_mask, pred_ids, ids_)
+
+            probs_without_temperature = logits.softmax(dim=-1)
+            scores_ = 1 - probs_without_temperature.gather(2, pred_ids[..., None])
+            scores_ = rearrange(scores_, '... 1 -> ...')
+            if not can_remask_prev_masked:
+                scores_ = scores_.masked_fill(~is_mask, max_neg_value)
+            # add cls token to the ids and update scores and ids
+            scores[:, 1:] = scores_
+            ids[:, 1:] = ids_
+        return ids
 
     def training_step(self, batch, *args, **kwargs):
         # logits, labels, count_output, count_dropout = self.forward(batch)
@@ -301,11 +542,27 @@ class CellGenTrainer(LightningModule):
 
     def test_step(self, batch, *args, **kwargs):
         if self.return_embeddings:
-            outputs = self.forward(batch)
+            if self.generate:
+                outputs = self.iterative_generate(
+                    src_input_id=batch['src_input_ids'],
+                    tgt_input_id=batch['tgt_input_ids'],
+                    max_len=self.max_seq_length,
+                    mask_scheduler=self.mask_scheduler,
+                    can_remask_prev_masked=False,
+                    topk_filter_thres=0.9,
+                    temperature=self.temperature,
+                    iterations=self.iterations,
+                )
+            else:
+                outputs = self.forward(batch)
             token_ids = batch['tgt_input_ids']
             cell_ids = batch['tgt_cell_idx']
+            # router_probs = outputs['router_probs']
+            # print(f'router_probs: {router_probs[:15,:15]}')
+            # print(router_probs.shape)
             cos_similarity, cls_embeddings, gene_embeddings = compute_cos_similarity(
-                outputs=outputs
+                outputs=outputs,
+                cls_mode='mean',
             )
             # define marker gene list to extract gene embeddings
             marker_genes = [
@@ -352,6 +609,7 @@ class CellGenTrainer(LightningModule):
             self.test_dict['gene_embeddings'].append(
                 marker_gene_embeddings.detach().cpu()
             )
+
             for var in self.var_list:
                 self.test_dict[var].append(batch[var])
 
@@ -429,6 +687,7 @@ class CountDecoderTrainer(LightningModule):
         ] = 'GF_frozen',
         moe_type: Literal['moe_attention', 'none', 'moe_ffn'] = 'none',
         seed: int = 42,
+        n_task_conditions: int = 1,
         *args,
         **kwargs,
     ):
@@ -442,9 +701,9 @@ class CountDecoderTrainer(LightningModule):
             num_layers=num_layers,
             d_ff=d_ff,
             max_seq_length=max_seq_length,
-            time_steps=time_steps,
             encoder_type=encoder_type,
             moe_type=moe_type,
+            n_task_conditions=n_task_conditions,
         )
         if ckpt_masking_path is not None:
             checkpoint = torch.load(ckpt_masking_path, map_location='cpu')
@@ -790,7 +1049,6 @@ class CountDecoderTrainer(LightningModule):
                 mask_scheduler=self.mask_scheduler,
                 can_remask_prev_masked=False,
                 topk_filter_thres=0.9,
-                # time_steps=self.time_steps,
                 temperature=self.temperature,
                 iterations=self.iterations,
             )

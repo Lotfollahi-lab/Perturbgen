@@ -72,7 +72,7 @@ def get_args():
     parser.add_argument(
         '--return_embeddings',
         type=str2bool,
-        default=False,
+        default=True,
         help='return embedding',
     )
     parser.add_argument(
@@ -182,20 +182,19 @@ def get_args():
     parser.add_argument(
         '--mask_scheduler',
         type=str,
-        default='pow',
+        default='cosine',
         help='mask scheduler [cosine, exp, pow]',
     )
-    parser.add_argument('--temperature', type=float, default=1.5, help='temperature')
+    parser.add_argument('--temperature', type=float, default=1.0, help='temperature')
     parser.add_argument('--iterations', type=int, default=19, help='iterations')
     parser.add_argument('--conditions', type=dict, default=None, help='conditions')
     parser.add_argument(
         '--conditions_combined', type=list, default=None, help='conditions combined'
     )
     parser.add_argument(
-        '--time_steps',
+        '--n_task_conditions',
         type=int,
-        nargs='+',
-        default=[2],
+        default=2,
         help='time steps to include during training',
     )
     parser.add_argument(
@@ -250,9 +249,8 @@ def get_args():
 
 
 def main() -> None:
-    """Run training."""
+    """Run testing."""
     args = get_args()
-    # PyTorch Lightning allows to set all necessary seeds in one function call.
     pl.seed_everything(args.seed)
     torch.manual_seed(args.seed)
     # Load and preprocess data
@@ -266,7 +264,7 @@ def main() -> None:
         cell_pairing = read_dataset_files(args.cell_pairing_dir, 'pkl')
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
-    tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.time_steps[0]}'].copy()
+    tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.n_task_conditions}'].copy()
     if args.split:
         if args.splitting_mode == 'stratified':
             # start preprocessing to avoid loading anndata into datamodule
@@ -348,13 +346,13 @@ def main() -> None:
             train_indices = list(range(len(src_dataset)))
             val_indices = None
             test_indices = list(
-                range(len(tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}']))
+                range(len(tgt_datasets[f'tgt_dataset_t{args.n_task_conditions}']))
             )
             # check if the train indices are the same for both adata and dataset
             subset_adata = tgt_adata_tmp[train_indices]
-            subset_dataset = tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}'].select(
-                train_indices
-            )
+            subset_dataset = tgt_datasets[
+                f'tgt_dataset_t{args.n_task_conditions}'
+            ].select(train_indices)
             assert (
                 subset_adata.obs['cell_pairing_index'].tolist()
                 == subset_dataset['cell_pairing_index']
@@ -428,6 +426,8 @@ def main() -> None:
             condition_key='conditions_combined',
         )
         conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
+    # TODO: remove timesteps from count decoder code
+    time_steps = [1]
 
     print('Data loaded and preprocessed.')
     # Initialize model module
@@ -435,6 +435,7 @@ def main() -> None:
     if args.test_mode == 'masking':
         pretrained_module = CellGenTrainer(
             tgt_vocab_size=args.tgt_vocab_size,
+            ckpt_masking_path=args.ckpt_masking_path,
             d_model=256,
             num_heads=8,
             num_layers=args.num_layers,
@@ -446,8 +447,9 @@ def main() -> None:
             # lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             return_embeddings=args.return_embeddings,
+            apply_attn_mask=False,
             generate=args.generate,
-            time_steps=args.time_steps,
+            n_task_conditions=args.n_task_conditions,
             gene_names=tgt_adata_tmp.var['gene_name'],
             output_dir=args.output_dir,
             var_list=args.var_list,
@@ -473,12 +475,13 @@ def main() -> None:
             weight_decay=args.count_wd,
             # lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
+            apply_attn_mask=False,
             conditions=conditions_,
             conditions_combined=conditions_combined_,
             dropout=args.count_dropout,
             generate=args.generate,
             tgt_adata=tgt_adatas,
-            time_steps=args.time_steps,
+            time_steps=time_steps,
             temperature=args.temperature,
             iterations=args.iterations,
             mask_scheduler=args.mask_scheduler,
@@ -490,7 +493,6 @@ def main() -> None:
         )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')
-
     # Initialize data module
     # ----------------------------------------------------------------------------------
 
@@ -518,10 +520,8 @@ def main() -> None:
         train_dict=None,
         val_dict=None,
         test_dict=test_dict,
-        time_steps=args.time_steps,
         var_list=args.var_list,
     )
-
     # Setup trainer
     # ----------------------------------------------------------------------------------
     run_id = datetime.now().strftime('%Y%m%d_%H%M_cellgen')
@@ -564,8 +564,8 @@ def main() -> None:
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
         devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
+        limit_test_batches=500,
     )
-    # Finally, kick of the training process.
     if args.test_mode == 'masking':
         trainer.test(
             pretrained_module,

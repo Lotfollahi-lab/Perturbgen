@@ -51,7 +51,6 @@ class CellGenDataset(Dataset):
         self,
         src_dataset: DatasetDict,
         tgt_datasets: DatasetDict,
-        time_steps: list = [1, 2],
         split_indices: Dict = {},
         src_counts: np.ndarray = None,
         tgt_counts_dict: np.ndarray = None,
@@ -63,7 +62,6 @@ class CellGenDataset(Dataset):
         self.conditions = conditions
         self.conditions_combined = conditions_combined
         self.condition_encodings = condition_encodings
-        self.time_steps = time_steps
 
         self.src_dataset_paired: DatasetDict = None
         self.tgt_dataset_paired: DatasetDict = None
@@ -79,8 +77,6 @@ class CellGenDataset(Dataset):
         self.tgt_dataset_paired = tgt_datasets.select(tgt_indices)
         if tgt_counts_dict is not None:
             self.tgt_counts_paired = tgt_counts_dict[tgt_indices, :]
-        if max(time_steps) > len(tgt_datasets):
-            raise ValueError('Number of time steps is greater than number of datasets')
         src_len = len(self.src_dataset_paired)
         tgt_len = len(self.tgt_dataset_paired)
         if src_len != tgt_len:
@@ -119,8 +115,6 @@ class CellGenDataModule(LightningDataModule):
         shuffle: bool = False,
         max_len: int = 2048,
         split: bool = False,
-        time_steps: list = [1, 2],
-        total_time_steps: int = 4,
         src_counts: Optional[np.ndarray] = None,
         tgt_counts_dict: Optional[np.ndarray] = None,
         condition_keys: Optional[list] = None,
@@ -166,8 +160,6 @@ class CellGenDataModule(LightningDataModule):
         self.train_dict = train_dict
         self.val_dict = val_dict
         self.test_dict = test_dict
-        self.time_steps = time_steps
-        self.total_time_steps = total_time_steps
         self.var_list = var_list
 
         self.train_dataset_list: List[Dataset] = []
@@ -184,7 +176,6 @@ class CellGenDataModule(LightningDataModule):
                 'src_counts': self.src_counts,
                 'tgt_datasets': self.tgt_datasets[f'tgt_dataset_t{str_i}'],
                 'tgt_counts_dict': self.tgt_counts_dict[f'tgt_h5ad_t{str_i}'],
-                'time_steps': self.time_steps,
             }
 
             if self.condition_encodings is not None:
@@ -213,9 +204,6 @@ class CellGenDataModule(LightningDataModule):
                     self.val_dataset_list = None
 
             if stage == 'test' or stage is None:
-                # use all time steps to provide as context
-                dataset_params['time_steps'] = list(range(1, self.total_time_steps + 1))
-
                 test_dataset = CellGenDataset(
                     split_indices=self.test_dict[mapping_dict_key], **dataset_params
                 )

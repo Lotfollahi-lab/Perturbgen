@@ -7,6 +7,7 @@ from typing import (
     Any,
     Dict,
     List,
+    Literal,
     Optional,
 )
 
@@ -87,6 +88,7 @@ def mean_nonpadding_embs(embs, pad, dim=1):
 
 def compute_cos_similarity(
     outputs: dict,
+    cls_mode: Literal['mean', 'cls'] = 'mean',
     time_step: Optional[int] = None,
     all_time_steps: Optional[List[int]] = None,
 ):
@@ -137,7 +139,10 @@ def compute_cos_similarity(
             cos_similarity.append(cos_similarity_)
         cos_similarity = torch.stack(cos_similarity)
     else:
-        cls_embeddings = outputs['mean_embedding']
+        if cls_mode == 'mean':
+            cls_embeddings = outputs['mean_embedding']
+        elif cls_mode == 'cls':
+            cls_embeddings = outputs['dec_embedding'][:, 0, :]
         gene_embeddings = outputs['dec_embedding'][:, 1:, :]
         cos_similarity = []
         for i in range(gene_embeddings.shape[0]):
