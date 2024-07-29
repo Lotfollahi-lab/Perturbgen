@@ -26,7 +26,7 @@ echo "--- Start computing model"
 # python3 $cwd/train.py \
 python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/train.py \
 --train_mode masking \
---split True \
+--split False \
 --splitting_mode random \
 --output_dir "./T_perturb/T_perturb/plt/res/ipf_copd" \
 --src_dataset "./CellGen-reproducibility/ipf_copd/processed_data/dataset_hvg_src/Control.dataset" \
