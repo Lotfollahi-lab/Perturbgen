@@ -28,7 +28,7 @@ python3 $cwd/val.py \
 --test_mode count \
 --split False \
 --splitting_mode random \
---generate True \
+--generate False \
 --ckpt_count_path './T_perturb/T_perturb/Model/checkpoints/'\
 '20240520_1446_extrapolate_lr_0.0001'\
 '_wd_0.0001_batch_32_zinb_tp_1-epoch=99.ckpt' \

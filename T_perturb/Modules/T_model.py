@@ -127,7 +127,6 @@ class Mlp(nn.Module):
         x = self.act(x)
         x = self.drop(x)
         x = self.fc2(x)
-        # print('decoder.fc2',self.fc2.weight)
         x = self.drop(x)
         return x
 
@@ -909,19 +908,16 @@ class CellGen(nn.Module):
                 tgt_mask=tgt_pad,
                 enc_output=enc_output,
             )
+
         # :TODO rewrite this part logits not needed for running the other timepoints
         outputs = {}
         decoder_logits = self.decoder_fc(dec_embedding)
+
         if labels is not None:
             outputs['dec_logits'] = decoder_logits
             outputs['labels'] = labels
 
         if generate is True:
-            outputs['dec_embedding'] = dec_embedding
-            outputs['mean_embedding'] = mean_nonpadding_embs(
-                embs=dec_embedding,
-                pad=tgt_pad,
-            )
             outputs['dec_logits'] = decoder_logits[:, 1:, :]
             outputs['router_probs'] = router_probs
         else:
@@ -1067,6 +1063,7 @@ class CellGen(nn.Module):
         outputs: `dict`
             Output dictionary
         '''
+
         if apply_attn_mask:
             tgt_pad = generate_padding(tgt_input_id)
             tgt_input_id, labels = self.generate_mask(

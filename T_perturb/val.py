@@ -185,7 +185,7 @@ def get_args():
         default='cosine',
         help='mask scheduler [cosine, exp, pow]',
     )
-    parser.add_argument('--temperature', type=float, default=1.0, help='temperature')
+    parser.add_argument('--temperature', type=float, default=2.0, help='temperature')
     parser.add_argument('--iterations', type=int, default=19, help='iterations')
     parser.add_argument('--conditions', type=dict, default=None, help='conditions')
     parser.add_argument(
@@ -270,8 +270,8 @@ def main() -> None:
             # start preprocessing to avoid loading anndata into datamodule
             train_indices, val_indices, test_indices = stratified_split(
                 tgt_adata=tgt_adata_tmp,
-                train_prop=0.8,  # 0.8,0.1,0.1 train, val, test
-                test_prop=0.1,
+                train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
+                test_prop=args.test_prop,
                 groups=['Cell_type', 'Donor'],
                 seed=args.seed,
             )
@@ -435,7 +435,6 @@ def main() -> None:
     if args.test_mode == 'masking':
         pretrained_module = CellGenTrainer(
             tgt_vocab_size=args.tgt_vocab_size,
-            ckpt_masking_path=args.ckpt_masking_path,
             d_model=256,
             num_heads=8,
             num_layers=args.num_layers,
@@ -564,7 +563,7 @@ def main() -> None:
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
         devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
-        limit_test_batches=500,
+        limit_test_batches=100,
     )
     if args.test_mode == 'masking':
         trainer.test(

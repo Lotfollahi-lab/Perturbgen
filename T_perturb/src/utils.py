@@ -65,10 +65,11 @@ def mean_nonpadding_embs(embs, pad, dim=1):
     https://huggingface.co/ctheodoris/Geneformer/blob/main/geneformer/perturber_utils.py # noqa
     Accessed: 2024-05-14
     '''
+    pad_ = pad.clone()
     # mask should be opposite of pad
-    pad[:, 0] = True
+    pad_[:, 0] = True
     # our mask is the opposite of BERT mask
-    pad_mask = ~pad
+    pad_mask = ~pad_
     # create a tensor of original lengths
     original_lens = pad_mask.sum(dim=1)
 
@@ -402,6 +403,7 @@ def noise_schedule(
     exponent: `float`
         Exponent for 'pow' method.
     '''
+    total_tokens = torch.tensor(total_tokens, dtype=torch.float)
     if method == 'uniform':
         mask_ratio = 1.0 - ratio
     elif 'pow' in method:
