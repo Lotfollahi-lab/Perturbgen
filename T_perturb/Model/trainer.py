@@ -263,7 +263,6 @@ class CellGenTrainer(LightningModule):
         # print(tgt_input_id[:5,:10])
         # add task token to the ids
         ids[:, 0] = tgt_input_id[:, 0]
-
         scores = torch.zeros_like(tgt_input_id, dtype=torch.float)
         pred_ids = self.generate_sequence(
             ids=ids,
@@ -276,6 +275,7 @@ class CellGenTrainer(LightningModule):
             iterations=iterations,
             scores=scores,
         )
+        raise
         outputs = self.transformer(
             src_input_id=src_input_id,
             tgt_input_id=pred_ids,
@@ -358,12 +358,15 @@ class CellGenTrainer(LightningModule):
             ids = ids.masked_fill(tgt_pad, 0)
             ids_to_keep = torch.zeros_like(ids, dtype=torch.long)
             batch_size, seq_len = scores.shape
-            num_token_masked = max(int((rand_mask_prob * seq_len).item()), 1)
+            unpadded = (scores != max_neg_value).sum(dim=1)
+            num_token_masked = (unpadded.float() * rand_mask_prob).long()
+            print(num_token_masked)
             mask = torch.zeros_like(scores, dtype=torch.bool)
-            masked_indices = torch.topk(scores, num_token_masked, dim=-1).indices
-            print(scores)
-            print(masked_indices)
+            masked_indices = torch.topk(scores, num_token_masked.max(), dim=-1).indices
             mask = mask.scatter(1, masked_indices, True)
+            # Mask the top `num_tokens_to_mask` positions for each sample
+            for i in range(batch_size):
+                mask[i, masked_indices[i, : num_token_masked[i]]] = True
             ids = ids.masked_fill(mask, self.mask_token)
             # keep indices which are not masked
             ids_to_keep = torch.where(
@@ -371,6 +374,7 @@ class CellGenTrainer(LightningModule):
                 torch.tensor(0, dtype=ids.dtype, device=ids.device),
                 ids,
             )
+
             ids[:, 0] = task_token
             # demask tokens
             outputs = self.transformer(
@@ -406,11 +410,13 @@ class CellGenTrainer(LightningModule):
             probs_without_temperature = logits.softmax(dim=-1)
             scores_ = 1 - probs_without_temperature.gather(2, pred_ids[..., None])
             scores_ = rearrange(scores_, '... 1 -> ...')
+
             if not can_remask_prev_masked:
                 scores_ = scores_.masked_fill(~is_mask, max_neg_value)
             # add cls token to the ids and update scores and ids
             scores[:, 1:] = scores_
             ids[:, 1:] = ids_
+            print(ids_)
         return ids
 
     def training_step(self, batch, *args, **kwargs):
