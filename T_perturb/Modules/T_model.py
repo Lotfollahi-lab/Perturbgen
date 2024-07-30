@@ -646,6 +646,7 @@ class Encoder(nn.Module):
         )
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
         self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
+
         self.d_model = d_model
 
         self.init_weights()
@@ -912,7 +913,6 @@ class CellGen(nn.Module):
         # :TODO rewrite this part logits not needed for running the other timepoints
         outputs = {}
         decoder_logits = self.decoder_fc(dec_embedding)
-
         if labels is not None:
             outputs['dec_logits'] = decoder_logits
             outputs['labels'] = labels
@@ -926,9 +926,9 @@ class CellGen(nn.Module):
                 embs=dec_embedding,
                 pad=tgt_pad,
             )
+            outputs['cls_embedding'] = dec_embedding[:, 0, :]
             outputs['expert_logits_list'] = expert_logits_list
             outputs['router_probs'] = router_probs
-
         if cls_positions is not None:
             outputs['cls_positions'] = cls_positions
         return outputs

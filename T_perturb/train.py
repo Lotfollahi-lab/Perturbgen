@@ -166,14 +166,6 @@ def get_args():
         type=str,
         help='Selection of condition keys to use for model',
     )
-    parser.add_argument(
-        '--mask_scheduler',
-        type=str,
-        default='pow',
-        help='mask scheduler [cosine, exp, pow]',
-    )
-    parser.add_argument('--temperature', type=float, default=1.5, help='temperature')
-    parser.add_argument('--iterations', type=int, default=19, help='iterations')
     parser.add_argument('--conditions', type=dict, default=None, help='conditions')
     parser.add_argument(
         '--conditions_combined', type=list, default=None, help='conditions combined'

@@ -134,6 +134,7 @@ class CellGenTrainer(LightningModule):
         self.test_dict: Dict[str, List[Any]] = {
             'true_counts': [],
             'cls_embeddings': [],
+            'mean_embeddings': [],
             'cosine_similarities': [],
             'batch': [],
             'cell_idx': [],
@@ -264,6 +265,9 @@ class CellGenTrainer(LightningModule):
         # add task token to the ids
         ids[:, 0] = tgt_input_id[:, 0]
         scores = torch.zeros_like(tgt_input_id, dtype=torch.float)
+        scores = scores.masked_fill(tgt_pad, -torch.finfo().max)
+        ids = ids.masked_fill(tgt_pad, 0)
+        # scores[:, 0] = 1.0
         pred_ids = self.generate_sequence(
             ids=ids,
             tgt_pad=tgt_pad,
@@ -275,7 +279,8 @@ class CellGenTrainer(LightningModule):
             iterations=iterations,
             scores=scores,
         )
-        raise
+        # print('pred_ids:')
+        # print(pred_ids[:5,:10])
         outputs = self.transformer(
             src_input_id=src_input_id,
             tgt_input_id=pred_ids,
@@ -354,13 +359,10 @@ class CellGenTrainer(LightningModule):
                 total_tokens=ids.shape[1],
                 method=mask_scheduler,
             )
-            scores = scores.masked_fill(tgt_pad, max_neg_value)
-            ids = ids.masked_fill(tgt_pad, 0)
             ids_to_keep = torch.zeros_like(ids, dtype=torch.long)
             batch_size, seq_len = scores.shape
             unpadded = (scores != max_neg_value).sum(dim=1)
             num_token_masked = (unpadded.float() * rand_mask_prob).long()
-            print(num_token_masked)
             mask = torch.zeros_like(scores, dtype=torch.bool)
             masked_indices = torch.topk(scores, num_token_masked.max(), dim=-1).indices
             mask = mask.scatter(1, masked_indices, True)
@@ -368,14 +370,15 @@ class CellGenTrainer(LightningModule):
             for i in range(batch_size):
                 mask[i, masked_indices[i, : num_token_masked[i]]] = True
             ids = ids.masked_fill(mask, self.mask_token)
+            # print('scores',scores[:5,:])
+            # print('ids',ids[:5,:])
             # keep indices which are not masked
+            ids[:, 0] = task_token
             ids_to_keep = torch.where(
                 mask,
                 torch.tensor(0, dtype=ids.dtype, device=ids.device),
                 ids,
             )
-
-            ids[:, 0] = task_token
             # demask tokens
             outputs = self.transformer(
                 src_input_id=src_input_id,
@@ -416,7 +419,6 @@ class CellGenTrainer(LightningModule):
             # add cls token to the ids and update scores and ids
             scores[:, 1:] = scores_
             ids[:, 1:] = ids_
-            print(ids_)
         return ids
 
     def training_step(self, batch, *args, **kwargs):
@@ -549,18 +551,19 @@ class CellGenTrainer(LightningModule):
                     max_len=self.max_seq_length,
                     mask_scheduler=self.mask_scheduler,
                     can_remask_prev_masked=False,
-                    topk_filter_thres=0.9,
+                    topk_filter_thres=0.90,
                     temperature=self.temperature,
                     iterations=self.iterations,
                 )
+                pred_ids = pred_ids.cpu().numpy()
+                tgt_ids = tgt_ids.cpu().numpy()
                 # exclude task token and padding token
                 # exclude padding token
-                pred_ids = pred_ids[pred_ids != 0]
-                pred_ids = pred_ids.cpu().numpy().tolist()[1:]
-                tgt_ids = tgt_ids[tgt_ids != 0]
-                tgt_ids = tgt_ids.cpu().numpy().tolist()[1:]
-                print(len(pred_ids))
-                print(len(tgt_ids))
+                pred_ids = pred_ids[:, 1:]
+                pred_ids = pred_ids[pred_ids != 0].tolist()
+                tgt_ids = tgt_ids[:, 1:]
+                tgt_ids = tgt_ids[tgt_ids != 0].tolist()
+
                 pred_genes = [
                     str(self.tokenid_to_genename_dict.get(idx, idx)) for idx in pred_ids
                 ]
@@ -571,6 +574,7 @@ class CellGenTrainer(LightningModule):
                 true_genes = ' '.join(true_genes)
                 # rouge score
                 rouge_score = self.rouge(pred_genes, true_genes)
+
                 self.log(
                     'test/rouge_f1',
                     rouge_score['rouge1_fmeasure'],
@@ -604,6 +608,7 @@ class CellGenTrainer(LightningModule):
                     sync_dist=True,
                     batch_size=batch['src_input_ids'].shape[0],
                 )
+
             else:
                 outputs = self.forward(batch)
             token_ids = batch['tgt_input_ids']
@@ -650,7 +655,12 @@ class CellGenTrainer(LightningModule):
             )
             self.marker_genes = marker_genes_dict
             self.test_dict['true_counts'].append(batch['tgt_counts'].detach().cpu())
-            self.test_dict['cls_embeddings'].append(cls_embeddings.detach().cpu())
+            self.test_dict['cls_embeddings'].append(
+                outputs['cls_embedding'].detach().cpu()
+            )
+            self.test_dict['mean_embeddings'].append(
+                outputs['mean_embedding'].detach().cpu()
+            )
             self.test_dict['cosine_similarities'].append(
                 marker_cos_similarity.detach().cpu()
             )

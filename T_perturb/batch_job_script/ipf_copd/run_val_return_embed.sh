@@ -46,7 +46,7 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --cellgen_wd 0.0001 \
 --count_lr 0.00005 \
 --count_wd 0.01 \
---n_workers 32 \
+--n_workers 16 \
 --d_ff 128 \
 --num_layers 1 \
 --n_task_conditions 2 \
