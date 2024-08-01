@@ -90,7 +90,8 @@ sc.pl.embedding(
 plt.savefig('./res/full_data_umap_log_norm.pdf', dpi=300, bbox_inches='tight')
 plt.close()
 adata_cls = sc.read_h5ad(
-    f'{args.res_dir}/cls_embeddings_cosine_similarity_all_cells.h5ad'
+    f'{args.res_dir}/20240731_generate_adata_extrapolate_[3]__'
+    'Transformer_encoder_100_mse_3_mean_embedding.h5ad'
 )
 var_names = adata_cls.obsm['cosine_similarity'].columns
 # filter adata to only include genes in var_names
@@ -241,8 +242,6 @@ sc.pl.embedding(
         'Cell_type',
         'Cell_population',
         'Time_point',
-        'batch',
-        'Activation_level',
     ],
     ncols=2,
     wspace=0.3,
@@ -250,7 +249,28 @@ sc.pl.embedding(
     show=False,
 )
 plt.savefig(
-    f'{args.res_dir}/cls_embeddings_umap.pdf',
+    f'{args.res_dir}/cls_embeddings_umap_generate_extrapolation_generate.pdf',
+    bbox_inches='tight',
+)
+plt.close()
+
+sc.pp.neighbors(adata_cls, n_neighbors=15)
+sc.tl.umap(adata_cls)
+sc.pl.embedding(
+    adata_cls,
+    basis='X_umap',
+    color=[
+        'Cell_type',
+        'Cell_population',
+        'Time_point',
+    ],
+    ncols=2,
+    wspace=0.3,
+    frameon=False,
+    show=False,
+)
+plt.savefig(
+    f'{args.res_dir}/cls_embeddings_umap_generate_test.pdf',
     bbox_inches='tight',
 )
 plt.close()

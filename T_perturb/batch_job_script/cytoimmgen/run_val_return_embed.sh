@@ -1,5 +1,5 @@
 #!/bin/bash
-#BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
 #BSUB -gpu "mode=exclusive_process:num=1" # request for exclusive access to gpu
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
@@ -24,11 +24,11 @@ echo "--- Start computing model"
 # # Run python script for rna
 # python3 $cwd/val.py \
 python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
---test_mode masking \
+--test_mode count \
 --split False \
 --splitting_mode stratified \
 --return_embed True \
---generate False \
+--generate True \
 --ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240520_1559_tcell_embedding"\
 "_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-2-3-epoch=49.ckpt" \
 --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
@@ -39,16 +39,17 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --batch_size 64 \
 --max_len 300 \
 --tgt_vocab_size 1261 \
---petra_lr 0.001 \
---petra_wd 0.001 \
+--cellgen_lr 0.001 \
+--cellgen_wd 0.001 \
 --count_lr 0.00005 \
 --count_wd 0.01 \
 --d_ff 128 \
 --num_layers 6 \
 --n_workers 32 \
 --condition_keys Cell_culture_batch \
---time_steps 1 2 3 \
---var_list Cell_population Cell_type Time_point Donor
+--time_steps 3 \
+--var_list Cell_population Cell_type Time_point Donor \
+--mode Transformer_encoder
 echo "--- Finished computing model"
 
 # # # Run python script for rna

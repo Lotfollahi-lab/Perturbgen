@@ -3,7 +3,7 @@ Mostly copy-paste from timm library.
 https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
 '''
 import math
-from typing import Optional
+from typing import List, Optional
 
 import numpy as np
 import torch
@@ -302,8 +302,8 @@ class Block(nn.Module):
 class Geneformerwrapper(nn.Module):
     def __init__(
         self,
-        model_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'generative_modelling_omic/Geneformer/',
+        model_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+        't_generative/T_perturb/Geneformer',
         output_attentions=False,
         output_hidden_states=True,
         mode='GF_frozen',
@@ -452,7 +452,7 @@ class CellGen(nn.Module):
         max_seq_length: int = 2048,
         dropout: float = 0.0,
         mlm_probability: float = 0.3,
-        time_steps: list = [1, 2],
+        time_steps: List[int] = [1, 2, 3],
         total_time_steps: int = 3,
         mode='GF_frozen',
     ):
@@ -713,6 +713,7 @@ class CellGen(nn.Module):
                 embs=dec_embedding,
                 pad=tgt_pad,
             )
+            # outputs['cls_embedding'] = dec_embedding[:, 0, :]
             outputs['dec_logits'] = decoder_logits[:, 1:, :]
         else:
             outputs['dec_embedding'] = dec_embedding
@@ -876,7 +877,7 @@ class CellGen(nn.Module):
             for tgt_time_step in self.time_steps:
                 tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
                 tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{tgt_time_step}']
-                tgt_embedding = self.token_qembedding(tgt_input_id)
+                tgt_embedding = self.token_embedding(tgt_input_id)
                 tgt_embedding = self.positional_encoding(tgt_embedding, tgt_time_step)
                 if context_mode:
                     # distinction between selected time step and rest time steps
@@ -1192,33 +1193,27 @@ class CountDecoder(nn.Module):
 
         '''
         generate_id_dict = {}
-        generate_pad_dict = {}
         count_outputs = {}
         tgt_pad_dict = self.call_padding(
             src_input_id, tgt_input_id_dict, self.total_time_steps
         )
         for time_step in self.time_steps:
-            generate_id_dict = {k: v.clone() for k, v in tgt_input_id_dict.items()}
+            pred_id_dict = {k: v.clone() for k, v in tgt_input_id_dict.items()}
             generate_pad_dict = {k: v.clone() for k, v in tgt_pad_dict.items()}
             # use max shape instead of genes you like to generate
-            pad_tensor = torch.ones_like(generate_pad_dict[f'tgt_pad_t{time_step}'])
-            if pad_tensor.shape[1] > max_len:
-                # set the rest of the tokens to zero
-                pad_tensor[:, max_len:] = 0
-            tgt_pad = self.generate_pad(pad_tensor)
-            generate_pad_dict[f'tgt_pad_t{time_step}'] = tgt_pad
+            tgt_pad = self.generate_pad(src_input_id)
+            pred_id_dict[f'tgt_pad_t{time_step}'] = tgt_pad
             tgt_input_id_key = f'tgt_input_id_t{time_step}'
             tgt_input_id = tgt_input_id_dict[tgt_input_id_key]
-
             # create ids and scores matrix for each batch
             ids = torch.full_like(tgt_input_id, self.mask_token, dtype=torch.long)
             # add cls token to the ids
             ids[:, 0] = tgt_input_id[:, 0]
-            generate_id_dict[tgt_input_id_key] = ids
+            pred_id_dict[tgt_input_id_key] = ids
             # pad ids
             scores = torch.zeros_like(tgt_input_id, dtype=torch.float)
             outputs, generated_ids = self.generate_sequence(
-                generate_id_dict=generate_id_dict,
+                generate_id_dict=pred_id_dict,
                 generate_pad_dict=generate_pad_dict,
                 src_input_id=src_input_id,
                 demask_fn=self.pretrained_model,
@@ -1232,11 +1227,12 @@ class CountDecoder(nn.Module):
             )
             generate_id_dict[tgt_input_id_key] = generated_ids
             # get the count predictions
+
             cls_embedding = outputs['mean_embedding']
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
             count_outputs[f'count_output_t{time_step}'] = count_outputs_tmp
             count_outputs[f'cls_embedding_t{time_step}'] = cls_embedding
-        return count_outputs
+        return count_outputs, generate_id_dict
 
     def generate_sequence(
         self,
@@ -1299,6 +1295,7 @@ class CountDecoder(nn.Module):
         '''
         max_neg_value = -torch.finfo().max
         tmp_ids = generate_id_dict[f'tgt_input_id_t{tgt_time_step}']
+
         tgt_pad = generate_pad_dict[f'tgt_pad_t{tgt_time_step}']
         cls_token = tmp_ids[:, 0]
         for iteration, steps_until_x0 in tqdm(
@@ -1337,8 +1334,8 @@ class CountDecoder(nn.Module):
             )
 
             tmp_ids[:, 0] = cls_token
-            generate_id_dict[f'tgt_input_id_t{tgt_time_step}'] = tmp_ids
 
+            generate_id_dict[f'tgt_input_id_t{tgt_time_step}'] = tmp_ids
             outputs = demask_fn.forward(
                 src_input_id=src_input_id,  # target
                 generate_id_dict=generate_id_dict,
@@ -1351,6 +1348,11 @@ class CountDecoder(nn.Module):
             tmp_ids_ = tmp_ids[:, 1:]
             scores_ = scores[:, 1:]
             ids_to_keep_ = ids_to_keep[:, 1:]
+
+            # # Create a mask of already predicted tokens
+            # for sample in range(logits.shape[0]):
+            #     unique_ids = torch.unique(ids_to_keep_[sample])
+            #     logits[sample, :, unique_ids] = max_neg_value
 
             # avoid predicting already predicted tokens
             # thus set the logits to max_neg_value
@@ -1380,7 +1382,6 @@ class CountDecoder(nn.Module):
             # add cls token to the ids and update scores and ids
             scores[:, 1:] = scores_
             tmp_ids[:, 1:] = tmp_ids_
-
         return outputs, tmp_ids
 
 

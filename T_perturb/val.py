@@ -407,6 +407,7 @@ def main() -> None:
             conditions_combined=conditions_combined_,
             dropout=args.count_dropout,
             generate=args.generate,
+            return_embeddings=args.return_embeddings,
             tgt_adata=tgt_adatas,
             time_steps=args.time_steps,
             total_time_steps=n_total_timepoints,
@@ -497,6 +498,7 @@ def main() -> None:
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
         devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
+        limit_test_batches=500,
     )
     # Finally, kick of the training process.
     if args.test_mode == 'masking':

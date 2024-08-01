@@ -71,7 +71,6 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --count_lr 0.00005 \
 --count_wd 0.01 \
 --num_layers 6 \
---loss_mode zinb \
 --n_workers 32 \
 --condition_keys Cell_culture_batch \
 --time_steps 3 \

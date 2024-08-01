@@ -95,6 +95,7 @@ class CellGenTrainer(LightningModule):
         # self.lr_scheduler_patience = lr_scheduler_patience
         # self.lr_scheduler_factor = lr_scheduler_factor
         self.perplexity = Perplexity(ignore_index=-100)
+
         self.mse = MeanSquaredError()
         with open(
             mapping_dict_path,
@@ -407,6 +408,7 @@ class CountDecoderTrainer(LightningModule):
         conditions_combined: Optional[List[Any]] = None,
         dropout: float = 0.0,
         generate: bool = False,
+        return_embeddings: bool = False,
         var_list: List[str] = ['Time_point'],
         tgt_adata: Optional[ad.AnnData] = None,
         time_steps: list = [1, 2],
@@ -415,6 +417,9 @@ class CountDecoderTrainer(LightningModule):
         iterations: int = 18,
         n_samples: int = 1,
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
+        mapping_dict_path: str = (
+            './T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
+        ),
         mask_scheduler: Optional[str] = 'cosine',
         mode: str = 'GF_fine_tuned',
         seed: int = 42,
@@ -452,7 +457,11 @@ class CountDecoderTrainer(LightningModule):
             time_steps=time_steps,
             total_time_steps=total_time_steps,
         )
-
+        with open(
+            mapping_dict_path,
+            'rb',
+        ) as f:
+            self.subset_tokenid_to_genename = pickle.load(f)
         if ckpt_count_path is not None:
             checkpoint = torch.load(ckpt_count_path, map_location='cpu')
             state_dict_ = modify_ckpt_state_dict(checkpoint, 'decoder.')
@@ -792,7 +801,7 @@ class CountDecoderTrainer(LightningModule):
             tgt_input_id_dict[f'tgt_input_id_t{i}'] = tgt_input_id_
 
         if self.generate:
-            outputs = self.decoder.generate(
+            outputs, generated_ids_dict = self.decoder.generate(
                 src_input_id=batch['src_input_ids'],
                 tgt_input_id_dict=tgt_input_id_dict,
                 max_len=self.max_seq_length,
@@ -803,6 +812,7 @@ class CountDecoderTrainer(LightningModule):
                 temperature=self.temperature,
                 iterations=self.iterations,
             )
+
             count_loss, pred_counts_dict = self.compute_count_loss(
                 outputs=outputs,
                 batch=batch,
@@ -885,7 +895,7 @@ class CountDecoderTrainer(LightningModule):
                 f'{self.output_dir}/{self.date}_'
                 f'generate_adata_extrapolate_'
                 f'{self.time_steps}__{self.mode}_{self.seed}_'
-                f'{self.loss_mode}_{self.n_samples}.h5ad'
+                f'{self.loss_mode}_{self.n_samples}_mean_embedding.h5ad'
             )
             emd = evaluate_emd(true_adata, pred_adata)
             self.log(
