@@ -205,7 +205,6 @@ class SinusoidalPositionalEncoding(nn.Module):
             pe = self.pe[:, start_pos:end_pos]
         else:
             pe = self.pe[:, : x.size(1)]
-
         return x + pe
 
 
@@ -400,6 +399,7 @@ class Petra(nn.Module):
                 total_vocab_size=total_vocab_size,
                 max_seq_length=max_seq_length,
                 n_time_steps=total_time_steps,
+                d_model=d_model,
             )
         else:
             raise ValueError(f'Invalid encoder mode: {mode}')

@@ -42,15 +42,17 @@ class PetraDataset(Dataset):
         src_dataset: DatasetDict,
         tgt_datasets: DatasetDict,
         time_steps: list = [1, 2],
-        src_counts: np.ndarray = None,
-        tgt_counts_dict: np.ndarray = None,
+        src_counts: Optional[np.ndarray] = None,
+        tgt_counts_dict: Optional[np.ndarray] = None,
         split_indices: Optional[list] = None,
         conditions: Optional[torch.Tensor] = None,
         conditions_combined: Optional[torch.Tensor] = None,
         condition_encodings: Optional[dict] = None,
     ):
         super().__init__()
+        self.src_dataset = src_dataset
         self.tgt_datasets = tgt_datasets
+        self.src_counts = src_counts
         self.tgt_counts_dict = tgt_counts_dict
         self.conditions = conditions
         self.conditions_combined = conditions_combined
@@ -61,8 +63,8 @@ class PetraDataset(Dataset):
             self.src_dataset = src_dataset.select(split_indices)
             self.tgt_datasets = {}
             self.tgt_counts_dict = {}
-            if src_counts is not None:
-                self.src_counts = src_counts[split_indices, :]
+            if self.src_counts is not None:
+                self.src_counts = self.src_counts[split_indices, :]
 
             for t in time_steps:
                 dataset_keys_ = f'tgt_dataset_t{t}'
@@ -74,7 +76,6 @@ class PetraDataset(Dataset):
                     self.tgt_counts_dict[count_keys_] = tgt_counts_dict[count_keys_][
                         split_indices, :
                     ]
-
         if max(time_steps) > len(tgt_datasets):
             raise ValueError('Number of time steps is greater than number of datasets')
         src_len = len(self.src_dataset)
@@ -86,7 +87,7 @@ class PetraDataset(Dataset):
     def __getitem__(self, ind):
         out = {
             'src_dataset': self.src_dataset[ind],
-            'src_counts': self.src_counts[ind],
+            'src_counts': self.src_counts[ind] if self.src_counts is not None else None,
             'conditions': self.conditions[ind] if self.conditions is not None else None,
             'conditions_combined': self.conditions_combined[ind]
             if self.conditions_combined is not None
@@ -95,7 +96,12 @@ class PetraDataset(Dataset):
         for t in self.time_steps:
             dataset_keys_ = f'tgt_dataset_t{t}'
             out[dataset_keys_] = self.tgt_datasets[dataset_keys_][ind]
-            out[f'tgt_counts_t{t}'] = self.tgt_counts_dict[f'tgt_h5ad_t{t}'][ind]
+            if (self.tgt_counts_dict is not None) and (
+                f'tgt_h5ad_t{t}' in self.tgt_counts_dict
+            ):
+                out[f'tgt_counts_t{t}'] = self.tgt_counts_dict[f'tgt_h5ad_t{t}'][ind]
+            else:
+                out[f'tgt_counts_t{t}'] = None
 
         return out
 
@@ -291,7 +297,7 @@ class PetraDataModule(LightningDataModule):
         else:
             src_input_batch_id, src_length = None, None
         src_counts = None
-        if 'src_counts' in batch[0]:
+        if batch[0]['src_counts'] is not None:
             if isinstance(batch[0]['src_counts'], csr_matrix):
                 src_counts = [torch.tensor(d['src_counts'].A) for d in batch]
 
@@ -313,24 +319,29 @@ class PetraDataModule(LightningDataModule):
         }
 
         for time_step in self.time_steps:
-            if isinstance(batch[0][f'tgt_counts_t{time_step}'], csr_matrix):
-                tgt_counts = [
-                    torch.tensor(d[f'tgt_counts_t{time_step}'].A) for d in batch
-                ]
-                tgt_size_factor = [
-                    torch.tensor(np.ravel(d[f'tgt_counts_t{time_step}'].A.sum(axis=1)))
-                    for d in batch
-                ]
-            else:
-                tgt_counts = [
-                    torch.tensor(d[f'tgt_counts_t{time_step}']) for d in batch
-                ]
-                tgt_size_factor = [
-                    torch.tensor(np.ravel(d[f'tgt_counts_t{time_step}'].sum(axis=1)))
-                    for d in batch
-                ]
-            out[f'tgt_counts_t{time_step}'] = torch.cat(tgt_counts, dim=0)
-            out[f'tgt_size_factor_t{time_step}'] = torch.cat(tgt_size_factor, dim=0)
+            if batch[0]['tgt_counts_t1'] is not None:
+                if isinstance(batch[0][f'tgt_counts_t{time_step}'], csr_matrix):
+                    tgt_counts = [
+                        torch.tensor(d[f'tgt_counts_t{time_step}'].A) for d in batch
+                    ]
+                    tgt_size_factor = [
+                        torch.tensor(
+                            np.ravel(d[f'tgt_counts_t{time_step}'].A.sum(axis=1))
+                        )
+                        for d in batch
+                    ]
+                else:
+                    tgt_counts = [
+                        torch.tensor(d[f'tgt_counts_t{time_step}']) for d in batch
+                    ]
+                    tgt_size_factor = [
+                        torch.tensor(
+                            np.ravel(d[f'tgt_counts_t{time_step}'].sum(axis=1))
+                        )
+                        for d in batch
+                    ]
+                out[f'tgt_counts_t{time_step}'] = torch.cat(tgt_counts, dim=0)
+                out[f'tgt_size_factor_t{time_step}'] = torch.cat(tgt_size_factor, dim=0)
 
             # create input ids
             dataset = f'tgt_dataset_t{time_step}'
@@ -343,8 +354,9 @@ class PetraDataModule(LightningDataModule):
             out[f'tgt_cell_idx_t{time_step}'] = [
                 d[dataset]['cell_pairing_index'] for d in batch
             ]
-            for var in self.var_list:
-                out[f'{var}_t{time_step}'] = [d[dataset][var] for d in batch]
+            if self.var_list is not None:
+                for var in self.var_list:
+                    out[f'{var}_t{time_step}'] = [d[dataset][var] for d in batch]
 
             out[f'tgt_input_ids_t{time_step}'] = pad_tensor_list(
                 out[f'tgt_input_ids_t{time_step}'],
