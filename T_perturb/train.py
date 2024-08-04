@@ -519,7 +519,7 @@ def main() -> None:
         save_top_k=-1,
         every_n_epochs=50,
         verbose=True,
-        # monitor=monitor_metric,
+        monitor=monitor_metric,
         mode=mode,
     )
     # The tensorboard logger allows for monitoring the progress of training
