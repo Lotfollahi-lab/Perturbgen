@@ -83,15 +83,13 @@ class Petratrainer(LightningModule):
         # lr_scheduler_patience: float = 5.0,
         return_embeddings: bool = False,
         generate: bool = False,
-        mapping_dict_path: str = (
-            './T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
-        ),
         time_steps: list = [1, 2],
         total_time_steps: int = 3,
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         var_list: List[str] = ['Time_point'],
         mode: str = 'GF_fine_tuned',
         gene_names: Optional[List[str]] = None,
+        mapping_dict_path: Optional[str] = None,
         *args,
         **kwargs,
     ) -> None:
@@ -127,12 +125,12 @@ class Petratrainer(LightningModule):
                 # 'spearman': SpearmanCorrCoef(num_outputs=batch_size),
             }
         )
-
-        with open(
-            mapping_dict_path,
-            'rb',
-        ) as f:
-            self.subset_tokenid_to_genename = pickle.load(f)
+        if mapping_dict_path is not None:
+            with open(
+                mapping_dict_path,
+                'rb',
+            ) as f:
+                self.subset_tokenid_to_genename = pickle.load(f)
         self.return_embeddings = return_embeddings
         self.generate = generate
         self.tgt_vocab_size = tgt_vocab_size
