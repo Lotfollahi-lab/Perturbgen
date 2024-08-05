@@ -86,8 +86,8 @@ class Petratrainer(LightningModule):
         time_steps: list = [1, 2],
         total_time_steps: int = 3,
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
-        var_list: List[str] = ['Time_point'],
         mode: str = 'GF_fine_tuned',
+        var_list: Optional[List[str]] = None,
         gene_names: Optional[List[str]] = None,
         mapping_dict_path: Optional[str] = None,
         *args,
@@ -135,7 +135,7 @@ class Petratrainer(LightningModule):
         self.generate = generate
         self.tgt_vocab_size = tgt_vocab_size
         self.time_steps = time_steps
-        self.var_list = var_list
+
         self.test_dict: Dict[str, List[Any]] = {
             'true_counts': [],
             'cls_embeddings': [],
@@ -144,8 +144,12 @@ class Petratrainer(LightningModule):
             'cell_idx': [],
             'gene_embeddings': [],
         }
-        for var in self.var_list:
-            self.test_dict[var] = []
+        if var_list is not None:
+            self.var_list = var_list
+            for var in self.var_list:
+                self.test_dict[var] = []
+        else:
+            self.var_list = []
 
         self.marker_genes = None
         self.gene_names = gene_names
@@ -436,8 +440,9 @@ class Petratrainer(LightningModule):
                 self.test_dict['gene_embeddings'].append(
                     marker_gene_embeddings.detach().cpu()
                 )
-                for var in self.var_list:
-                    self.test_dict[var].append(batch[f'{var}_t{time_step}'])
+                if len(self.var_list) > 0:
+                    for var in self.var_list:
+                        self.test_dict[var].append(batch[f'{var}_t{time_step}'])
 
             # self.tgt_output['cell_type'].append(batch['tgt_cell_type'])
             # self.tgt_output['cell_population'].append(batch['tgt_cell_population'])
@@ -452,9 +457,10 @@ class Petratrainer(LightningModule):
             batch = torch.cat(self.test_dict['batch'])
             cell_ids = np.concatenate(self.test_dict['cell_idx'])
             gene_embeddings = torch.cat(self.test_dict['gene_embeddings'])
-            var_dict = {}
-            for var in self.var_list:
-                var_dict[var] = np.concatenate(self.test_dict[var])
+            if len(self.var_list) > 0:
+                var_dict = {}
+                for var in self.var_list:
+                    var_dict[var] = np.concatenate(self.test_dict[var])
             test_obs = pd.DataFrame(var_dict)
             test_obs['batch'] = np.array(batch)
             test_obs['cell_idx'] = cell_ids
@@ -602,9 +608,12 @@ class CountDecodertrainer(LightningModule):
             'cls_embeddings': [],
         }
         self.n_samples = n_samples
-        self.var_list = var_list
-        for var in self.var_list:
-            self.test_dict[var] = []
+        if var_list is not None:
+            self.var_list = var_list
+            for var in self.var_list:
+                self.test_dict[var] = []
+        else:
+            self.var_list = []
         self.output_dir = output_dir
         # create directory if not exist
         if not os.path.exists(self.output_dir):
@@ -1004,8 +1013,9 @@ class CountDecodertrainer(LightningModule):
                 # gather for validation step
                 self.test_dict['pred_counts'].append(pred_count)
                 self.test_dict['true_counts'].append(true_count)
-                for var in self.var_list:
-                    self.test_dict[var].append(batch[f'{var}_t{time_step}'])
+                if len(self.var_list) > 0:
+                    for var in self.var_list:
+                        self.test_dict[var].append(batch[f'{var}_t{time_step}'])
                 cls_embeddings = outputs[f'cls_embedding_t{time_step}']
                 self.test_dict['cls_embeddings'].append(cls_embeddings)
 
@@ -1036,8 +1046,9 @@ class CountDecodertrainer(LightningModule):
             self.test_dict['pred_counts'].append(pred_count)
             self.test_dict['true_counts'].append(batch['tgt_counts'])
             self.test_dict['ctrl_counts'].append(batch['src_counts'])
-            for var in self.var_list:
-                self.test_dict[var].append(batch[var])
+            if len(self.var_list) > 0:
+                for var in self.var_list:
+                    self.test_dict[var].append(batch[var])
 
     def on_test_epoch_end(self):
         if self.generate:
@@ -1045,10 +1056,13 @@ class CountDecodertrainer(LightningModule):
             true_counts = torch.cat(self.test_dict['true_counts']).detach().cpu()
             pred_counts = torch.cat(self.test_dict['pred_counts']).detach().cpu()
             # create dict to var_list values
-            var_dict = {}
-            for var in self.var_list:
-                var_dict[var] = np.concatenate(self.test_dict[var])
-            test_obs = pd.DataFrame(var_dict)
+            if len(self.var_list) > 0:
+                var_dict = {}
+                for var in self.var_list:
+                    var_dict[var] = np.concatenate(self.test_dict[var])
+                test_obs = pd.DataFrame(var_dict)
+            else:
+                test_obs = None
             cls_embeddings = torch.cat(self.test_dict['cls_embeddings']).detach().cpu()
             # test_obs = pd.DataFrame(
             #     np.array(

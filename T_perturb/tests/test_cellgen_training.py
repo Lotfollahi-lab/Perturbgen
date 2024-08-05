@@ -1,5 +1,6 @@
 import os
 import unittest
+from typing import Optional
 
 import numpy as np
 import pytorch_lightning as pl
@@ -16,48 +17,34 @@ if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     print('Changed working directory to root of repository')
 
 
-def dummy_src_dataset(
+def dummy_dataset(
     max_len: int = 50,
-    src_vocab_size: int = 100,
+    vocab_size: int = 100,
     num_samples: int = 100,
+    total_time_steps: Optional[int] = None,
 ):
-    src_input_ids = torch.randint(0, src_vocab_size, (num_samples, max_len))
-    src_input_ids[:, -10:] = 0
-    src_dataset = Dataset.from_dict(
-        {'input_ids': src_input_ids, 'length': [len(src_input_ids)] * num_samples}
-    )
-    return src_dataset
-
-
-def dummy_tgt_dataset(
-    max_len: int = 10,
-    tgt_vocab_size: int = 100,
-    num_samples: int = 100,
-):
-    tgt_input_ids_t1 = torch.randint(0, tgt_vocab_size, (num_samples, max_len))
-    tgt_input_ids_t2 = torch.randint(0, tgt_vocab_size, (num_samples, max_len))
-    # pad token
-    tgt_input_ids_t1[:, -10:] = 0
-    tgt_input_ids_t2[:, -10:] = 0
-    tgt_dataset_t1 = Dataset.from_dict(
-        {
-            'input_ids': tgt_input_ids_t1,
-            'length': [len(tgt_input_ids_t1)] * num_samples,
-            'cell_pairing_index': np.random.choice(100, num_samples, replace=False),
-        }
-    )
-    tgt_dataset_t2 = Dataset.from_dict(
-        {
-            'input_ids': tgt_input_ids_t2,
-            'length': [len(tgt_input_ids_t2)] * num_samples,
-            'cell_pairing_index': np.random.choice(100, num_samples, replace=False),
-        }
-    )
-    tgt_dataset = {
-        'tgt_dataset_t1': tgt_dataset_t1,
-        'tgt_dataset_t2': tgt_dataset_t2,
-    }
-    return tgt_dataset
+    if total_time_steps is None:
+        input_ids = torch.randint(0, vocab_size, (num_samples, max_len))
+        input_ids[:, -10:] = 0
+        dataset = Dataset.from_dict(
+            {'input_ids': input_ids, 'length': [len(input_ids)] * num_samples}
+        )
+        return dataset
+    else:
+        tgt_dataset_dict = {}
+        for t in range(total_time_steps):
+            input_ids = torch.randint(0, vocab_size, (num_samples, max_len))
+            input_ids[:, -10:] = 0
+            tgt_dataset_dict[f'tgt_dataset_t{t+1}'] = Dataset.from_dict(
+                {
+                    'input_ids': input_ids,
+                    'length': [len(input_ids)] * num_samples,
+                    'cell_pairing_index': np.random.choice(
+                        100, num_samples, replace=False
+                    ),
+                }
+            )
+        return tgt_dataset_dict
 
 
 class PetraTestTrainingCase(unittest.TestCase):
@@ -66,7 +53,7 @@ class PetraTestTrainingCase(unittest.TestCase):
         self.time_step = [1, 2]
         self.total_time_steps = 2
         self.max_seq_length = 50
-        self.tgt_vocab_size = 100
+        self.tgt_vocab_size = 101  # +1 for padding token
         self.batch_size = 4
         self.d_model = 12
 
@@ -86,21 +73,22 @@ class PetraTestTrainingCase(unittest.TestCase):
             weight_decay=0.0,
             lr=1e-3,
             time_steps=self.time_step,
-            total_time_steps=2,
+            total_time_steps=self.total_time_steps,
             mode='Transformer_encoder',
         )
         self.transformer = transformer
 
         # Create dummy data for training
-        src_dataset = dummy_src_dataset(
+        src_dataset = dummy_dataset(
             max_len=self.max_seq_length,
-            src_vocab_size=self.tgt_vocab_size,
+            vocab_size=self.tgt_vocab_size,
             num_samples=100,
         )
-        tgt_datasets = dummy_tgt_dataset(
+        tgt_datasets = dummy_dataset(
             max_len=self.max_seq_length,
-            tgt_vocab_size=self.tgt_vocab_size,
+            vocab_size=self.tgt_vocab_size,
             num_samples=100,
+            total_time_steps=self.total_time_steps,
         )
 
         # Load the data module
@@ -110,8 +98,9 @@ class PetraTestTrainingCase(unittest.TestCase):
             batch_size=self.batch_size,
             num_workers=1,
             time_steps=[1, 2],
-            total_time_steps=2,
+            total_time_steps=self.total_time_steps,
             max_len=self.max_seq_length,
+            train_indices=np.random.choice(100, 80, replace=False),
         )
         self.data_module.setup()
 
@@ -129,7 +118,7 @@ class PetraTestTrainingCase(unittest.TestCase):
         # Test forward pass
         batch = next(iter(self.data_module.train_dataloader()))
         output = self.transformer(batch)
-        print(output['dec_embedding'].shape)
+        print('batch completed')
         self.assertEqual(
             output['dec_embedding'].shape,
             (
@@ -160,11 +149,11 @@ class PetraTestTrainingCase(unittest.TestCase):
             callbacks=[checkpoint_callback] if save_checkpoint else [],
         )
         trainer.fit(self.transformer, self.data_module)
+        print('finished training')
 
         self.assertEqual(
             trainer.current_epoch, 1, 'Trainer should have completed one epoch'
         )
-        print(checkpoint_callback)
         if save_checkpoint:
             # Check if the checkpoint was saved
             self.assertTrue(
@@ -175,11 +164,9 @@ class PetraTestTrainingCase(unittest.TestCase):
             )
 
     # def test_training_loop_with_checkpoint(self):
-    #     # Test training loop with checkpoint
     #     self.test_transformer_training_loop(save_checkpoint=True)
 
     def test_training_loop_without_checkpoint(self):
-        # Test training loop without checkpoint
         self.test_transformer_training_loop(save_checkpoint=False)
 
 
