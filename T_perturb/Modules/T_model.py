@@ -228,8 +228,8 @@ class SinusoidalPositionalEncoding(nn.Module):
 class Geneformerwrapper(nn.Module):
     def __init__(
         self,
-        model_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'generative_modelling_omic/Geneformer/',
+        model_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
+        't_generative/T_perturb/Geneformer/',
         output_attentions=False,
         output_hidden_states=True,
         mode='GF_frozen',
@@ -902,6 +902,7 @@ class CountHead(nn.Module):
             drop=dropout,
         )
         n_genes = tgt_vocab_size
+        print('number of genes', n_genes)
         if self.loss_mode == 'mse':
             self.relu_output = nn.Sequential(nn.Linear(d_model, n_genes), nn.ReLU())
         elif self.loss_mode == 'zinb':
