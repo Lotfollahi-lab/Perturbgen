@@ -8,7 +8,7 @@ import scanpy as sc
 import torch
 
 from T_perturb.Dataloaders.datamodule import CellGenDataModule
-from T_perturb.Model.trainer import CountDecodertrainer
+from T_perturb.Model.trainer import CountDecoderTrainer
 from T_perturb.src.utils import label_encoder
 from T_perturb.tests.test_cellgen_training import dummy_dataset
 from T_perturb.tests.test_countdecoder_training import dummy_cell_gene_matrix
@@ -125,7 +125,7 @@ class CellGenTestGenerationCase(unittest.TestCase):
             )
             conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
 
-        decoder_module = CountDecodertrainer(
+        decoder_module = CountDecoderTrainer(
             ckpt_masking_path='./T_perturb/T_perturb/tests/'
             'checkpoints/baseline_masking_checkpoint-epoch=00.ckpt',
             ckpt_count_path='./T_perturb/T_perturb/tests/'

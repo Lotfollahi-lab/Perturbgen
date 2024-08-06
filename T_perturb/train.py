@@ -14,7 +14,7 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy
 
 from T_perturb.Dataloaders.datamodule import CellGenDataModule
-from T_perturb.Model.trainer import CellGentrainer, CountDecodertrainer
+from T_perturb.Model.trainer import CellGenTrainer, CountDecoderTrainer
 from T_perturb.src.utils import (
     label_encoder,
     randomised_split,
@@ -375,7 +375,7 @@ def main() -> None:
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.train_mode == 'masking':
-        pretrained_module = CellGentrainer(
+        pretrained_module = CellGenTrainer(
             # tgt_vocab_size=1820,  # 704 for degs, 1820 for tokenised
             tgt_vocab_size=args.tgt_vocab_size,  # max token id + 1 for padding
             d_model=256,
@@ -396,7 +396,7 @@ def main() -> None:
             mode=args.mode,
         )
     elif args.train_mode == 'count':
-        decoder_module = CountDecodertrainer(
+        decoder_module = CountDecoderTrainer(
             ckpt_masking_path=args.ckpt_masking_path,
             ckpt_count_path=None,
             tgt_vocab_size=args.tgt_vocab_size,

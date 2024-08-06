@@ -9,7 +9,7 @@ from datasets import Dataset
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 from T_perturb.Dataloaders.datamodule import CellGenDataModule
-from T_perturb.Model.trainer import CellGentrainer
+from T_perturb.Model.trainer import CellGenTrainer
 
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
@@ -60,7 +60,7 @@ class CellGenTestTrainingCase(unittest.TestCase):
         pl.seed_everything(42)
 
         # Load transformer model and count decoder
-        transformer = CellGentrainer(
+        transformer = CellGenTrainer(
             tgt_vocab_size=self.tgt_vocab_size,
             d_model=self.d_model,
             num_heads=4,

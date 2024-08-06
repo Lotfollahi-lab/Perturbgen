@@ -17,6 +17,7 @@ from geneformer.emb_extractor import get_embs, label_cell_embs
 from scipy.sparse import csr_matrix
 from torch.nn.functional import cosine_similarity
 from torch.utils.data import Subset
+from torchmetrics import PearsonCorrCoef
 
 
 def read_dataset_files(directory, file_type):
@@ -203,6 +204,59 @@ def return_gene_embeddings(
         ]
         marker_genes_dict[gene] = i
     return gene_embeddings_res
+
+
+def modify_ckpt_state_dict(
+    checkpoint,
+    replace_str,
+):
+    if 'module' in checkpoint.keys():
+        state_dict = checkpoint['module']
+    else:
+        state_dict = checkpoint['state_dict']
+
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        if k.startswith(replace_str):
+            k = k.replace(replace_str, '', 1)
+        new_state_dict[k] = v
+
+    return new_state_dict
+
+
+def pearson(
+    pred_counts: torch.Tensor,
+    true_counts: torch.Tensor,
+    ctrl_counts: torch.Tensor = None,
+) -> torch.Tensor:
+    """
+    Description:
+    ------------
+    This function computes the Pearson correlation coefficient for delta counts
+    between control and perturbed conditions.
+    Parameters:
+    -----------
+    pred_counts: `torch.Tensor`
+        Tensor of predicted counts.
+    true_counts: `torch.Tensor`
+        Tensor of counts from perturbed condition.
+    ctrl_counts: `torch.Tensor`
+        Tensor of counts from control condition.
+    Returns:
+    --------
+    mean_pearson: `torch.Tensor`
+        Mean Pearson correlation coefficient.
+    """
+    if ctrl_counts is not None:
+        pred_counts = pred_counts - ctrl_counts
+        true_counts = true_counts - ctrl_counts
+    num_outputs = true_counts.shape[0]
+    pearson = PearsonCorrCoef(num_outputs=num_outputs).to('cuda')
+    pred_counts_t = pred_counts.transpose(0, 1)
+    true_counts_t = true_counts.transpose(0, 1)
+    pearson_output = pearson(pred_counts_t, true_counts_t)
+    mean_pearson = torch.mean(pearson_output)
+    return mean_pearson
 
 
 def subset_adata_dataset(

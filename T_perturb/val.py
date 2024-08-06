@@ -13,7 +13,7 @@ from pytorch_lightning.callbacks import TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 
 from T_perturb.Dataloaders.datamodule import CellGenDataModule
-from T_perturb.Model.trainer import CellGentrainer, CountDecodertrainer
+from T_perturb.Model.trainer import CellGenTrainer, CountDecoderTrainer
 from T_perturb.src.utils import (
     label_encoder,
     randomised_split,
@@ -364,7 +364,7 @@ def main() -> None:
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.test_mode == 'masking':
-        pretrained_module = CellGentrainer(
+        pretrained_module = CellGenTrainer(
             tgt_vocab_size=args.tgt_vocab_size,
             d_model=256,
             num_heads=8,
@@ -387,7 +387,7 @@ def main() -> None:
             mode=args.mode,
         )
     elif args.test_mode == 'count':
-        decoder_module = CountDecodertrainer(
+        decoder_module = CountDecoderTrainer(
             ckpt_masking_path=args.ckpt_masking_path,
             ckpt_count_path=args.ckpt_count_path,
             tgt_vocab_size=args.tgt_vocab_size,
