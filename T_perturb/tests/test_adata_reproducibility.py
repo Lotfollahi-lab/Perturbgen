@@ -54,10 +54,14 @@ def anndata_are_equal(adata1, adata2, rtol=1e-5, atol=1e-8):
 class TestAnnDataEquality(unittest.TestCase):
     def test_anndata_identical(self):
         # Define paths to your AnnData files
-        anndata_path1 = './T_perturb/T_perturb/tests/res/'
-        'baseline_adata_extrapolate_Transformer_encoder_42_zinb_1.h5ad'
-        anndata_path2 = './T_perturb/T_perturb/tests/res/'
-        'generate_adata_extrapolate_Transformer_encoder_42_zinb_1.h5ad'
+        anndata_path1 = (
+            './T_perturb/T_perturb/tests/res/'
+            'baseline_adata_extrapolate_Transformer_encoder_42_zinb_1.h5ad'
+        )
+        anndata_path2 = (
+            './T_perturb/T_perturb/tests/res/'
+            'generate_adata_extrapolate_Transformer_encoder_42_zinb_1.h5ad'
+        )
 
         # Load AnnData objects
         adata1 = load_anndata(anndata_path1)

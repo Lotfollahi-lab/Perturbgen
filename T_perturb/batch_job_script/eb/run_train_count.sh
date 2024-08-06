@@ -4,11 +4,11 @@
 #BSUB -n 64 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
-#BSUB -o logs/eb_count_%J.out # output file
-#BSUB -e logs/eb_count_%J.err # error file
+#BSUB -o logs/eb_count_s100_%J.out # output file
+#BSUB -e logs/eb_count_s100_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
-#BSUB -J eb_count_interpolation # job name
+#BSUB -J eb_count_extrapolation_s100 # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -60,9 +60,8 @@ echo '--- Finished computing model'
 # --split False \
 # --splitting_mode random \
 # --output_dir './T_perturb/T_perturb/plt/res/eb' \
-# --ckpt_masking_path './T_perturb/T_perturb/Model/checkpoints/'\
-# '20240518_1930_petra_train_masking_lr_0.001'\
-# '_wd_0.0001_batch_32_mlmp_0.15_tp_1-2-epoch=99.ckpt' \
+# --ckpt_masking_path './T_perturb/T_perturb/Model/checkpoints/20240522_1104_eb_extrapol_lr_0.001'\
+# '_wd_0.0001_batch_32_mlmp_0.15_tp_1-2_s_100-epoch=99.ckpt' \
 # --src_dataset './T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset' \
 # --tgt_dataset_folder './T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt' \
 # --src_adata './T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad' \

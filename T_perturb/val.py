@@ -57,9 +57,11 @@ def get_args():
         type=str,
         # default='random',
         default='stratified',
-        choices=['random', 'stratified', 'unseen_donor'],
+        choices=['random', 'stratified', 'unseen_cond'],
         help='splitting mode',
     )
+    parser.add_argument('--split_obs', type=str, default='Donor')
+    parser.add_argument('--split_value', type=str, default='D351')
     parser.add_argument(
         '--generate',
         type=str2bool,
@@ -454,25 +456,28 @@ def main() -> None:
     # Setup trainer
     # ----------------------------------------------------------------------------------
     run_id = datetime.now().strftime('%Y%m%d_%H%M_petra')
-    log_path = os.path.join(args.log_dir, run_id)
+    log_path = os.path.join(
+        './T_perturb/T_perturb/wandb/wandb',
+        run_id,
+    )
     os.makedirs(os.path.join(os.getcwd(), log_path), exist_ok=True)
 
     # The tensorboard logger allows for monitoring the progress of training
     if torch.cuda.device_count() > 1:
         # multi gpu training with group logging
         wandb_logger = WandbLogger(
-            project='ttransformer',
+            project='ttransformer_sweep',
             name=f'{run_id}_{str(uuid.uuid4())[:6]}',
-            save_dir=args.log_dir,
+            save_dir='./T_perturb/T_perturb/wandb/wandb',
             log_model='all',
         )  # noqa
     else:
         wandb_logger = WandbLogger(
-            project='ttransformer',
+            project='ttransformer_sweep',
             name=f'{run_id}',
-            save_dir=args.log_dir,
+            save_dir='./T_perturb/T_perturb/wandb/wandb',
             log_model='all',
-        )  # noqa
+        )
 
     # In this simple example we just check if a GPU is available.
     # For training larger models in a distributed settings, this needs more care.
