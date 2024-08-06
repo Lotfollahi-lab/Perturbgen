@@ -12,7 +12,7 @@ import torch
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 from T_perturb.Dataloaders.datamodule import CellGenDataModule
-from T_perturb.Model.trainer import CountDecodertrainer
+from T_perturb.Model.trainer import CountDecoderTrainer
 from T_perturb.src.utils import label_encoder
 from T_perturb.tests.test_cellgen_training import dummy_dataset
 
@@ -149,7 +149,7 @@ class CellGenTestTrainingCase(unittest.TestCase):
             )
             conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
 
-        decoder_module = CountDecodertrainer(
+        decoder_module = CountDecoderTrainer(
             ckpt_masking_path='./T_perturb/T_perturb/tests/'
             'checkpoints/baseline_masking_checkpoint-epoch=00.ckpt',
             tgt_vocab_size=self.tgt_vocab_size,
