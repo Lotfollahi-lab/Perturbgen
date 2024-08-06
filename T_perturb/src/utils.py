@@ -1,4 +1,5 @@
 import argparse
+import math
 import os
 import pickle
 from pathlib import Path
@@ -379,6 +380,76 @@ def subset_adata(adata, cell_pairings):
     adata_subsetted.obs_names.name = None
     adata_subsetted.X = csr_matrix(adata_subsetted.X)
     return adata_subsetted
+
+
+def noise_schedule(ratio, total_tokens, method, exponent=2.0):
+    '''
+    Noise schedule from Google MaskGIT paper
+    URL: https://github.com/google-research/maskgit/blob/1db23594e1bd328ee78eadcd148a19281cd0f5b8/maskgit/libml/mask_schedule.py#L21 # noqa
+    Last accessed: 2024-03-23
+    '''
+    if method == 'uniform':
+        mask_ratio = 1.0 - ratio
+    elif 'pow' in method:
+        mask_ratio = 1.0 - ratio**exponent
+    elif method == 'cosine':
+        mask_ratio = torch.cos(ratio * math.pi * 0.5)
+    elif method == 'log':
+        mask_ratio = -torch.log2(ratio) / torch.log2(total_tokens)
+    elif method == 'exp':
+        mask_ratio = 1 - torch.exp2(-torch.log2(total_tokens) * (1 - ratio))
+    # Clamps mask into [epsilon, 1)
+    mask_ratio = torch.clamp(mask_ratio, 1e-6, 1.0)
+    return mask_ratio
+
+
+def uniform(shape, min=0, max=1, device=None):
+    return torch.zeros(shape, device=device).float().uniform_(min, max)
+
+
+def prob_mask_like(shape, prob, device=None):
+    if prob == 1:
+        return torch.ones(shape, device=device, dtype=torch.bool)
+    elif prob == 0:
+        return torch.zeros(shape, device=device, dtype=torch.bool)
+    else:
+        return uniform(shape, device=device) < prob
+
+
+def top_k(logits, thres=0.9):
+    k = math.ceil((1 - thres) * logits.shape[-1])
+    val, ind = logits.topk(k, dim=-1)
+    probs = torch.full_like(logits, float('-inf'))
+    probs.scatter_(2, ind, val)
+    return probs
+
+
+# sampling helper
+def log(t, eps=1e-20):
+    return torch.log(t.clamp(min=eps))
+
+
+def gumbel_noise(t):
+    noise = torch.zeros_like(t).uniform_(0, 1)
+    return -log(-log(noise))
+
+
+def gumbel_sample(t, temperature=1.0, dim=-1):
+    return ((t / max(temperature, 1e-10)) + gumbel_noise(t)).argmax(dim=dim)
+
+
+def generate_pad(tgt):
+    '''
+    Description:
+    ------------
+    Generate padding mask for target tensor.
+    For tgt tensor, pad token is 0 and non-pad token is 1.
+    Convert tgt tensor to boolean tensor,
+    where pad token is True and non-pad token is False.
+    Can also be applied to generate source padding mask.
+    '''
+    tgt_pad = tgt == 0
+    return tgt_pad
 
 
 def pairing_resting_to_activated_cells(

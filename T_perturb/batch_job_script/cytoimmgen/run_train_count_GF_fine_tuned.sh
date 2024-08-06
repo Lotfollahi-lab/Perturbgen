@@ -38,9 +38,9 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --max_len 300 \
 --epochs 20 \
 --tgt_vocab_size 1261 \
---petra_lr 0.0001 \
+--cellgen_lr 0.0001 \
 --count_lr 0.005 \
---petra_wd 0.0001 \
+--cellgen_wd 0.0001 \
 --count_wd 0.001  \
 --mlm_prob 0.15 \
 --n_workers 32 \
@@ -70,9 +70,9 @@ echo "--- Finished computing model"
 # --max_len 300 \
 # --epochs 20 \
 # --tgt_vocab_size 1261 \
-# --petra_lr 0.0001 \
+# --cellgen_lr 0.0001 \
 # --count_lr 0.005 \
-# --petra_wd 0.0001 \
+# --cellgen_wd 0.0001 \
 # --count_wd 0.001 \
 # --mlm_prob 0.15 \
 # --n_workers 32 \

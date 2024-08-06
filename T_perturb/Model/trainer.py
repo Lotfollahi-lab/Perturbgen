@@ -553,7 +553,6 @@ class CountDecoderTrainer(LightningModule):
         interval = batch[f'tgt_input_ids_t{i}'].shape[1] + 1  # as 0 is cls token
         num_steps = len(self.time_steps)
         cls_positions = np.arange(0, num_steps * interval, interval)
-
         outputs = self.decoder(
             src_input_id=batch['src_input_ids'],
             tgt_input_id_dict=tgt_input_id_dict,
@@ -606,19 +605,21 @@ class CountDecoderTrainer(LightningModule):
         Description:
         ------------
         Use CLS or mean non padding embeddings to predict gene counts.
+
         Parameters:
         -----------
-        outputs: Dict[str, torch.Tensor]
+        outputs: `Dict[str, torch.Tensor]`
             model outputs
-        batch: Dict[str, torch.Tensor]
+        batch: `Dict[str, torch.Tensor]`
             batch variables capturing technical batch effect variables
-        n_samples: int
+        n_samples: `int`
             number of samples to draw from distribution for zinb and nb
+
         Returns:
         --------
-        loss: torch.Tensor
+        loss: `torch.Tensor`
             loss value
-        count_dict: Dict[str, torch.Tensor]
+        count_dict: `Dict[str, torch.Tensor]`
             dictionary containing predicted counts
         """
         for time_step in self.time_steps:

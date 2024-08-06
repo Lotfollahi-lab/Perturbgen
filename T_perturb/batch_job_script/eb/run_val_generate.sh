@@ -40,8 +40,8 @@ python3 $cwd/val.py \
 --batch_size 32 \
 --max_len 263 \
 --tgt_vocab_size 2001 \
---petra_lr 0.001 \
---petra_wd 0.0001 \
+--cellgen_lr 0.001 \
+--cellgen_wd 0.0001 \
 --count_lr 0.0001 \
 --count_wd 0.0001 \
 --num_layers 2 \
@@ -70,8 +70,8 @@ echo '--- Finished computing model'
 # --batch_size 32 \
 # --max_len 263 \
 # --tgt_vocab_size 2001 \
-# --petra_lr 0.001 \
-# --petra_wd 0.0001 \
+# --cellgen_lr 0.001 \
+# --cellgen_wd 0.0001 \
 # --count_lr 0.0001 \
 # --count_wd 0.0001 \
 # --num_layers 2 \

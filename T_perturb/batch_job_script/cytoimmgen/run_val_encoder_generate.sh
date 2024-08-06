@@ -26,7 +26,7 @@ echo "--- Start computing model"
 # --split False \
 # --splitting_mode stratified \
 # --generate True \
-# --ckpt_count_path "./T_perturb/T_perturb/Model/checkpoints/20240522_0334_interpolate_5e-05_wd_0.01_batch_64_zinb_tp_1-3-epoch=19_seed0.ckpt" \
+# --ckpt_count_path "./T_perturb/T_perturb/Model/checkpoints/20240522_0857_tcell_extrapolate_5e-05_wd_0.01_batch_64_zinb_tp_1-2_s_100-epoch=19.ckpt" \
 # --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
 # --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_transformer/0h.dataset" \
 # --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
@@ -35,8 +35,8 @@ echo "--- Start computing model"
 # --batch_size 64 \
 # --max_len 300 \
 # --tgt_vocab_size 1261 \
-# --petra_lr 0.0001 \
-# --petra_wd 0.0001 \
+# --cellgen_lr 0.0001 \
+# --cellgen_wd 0.0001 \
 # --count_lr 0.00005 \
 # --count_wd 0.01 \
 # --num_layers 6 \
@@ -64,8 +64,8 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --batch_size 64 \
 --max_len 300 \
 --tgt_vocab_size 1261 \
---petra_lr 0.0001 \
---petra_wd 0.0001 \
+--cellgen_lr 0.0001 \
+--cellgen_wd 0.0001 \
 --count_lr 0.00005 \
 --count_wd 0.01 \
 --num_layers 6 \

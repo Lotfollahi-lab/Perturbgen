@@ -36,8 +36,8 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --max_len 263 \
 --epochs 100 \
 --tgt_vocab_size 2001 \
---petra_lr 0.001 \
---petra_wd 0.0001 \
+--cellgen_lr 0.001 \
+--cellgen_wd 0.0001 \
 --mlm_prob 0.15 \
 --n_workers 64 \
 --num_layers 2 \

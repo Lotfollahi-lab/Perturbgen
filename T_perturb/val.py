@@ -149,9 +149,11 @@ def get_args():
         default=1997,
         help='vocab size (max token id + 1) in dataset for padding',
     )
-    parser.add_argument('--petra_lr', type=float, default=0.0001, help='learning rate')
+    parser.add_argument(
+        '--cellgen_lr', type=float, default=0.0001, help='learning rate'
+    )
     parser.add_argument('--count_lr', type=float, default=0.00005, help='learning rate')
-    parser.add_argument('--petra_wd', type=float, default=0.0001, help='weight decay')
+    parser.add_argument('--cellgen_wd', type=float, default=0.0001, help='weight decay')
     parser.add_argument('--count_wd', type=float, default=0.01, help='weight decay')
     parser.add_argument('--n_workers', type=int, default=32, help='number of workers')
     parser.add_argument(
@@ -161,7 +163,7 @@ def get_args():
     parser.add_argument(
         '--loss_mode', type=str, default='mse', help='loss mode [zinb, nb, mse]'
     )
-    parser.add_argument('--petra_dropout', type=float, default=0.0, help='dropout')
+    parser.add_argument('--cellgen_dropout', type=float, default=0.0, help='dropout')
     parser.add_argument('--count_dropout', type=float, default=0.0, help='dropout')
     parser.add_argument(
         '--condition_keys',
@@ -371,9 +373,9 @@ def main() -> None:
             num_layers=args.num_layers,
             d_ff=args.d_ff,
             max_seq_length=args.max_len + 100,
-            dropout=args.petra_dropout,
-            weight_decay=args.petra_wd,
-            lr=args.petra_lr,
+            dropout=args.cellgen_dropout,
+            weight_decay=args.cellgen_wd,
+            lr=args.cellgen_lr,
             # lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             return_embeddings=args.return_embeddings,
@@ -455,7 +457,7 @@ def main() -> None:
 
     # Setup trainer
     # ----------------------------------------------------------------------------------
-    run_id = datetime.now().strftime('%Y%m%d_%H%M_petra')
+    run_id = datetime.now().strftime('%Y%m%d_%H%M_cellgen')
     log_path = os.path.join(
         './T_perturb/T_perturb/wandb/wandb',
         run_id,
