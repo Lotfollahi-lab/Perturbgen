@@ -11,7 +11,7 @@ import scanpy as sc
 import torch
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-from T_perturb.Dataloaders.datamodule import PetraDataModule
+from T_perturb.Dataloaders.datamodule import CellGenDataModule
 from T_perturb.Model.trainer import CountDecodertrainer
 from T_perturb.src.utils import label_encoder
 from T_perturb.tests.test_cellgen_training import dummy_dataset
@@ -41,9 +41,9 @@ def dummy_cell_gene_matrix(
         return counts_dict
 
 
-class PetraTestTrainingCase(unittest.TestCase):
+class CellGenTestTrainingCase(unittest.TestCase):
     def __init__(self, *args, **kwargs):
-        super(PetraTestTrainingCase, self).__init__(*args, **kwargs)
+        super(CellGenTestTrainingCase, self).__init__(*args, **kwargs)
         self.time_step = [1, 2]
         self.total_time_steps = 2
         self.max_seq_length = 50
@@ -178,7 +178,7 @@ class PetraTestTrainingCase(unittest.TestCase):
         self.decoder_module = decoder_module
 
         # Load the data module
-        self.data_module = PetraDataModule(
+        self.data_module = CellGenDataModule(
             src_dataset=src_dataset,
             tgt_datasets=tgt_datasets,
             batch_size=self.batch_size,

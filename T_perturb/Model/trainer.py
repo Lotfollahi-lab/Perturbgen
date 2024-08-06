@@ -26,7 +26,7 @@ from torchmetrics import (
 from torchmetrics.text import Perplexity
 
 from T_perturb.Model.metric import evaluate_emd, evaluate_mmd  # pearson,
-from T_perturb.Modules.T_model import CountDecoder, Petra
+from T_perturb.Modules.T_model import CellGen, CountDecoder
 from T_perturb.src.losses import mse_loss
 from T_perturb.src.utils import (
     compute_cos_similarity,
@@ -44,7 +44,7 @@ if torch.cuda.is_available():
         torch.set_float32_matmul_precision('medium')
 
 
-class Petratrainer(LightningModule):
+class CellGentrainer(LightningModule):
     def __init__(
         self,
         tgt_vocab_size: int = 25000,
@@ -72,7 +72,7 @@ class Petratrainer(LightningModule):
     ) -> None:
         super().__init__(*args, **kwargs)
         self.save_hyperparameters()
-        self.transformer = Petra(
+        self.transformer = CellGen(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
             num_heads=num_heads,
@@ -440,7 +440,7 @@ class CountDecodertrainer(LightningModule):
     ):
         super().__init__(*args, **kwargs)
         self.save_hyperparameters()
-        pretrained_model = Petra(
+        pretrained_model = CellGen(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
             num_heads=num_heads,

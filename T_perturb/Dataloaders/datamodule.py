@@ -36,7 +36,7 @@ class DummyDataset(torch.utils.data.Dataset):
         }
 
 
-class PetraDataset(Dataset):
+class CellGenDataset(Dataset):
     def __init__(
         self,
         src_dataset: DatasetDict,
@@ -110,7 +110,7 @@ class PetraDataset(Dataset):
 
 
 # two dataloader vs one dataloader
-class PetraDataModule(LightningDataModule):
+class CellGenDataModule(LightningDataModule):
     def __init__(
         self,
         src_dataset: DatasetDict,
@@ -172,7 +172,7 @@ class PetraDataModule(LightningDataModule):
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
             if self.condition_encodings is not None:
-                self.train_dataset = PetraDataset(
+                self.train_dataset = CellGenDataset(
                     src_dataset=self.src_dataset,
                     tgt_datasets=self.tgt_datasets,
                     split_indices=self.train_indices,
@@ -187,7 +187,7 @@ class PetraDataModule(LightningDataModule):
                     else None,
                 )
                 if self.val_indices is not None:
-                    self.val_dataset = PetraDataset(
+                    self.val_dataset = CellGenDataset(
                         src_dataset=self.src_dataset,
                         tgt_datasets=self.tgt_datasets,
                         split_indices=self.val_indices,
@@ -204,7 +204,7 @@ class PetraDataModule(LightningDataModule):
                 else:
                     self.val_dataset = None
             else:
-                self.train_dataset = PetraDataset(
+                self.train_dataset = CellGenDataset(
                     src_dataset=self.src_dataset,
                     tgt_datasets=self.tgt_datasets,
                     split_indices=self.train_indices,
@@ -213,7 +213,7 @@ class PetraDataModule(LightningDataModule):
                     time_steps=self.time_steps,
                 )
                 if self.val_indices is not None:
-                    self.val_dataset = PetraDataset(
+                    self.val_dataset = CellGenDataset(
                         src_dataset=self.src_dataset,
                         tgt_datasets=self.tgt_datasets,
                         split_indices=self.val_indices,
@@ -227,7 +227,7 @@ class PetraDataModule(LightningDataModule):
             # use all time steps to provide as context
             self.time_steps = list(range(1, self.total_time_steps + 1))
             if self.condition_encodings is not None:
-                self.test_dataset = PetraDataset(
+                self.test_dataset = CellGenDataset(
                     src_dataset=self.src_dataset,
                     tgt_datasets=self.tgt_datasets,
                     split_indices=self.test_indices,
@@ -242,7 +242,7 @@ class PetraDataModule(LightningDataModule):
                     else None,
                 )
             else:
-                self.test_dataset = PetraDataset(
+                self.test_dataset = CellGenDataset(
                     src_dataset=self.src_dataset,
                     tgt_datasets=self.tgt_datasets,
                     split_indices=self.test_indices,
@@ -366,27 +366,3 @@ class PetraDataModule(LightningDataModule):
             )
 
         return out
-
-
-if __name__ == '__main__':
-    # test dataloader
-    data_module = PetraDataModule(
-        src_dataset=(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-            'T_perturb/T_perturb/pp/res/dataset/'
-            'cytoimmgen_tokenised_degs_stratified_pairing_0h.dataset'
-        ),
-        tgt_datasets=(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-            'T_perturb/T_perturb/pp/res/dataset/'
-            'cytoimmgen_tokenised_degs_stratified_pairing_16h.dataset'
-        ),
-        max_len=334,
-    )
-    data_module.setup()
-    dataloader = data_module.train_dataloader()
-    # iterate through batches
-    train_iterator = iter(dataloader)
-    batch = next(train_iterator)
-    print(batch['tgt_input_ids'][:20, :20])
-    print(len(batch['tgt_counts'][0]))
