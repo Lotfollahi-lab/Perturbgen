@@ -16,7 +16,6 @@ from T_perturb.tests.test_countdecoder_training import dummy_cell_gene_matrix
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
     os.chdir('/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/')
-    print('Changed working directory to root of repository')
 
 
 class PetraTestGenerationCase(unittest.TestCase):
@@ -127,8 +126,10 @@ class PetraTestGenerationCase(unittest.TestCase):
             conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
 
         decoder_module = CountDecodertrainer(
-            ckpt_masking_path='./T_perturb/T_perturb/tests/checkpoints/'
-            'test_masking_checkpoint-epoch=00.ckpt',
+            ckpt_masking_path='./T_perturb/T_perturb/tests/'
+            'checkpoints/baseline_masking_checkpoint-epoch=00.ckpt',
+            ckpt_count_path='./T_perturb/T_perturb/tests/'
+            'checkpoints/baseline_counts_checkpoint-epoch=00.ckpt',
             tgt_vocab_size=self.tgt_vocab_size,
             d_model=self.d_model,
             num_heads=4,
@@ -189,8 +190,7 @@ class PetraTestGenerationCase(unittest.TestCase):
         # Test generation
         # Use the PyTorch Lightning Trainer to test the training loop
         trainer = pl.Trainer(
-            max_epochs=1,
-            limit_train_batches=1,  # Limit to a single batch for quick testing
+            limit_test_batches=1,  # Limit to a single batch for quick testing
             logger=False,
         )
         trainer.test(self.decoder_module, self.data_module)
