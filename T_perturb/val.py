@@ -12,8 +12,8 @@ from datasets import load_from_disk
 from pytorch_lightning.callbacks import TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 
-from T_perturb.Dataloaders.datamodule import PetraDataModule
-from T_perturb.Model.trainer import CountDecodertrainer, Petratrainer
+from T_perturb.Dataloaders.datamodule import CellGenDataModule
+from T_perturb.Model.trainer import CellGentrainer, CountDecodertrainer
 from T_perturb.src.utils import (
     label_encoder,
     randomised_split,
@@ -364,7 +364,7 @@ def main() -> None:
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.test_mode == 'masking':
-        pretrained_module = Petratrainer(
+        pretrained_module = CellGentrainer(
             tgt_vocab_size=args.tgt_vocab_size,
             d_model=256,
             num_heads=8,
@@ -431,7 +431,7 @@ def main() -> None:
     for keys, tgt_adata in tgt_adatas.items():
         tgt_counts_dict[keys] = tgt_adata.X
     src_counts = src_adata.X
-    data_module = PetraDataModule(
+    data_module = CellGenDataModule(
         src_dataset=src_dataset,
         tgt_datasets=tgt_datasets,
         src_counts=src_counts,

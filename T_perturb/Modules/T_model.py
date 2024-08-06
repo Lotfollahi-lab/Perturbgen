@@ -354,7 +354,7 @@ def gumbel_sample(t, temperature=1.0, dim=-1):
     return ((t / max(temperature, 1e-10)) + gumbel_noise(t)).argmax(dim=dim)
 
 
-class Petra(nn.Module):
+class CellGen(nn.Module):
     def __init__(
         self,
         tgt_vocab_size: int = 25426,
@@ -369,7 +369,7 @@ class Petra(nn.Module):
         total_time_steps: int = 3,
         mode='GF_frozen',
     ):
-        super(Petra, self).__init__()
+        super(CellGen, self).__init__()
         self.num_features = self.embed_dim = d_model
         self.mlm_probability = mlm_probability
         self.tgt_vocab_size = tgt_vocab_size
@@ -1147,90 +1147,3 @@ class CountDecoder(nn.Module):
             tmp_ids[:, 1:] = tmp_ids_
 
         return outputs, tmp_ids
-
-
-if __name__ == '__main__':
-    # from T_perturb.Dataloaders.datamodule import GeneformerDataModule
-    src_vocab_size = 5000
-    tgt_vocab_size = 5000
-    d_model = 256
-    num_heads = 8
-    num_layers = 6
-    d_ff = 2048
-    max_seq_length = 400
-    dropout = 0.1
-    n_tokens = 200
-    decoder = Block(
-        dim=d_model,
-        d_ff=d_ff,
-        num_heads=num_heads,
-        hidden_size=d_ff,
-        dropout=dropout,
-        context_dim=d_model,
-    )
-    transformer = Petra(tgt_vocab_size=13)
-    torch.manual_seed(42)
-    src_input_id = torch.tensor(
-        [
-            [1, 2, 2, 5, 7, 6, 9, 8, 9, 6, 0, 0],
-            [1, 3, 2, 4, 7, 4, 9, 3, 9, 6, 0, 0],
-        ]
-    )
-    label_tensor = torch.tensor(
-        [[1, 2, 2, 4, 5, 6, 9, 8, 9, 6, 0, 0], [1, 2, 2, 4, 5, 6, 9, 8, 9, 6, 0, 0]]
-    )
-    label_prob = torch.tensor(
-        [
-            [0.1, 0.25, 0.2, 0.4, 0.5, 0.6, 0.6, 0.8, 0.9, 1.0, 0.95, 0.92],
-            [0.1, 0.2, 0.25, 0.4, 0.5, 0.6, 0.6, 0.8, 0.9, 1.0, 0.95, 0.92],
-        ]
-    )
-    # create logits with random probabilities adding up to 1 for each row
-    # (B, seq_length, vocab_size)
-    logits = torch.rand((2, 12, 10))
-    logits = logits / logits.sum(dim=-1, keepdim=True)
-    tgt_pad = torch.tensor(
-        [
-            [
-                False,
-                False,
-                False,
-                False,
-                False,
-                False,
-                False,
-                False,
-                False,
-                False,
-                True,
-                True,
-            ],
-            [
-                False,
-                False,
-                False,
-                False,
-                False,
-                False,
-                False,
-                False,
-                False,
-                False,
-                True,
-                True,
-            ],
-        ]
-    )
-    # generate probability matrix
-    probability_matrix = (~tgt_pad).long()
-    threshold = 0.5
-    # TTransformer.select_unique_topk
-    # (label_tensor, label_prob, tgt_pad, probability_matrix)
-    transformer.eval()
-    transformer.generate(
-        src_input_id=src_input_id.to('cuda'),
-        noise_schedule=noise_schedule,
-        tgt_input_id=label_tensor.to('cuda'),
-        tgt_vocab_size=10,
-        seq_length=12,
-    )

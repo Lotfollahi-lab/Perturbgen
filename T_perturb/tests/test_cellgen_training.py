@@ -8,8 +8,8 @@ import torch
 from datasets import Dataset
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-from T_perturb.Dataloaders.datamodule import PetraDataModule
-from T_perturb.Model.trainer import Petratrainer
+from T_perturb.Dataloaders.datamodule import CellGenDataModule
+from T_perturb.Model.trainer import CellGentrainer
 
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
@@ -46,9 +46,9 @@ def dummy_dataset(
         return tgt_dataset_dict
 
 
-class PetraTestTrainingCase(unittest.TestCase):
+class CellGenTestTrainingCase(unittest.TestCase):
     def __init__(self, *args, **kwargs):
-        super(PetraTestTrainingCase, self).__init__(*args, **kwargs)
+        super(CellGenTestTrainingCase, self).__init__(*args, **kwargs)
         self.time_step = [1, 2]
         self.total_time_steps = 2
         self.max_seq_length = 50
@@ -60,7 +60,7 @@ class PetraTestTrainingCase(unittest.TestCase):
         pl.seed_everything(42)
 
         # Load transformer model and count decoder
-        transformer = Petratrainer(
+        transformer = CellGentrainer(
             tgt_vocab_size=self.tgt_vocab_size,
             d_model=self.d_model,
             num_heads=4,
@@ -91,7 +91,7 @@ class PetraTestTrainingCase(unittest.TestCase):
         )
 
         # Load the data module
-        self.data_module = PetraDataModule(
+        self.data_module = CellGenDataModule(
             src_dataset=src_dataset,
             tgt_datasets=tgt_datasets,
             batch_size=self.batch_size,
