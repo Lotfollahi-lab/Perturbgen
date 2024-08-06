@@ -14,7 +14,6 @@ from T_perturb.Model.trainer import Petratrainer
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
     os.chdir('/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/')
-    print('Changed working directory to root of repository')
 
 
 def dummy_dataset(

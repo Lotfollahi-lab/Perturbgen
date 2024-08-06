@@ -1079,7 +1079,7 @@ class CountDecodertrainer(LightningModule):
             # save adata
             pred_adata.write_h5ad(
                 f'{self.output_dir}/'
-                f'generate_adata_extrapolate_ckpt_19_ep_150_{self.mode}_{self.seed}'
+                f'generate_adata_extrapolate_{self.mode}_{self.seed}'
                 f'_{self.loss_mode}_{self.n_samples}.h5ad'
             )
             emd = evaluate_emd(true_adata, pred_adata)

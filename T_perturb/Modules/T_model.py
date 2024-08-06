@@ -902,7 +902,6 @@ class CountHead(nn.Module):
             drop=dropout,
         )
         n_genes = tgt_vocab_size
-        print('number of genes', n_genes)
         if self.loss_mode == 'mse':
             self.relu_output = nn.Sequential(nn.Linear(d_model, n_genes), nn.ReLU())
         elif self.loss_mode == 'zinb':
