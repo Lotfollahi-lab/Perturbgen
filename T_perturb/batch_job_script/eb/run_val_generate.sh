@@ -48,7 +48,7 @@ python3 $cwd/val.py \
 --d_ff 16 \
 --loss_mode zinb \
 --n_workers 32 \
---time_steps 4 \
+--time_steps 3 \
 --var_list Time_point
 echo '--- Finished computing model'
 

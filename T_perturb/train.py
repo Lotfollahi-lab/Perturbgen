@@ -56,15 +56,15 @@ def get_args():
         type=str,
         default='random',
         # default='stratified',
-        choices=['random', 'stratified', 'unseen_donor'],
+        choices=['random', 'stratified', 'unseen_cond'],
         help='splitting mode',
     )
+    parser.add_argument('--split_obs', type=str, default='Donor')
+    parser.add_argument('--split_value', type=str, default='D351')
     parser.add_argument(
         '--ckpt_masking_path',
         type=str,
-        default='./T_perturb/T_perturb/Model/checkpoints/'
-        '20240518_2328_embedding_lr_0.0001'
-        '_wd_0.0001_batch_64_mlmp_0.15_tp_1-2-3-epoch=49.ckpt',
+        default=None,
         help='path to checkpoint',
     )
 
@@ -492,7 +492,7 @@ def main() -> None:
         filename = (
             f'{run_id}_train_{args.train_mode}_lr_{args.petra_lr}_wd_{args.petra_wd}_'
             f'batch_{args.batch_size}_'
-            f'mlmp_{args.mlm_prob}_tp_{time_steps_str}'
+            f'mlmp_{args.mlm_prob}_tp_{time_steps_str}_s_{args.seed}'
         )
         if args.split:
             monitor_metric = 'val/perplexity'
@@ -503,7 +503,7 @@ def main() -> None:
         filename = (
             f'{run_id}_train_{args.train_mode}_lr_{args.count_lr}_wd_{args.count_wd}_'
             f'batch_{args.batch_size}_'
-            f'{args.loss_mode}_tp_{time_steps_str}'
+            f'{args.loss_mode}_tp_{time_steps_str}_s_{args.seed}'
         )
         if args.split:
             monitor_metric = 'val/mse'
@@ -517,7 +517,7 @@ def main() -> None:
         dirpath=checkpoint_path,
         filename=f'{filename}-' + '{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=50,
+        every_n_epochs=10,
         verbose=True,
         monitor=monitor_metric,
         mode=mode,
@@ -572,7 +572,6 @@ def main() -> None:
         accelerator='auto',
         devices=-1 if torch.cuda.is_available() else 0,
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
-        limit_test_batches=50,
     )
     print('Starting training...')
     if os.getcwd().split('/')[-1] != 'healthy_imm_expr':

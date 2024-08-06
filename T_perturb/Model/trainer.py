@@ -10,7 +10,6 @@ from typing import (
 import anndata as ad
 import numpy as np
 import pandas as pd
-import scanpy as sc
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -29,6 +28,11 @@ from torchmetrics.text import Perplexity
 from T_perturb.Model.metric import evaluate_emd, evaluate_mmd  # pearson,
 from T_perturb.Modules.T_model import CountDecoder, Petra
 from T_perturb.src.losses import mse_loss
+from T_perturb.src.utils import (
+    compute_cos_similarity,
+    return_cos_similarity,
+    return_gene_embeddings,
+)
 
 # from deepspeed.ops.adam import FusedAdam
 
@@ -38,33 +42,6 @@ if torch.cuda.is_available():
     # If the device is an A100, set the precision for matrix multiplication
     if 'A100' in cuda_device_name:
         torch.set_float32_matmul_precision('medium')
-
-sc.settings.set_figure_params(dpi=500)
-
-
-def batch_token_ranking(tokenised_cells: torch.tensor, vocab_size: int):
-    batch_size, seq_length = tokenised_cells.shape
-
-    # tensor of size (batch_size, seq_length) filled with 0 to seq_length
-    indices = torch.arange(seq_length, device=tokenised_cells.device).expand(
-        batch_size, -1
-    )
-
-    # tensor of size (batch_size, vocab_size) filled with seq_length
-    first_occurrence_indices = torch.full(
-        (batch_size, vocab_size),
-        seq_length,
-        dtype=torch.long,
-        device=tokenised_cells.device,
-    )
-
-    # For each vocab item, find the first occurrence index
-    for i in range(vocab_size):
-        mask = tokenised_cells == i
-        valid_indices = torch.where(mask, indices, seq_length)
-        first_occurrence_indices[:, i] = valid_indices.min(dim=-1).values
-
-    return first_occurrence_indices
 
 
 class Petratrainer(LightningModule):
@@ -121,8 +98,6 @@ class Petratrainer(LightningModule):
             {
                 'cosine_similarity': CosineSimilarity(reduction='mean'),
                 'mse': MeanSquaredError(),
-                # 'rmse': MeanSquaredError(squared=False),
-                # 'spearman': SpearmanCorrCoef(num_outputs=batch_size),
             }
         )
         if mapping_dict_path is not None:
@@ -239,28 +214,6 @@ class Petratrainer(LightningModule):
             rank_zero_only=True,
             sync_dist=True,
         )
-        # self.log(
-        #     'train/moe_loss',
-        #     (1 - self.alpha) * moe_loss,
-        #     on_step=True,
-        #     on_epoch=True,
-        #     prog_bar=True,
-        #     logger=True,
-        #     batch_size=batch['tgt_input_ids_t1'].shape[0],
-        #     rank_zero_only=True,
-        #     sync_dist=True,
-        # )
-        # self.log(
-        #     'train/combined_loss',
-        #     combined_loss,
-        #     on_step=True,
-        #     on_epoch=True,
-        #     prog_bar=True,
-        #     logger=True,
-        #     batch_size=batch['tgt_input_ids_t1'].shape[0],
-        #     rank_zero_only=True,
-        #     sync_dist=True,
-        # )
 
         self.log(
             'train/perplexity',
@@ -318,30 +271,16 @@ class Petratrainer(LightningModule):
     def test_step(self, batch, *args, **kwargs):
         if self.return_embeddings:
             outputs = self.forward(batch)
-            for i, time_step in enumerate(self.time_steps):
-                cls_position = outputs['cls_positions'][i]
-                cls_embeddings = outputs['dec_embedding'][:, cls_position, :]
+            for time_step in self.time_steps:
                 token_ids = batch[f'tgt_input_ids_t{time_step}']
                 cell_ids = batch[f'tgt_cell_idx_t{time_step}']
-                # exclude cls token from gene embeddings
-                if time_step == max(self.time_steps):
-                    gene_embeddings = outputs['dec_embedding'][
-                        :, (cls_position + 1) :, :
-                    ]
-                else:
-                    gene_embeddings = outputs['dec_embedding'][
-                        :, (cls_position + 1) : outputs['cls_positions'][time_step], :
-                    ]
-                cosine_similarity_list = []
-                for i in range(gene_embeddings.shape[0]):
-                    # gene level cosine similarity
-                    tmp_consine_similarity = F.cosine_similarity(
-                        cls_embeddings[i],
-                        gene_embeddings[i, :, :],
-                        dim=1,
-                    )
-                    cosine_similarity_list.append(tmp_consine_similarity)
-                cosine_similarity_list = torch.stack(cosine_similarity_list)
+                (
+                    cos_similarity,
+                    cls_embeddings,
+                    gene_embeddings,
+                ) = compute_cos_similarity(
+                    outputs=outputs, time_step=time_step, all_time_steps=self.time_steps
+                )
 
                 # extra
                 marker_genes = [
@@ -388,53 +327,28 @@ class Petratrainer(LightningModule):
                     'HLA-DRB1',
                 ]
 
-                # filter for marker genes and swap key value
-                marker_genes_ids = {
-                    v: k
-                    for k, v in self.subset_tokenid_to_genename.items()
-                    if v in marker_genes
-                }
-                # print('token_dict',self.subset_tokenid_to_genename)
-
-                cosine_sim = torch.zeros(
-                    cosine_similarity_list.shape[0],
-                    len(marker_genes_ids.keys()),
-                    device=gene_embeddings.device,
+                marker_cos_similarity, marker_genes_dict = return_cos_similarity(
+                    marker_genes=marker_genes,
+                    cos_similarity=cos_similarity,
+                    gene_embeddings=gene_embeddings,
+                    mapping_dict=self.subset_tokenid_to_genename,
+                    token_ids=token_ids,
                 )
-                marker_gene_embeddings = torch.zeros(
-                    gene_embeddings.shape[0],
-                    len(marker_genes_ids.keys()),
-                    gene_embeddings.shape[2],
-                    device=gene_embeddings.device,
+                marker_gene_embeddings = return_gene_embeddings(
+                    marker_genes=marker_genes,
+                    gene_embeddings=gene_embeddings,
+                    mapping_dict=self.subset_tokenid_to_genename,
+                    token_ids=token_ids,
                 )
-                marker_genes_dict = {}
-                for i, gene in enumerate(marker_genes_ids.keys()):
-                    # extract cosine similarity for marker genes
-                    # ---------------------
-                    cond_embs_to_fill = (token_ids == marker_genes_ids[gene]).sum(1) > 0
-                    cond_select_markers = torch.where(
-                        token_ids == marker_genes_ids[gene]
-                    )
-                    cosine_sim[cond_embs_to_fill, i] = cosine_similarity_list[
-                        cond_select_markers[0], cond_select_markers[1]
-                    ]
-                    # extract gene embeddings for marker genes
-                    # ---------------------
 
-                    cond_embs_to_fill = (token_ids == marker_genes_ids[gene]).sum(1) > 0
-                    cond_select_markers = torch.where(
-                        token_ids == marker_genes_ids[gene]
-                    )
-                    marker_gene_embeddings[cond_embs_to_fill, i] = gene_embeddings[
-                        cond_select_markers[0], cond_select_markers[1], :
-                    ]
-                    marker_genes_dict[gene] = i
                 self.marker_genes = marker_genes_dict
                 self.test_dict['true_counts'].append(
                     batch[f'tgt_counts_t{time_step}'].detach().cpu()
                 )
                 self.test_dict['cls_embeddings'].append(cls_embeddings.detach().cpu())
-                self.test_dict['cosine_similarities'].append(cosine_sim.detach().cpu())
+                self.test_dict['cosine_similarities'].append(
+                    marker_cos_similarity.detach().cpu()
+                )
                 self.test_dict['batch'].append(batch['combined_batch'].detach().cpu())
                 self.test_dict['cell_idx'].append(cell_ids)
                 self.test_dict['gene_embeddings'].append(
