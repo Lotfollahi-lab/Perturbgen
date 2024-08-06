@@ -27,8 +27,7 @@ echo "--- Start computing model"
 # --split False \
 # --splitting_mode stratified \
 # --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
-# --ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240521_1038_petra_train_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-3-epoch=149_seed100.ckpt" \
-# "_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-3-epoch=149.ckpt" \
+# --ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240522_0248_tcell_extrapol_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-2_s_100-epoch=149.ckpt" \
 # --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_transformer/0h.dataset" \
 # --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
 # --src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
@@ -38,9 +37,9 @@ echo "--- Start computing model"
 # --max_len 300 \
 # --epochs 20 \
 # --tgt_vocab_size 1261 \
-# --petra_lr 0.0001 \
+# --cellgen_lr 0.0001 \
 # --count_lr 0.00005 \
-# --petra_wd 0.0001 \
+# --cellgen_wd 0.0001 \
 # --count_wd 0.01 \
 # --mlm_prob 0.15 \
 # --n_workers 32 \
@@ -70,9 +69,9 @@ python3 $cwd/train.py \
 --max_len 300 \
 --epochs 20 \
 --tgt_vocab_size 1261 \
---petra_lr 0.0001 \
+--cellgen_lr 0.0001 \
 --count_lr 0.00005 \
---petra_wd 0.0001 \
+--cellgen_wd 0.0001 \
 --count_wd 0.01 \
 --mlm_prob 0.15 \
 --n_workers 32 \

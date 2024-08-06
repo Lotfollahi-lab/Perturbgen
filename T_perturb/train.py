@@ -138,9 +138,11 @@ def get_args():
         default=2001,
         help='vocab size (max token id + 1) in dataset for padding',
     )
-    parser.add_argument('--petra_lr', type=float, default=0.0001, help='learning rate')
+    parser.add_argument(
+        '--cellgen_lr', type=float, default=0.0001, help='learning rate'
+    )
     parser.add_argument('--count_lr', type=float, default=0.00005, help='learning rate')
-    parser.add_argument('--petra_wd', type=float, default=0.0001, help='weight decay')
+    parser.add_argument('--cellgen_wd', type=float, default=0.0001, help='weight decay')
     parser.add_argument('--count_wd', type=float, default=0.01, help='weight decay')
     parser.add_argument(
         '--num_layers', type=int, default=6, help='number of decoder layers'
@@ -154,7 +156,7 @@ def get_args():
     parser.add_argument(
         '--loss_mode', type=str, default='zinb', help='loss mode [zinb, nb, mse]'
     )
-    parser.add_argument('--petra_dropout', type=float, default=0.0, help='dropout')
+    parser.add_argument('--cellgen_dropout', type=float, default=0.0, help='dropout')
     parser.add_argument('--count_dropout', type=float, default=0.0, help='dropout')
     parser.add_argument(
         '--condition_keys',
@@ -383,10 +385,10 @@ def main() -> None:
             num_layers=args.num_layers,
             d_ff=args.d_ff,
             max_seq_length=args.max_len + 100,
-            dropout=args.petra_dropout,
+            dropout=args.cellgen_dropout,
             mlm_probability=args.mlm_prob,
-            weight_decay=args.petra_wd,
-            lr=args.petra_lr,
+            weight_decay=args.cellgen_wd,
+            lr=args.cellgen_lr,
             # lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             time_steps=args.time_steps,
@@ -479,7 +481,7 @@ def main() -> None:
         )
     # Setup trainer
     # ----------------------------------------------------------------------------------
-    run_id = datetime.now().strftime('%Y%m%d_%H%M_petra')
+    run_id = datetime.now().strftime('%Y%m%d_%H%M_cellgen')
     log_path = os.path.join(args.log_dir, run_id)
     os.makedirs(os.path.join(os.getcwd(), log_path), exist_ok=True)
 
@@ -490,8 +492,8 @@ def main() -> None:
     time_steps_str = '-'.join(time_steps_str_)
     if args.train_mode == 'masking':
         filename = (
-            f'{run_id}_train_{args.train_mode}_lr_{args.petra_lr}_wd_{args.petra_wd}_'
-            f'batch_{args.batch_size}_'
+            f'{run_id}_train_{args.train_mode}_lr_{args.cellgen_lr}'
+            f'_wd_{args.cellgen_wd}_batch_{args.batch_size}_'
             f'mlmp_{args.mlm_prob}_tp_{time_steps_str}_s_{args.seed}'
         )
         if args.split:

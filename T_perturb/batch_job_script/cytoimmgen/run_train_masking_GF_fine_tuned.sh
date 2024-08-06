@@ -36,8 +36,8 @@ echo "--- Start computing model"
 # --max_len 300 \
 # --epochs 50 \
 # --tgt_vocab_size 1261 \
-# --petra_lr 0.0001 \
-# --petra_wd 0.0001 \
+# --cellgen_lr 0.0001 \
+# --cellgen_wd 0.0001 \
 # --mlm_prob 0.15 \
 # --n_workers 32 \
 # --d_ff 128 \
@@ -63,8 +63,8 @@ python3 $cwd/train.py \
 --max_len 300 \
 --epochs 50 \
 --tgt_vocab_size 1261 \
---petra_lr 0.0001 \
---petra_wd 0.0001 \
+--cellgen_lr 0.0001 \
+--cellgen_wd 0.0001 \
 --mlm_prob 0.15 \
 --n_workers 32 \
 --d_ff 128 \
