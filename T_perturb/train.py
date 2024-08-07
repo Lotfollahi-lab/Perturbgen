@@ -296,10 +296,6 @@ def main() -> None:
         subset_adata.obs['cell_pairing_index'].tolist()
         == subset_dataset['cell_pairing_index']
     )
-    # if tgt_adata.X.__class__.__name__ == 'csr_matrix':
-    #     tgt_adata.X = tgt_adata.X.A
-    # if src_adata.X.__class__.__name__ == 'csr_matrix':
-    #     src_adata.X = src_adata.X.A
     if args.loss_mode == 'mse':
         # log normalize data only for mse loss
         sc.pp.normalize_total(src_adata, target_sum=1e4)

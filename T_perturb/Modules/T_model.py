@@ -824,7 +824,7 @@ class CellGen(nn.Module):
     def forward(
         self,
         src_input_id: torch.Tensor,
-        cls_positions: torch.Tensor = [],
+        cls_positions: torch.Tensor,
         not_masked: bool = False,
         context_mode: bool = False,
         tgt_time_step: Optional[int] = None,
@@ -1092,6 +1092,7 @@ class CountDecoder(nn.Module):
             src_input_id=src_input_id,
             tgt_input_id_dict=tgt_input_id_dict,
             not_masked=True,
+            cls_positions=cls_positions,
         )
 
         count_outputs = {}
@@ -1204,6 +1205,7 @@ class CountDecoder(nn.Module):
                 iterations=iterations,
                 scores=scores,
                 tgt_time_step=time_step,
+                cls_positions=cls_positions,
             )
             generate_id_dict[tgt_input_id_key] = generated_ids
             dec_embedding_list.append(outputs['dec_embedding'])
@@ -1224,6 +1226,7 @@ class CountDecoder(nn.Module):
         demask_fn: nn.Module,
         mask_scheduler: str,
         scores: torch.Tensor,
+        cls_positions: torch.tensor,
         can_remask_prev_masked: bool = False,
         topk_filter_thres: float = 0.9,
         starting_temperature: float = 2.0,
@@ -1312,6 +1315,7 @@ class CountDecoder(nn.Module):
                 generate_pad_dict=generate_pad_dict,
                 not_masked=False,
                 tgt_time_step=tgt_time_step,
+                cls_positions=cls_positions,
             )
             logits = outputs['dec_logits']
             # exclude cls token

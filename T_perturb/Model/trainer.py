@@ -553,6 +553,7 @@ class CountDecoderTrainer(LightningModule):
         interval = batch[f'tgt_input_ids_t{i}'].shape[1] + 1  # as 0 is cls token
         num_steps = len(self.time_steps)
         cls_positions = np.arange(0, num_steps * interval, interval)
+        print('CLS positions:', cls_positions)
         outputs = self.decoder(
             src_input_id=batch['src_input_ids'],
             tgt_input_id_dict=tgt_input_id_dict,
