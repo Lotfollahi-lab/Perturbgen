@@ -44,7 +44,7 @@ class TestCheckpointEquality(unittest.TestCase):
         )
         checkpoint_path2 = (
             './T_perturb/T_perturb/tests/checkpoints/'
-            'test_masking_checkpoint-epoch=00-v1.ckpt'
+            'test_masking_checkpoint-epoch=00-v4.ckpt'
         )
 
         # Check if the checkpoints exist
@@ -71,7 +71,7 @@ class TestCheckpointEquality(unittest.TestCase):
         )
         checkpoint_path2 = (
             './T_perturb/T_perturb/tests/checkpoints/'
-            'test_masking_checkpoint-epoch=00-v1.ckpt'
+            'test_masking_checkpoint-epoch=00-v4.ckpt'
         )
 
         # Check if the checkpoints exist

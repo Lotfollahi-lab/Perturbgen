@@ -775,8 +775,8 @@ class CellGen(nn.Module):
     ):
         # selected_tgt_pad = context_pad_dict[f'tgt_pad_t{tgt_time_step}']
         selected_tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{tgt_time_step}']
-        context_embedding_dict_ = context_embedding_dict.clone()
-        context_pad_dict_ = context_pad_dict.clone()
+        context_embedding_dict_ = context_embedding_dict.copy()
+        context_pad_dict_ = context_pad_dict.copy()
         # remove subsequent time steps from context and pad
         # if not generate:
         #     for time_step in self.time_steps:
@@ -826,7 +826,7 @@ class CellGen(nn.Module):
         src_input_id: torch.Tensor,
         cls_positions: torch.Tensor,
         not_masked: bool = False,
-        context_mode: bool = False,
+        context_mode: bool = True,
         tgt_time_step: Optional[int] = None,
         tgt_input_id_dict: Optional[dict] = None,
         generate_id_dict: Optional[dict] = None,
