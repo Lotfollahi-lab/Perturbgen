@@ -3,7 +3,7 @@ Mostly copy-paste from timm library.
 https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
 '''
 import math
-from typing import Optional
+from typing import Dict, Optional
 
 import numpy as np
 import torch
@@ -439,7 +439,11 @@ class Encoder(nn.Module):
     #     '''
     #     src = self.token_embedding(src) * math.sqrt(self.d_model)
     #     src = self.positional_encoding(x=src, tgt_time_step=0)
-    #     output = self.transformer_encoder(src, src_key_padding_mask=src_mask)
+    #     output = self.transformer_encoder(
+    #         src,
+    #         src_key_padding_mask=src_mask,
+    #         batch_first=True
+    #         )
     #     return output
 
 
@@ -800,9 +804,9 @@ class CellGen(nn.Module):
     def forward(
         self,
         src_input_id: torch.Tensor,
-        cls_positions: torch.Tensor,
         not_masked: bool = False,
         context_mode: bool = True,
+        cls_positions: Optional[torch.Tensor] = None,
         tgt_time_step: Optional[int] = None,
         tgt_input_id_dict: Optional[dict] = None,
         generate_id_dict: Optional[dict] = None,
@@ -958,6 +962,28 @@ class CountHead(nn.Module):
         d_model: int = 256,
         dropout: float = 0.0,
     ):
+        '''
+        Description:
+        ------------
+        Count prediction head for the Seq2Seq model.
+        Parameters:
+        -----------
+        loss_mode: `str`
+            Loss mode. Options: ['mse', 'zinb', 'nb']
+        tgt_vocab_size: `int`
+            Target vocabulary size.
+        d_model: `int`
+            Token embedding dimension.
+        dropout: `float`
+            Dropout rate for the MLP.
+        Returns:
+        --------
+        count_outputs: `dict`
+            Output dictionary containing the following keys:
+            - 'count_lognorm': Log-normalized count prediction for MSE loss.
+            - 'count_mean': Mean count prediction for ZINB and NB loss.
+            - 'count_dropout': Dropout count prediction for ZINB loss.
+        '''
         super(CountHead, self).__init__()
         self.loss_mode = loss_mode
 
@@ -1006,6 +1032,35 @@ class CountDecoder(nn.Module):
         time_steps: list = [1, 2],
         total_time_steps: int = 3,
     ):
+        '''
+        Description:
+        ------------
+        Loads complete Seq2Seq model with count prediction head.
+        Weights from pretrained seq2seq model are loaded into the model.
+        Use CLS or mean embeddings for count prediction.
+        Parameters:
+        -----------
+        pretrained_model: `nn.Module`
+            Pretrained Seq2Seq model.
+        loss_mode: `str`
+            Loss mode. Options: ['mse', 'zinb', 'nb']
+        tgt_vocab_size: `int`
+            Target vocabulary size.
+        d_model: `int`
+            Token embedding dimension.
+        add_mask_id: `bool`
+            Whether to add mask token.
+        dropout: `float`
+            Dropout rate for the MLP.
+        Returns:
+        --------
+        count_outputs: `dict`
+            Output dictionary containing the following keys:
+            - 'count_output_t{t}': Count prediction for time step t.
+            - 'count_log_norm': Log-normalized count prediction for MSE loss.
+            - 'count_mean': Mean count prediction for ZINB and NB loss.
+            - 'count_dropout': Dropout count prediction for ZINB loss.
+        '''
         super(CountDecoder, self).__init__()
         self.pretrained_model = pretrained_model
         self.embed_dim = d_model
@@ -1027,24 +1082,19 @@ class CountDecoder(nn.Module):
 
     def forward(
         self,
-        src_input_id,
-        tgt_input_id_dict,
-        cls_positions=None,
+        src_input_id: torch.Tensor,
+        tgt_input_id_dict: dict,
+        # cls_positions: torch.Tensor,
     ):
         outputs = self.pretrained_model(
             src_input_id=src_input_id,
             tgt_input_id_dict=tgt_input_id_dict,
             not_masked=True,
-            cls_positions=cls_positions,
         )
 
         count_outputs = {}
         for _, t in enumerate(self.time_steps):
-            # cls_position = cls_positions[i]
-            # cls_embedding = outputs['dec_embedding'][:, cls_position, :]
-            # print("cls_embedding",cls_embedding.shape)
             cls_embedding = outputs['mean_embedding'][t]
-            # print("cls_embedding",cls_embedding.shape)
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
             count_outputs[f'count_output_t{t}'] = count_outputs_tmp
 
@@ -1052,8 +1102,7 @@ class CountDecoder(nn.Module):
 
     def call_padding(self, src_input_id, tgt_input_id_dict, time_steps):
         tgt_pad_dict = {}
-        src_attention_mask = self.generate_pad(src_input_id)
-        tgt_pad_dict['src_pad'] = src_attention_mask
+        tgt_pad_dict['src_pad'] = self.generate_pad(src_input_id)
         for time_step in time_steps:
             tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_step}']
             tgt_pad_dict[f'tgt_pad_t{time_step}'] = self.generate_pad(tgt_input_id)
@@ -1105,16 +1154,16 @@ class CountDecoder(nn.Module):
             - 'count_output_t{t}': Count prediction for time step t.
             - 'cls_embedding_t{t}': CLS token embeddings for time step t.
         '''
-        starting_temperature = temperature
-        demask_fn = self.pretrained_model
         generate_id_dict = {}
         generate_pad_dict = {}
-        dec_embedding_list = []
-        for i, time_step in enumerate(self.time_steps):
-            generate_id_dict = tgt_input_id_dict.copy()
-            generate_pad_dict = self.call_padding(
-                src_input_id, generate_id_dict, self.total_time_steps
-            )
+        count_outputs: Dict[str, torch.Tensor] = {}
+        demask_fn = self.pretrained_model
+        tgt_pad_dict = self.call_padding(
+            src_input_id, tgt_input_id_dict, self.total_time_steps
+        )
+        for time_step in self.time_steps:
+            generate_id_dict = {k: v.clone() for k, v in tgt_input_id_dict.items()}
+            generate_pad_dict = {k: v.clone() for k, v in tgt_pad_dict.items()}
             # use max shape instead of genes you like to generate
             pad_tensor = torch.ones_like(generate_pad_dict[f'tgt_pad_t{time_step}'])
             if pad_tensor.shape[1] > max_len:
@@ -1144,16 +1193,16 @@ class CountDecoder(nn.Module):
                 mask_scheduler=mask_scheduler,
                 can_remask_prev_masked=can_remask_prev_masked,
                 topk_filter_thres=topk_filter_thres,
-                starting_temperature=starting_temperature,
+                starting_temperature=temperature,
                 iterations=iterations,
                 scores=scores,
                 tgt_time_step=time_step,
                 cls_positions=cls_positions,
             )
             generate_id_dict[tgt_input_id_key] = generated_ids
-            dec_embedding_list.append(outputs['dec_embedding'])
-        outputs['dec_embedding'] = torch.cat(dec_embedding_list, dim=1)
         count_outputs = {}
+        print(outputs['mean_embedding'].shape)
+        print(outputs['mean_embedding'])
         for i, t in enumerate(self.time_steps):
             cls_embedding = outputs['mean_embedding']
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)

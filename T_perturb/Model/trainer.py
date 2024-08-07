@@ -154,13 +154,9 @@ class CellGenTrainer(LightningModule):
                 dim=1,
             )
             tgt_input_id_dict[f'tgt_input_id_t{i}'] = tgt_input_id_
-        interval = batch[f'tgt_input_ids_t{i}'].shape[1] + 1  # as 0 is cls token
-        num_steps = len(self.time_steps)
-        cls_positions = np.arange(0, num_steps * interval, interval)
         outputs = self.transformer(
             src_input_id=batch['src_input_ids'],
             tgt_input_id_dict=tgt_input_id_dict,
-            cls_positions=cls_positions,
             not_masked=self.return_embeddings,
         )
         return outputs
@@ -550,14 +546,9 @@ class CountDecoderTrainer(LightningModule):
                 dim=1,
             )
             tgt_input_id_dict[f'tgt_input_id_t{i}'] = tgt_input_id_
-        interval = batch[f'tgt_input_ids_t{i}'].shape[1] + 1  # as 0 is cls token
-        num_steps = len(self.time_steps)
-        cls_positions = np.arange(0, num_steps * interval, interval)
-        print('CLS positions:', cls_positions)
         outputs = self.decoder(
             src_input_id=batch['src_input_ids'],
             tgt_input_id_dict=tgt_input_id_dict,
-            cls_positions=cls_positions,
         )
 
         return outputs
