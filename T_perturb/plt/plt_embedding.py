@@ -91,7 +91,7 @@ plt.savefig('./res/full_data_umap_log_norm.pdf', dpi=300, bbox_inches='tight')
 plt.close()
 adata_cls = sc.read_h5ad(
     f'{args.res_dir}/'
-    'generate_adata_extrapolate_ckpt_19_ep_150_Transformer_encoder_100_zinb_3.h5ad'
+    '20240808_generate_adata_extrapolate_[3]__Transformer_encoder_100_zinb_3.h5ad'
 )
 var_names = adata_cls.obsm['cosine_similarity'].columns
 # filter adata to only include genes in var_names
@@ -248,7 +248,7 @@ sc.pl.embedding(
     show=False,
 )
 plt.savefig(
-    f'{args.res_dir}/cls_embeddings_umap_generate_s100_full.pdf',
+    f'{args.res_dir}/20240808_cls_embeddings_umap_generate_s100_full.pdf',
     bbox_inches='tight',
 )
 plt.close()

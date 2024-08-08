@@ -14,7 +14,7 @@ from scipy.sparse import csr_matrix
 from T_perturb.src.utils import (
     map_ensembl_to_genename,
     map_input_ids_to_row_id,
-    pairing_resting_to_activated_cells,
+    pairing_src_to_tgt_cells,
     str2bool,
     subset_adata,
     tokenid_mapping,
@@ -239,9 +239,10 @@ adata_subset = sc.read_h5ad(
 )
 
 # Pairing resting to activated cells and tokenise individual datasets
-cell_pairings = pairing_resting_to_activated_cells(
+cell_pairings = pairing_src_to_tgt_cells(
     adata_subset=adata_subset,
     pairing_mode=args.pairing_mode,
+    pairing_obs='Time_point',
     seed_no=seed_no,
 )
 paired_dataset_dir = (

@@ -3,7 +3,11 @@ Mostly copy-paste from timm library.
 https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
 '''
 import math
-from typing import Dict, Optional
+from typing import (
+    Dict,
+    List,
+    Optional,
+)
 
 import numpy as np
 import torch
@@ -395,6 +399,7 @@ class Encoder(nn.Module):
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
         self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
         self.d_model = d_model
+        self.total_vocab_size = total_vocab_size
 
         self.init_weights()
 
@@ -410,6 +415,19 @@ class Encoder(nn.Module):
         Returns:
             output Tensor of shape ``[seq_len, batch_size, total_vocab_size]``
         '''
+        batch_size, sequence_length = src.size()
+        # Sample sequences for each element in the batch
+        tokens = torch.arange(self.total_vocab_size)
+        # Preallocate a tensor to hold all sampled sequences
+        src = torch.empty(
+            (batch_size, sequence_length), dtype=torch.long, device=src.device
+        )
+        for i in range(batch_size):
+            # Sampling without replacement for each sequence
+            sampled_indices = torch.multinomial(
+                torch.ones(self.total_vocab_size), sequence_length, replacement=False
+            )
+            src[i] = tokens[sampled_indices]
         src = self.token_embedding(src) * math.sqrt(self.d_model)
         src = self.positional_encoding(x=src, tgt_time_step=0)
         # transpose src:
@@ -458,7 +476,7 @@ class CellGen(nn.Module):
         max_seq_length: int = 2048,
         dropout: float = 0.0,
         mlm_probability: float = 0.3,
-        time_steps: list = [1, 2],
+        time_steps: List[int] = [1, 2, 3],
         total_time_steps: int = 3,
         mode='GF_frozen',
     ):
@@ -1120,7 +1138,6 @@ class CountDecoder(nn.Module):
         # self_cond_prob=0.9,
         iterations: int = 18,  # optimal of iterations in MaskGIT
         mask_scheduler: str = 'cosine',
-        cls_positions=[0, 247, 494],
     ):
         '''
         Description:
@@ -1155,41 +1172,34 @@ class CountDecoder(nn.Module):
             - 'cls_embedding_t{t}': CLS token embeddings for time step t.
         '''
         generate_id_dict = {}
-        generate_pad_dict = {}
         count_outputs: Dict[str, torch.Tensor] = {}
-        demask_fn = self.pretrained_model
         tgt_pad_dict = self.call_padding(
             src_input_id, tgt_input_id_dict, self.total_time_steps
         )
         for time_step in self.time_steps:
-            generate_id_dict = {k: v.clone() for k, v in tgt_input_id_dict.items()}
-            generate_pad_dict = {k: v.clone() for k, v in tgt_pad_dict.items()}
+            tgt_input_id_dict_ = {k: v.clone() for k, v in tgt_input_id_dict.items()}
+            tgt_pad_dict_ = {k: v.clone() for k, v in tgt_pad_dict.items()}
             # use max shape instead of genes you like to generate
-            pad_tensor = torch.ones_like(generate_pad_dict[f'tgt_pad_t{time_step}'])
+            pad_tensor = torch.ones_like(tgt_pad_dict_[f'tgt_pad_t{time_step}'])
             if pad_tensor.shape[1] > max_len:
                 # set the rest of the tokens to zero
                 pad_tensor[:, max_len:] = 0
             tgt_pad = self.generate_pad(pad_tensor)
-            generate_pad_dict[f'tgt_pad_t{time_step}'] = tgt_pad
+            tgt_pad_dict_[f'tgt_pad_t{time_step}'] = tgt_pad
             tgt_input_id_key = f'tgt_input_id_t{time_step}'
             tgt_input_id = tgt_input_id_dict[tgt_input_id_key]
-            batch_size = tgt_input_id.shape[0]
-            seq_len = tgt_input_id.shape[1]
-            shape = (batch_size, seq_len)
             # create ids and scores matrix for each batch
-            ids = torch.full(
-                shape, self.mask_token, dtype=torch.long, device=tgt_input_id.device
-            )
+            ids = torch.full_like(tgt_input_id, self.mask_token, dtype=torch.long)
             # add cls token to the ids
             ids[:, 0] = tgt_input_id[:, 0]
-            generate_id_dict[tgt_input_id_key] = ids
+            tgt_input_id_dict_[tgt_input_id_key] = ids
             # pad ids
-            scores = torch.zeros(shape, dtype=torch.float, device=tgt_input_id.device)
+            scores = torch.zeros_like(tgt_input_id, dtype=torch.float)
             outputs, generated_ids = self.generate_sequence(
-                generate_id_dict=generate_id_dict,
-                generate_pad_dict=generate_pad_dict,
+                generate_id_dict=tgt_input_id_dict_,
+                generate_pad_dict=tgt_pad_dict_,
                 src_input_id=src_input_id,
-                demask_fn=demask_fn,
+                demask_fn=self.pretrained_model,
                 mask_scheduler=mask_scheduler,
                 can_remask_prev_masked=can_remask_prev_masked,
                 topk_filter_thres=topk_filter_thres,
@@ -1197,17 +1207,12 @@ class CountDecoder(nn.Module):
                 iterations=iterations,
                 scores=scores,
                 tgt_time_step=time_step,
-                cls_positions=cls_positions,
             )
             generate_id_dict[tgt_input_id_key] = generated_ids
-        count_outputs = {}
-        print(outputs['mean_embedding'].shape)
-        print(outputs['mean_embedding'])
-        for i, t in enumerate(self.time_steps):
             cls_embedding = outputs['mean_embedding']
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
-            count_outputs[f'count_output_t{t}'] = count_outputs_tmp
-            count_outputs[f'cls_embedding_t{t}'] = cls_embedding
+            count_outputs[f'count_output_t{time_step}'] = count_outputs_tmp
+            count_outputs[f'cls_embedding_t{time_step}'] = cls_embedding
         return count_outputs
 
     def generate_sequence(
@@ -1218,7 +1223,6 @@ class CountDecoder(nn.Module):
         demask_fn: nn.Module,
         mask_scheduler: str,
         scores: torch.Tensor,
-        cls_positions: torch.tensor,
         can_remask_prev_masked: bool = False,
         topk_filter_thres: float = 0.9,
         starting_temperature: float = 2.0,
@@ -1268,6 +1272,9 @@ class CountDecoder(nn.Module):
         tmp_ids: `torch.Tensor`
             Generated target token inputs.
         '''
+        max_neg_value = -torch.finfo().max
+        tmp_ids = generate_id_dict[f'tgt_input_id_t{tgt_time_step}']
+        tgt_pad = generate_pad_dict[f'tgt_pad_t{tgt_time_step}']
         for iteration, steps_until_x0 in tqdm(
             zip(
                 torch.linspace(0, 1, iterations),
@@ -1275,8 +1282,6 @@ class CountDecoder(nn.Module):
             ),
             total=iterations,
         ):
-            tmp_ids = generate_id_dict[f'tgt_input_id_t{tgt_time_step}']
-            tgt_pad = generate_pad_dict[f'tgt_pad_t{tgt_time_step}']
             cls_token = tmp_ids[:, 0]
             # mask scheduler function, gamma
             rand_mask_prob = noise_schedule(
@@ -1284,20 +1289,27 @@ class CountDecoder(nn.Module):
                 total_tokens=tmp_ids.shape[1],
                 method=mask_scheduler,
             )
-            scores = scores.masked_fill(tgt_pad, -torch.finfo().max)
+            scores = scores.masked_fill(tgt_pad, max_neg_value)
             tmp_ids = tmp_ids.masked_fill(tgt_pad, 0)
             ids_to_keep = torch.zeros_like(tmp_ids, dtype=torch.long)
 
-            for i, score in enumerate(scores):
-                # count zeros in each row
-                unpadded = len(score) - sum(score == -torch.finfo().max)
-                num_token_masked = int(unpadded * rand_mask_prob)
-                masked_indices = score.topk(num_token_masked, dim=-1).indices
-                mask = torch.zeros_like(tmp_ids[i], dtype=torch.bool)
-                mask[masked_indices] = True
-                tmp_ids[i, masked_indices] = self.mask_token
-                # keep indices which are not masked
-                ids_to_keep[i, ~mask] = tmp_ids[i, ~mask]
+            batch_size, _ = scores.shape
+            unpadded = (scores != max_neg_value).sum(dim=1)
+            num_tokens_to_mask = (unpadded.float() * rand_mask_prob).long()
+            mask = torch.zeros_like(scores, dtype=torch.bool)
+            indices_to_mask = torch.topk(
+                scores, num_tokens_to_mask.max(), dim=-1
+            ).indices
+            # Mask the top `num_tokens_to_mask` positions for each sample
+            for i in range(batch_size):
+                mask[i, indices_to_mask[i, : num_tokens_to_mask[i]]] = True
+            tmp_ids = tmp_ids.masked_fill(mask, self.mask_token)
+            # keep indices which are not masked
+            ids_to_keep = torch.where(
+                mask,
+                torch.tensor(0, dtype=tmp_ids.dtype, device=tmp_ids.device),
+                tmp_ids,
+            )
 
             tmp_ids[:, 0] = cls_token
             generate_id_dict[f'tgt_input_id_t{tgt_time_step}'] = tmp_ids
@@ -1307,7 +1319,6 @@ class CountDecoder(nn.Module):
                 generate_pad_dict=generate_pad_dict,
                 not_masked=False,
                 tgt_time_step=tgt_time_step,
-                cls_positions=cls_positions,
             )
             logits = outputs['dec_logits']
             # exclude cls token
@@ -1332,8 +1343,7 @@ class CountDecoder(nn.Module):
             scores_ = rearrange(scores_, '... 1 -> ...')
 
             if not can_remask_prev_masked:
-                dtype = scores_.dtype
-                scores_ = scores_.masked_fill(~is_mask, -torch.finfo(dtype).max)
+                scores_ = scores_.masked_fill(~is_mask, max_neg_value)
             # add cls token to the ids and update scores and ids
             scores[:, 1:] = scores_
             tmp_ids[:, 1:] = tmp_ids_

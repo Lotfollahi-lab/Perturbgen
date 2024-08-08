@@ -493,6 +493,14 @@ class CountDecoderTrainer(LightningModule):
                     dtype=torch.long,
                 ),
             )
+        # for i in range(1, total_time_steps + 1):
+        #     self.register_buffer(
+        #         f'cls_token_{str(i)}',
+        #         torch.tensor(
+        #             [0],
+        #             dtype=torch.long,
+        #         ),
+        #     )
         self.generate = generate
         self.adata = tgt_adata
         # scheduler
@@ -790,9 +798,6 @@ class CountDecoderTrainer(LightningModule):
                 dim=1,
             )
             tgt_input_id_dict[f'tgt_input_id_t{i}'] = tgt_input_id_
-        interval = batch[f'tgt_input_ids_t{i}'].shape[1] + 1  # as 0 is cls token
-        num_steps = len(self.time_steps)
-        cls_positions = np.arange(0, num_steps * interval, interval)
         if self.generate:
             outputs = self.decoder.generate(
                 src_input_id=batch['src_input_ids'],
@@ -804,7 +809,6 @@ class CountDecoderTrainer(LightningModule):
                 # time_steps=self.time_steps,
                 temperature=self.temperature,
                 iterations=self.iterations,
-                cls_positions=cls_positions,
             )
             count_loss, pred_counts_dict = self.compute_count_loss(
                 outputs=outputs,
@@ -891,7 +895,7 @@ class CountDecoderTrainer(LightningModule):
             # save adata
             pred_adata.write_h5ad(
                 f'{self.output_dir}/{self.date}_'
-                f'generate_adata_extrapolate_'
+                f'random_embs_generate_adata_extrapolate_'
                 f'{self.time_steps}__{self.mode}_{self.seed}_'
                 f'{self.loss_mode}_{self.n_samples}.h5ad'
             )

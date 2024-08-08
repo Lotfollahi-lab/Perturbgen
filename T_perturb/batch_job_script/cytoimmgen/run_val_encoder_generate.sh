@@ -4,11 +4,11 @@
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
-#BSUB -o logs/generate_extra_s100_%J.out # output file
-#BSUB -e logs/generate_extra_s100_%J.err # error file
+#BSUB -o logs/random_embs_generate_extra_s100_%J.out # output file
+#BSUB -e logs/random_embs_generate_extra_s100_%J.err # error file
 #BSUB -M 150000  # RAM memory part 2. Default: 100MB
 #BSUB -R "select[mem>150000] rusage[mem=150000]" # RAM memory part 1. Default: 100MB
-#BSUB -J cytoimmgen_generate_extra_s100 # job name
+#BSUB -J random_embs_cytoimmgen_generate_extra_s100 # job name
 
 # load cuda
 module load cuda-12.1.1
