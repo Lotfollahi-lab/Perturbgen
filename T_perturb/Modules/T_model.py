@@ -415,19 +415,19 @@ class Encoder(nn.Module):
         Returns:
             output Tensor of shape ``[seq_len, batch_size, total_vocab_size]``
         '''
-        batch_size, sequence_length = src.size()
-        # Sample sequences for each element in the batch
-        tokens = torch.arange(self.total_vocab_size)
-        # Preallocate a tensor to hold all sampled sequences
-        src = torch.empty(
-            (batch_size, sequence_length), dtype=torch.long, device=src.device
-        )
-        for i in range(batch_size):
-            # Sampling without replacement for each sequence
-            sampled_indices = torch.multinomial(
-                torch.ones(self.total_vocab_size), sequence_length, replacement=False
-            )
-            src[i] = tokens[sampled_indices]
+        # batch_size, sequence_length = src.size()
+        # # Sample sequences for each element in the batch
+        # tokens = torch.arange(self.total_vocab_size)
+        # # Preallocate a tensor to hold all sampled sequences
+        # src = torch.empty(
+        #     (batch_size, sequence_length), dtype=torch.long, device=src.device
+        # )
+        # for i in range(batch_size):
+        #     # Sampling without replacement for each sequence
+        #     sampled_indices = torch.multinomial(
+        #         torch.ones(self.total_vocab_size), sequence_length, replacement=False
+        #     )
+        #     src[i] = tokens[sampled_indices]
         src = self.token_embedding(src) * math.sqrt(self.d_model)
         src = self.positional_encoding(x=src, tgt_time_step=0)
         # transpose src:
