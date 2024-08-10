@@ -55,7 +55,7 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --split False \
 --splitting_mode stratified \
 --generate True \
---ckpt_count_path "./T_perturb/T_perturb/Model/checkpoints/20240522_0857_tcell_extrapolate_5e-05_wd_0.01_batch_64_zinb_tp_1-2_s_100-epoch=19.ckpt" \
+--ckpt_count_path "./T_perturb/T_perturb/Model/checkpoints/20240810_1436_cellgen_train_count_lr_5e-05_wd_0.01_batch_64_zinb_tp_1-2_s_100-epoch=19.ckpt" \
 --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
 --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_transformer/0h.dataset" \
 --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \

@@ -281,7 +281,7 @@ class Block(nn.Module):
         attn_output = self.self_attn(x, mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
-        x = self.norm2(x + self.dropout(attn_output))
+        x = self.norm2(self.dropout(attn_output))  # disabled residual connection
         ff_output = self.feed_forward(x)
         x = self.norm3(x + self.dropout(ff_output))
 
@@ -722,7 +722,6 @@ class CellGen(nn.Module):
                 embs=dec_embedding,
                 pad=tgt_pad,
             )
-
         if cls_positions is not None:
             outputs['cls_positions'] = cls_positions
         return outputs
@@ -1273,8 +1272,8 @@ class CountDecoder(nn.Module):
             Generated target token inputs.
         '''
         max_neg_value = -torch.finfo().max
-        tmp_ids = generate_id_dict[f'tgt_input_id_t{tgt_time_step}']
-        tgt_pad = generate_pad_dict[f'tgt_pad_t{tgt_time_step}']
+        tmp_ids = generate_id_dict[f'tgt_input_id_t{tgt_time_step}'].clone()
+        ids_to_keep = torch.zeros_like(tmp_ids, dtype=torch.long)
         for iteration, steps_until_x0 in tqdm(
             zip(
                 torch.linspace(0, 1, iterations),
@@ -1282,17 +1281,12 @@ class CountDecoder(nn.Module):
             ),
             total=iterations,
         ):
-            cls_token = tmp_ids[:, 0]
             # mask scheduler function, gamma
             rand_mask_prob = noise_schedule(
                 ratio=iteration,
                 total_tokens=tmp_ids.shape[1],
                 method=mask_scheduler,
             )
-            scores = scores.masked_fill(tgt_pad, max_neg_value)
-            tmp_ids = tmp_ids.masked_fill(tgt_pad, 0)
-            ids_to_keep = torch.zeros_like(tmp_ids, dtype=torch.long)
-
             batch_size, _ = scores.shape
             unpadded = (scores != max_neg_value).sum(dim=1)
             num_tokens_to_mask = (unpadded.float() * rand_mask_prob).long()
@@ -1303,15 +1297,15 @@ class CountDecoder(nn.Module):
             # Mask the top `num_tokens_to_mask` positions for each sample
             for i in range(batch_size):
                 mask[i, indices_to_mask[i, : num_tokens_to_mask[i]]] = True
-            tmp_ids = tmp_ids.masked_fill(mask, self.mask_token)
-            # keep indices which are not masked
+            mask_to_keep_cls = mask.clone()
+            mask_to_keep_cls[:, 0] = False
+            tmp_ids = tmp_ids.masked_fill(mask_to_keep_cls, self.mask_token)
+            # keep indices which are not masked except for the CLS token
             ids_to_keep = torch.where(
                 mask,
                 torch.tensor(0, dtype=tmp_ids.dtype, device=tmp_ids.device),
                 tmp_ids,
             )
-
-            tmp_ids[:, 0] = cls_token
             generate_id_dict[f'tgt_input_id_t{tgt_time_step}'] = tmp_ids
             outputs = demask_fn.forward(
                 src_input_id=src_input_id,  # target
@@ -1321,10 +1315,12 @@ class CountDecoder(nn.Module):
                 tgt_time_step=tgt_time_step,
             )
             logits = outputs['dec_logits']
+
+            logits = outputs['dec_logits']
             # exclude cls token
-            tmp_ids_ = tmp_ids[:, 1:]
-            scores_ = scores[:, 1:]
-            ids_to_keep_ = ids_to_keep[:, 1:]
+            tmp_ids_ = tmp_ids[:, 1:].clone()
+            scores_ = scores[:, 1:].clone()
+            ids_to_keep_ = ids_to_keep[:, 1:].clone()
             # Create a mask of already predicted tokens
             for sample in range(logits.shape[0]):
                 unique_ids = torch.unique(ids_to_keep_[sample])

@@ -942,7 +942,7 @@ class CountDecoderTrainer(LightningModule):
                 logger=True,
             )
             # MSE
-            mse = self.metric['mse'](pred_counts, true_counts)
+            mse = self.mse(pred_counts, true_counts)
 
             metrics = pd.DataFrame(
                 {

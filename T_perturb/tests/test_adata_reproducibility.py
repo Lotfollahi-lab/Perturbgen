@@ -58,10 +58,8 @@ class TestAnnDataEquality(unittest.TestCase):
             './T_perturb/T_perturb/tests/res/'
             'baseline_adata_extrapolate_Transformer_encoder_42_zinb_1.h5ad'
         )
-        anndata_path2 = (
-            './T_perturb/T_perturb/tests/res/20240808_generate_adata_extrapolate'
-            '_[1, 2]__Transformer_encoder_42_zinb_1.h5ad'
-        )
+        anndata_path2 = './T_perturb/T_perturb/tests/res/20240810_random_embs_'
+        'generate_adata_extrapolate_[1, 2]__Transformer_encoder_42_zinb_1.h5ad'
 
         # Load AnnData objects
         adata1 = load_anndata(anndata_path1)
