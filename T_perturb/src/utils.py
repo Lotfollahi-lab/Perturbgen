@@ -88,9 +88,6 @@ def compute_cos_similarity(
     cls_embeddings: `torch.tensor`
     gene_embeddings: `torch.tensor`
     """
-    # check if cls position is in outputs
-    assert 'cls_positions' in outputs.keys(), 'cls position not in outputs'
-    assert 'dec_embedding' in outputs.keys(), 'dec_embedding not in outputs'
     # get cls position and dec_embedding (index = time_step-1)
     cls_position = outputs['cls_positions'][time_step - 1]
     cls_embeddings = outputs['dec_embedding'][:, cls_position, :]

@@ -154,10 +154,20 @@ class CellGenTrainer(LightningModule):
                 dim=1,
             )
             tgt_input_id_dict[f'tgt_input_id_t{i}'] = tgt_input_id_
+        interval = batch[f'tgt_input_ids_t{i}'].shape[1] + 1  # as 0 is cls token
+        num_steps = len(self.time_steps)
+        cls_positions = np.arange(0, num_steps * interval, interval)
+        outputs = self.transformer(
+            src_input_id=batch['src_input_ids'],
+            tgt_input_id_dict=tgt_input_id_dict,
+            cls_positions=cls_positions,
+            not_masked=self.return_embeddings,
+        )
         outputs = self.transformer(
             src_input_id=batch['src_input_ids'],
             tgt_input_id_dict=tgt_input_id_dict,
             not_masked=self.return_embeddings,
+            cls_positions=cls_positions,
         )
         return outputs
 
@@ -493,14 +503,6 @@ class CountDecoderTrainer(LightningModule):
                     dtype=torch.long,
                 ),
             )
-        # for i in range(1, total_time_steps + 1):
-        #     self.register_buffer(
-        #         f'cls_token_{str(i)}',
-        #         torch.tensor(
-        #             [0],
-        #             dtype=torch.long,
-        #         ),
-        #     )
         self.generate = generate
         self.adata = tgt_adata
         # scheduler
@@ -895,7 +897,7 @@ class CountDecoderTrainer(LightningModule):
             # save adata
             pred_adata.write_h5ad(
                 f'{self.output_dir}/{self.date}_'
-                f'random_embs_generate_adata_extrapolate_'
+                f'generate_adata_extrapolate_'
                 f'{self.time_steps}__{self.mode}_{self.seed}_'
                 f'{self.loss_mode}_{self.n_samples}.h5ad'
             )

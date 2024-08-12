@@ -397,6 +397,7 @@ class Encoder(nn.Module):
             # batch_first=True,
         )
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
+        print(total_vocab_size)
         self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
         self.d_model = d_model
         self.total_vocab_size = total_vocab_size
@@ -587,10 +588,11 @@ class CellGen(nn.Module):
         https://huggingface.co/ctheodoris/Geneformer/blob/main/geneformer/perturber_utils.py # noqa
         Accessed: 2024-05-14
         '''
+        pad_mask = pad.clone()
         # mask should be opposite of pad
-        pad[:, 0] = True
+        pad_mask[:, 0] = True
         # our mask is the opposite of BERT mask
-        pad_mask = ~pad
+        pad_mask = ~pad_mask
         # create a tensor of original lengths
         original_lens = pad_mask.sum(dim=1)
 
@@ -791,7 +793,6 @@ class CellGen(nn.Module):
         labels=None,
         cls_positions=None,
         generate=False,
-        not_masked=False,
     ):
         context_embedding_dict_ = context_embedding_dict.copy()
         context_pad_dict_ = context_pad_dict.copy()
@@ -1191,6 +1192,7 @@ class CountDecoder(nn.Module):
             ids = torch.full_like(tgt_input_id, self.mask_token, dtype=torch.long)
             # add cls token to the ids
             ids[:, 0] = tgt_input_id[:, 0]
+            # ids[:, 0] = 0
             tgt_input_id_dict_[tgt_input_id_key] = ids
             # pad ids
             scores = torch.zeros_like(tgt_input_id, dtype=torch.float)
@@ -1273,6 +1275,7 @@ class CountDecoder(nn.Module):
         '''
         max_neg_value = -torch.finfo().max
         tmp_ids = generate_id_dict[f'tgt_input_id_t{tgt_time_step}'].clone()
+
         ids_to_keep = torch.zeros_like(tmp_ids, dtype=torch.long)
         for iteration, steps_until_x0 in tqdm(
             zip(

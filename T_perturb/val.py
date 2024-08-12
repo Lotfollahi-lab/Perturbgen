@@ -497,7 +497,6 @@ def main() -> None:
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
         devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
-        limit_test_batches=500.0,
     )
     # Finally, kick of the training process.
     if args.test_mode == 'masking':
