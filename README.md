@@ -1,91 +1,90 @@
- [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
- ![python](https://img.shields.io/badge/Python-3.10-brightgreen)
+# CellGen: Single-Cell Gene Expression Generation
 
-<p align="center">
-<img src=assets/  alt="Mo's Lab logo"/>
-</p>
+## Overview
 
-# Mo's Lab projects: This repo contains projects for the Mo Lab at Sanger institute
+**CellGen** is a generative sequence-to-sequence transformer model designed for simulating single-cell gene expression profiles to perturbations and predicting gene expression profiles at unseen time points. The repo contains the necessary scripts, configurations, and models to train and evaluate the CellGen model on single-cell datasets.
 
-## 0. Introduction & Scope
+![Architecture of CellGen](T_perturb/images/fig1.png)
 
-Introducing **lotfollibrary** 
+## Installation
 
-[comment]: <> (&#40;**B**ERD's **E**ducational **A**rchive for **R**esearch on)
+1. Clone the repository:
+    ```bash
+    git clone https://github.com/Lotfollahi-lab/T_perturb.git
+    cd T_perturb-main
+    ```
 
-[comment]: <> (o**M**achine Learning&#41;:)
+2. Install the required dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-As more and more biology and single cell researchers rely on digital tools and methods,
-the need for accessible and effective training in these areas becomes increasingly
-pressing. **lotfollibrary** seeks .
+3. Install the package:
+    ```bash
+    python setup.py install
+    ```
 
+## Usage
 
-### Projects
+### Run Tokenisation
 
-Currently available:
-
-- [Modules](src/Modules/)
-- 
-
-### Discussion Board
-
-This repository is accompanied by a discussion board intended for active communication with and among the community.
-Please feel free to ask your questions there, share valuable insights and give us feedback on our material.
-
-### Disclaimer
-
-Please note that the contents of this repository are still in the experimental early
-stages and may be subject to significant changes, bugs, and limitations.
-We are continuously working on improving the **lotfollibrary** repository and welcome any
-feedback or contributions. Thank you for your understanding.
-
-## 1. Usage
-
-First, clone the repo and change to the project directory.
-
-```shell
-git clone https://github.com/amirvhd/lotfollibrary.git
+To tokenize the data using Geneformer, run:
+```bash
+python T_perturb/T_perturb/pp/GF_tokenisation.py
 ```
 
-The relevant use-cases and source codes are located in `lotfollibrary`.
-Currently, we support **python >= 3.10**.
-It is recommended to install the required dependencies in a separate environment, e.g.
-via `conda`.
-A simpler alternative is a virtual environment, which is created and activated with:
+or run the provided bash script:
+```bash
+bash T_perturb/T_perturb/batch_job_script/eb/run_GF_tokenisation.sh
+```
+This should result in a HuggingFace .dataset file.
 
-```shell
-python -m venv .venv
-source .venv/bin/activate
+
+### Training
+
+Training of the **CellGen** model involves several key steps:
+
+1. **Masked Language Model (MLM) Training**:
+    ```
+    bash T_perturb/T_perturb/batch_job_script/eb/run_train_masking.sh
+    ```
+    This will output a checkpoint for the masking step.
+
+2. **Count Decoder Training**:
+   Load the MLM checkpoint generated in the previous step and train the count decoder.
+    ```
+    bash T_perturb/T_perturb/batch_job_script/eb/run_train_count.sh
+    ```
+    This will output a checkpoint for the count decoder.
+
+3. **Generate Function**:
+   Use the generate function to create anndata by loading the checkpoints from both the masking and count decoder steps.
+    ```
+    bash T_perturb/T_perturb/batch_job_script/cytoimmgen/run_val_return_embed.sh
+    ```
+
+4. **Checkpoint and Anndata Comparison**:
+   Use the generated anndata and the checkpoints to compare results if any changes are made during model updates or adjustments.
+
+The training checkpoints will be saved automatically in `T_perturb/T_perturb/Model/checkpoints`.
+
+To train on your own data, modify the directory in `train.py` and prepare your `.h5ad` data files.
+
+### Validation
+
+Scripts for model validation are available in the batch_job_script directory. For example:
+```bash
+bash T_perturb/T_perturb/batch_job_script/eb/run_val_generate.sh
 ```
 
-Dependencies are then installed via `pip`.
+### Testing
+To run tests:
 
-```shell
-pip install -r requirements.txt
+```bash
+bash run_test.sh
 ```
 
-The `lotfollibrary` project is structured like a python package, which has the advantage of
-being able to **install** it and thus reuse modules or functions without worrying about
-absolute filepaths.
-An editable version of `lotfollibrary` is also installed over `pip`:
-
-```shell
-pip install -e .
-```
-
-The project contains some jupyter notebooks, which were converted to python files
-due to better handling in the repository.
-These files end with `_nb.py` and can be converted back to a `.ipynb` file with
-`jupytext`:
-
-```shell
-jupytext --to ipynb --execute <your_file>_nb.py
-```
-
-The `--execute` flag triggers executing every cell during conversion.
-Alternatively, you can run the `_nb.py` files like every other python script.
-
-## 2. Contributing
+## Contributing
 
 New ideas and improvements are always welcome. Feel free to open an issue or contribute
 over a pull request.
@@ -111,11 +110,14 @@ jupytext --to py:percent <notebook-to-convert>.ipynb
 The result is a python file, which can be committed and later on be converted back to `.ipynb`.
 A notebook-python file from jupytext shall carry the suffix `_nb.py`.
 
+### Discussion Board
 
-## Citation
+This repository is accompanied by a discussion board intended for active communication with and among the community.
+Please feel free to ask your questions there, share valuable insights and give us feedback on our material.
 
-If you use our repository or code in your research, please cite us:
 
-```
+## License
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-```
+## Acknowledgements
+TBD
