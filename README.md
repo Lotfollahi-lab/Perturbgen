@@ -4,7 +4,7 @@
 
 **CellGen** is a generative sequence-to-sequence transformer model designed for simulating single-cell gene expression profiles to perturbations and predicting gene expression profiles at unseen time points. The repo contains the necessary scripts, configurations, and models to train and evaluate the CellGen model on single-cell datasets.
 
-![Architecture of CellGen](T_perturb/images/fig1.png)
+![Architecture of CellGen](images/fig1.png)
 
 ## Installation
 
