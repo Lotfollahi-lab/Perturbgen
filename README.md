@@ -58,24 +58,24 @@ Training of the **CellGen** model involves several key steps:
     This will output a checkpoint for the count decoder.
 
 3. **Generate Function**:
-   Use the generate function to create anndata by loading the checkpoints from both the masking and count decoder steps.
+   Use the generate function to create new gene expression profiles.
     ```
-    bash T_perturb/T_perturb/batch_job_script/cytoimmgen/run_val_return_embed.sh
+    bash T_perturb/T_perturb/batch_job_script/eb/run_val_generate.sh
     ```
 
 4. **Checkpoint and Anndata Comparison**:
    Use the generated anndata and the checkpoints to compare results if any changes are made during model updates or adjustments.
+   
+   The training checkpoints will be saved automatically in `T_perturb/T_perturb/Model/checkpoints`.
 
-The training checkpoints will be saved automatically in `T_perturb/T_perturb/Model/checkpoints`.
+5. **Embeddings**:
+    Scripts to return the embedding are available in the batch_job_script directory, which can enable downstream cell and gene level analysis. For example:
+
+    ```bash
+    bash T_perturb/T_perturb/batch_job_script/cytoimmgen/run_val_return_embed.sh
+    ```
 
 To train on your own data, modify the directory in `train.py` and prepare your `.h5ad` data files.
-
-### Validation
-
-Scripts for model validation are available in the batch_job_script directory. For example:
-```bash
-bash T_perturb/T_perturb/batch_job_script/eb/run_val_generate.sh
-```
 
 ### Testing
 To run tests:
