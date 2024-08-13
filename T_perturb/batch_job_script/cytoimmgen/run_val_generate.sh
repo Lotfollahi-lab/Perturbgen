@@ -21,43 +21,14 @@ export WANDB_DIR=$cwd/wandb
 # run script
 echo '--- Start computing model'
 
-# Interpolate
-# python3 $cwd/val.py \
-python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
---test_mode count \
---split False \
---splitting_mode stratified \
---generate True \
---ckpt_count_path './T_perturb/T_perturb/Model/checkpoints/20240520_0931_Tcell_interpol_GF_fine_tuned_lr_0.005_wd_0.001_batch_64_zinb_tp_1-3-epoch=19.ckpt' \
---output_dir './T_perturb/T_perturb/plt/res/cytoimmgen' \
---src_dataset './T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset' \
---tgt_dataset_folder './T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt' \
---src_adata './T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad' \
---tgt_adata_folder './T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt' \
---batch_size 64 \
---max_len 300 \
---tgt_vocab_size 1261 \
---cellgen_lr 0.0001 \
---cellgen_wd 0.0001 \
---count_lr 0.00005 \
---count_wd 0.01 \
---num_layers 6 \
---loss_mode zinb \
---n_workers 32 \
---condition_keys Cell_culture_batch \
---time_steps 2 \
---var_list Cell_population Cell_type Time_point Donor \
---mode GF_fine_tuned
-echo '--- Finished computing model'
-
-# # Extrapolate
+# # Interpolate
 # # python3 $cwd/val.py \
 # python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
 # --test_mode count \
 # --split False \
 # --splitting_mode stratified \
 # --generate True \
-# --ckpt_count_path './T_perturb/T_perturb/Model/checkpoints/20240520_0726_Tcell_extrapol_GF_fine_tuned_lr_0.005_wd_0.001_batch_64_zinb_tp_1-2-epoch=19.ckpt' \
+# --ckpt_count_path './T_perturb/T_perturb/Model/checkpoints/20240520_0931_Tcell_interpol_GF_fine_tuned_lr_0.005_wd_0.001_batch_64_zinb_tp_1-3-epoch=19.ckpt' \
 # --output_dir './T_perturb/T_perturb/plt/res/cytoimmgen' \
 # --src_dataset './T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset' \
 # --tgt_dataset_folder './T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt' \
@@ -74,7 +45,36 @@ echo '--- Finished computing model'
 # --loss_mode zinb \
 # --n_workers 32 \
 # --condition_keys Cell_culture_batch \
-# --time_steps 3 \
+# --time_steps 2 \
 # --var_list Cell_population Cell_type Time_point Donor \
 # --mode GF_fine_tuned
 # echo '--- Finished computing model'
+
+# Extrapolate
+# python3 $cwd/val.py \
+python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
+--test_mode count \
+--split False \
+--splitting_mode stratified \
+--generate True \
+--ckpt_count_path './T_perturb/T_perturb/Model/checkpoints/20240813_1749_replicate_neurips_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1-2_s_42-epoch=19.ckpt' \
+--output_dir './T_perturb/T_perturb/plt/res/cytoimmgen' \
+--src_dataset './T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset' \
+--tgt_dataset_folder './T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt' \
+--src_adata './T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad' \
+--tgt_adata_folder './T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt' \
+--batch_size 64 \
+--max_len 300 \
+--tgt_vocab_size 1261 \
+--cellgen_lr 0.0001 \
+--cellgen_wd 0.0001 \
+--count_lr 0.00005 \
+--count_wd 0.01 \
+--num_layers 6 \
+--loss_mode zinb \
+--n_workers 32 \
+--condition_keys Cell_culture_batch \
+--time_steps 3 \
+--var_list Cell_population Cell_type Time_point Donor \
+--mode GF_fine_tuned
+echo '--- Finished computing model'
