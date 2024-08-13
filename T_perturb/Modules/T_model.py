@@ -20,6 +20,7 @@ from transformers import BertForMaskedLM
 from T_perturb.src.utils import (
     generate_pad,
     gumbel_sample,
+    mean_nonpadding_embs,
     noise_schedule,
     top_k,
 )
@@ -281,7 +282,7 @@ class Block(nn.Module):
         attn_output = self.self_attn(x, mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
-        x = self.norm2(self.dropout(attn_output))  # disabled residual connection
+        x = self.norm2(x + self.dropout(attn_output))  # disabled residual connection
         ff_output = self.feed_forward(x)
         x = self.norm3(x + self.dropout(ff_output))
 
@@ -581,34 +582,6 @@ class CellGen(nn.Module):
     #     initrange = 0.1
     #     self.token_embedding.weight.data.uniform_(-initrange, initrange)
 
-    def mean_nonpadding_embs(self, embs, pad, dim=1):
-        '''
-        Compute the mean of the non-padding embeddings.
-        Modified from Geneformer:
-        https://huggingface.co/ctheodoris/Geneformer/blob/main/geneformer/perturber_utils.py # noqa
-        Accessed: 2024-05-14
-        '''
-        pad_mask = pad.clone()
-        # mask should be opposite of pad
-        pad_mask[:, 0] = True
-        # our mask is the opposite of BERT mask
-        pad_mask = ~pad_mask
-        # create a tensor of original lengths
-        original_lens = pad_mask.sum(dim=1)
-
-        # create CLS token mask
-        if embs.dim() == 3:
-            # fill the masked positions in embs with zeros
-            masked_embs = embs.masked_fill(~pad_mask.unsqueeze(2), 0.0)
-
-            # compute the mean across the non-padding dimensions
-            mean_embs = masked_embs.sum(dim) / original_lens.view(-1, 1).float()
-
-        elif embs.dim() == 2:
-            masked_embs = embs.masked_fill(~pad_mask, 0.0)
-            mean_embs = masked_embs.sum(dim) / original_lens.float()
-        return mean_embs
-
     def generate_mask(self, tgt_input_id, tgt_pad, mlm_probability=0.15):
         '''
         Description:
@@ -705,27 +678,14 @@ class CellGen(nn.Module):
                 enc_output=enc_output,
             )
         # :TODO rewrite this part logits not needed for running the other timepoints
-        outputs = {}
+
         decoder_logits = self.decoder_fc(dec_embedding)
-        if labels is not None:
-            outputs['dec_logits'] = decoder_logits
-            outputs['labels'] = labels
-            outputs['selected_time_step'] = time_random
-        if generate is True:
-            outputs['dec_embedding'] = dec_embedding
-            outputs['mean_embedding'] = self.mean_nonpadding_embs(
-                embs=dec_embedding,
-                pad=tgt_pad,
-            )
-            outputs['dec_logits'] = decoder_logits[:, 1:, :]
-        else:
-            outputs['dec_embedding'] = dec_embedding
-            outputs['mean_embedding'] = self.mean_nonpadding_embs(
-                embs=dec_embedding,
-                pad=tgt_pad,
-            )
-        if cls_positions is not None:
-            outputs['cls_positions'] = cls_positions
+        outputs = {
+            'dec_embedding': dec_embedding,
+            'dec_logits': decoder_logits,
+            'labels': labels,
+            'selected_time_step': time_random,
+        }
         return outputs
 
     def generate_context(
@@ -864,13 +824,12 @@ class CellGen(nn.Module):
             )
         else:
             tgt_pad_dict = generate_pad_dict
-
         src_attention_mask = generate_pad(src_input_id)
         # BERT mask: 1 for tokens to keep, 0 for tokens to mask. Thus, negate mask.
         enc_output = self.call_encoder(src_input_id, src_attention_mask)
         # distinction between selected time step and rest time steps
         if (not_masked) and (tgt_input_id_dict is not None):
-            dec_embedding_list = []
+            dec_embedding_list = {}
             mean_embedding_dict = {}
             labels = None
             for tgt_time_step in self.time_steps:
@@ -911,10 +870,13 @@ class CellGen(nn.Module):
                         labels=labels,
                         cls_positions=cls_positions,
                     )
-                dec_embedding_list.append(outputs['dec_embedding'])
-                mean_embedding_dict[tgt_time_step] = outputs['mean_embedding']
+                dec_embedding_list[tgt_time_step] = outputs['dec_embedding']
+                mean_embedding_dict[tgt_time_step] = mean_nonpadding_embs(
+                    embs=outputs['dec_embedding'],
+                    pad=tgt_pad,
+                )
             outputs['mean_embedding'] = mean_embedding_dict
-            outputs['dec_embedding'] = torch.cat(dec_embedding_list, dim=1)
+            outputs['dec_embedding'] = dec_embedding_list
         else:
             if tgt_time_step is None:
                 tgt_time_step = np.random.choice(self.time_steps)
@@ -1210,7 +1172,10 @@ class CountDecoder(nn.Module):
                 tgt_time_step=time_step,
             )
             generate_id_dict[tgt_input_id_key] = generated_ids
-            cls_embedding = outputs['mean_embedding']
+            cls_embedding = mean_nonpadding_embs(
+                embs=outputs['dec_embedding'],
+                pad=tgt_pad,
+            )
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
             count_outputs[f'count_output_t{time_step}'] = count_outputs_tmp
             count_outputs[f'cls_embedding_t{time_step}'] = cls_embedding
@@ -1317,9 +1282,7 @@ class CountDecoder(nn.Module):
                 not_masked=False,
                 tgt_time_step=tgt_time_step,
             )
-            logits = outputs['dec_logits']
-
-            logits = outputs['dec_logits']
+            logits = outputs['dec_logits'][:, 1:, :].clone()
             # exclude cls token
             tmp_ids_ = tmp_ids[:, 1:].clone()
             scores_ = scores[:, 1:].clone()

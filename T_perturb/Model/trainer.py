@@ -163,12 +163,6 @@ class CellGenTrainer(LightningModule):
             cls_positions=cls_positions,
             not_masked=self.return_embeddings,
         )
-        outputs = self.transformer(
-            src_input_id=batch['src_input_ids'],
-            tgt_input_id_dict=tgt_input_id_dict,
-            not_masked=self.return_embeddings,
-            cls_positions=cls_positions,
-        )
         return outputs
 
     def configure_optimizers(self):
@@ -195,8 +189,6 @@ class CellGenTrainer(LightningModule):
         # logits, labels, count_output, count_dropout = self.forward(batch)
         outputs = self.forward(batch)
         dec_logits = outputs['dec_logits']
-        # moe_logits = outputs['moe_logits']
-        # time_step = outputs['selected_time_step']
         labels = outputs['labels']
         perp = self.perplexity(dec_logits, labels)
         dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
@@ -236,8 +228,6 @@ class CellGenTrainer(LightningModule):
     def validation_step(self, batch, *args, **kwargs):
         outputs = self.forward(batch)
         dec_logits = outputs['dec_logits']
-        # moe_logits = outputs['moe_logits']
-        # time_step = outputs['selected_time_step']
         labels = outputs['labels']
         perp = self.perplexity(dec_logits, labels)
         dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))

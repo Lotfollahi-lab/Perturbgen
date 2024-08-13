@@ -59,7 +59,7 @@ class TestAnnDataEquality(unittest.TestCase):
             'baseline_adata_extrapolate_Transformer_encoder_42_zinb_1.h5ad'
         )
         anndata_path2 = (
-            './T_perturb/T_perturb/tests/res/20240812_'
+            './T_perturb/T_perturb/tests/res/20240813_'
             'generate_adata_extrapolate_[1, 2]__Transformer_encoder_42_zinb_1.h5ad'
         )
 

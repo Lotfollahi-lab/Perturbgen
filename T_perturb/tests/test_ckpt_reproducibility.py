@@ -44,7 +44,7 @@ class TestCheckpointEquality(unittest.TestCase):
         )
         checkpoint_path2 = (
             './T_perturb/T_perturb/tests/checkpoints/'
-            'test_masking_checkpoint-epoch=00-v4.ckpt'
+            'test_masking_checkpoint-epoch=00.ckpt'
         )
 
         # Check if the checkpoints exist
@@ -56,7 +56,6 @@ class TestCheckpointEquality(unittest.TestCase):
             os.path.exists(checkpoint_path2),
             f'Checkpoint {checkpoint_path2} does not exist.',
         )
-
         # Assert that the checkpoints are identical
         self.assertTrue(
             checkpoints_are_equal(checkpoint_path1, checkpoint_path2),
@@ -67,11 +66,11 @@ class TestCheckpointEquality(unittest.TestCase):
         # Define paths to your checkpoints
         checkpoint_path1 = (
             './T_perturb/T_perturb/tests/checkpoints/'
-            'baseline_masking_checkpoint-epoch=00.ckpt'
+            'baseline_counts_checkpoint-epoch=00.ckpt'
         )
         checkpoint_path2 = (
             './T_perturb/T_perturb/tests/checkpoints/'
-            'test_masking_checkpoint-epoch=00-v4.ckpt'
+            'test_counts_checkpoint-epoch=00.ckpt'
         )
 
         # Check if the checkpoints exist

@@ -435,6 +435,34 @@ def gumbel_sample(t, temperature=1.0, dim=-1):
     return ((t / max(temperature, 1e-10)) + gumbel_noise(t)).argmax(dim=dim)
 
 
+def mean_nonpadding_embs(embs, pad, dim=1):
+    '''
+    Compute the mean of the non-padding embeddings.
+    Modified from Geneformer:
+    https://huggingface.co/ctheodoris/Geneformer/blob/main/geneformer/perturber_utils.py # noqa
+    Accessed: 2024-05-14
+    '''
+    pad_mask = pad.clone()
+    # mask should be opposite of pad
+    pad_mask[:, 0] = True
+    # our mask is the opposite of BERT mask
+    pad_mask = ~pad_mask
+    # create a tensor of original lengths
+    original_lens = pad_mask.sum(dim=1)
+
+    # create CLS token mask
+    if embs.dim() == 3:
+        # fill the masked positions in embs with zeros
+        masked_embs = embs.masked_fill(~pad_mask.unsqueeze(2), 0.0)
+        # compute the mean across the non-padding dimensions
+        mean_embs = masked_embs.sum(dim) / original_lens.view(-1, 1).float()
+
+    elif embs.dim() == 2:
+        masked_embs = embs.masked_fill(~pad_mask, 0.0)
+        mean_embs = masked_embs.sum(dim) / original_lens.float()
+    return mean_embs
+
+
 def generate_pad(tgt):
     '''
     Description:
