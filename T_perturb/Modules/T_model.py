@@ -20,6 +20,7 @@ from transformers import BertForMaskedLM
 from T_perturb.src.utils import (
     generate_pad,
     gumbel_sample,
+    mean_nonpadding_embs,
     noise_schedule,
     top_k,
 )
@@ -394,14 +395,16 @@ class Encoder(nn.Module):
             nhead=nhead,
             dim_feedforward=d_ff,
             dropout=dropout,
-            # batch_first=True,
+            batch_first=True,
         )
-        self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
-        print(total_vocab_size)
+        self.transformer_encoder = TransformerEncoder(
+            encoder_layers,
+            num_layers=nlayers,
+            # norm=nn.LayerNorm(d_model),
+        )
         self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
         self.d_model = d_model
         self.total_vocab_size = total_vocab_size
-
         self.init_weights()
 
     def init_weights(self) -> None:
@@ -410,11 +413,16 @@ class Encoder(nn.Module):
 
     def forward(self, src: torch.Tensor, src_mask: torch.Tensor = None) -> torch.Tensor:
         '''
-        Arguments:
-            src: Tensor, shape ``[seq_len, batch_size]``
-            src_mask: Tensor, shape ``[seq_len, seq_len]``
+        Parameters:
+        -----------
+        src: `torch.Tensor`
+            shape ``[batch_size, seq_len, total_vocab_size]``
+        src_mask: `torch.Tensor`
+            shape ``[batch_size, seq_len]``
         Returns:
-            output Tensor of shape ``[seq_len, batch_size, total_vocab_size]``
+        --------
+        output: `torch.Tensor`
+            shape ``[batch_size, seq_len, total_vocab_size]``
         '''
         # batch_size, sequence_length = src.size()
         # # Sample sequences for each element in the batch
@@ -431,39 +439,11 @@ class Encoder(nn.Module):
         #     src[i] = tokens[sampled_indices]
         src = self.token_embedding(src) * math.sqrt(self.d_model)
         src = self.positional_encoding(x=src, tgt_time_step=0)
-        # transpose src:
-        # [batch_size, seq_len, d_model] -> [seq_len, batch_size, d_model]
-        src = src.transpose(0, 1)
-        output = self.transformer_encoder(src, src_key_padding_mask=src_mask)
-        # reverse transpose
-        output = output.transpose(0, 1)
+        output = self.transformer_encoder(
+            src,
+            src_key_padding_mask=src_mask,
+        )
         return output
-
-    # def forward(
-    #         self,
-    #         src: torch.Tensor,
-    #         src_mask: torch.Tensor = None
-    #         ) -> torch.Tensor:
-    #     '''
-    #     Parameters:
-    #     -----------
-    #     src: `torch.Tensor`
-    #         shape ``[batch_size, seq_len, total_vocab_size]``
-    #     src_mask: `torch.Tensor`
-    #         shape ``[batch_size, seq_len]``
-    #     Returns:
-    #     --------
-    #     output: `torch.Tensor`
-    #         shape ``[batch_size, seq_len, total_vocab_size]``
-    #     '''
-    #     src = self.token_embedding(src) * math.sqrt(self.d_model)
-    #     src = self.positional_encoding(x=src, tgt_time_step=0)
-    #     output = self.transformer_encoder(
-    #         src,
-    #         src_key_padding_mask=src_mask,
-    #         batch_first=True
-    #         )
-    #     return output
 
 
 class CellGen(nn.Module):
@@ -520,7 +500,6 @@ class CellGen(nn.Module):
             - 'selected_time_step': Selected time step.
             - 'dec_embedding': Decoder embeddings.
             - 'mean_embedding': Mean embeddings for non-padding tokens.
-            - 'cls_positions': CLS token positions.
         '''
         super(CellGen, self).__init__()
         self.num_features = self.embed_dim = d_model
@@ -580,34 +559,6 @@ class CellGen(nn.Module):
     # def init_weights(self) -> None:
     #     initrange = 0.1
     #     self.token_embedding.weight.data.uniform_(-initrange, initrange)
-
-    def mean_nonpadding_embs(self, embs, pad, dim=1):
-        '''
-        Compute the mean of the non-padding embeddings.
-        Modified from Geneformer:
-        https://huggingface.co/ctheodoris/Geneformer/blob/main/geneformer/perturber_utils.py # noqa
-        Accessed: 2024-05-14
-        '''
-        pad_mask = pad.clone()
-        # mask should be opposite of pad
-        pad_mask[:, 0] = True
-        # our mask is the opposite of BERT mask
-        pad_mask = ~pad_mask
-        # create a tensor of original lengths
-        original_lens = pad_mask.sum(dim=1)
-
-        # create CLS token mask
-        if embs.dim() == 3:
-            # fill the masked positions in embs with zeros
-            masked_embs = embs.masked_fill(~pad_mask.unsqueeze(2), 0.0)
-
-            # compute the mean across the non-padding dimensions
-            mean_embs = masked_embs.sum(dim) / original_lens.view(-1, 1).float()
-
-        elif embs.dim() == 2:
-            masked_embs = embs.masked_fill(~pad_mask, 0.0)
-            mean_embs = masked_embs.sum(dim) / original_lens.float()
-        return mean_embs
 
     def generate_mask(self, tgt_input_id, tgt_pad, mlm_probability=0.15):
         '''
@@ -694,7 +645,6 @@ class CellGen(nn.Module):
         time_random,
         generate=False,
         labels=None,
-        cls_positions=None,
     ):
         for dec_layer in self.decoder_block:
             # see if concatenation of cls embedding
@@ -705,27 +655,14 @@ class CellGen(nn.Module):
                 enc_output=enc_output,
             )
         # :TODO rewrite this part logits not needed for running the other timepoints
-        outputs = {}
+
         decoder_logits = self.decoder_fc(dec_embedding)
-        if labels is not None:
-            outputs['dec_logits'] = decoder_logits
-            outputs['labels'] = labels
-            outputs['selected_time_step'] = time_random
-        if generate is True:
-            outputs['dec_embedding'] = dec_embedding
-            outputs['mean_embedding'] = self.mean_nonpadding_embs(
-                embs=dec_embedding,
-                pad=tgt_pad,
-            )
-            outputs['dec_logits'] = decoder_logits[:, 1:, :]
-        else:
-            outputs['dec_embedding'] = dec_embedding
-            outputs['mean_embedding'] = self.mean_nonpadding_embs(
-                embs=dec_embedding,
-                pad=tgt_pad,
-            )
-        if cls_positions is not None:
-            outputs['cls_positions'] = cls_positions
+        outputs = {
+            'dec_embedding': dec_embedding,
+            'dec_logits': decoder_logits,
+            'labels': labels,
+            'selected_time_step': time_random,
+        }
         return outputs
 
     def generate_context(
@@ -736,7 +673,6 @@ class CellGen(nn.Module):
         all_time_steps,
         tgt_input_id_dict,
         tgt_pad_dict,
-        cls_positions=None,
         generate=False,
     ):
         context_embedding_dict = {}
@@ -774,7 +710,6 @@ class CellGen(nn.Module):
                         time_random=time_step,
                         generate=generate,
                         labels=None,
-                        cls_positions=cls_positions,
                     )
                 context_embedding_dict[f'context_t{time_step}'] = dec_outputs[
                     'dec_embedding'
@@ -791,7 +726,6 @@ class CellGen(nn.Module):
         tgt_time_step,
         tgt_input_id,
         labels=None,
-        cls_positions=None,
         generate=False,
     ):
         context_embedding_dict_ = context_embedding_dict.copy()
@@ -815,7 +749,6 @@ class CellGen(nn.Module):
             time_random=tgt_time_step,
             generate=generate,
             labels=labels,
-            cls_positions=cls_positions,
         )
         return outputs
 
@@ -824,7 +757,6 @@ class CellGen(nn.Module):
         src_input_id: torch.Tensor,
         not_masked: bool = False,
         context_mode: bool = True,
-        cls_positions: Optional[torch.Tensor] = None,
         tgt_time_step: Optional[int] = None,
         tgt_input_id_dict: Optional[dict] = None,
         generate_id_dict: Optional[dict] = None,
@@ -840,8 +772,6 @@ class CellGen(nn.Module):
             Source token input.
         tgt_time_step: `int`
             Target time step.
-        cls_positions: `torch.Tensor`
-            CLS token positions.
         not_masked: `bool`
             Whether to mask tokens. Should not be masked for testing and generation.
         context_mode: `bool`
@@ -864,13 +794,12 @@ class CellGen(nn.Module):
             )
         else:
             tgt_pad_dict = generate_pad_dict
-
         src_attention_mask = generate_pad(src_input_id)
         # BERT mask: 1 for tokens to keep, 0 for tokens to mask. Thus, negate mask.
         enc_output = self.call_encoder(src_input_id, src_attention_mask)
         # distinction between selected time step and rest time steps
         if (not_masked) and (tgt_input_id_dict is not None):
-            dec_embedding_list = []
+            dec_embedding_list = {}
             mean_embedding_dict = {}
             labels = None
             for tgt_time_step in self.time_steps:
@@ -887,7 +816,6 @@ class CellGen(nn.Module):
                         all_time_steps=self.time_steps,
                         tgt_input_id_dict=tgt_input_id_dict,
                         tgt_pad_dict=tgt_pad_dict,
-                        cls_positions=cls_positions,
                     )
                     # context should be all the ones before the selected time step
                     outputs = self.context_backprop(
@@ -897,7 +825,6 @@ class CellGen(nn.Module):
                         tgt_time_step=tgt_time_step,
                         tgt_input_id=tgt_input_id,
                         labels=labels,
-                        cls_positions=cls_positions,
                     )
                 else:
                     # does not include any context
@@ -909,12 +836,14 @@ class CellGen(nn.Module):
                         time_random=tgt_time_step,
                         generate=False,
                         labels=labels,
-                        cls_positions=cls_positions,
                     )
-                dec_embedding_list.append(outputs['dec_embedding'])
-                mean_embedding_dict[tgt_time_step] = outputs['mean_embedding']
+                dec_embedding_list[tgt_time_step] = outputs['dec_embedding']
+                mean_embedding_dict[tgt_time_step] = mean_nonpadding_embs(
+                    embs=outputs['dec_embedding'],
+                    pad=tgt_pad,
+                )
             outputs['mean_embedding'] = mean_embedding_dict
-            outputs['dec_embedding'] = torch.cat(dec_embedding_list, dim=1)
+            outputs['dec_embedding'] = dec_embedding_list
         else:
             if tgt_time_step is None:
                 tgt_time_step = np.random.choice(self.time_steps)
@@ -954,7 +883,6 @@ class CellGen(nn.Module):
                     all_time_steps=context_time_steps,
                     tgt_input_id_dict=tgt_input_id_dict,
                     tgt_pad_dict=tgt_pad_dict,
-                    cls_positions=cls_positions,
                     generate=generate,
                 )
                 if generate:
@@ -966,7 +894,6 @@ class CellGen(nn.Module):
                     tgt_time_step=tgt_time_step,
                     tgt_input_id=tgt_input_id,
                     labels=labels,
-                    cls_positions=cls_positions,
                     generate=generate,
                 )
         return outputs
@@ -1102,7 +1029,6 @@ class CountDecoder(nn.Module):
         self,
         src_input_id: torch.Tensor,
         tgt_input_id_dict: dict,
-        # cls_positions: torch.Tensor,
     ):
         outputs = self.pretrained_model(
             src_input_id=src_input_id,
@@ -1210,7 +1136,10 @@ class CountDecoder(nn.Module):
                 tgt_time_step=time_step,
             )
             generate_id_dict[tgt_input_id_key] = generated_ids
-            cls_embedding = outputs['mean_embedding']
+            cls_embedding = mean_nonpadding_embs(
+                embs=outputs['dec_embedding'],
+                pad=tgt_pad,
+            )
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
             count_outputs[f'count_output_t{time_step}'] = count_outputs_tmp
             count_outputs[f'cls_embedding_t{time_step}'] = cls_embedding
@@ -1269,7 +1198,6 @@ class CountDecoder(nn.Module):
             - 'selected_time_step': Selected time step.
             - 'dec_embedding': Decoder embeddings.
             - 'mean_embedding': Mean embeddings for non-padding tokens.
-            - 'cls_positions': CLS token positions.
         tmp_ids: `torch.Tensor`
             Generated target token inputs.
         '''
@@ -1317,9 +1245,7 @@ class CountDecoder(nn.Module):
                 not_masked=False,
                 tgt_time_step=tgt_time_step,
             )
-            logits = outputs['dec_logits']
-
-            logits = outputs['dec_logits']
+            logits = outputs['dec_logits'][:, 1:, :].clone()
             # exclude cls token
             tmp_ids_ = tmp_ids[:, 1:].clone()
             scores_ = scores[:, 1:].clone()

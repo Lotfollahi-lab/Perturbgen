@@ -154,20 +154,10 @@ class CellGenTrainer(LightningModule):
                 dim=1,
             )
             tgt_input_id_dict[f'tgt_input_id_t{i}'] = tgt_input_id_
-        interval = batch[f'tgt_input_ids_t{i}'].shape[1] + 1  # as 0 is cls token
-        num_steps = len(self.time_steps)
-        cls_positions = np.arange(0, num_steps * interval, interval)
-        outputs = self.transformer(
-            src_input_id=batch['src_input_ids'],
-            tgt_input_id_dict=tgt_input_id_dict,
-            cls_positions=cls_positions,
-            not_masked=self.return_embeddings,
-        )
         outputs = self.transformer(
             src_input_id=batch['src_input_ids'],
             tgt_input_id_dict=tgt_input_id_dict,
             not_masked=self.return_embeddings,
-            cls_positions=cls_positions,
         )
         return outputs
 
@@ -195,8 +185,6 @@ class CellGenTrainer(LightningModule):
         # logits, labels, count_output, count_dropout = self.forward(batch)
         outputs = self.forward(batch)
         dec_logits = outputs['dec_logits']
-        # moe_logits = outputs['moe_logits']
-        # time_step = outputs['selected_time_step']
         labels = outputs['labels']
         perp = self.perplexity(dec_logits, labels)
         dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
@@ -236,8 +224,6 @@ class CellGenTrainer(LightningModule):
     def validation_step(self, batch, *args, **kwargs):
         outputs = self.forward(batch)
         dec_logits = outputs['dec_logits']
-        # moe_logits = outputs['moe_logits']
-        # time_step = outputs['selected_time_step']
         labels = outputs['labels']
         perp = self.perplexity(dec_logits, labels)
         dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
@@ -371,7 +357,9 @@ class CellGenTrainer(LightningModule):
                 var_dict = {}
                 for var in self.var_list:
                     var_dict[var] = np.concatenate(self.test_dict[var])
-            test_obs = pd.DataFrame(var_dict)
+                test_obs = pd.DataFrame(var_dict)
+            else:
+                test_obs = pd.DataFrame()
             test_obs['batch'] = np.array(batch)
             test_obs['cell_idx'] = cell_ids
             adata = ad.AnnData(
@@ -385,7 +373,8 @@ class CellGenTrainer(LightningModule):
                     'marker_genes': self.marker_genes,
                 },
             )
-            adata.var_names = self.gene_names
+            if self.gene_names is not None:
+                adata.var_names = self.gene_names
             df = pd.DataFrame(
                 cosine_similarities.numpy(), columns=self.marker_genes.keys()
             )
@@ -394,7 +383,7 @@ class CellGenTrainer(LightningModule):
             # save anndata
             adata.write_h5ad(
                 f'{self.output_dir}/{self.date}_'
-                f'cls_embeddings_cosine_similarity.h5ad'
+                f'stratified_cls_embeddings_cosine_similarity.h5ad'
             )
             print('End saving embeddings -------------------')
 
