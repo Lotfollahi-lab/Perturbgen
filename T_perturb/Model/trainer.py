@@ -383,7 +383,7 @@ class CellGenTrainer(LightningModule):
             # save anndata
             adata.write_h5ad(
                 f'{self.output_dir}/{self.date}_'
-                f'cls_embeddings_cosine_similarity.h5ad'
+                f'stratified_cls_embeddings_cosine_similarity.h5ad'
             )
             print('End saving embeddings -------------------')
 

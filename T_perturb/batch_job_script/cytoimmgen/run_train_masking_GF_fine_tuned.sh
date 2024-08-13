@@ -1,14 +1,14 @@
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=2:block=yes' # request for exclusive access to gpu
+#BSUB -gpu 'mode=exclusive_process:num=3:block=yes' # request for exclusive access to gpu
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
-#BSUB -o logs/masking_%J.out # output file
-#BSUB -e logs/masking_%J.err # error file
+#BSUB -o logs/stratified_masking_%J.out # output file
+#BSUB -e logs/stratified_masking_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
-#BSUB -J cytoimmgen_masking # job name
+#BSUB -J stratified_cytoimmgen_masking # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -51,7 +51,7 @@ echo "--- Start computing model"
 # Extrapolation
 python3 $cwd/train.py \
 --train_mode masking \
---split False \
+--split True \
 --splitting_mode stratified \
 --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
 --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset" \
