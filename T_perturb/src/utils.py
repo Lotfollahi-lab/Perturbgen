@@ -89,15 +89,10 @@ def compute_cos_similarity(
     gene_embeddings: `torch.tensor`
     """
     # get cls position and dec_embedding (index = time_step-1)
-    cls_position = outputs['cls_positions'][time_step - 1]
-    cls_embeddings = outputs['dec_embedding'][:, cls_position, :]
+    dec_embedding = outputs['dec_embedding'][time_step]
+    cls_embeddings = dec_embedding[:, 0, :]
     # exclude cls token from gene embeddings
-    if time_step == max(all_time_steps):
-        gene_embeddings = outputs['dec_embedding'][:, (cls_position + 1) :, :]
-    else:
-        gene_embeddings = outputs['dec_embedding'][
-            :, (cls_position + 1) : outputs['cls_positions'][time_step], :
-        ]
+    gene_embeddings = dec_embedding[:, 1:, :]
     cos_similarity = []
     for i in range(gene_embeddings.shape[0]):
         # gene level cosine similarity

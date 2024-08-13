@@ -23,7 +23,14 @@ def dummy_dataset(
     total_time_steps: Optional[int] = None,
 ):
     if total_time_steps is None:
-        input_ids = torch.randint(0, vocab_size, (num_samples, max_len))
+        # Generate unique indices for each sample using NumPy
+        input_ids_np = np.array(
+            [
+                np.random.choice(vocab_size, max_len, replace=False)
+                for _ in range(num_samples)
+            ]
+        )
+        input_ids = torch.tensor(input_ids_np, dtype=torch.long)
         input_ids[:, -10:] = 0
         dataset = Dataset.from_dict(
             {'input_ids': input_ids, 'length': [len(input_ids)] * num_samples}
@@ -32,7 +39,13 @@ def dummy_dataset(
     else:
         tgt_dataset_dict = {}
         for t in range(total_time_steps):
-            input_ids = torch.randint(0, vocab_size, (num_samples, max_len))
+            input_ids_np = np.array(
+                [
+                    np.random.choice(vocab_size, max_len, replace=False)
+                    for _ in range(num_samples)
+                ]
+            )
+            input_ids = torch.tensor(input_ids_np, dtype=torch.long)
             input_ids[:, -10:] = 0
             tgt_dataset_dict[f'tgt_dataset_t{t+1}'] = Dataset.from_dict(
                 {

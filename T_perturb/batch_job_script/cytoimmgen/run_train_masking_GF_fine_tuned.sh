@@ -1,6 +1,6 @@
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=6:block=yes' # request for exclusive access to gpu
+#BSUB -gpu 'mode=exclusive_process:num=2:block=yes' # request for exclusive access to gpu
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
@@ -61,7 +61,7 @@ python3 $cwd/train.py \
 --mapping_dict_path  "./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl" \
 --batch_size 64 \
 --max_len 300 \
---epochs 50 \
+--epochs 25 \
 --tgt_vocab_size 1261 \
 --cellgen_lr 0.0001 \
 --cellgen_wd 0.0001 \
@@ -70,7 +70,7 @@ python3 $cwd/train.py \
 --d_ff 128 \
 --num_layers 6 \
 --condition_keys Cell_culture_batch \
---time_steps 1 2 \
+--time_steps 1 \
 --var_list Cell_population Cell_type Time_point Donor \
 --mode GF_fine_tuned
 echo "--- Finished computing model"
