@@ -393,7 +393,7 @@ class CellGenTrainer(LightningModule):
             adata.obsm['cosine_similarity'] = df
             # save anndata
             adata.write_h5ad(
-                f'{self.output_dir}/{self.date}'
+                f'{self.output_dir}/{self.date}_'
                 f'cls_embeddings_cosine_similarity.h5ad'
             )
             print('End saving embeddings -------------------')

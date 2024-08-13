@@ -249,11 +249,11 @@ class CellGenTestTrainingCase(unittest.TestCase):
                 checkpoint_callback.best_model_score, 'Checkpoint should have a score'
             )
 
-    # def test_countdecoder_with_checkpoint(self):
-    #     self.test_countdecoder_training_loop(save_checkpoint=True)
+    def test_countdecoder_with_checkpoint(self):
+        self.test_countdecoder_training_loop(save_checkpoint=True)
 
-    def test_countdecoder_without_checkpoint(self):
-        self.test_countdecoder_training_loop(save_checkpoint=False)
+    # def test_countdecoder_without_checkpoint(self):
+    #     self.test_countdecoder_training_loop(save_checkpoint=False)
 
 
 if __name__ == '__main__':
