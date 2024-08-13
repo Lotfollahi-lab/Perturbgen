@@ -29,8 +29,7 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --splitting_mode stratified \
 --return_embed True \
 --generate False \
---ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240520_1559_tcell_embedding"\
-"_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-2-3-epoch=49.ckpt" \
+--ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240813_1603_stratifiied_pairing_train_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1_s_42-epoch=19.ckpt" \
 --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
 --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset" \
 --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
@@ -47,8 +46,9 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --num_layers 6 \
 --n_workers 32 \
 --condition_keys Cell_culture_batch \
---time_steps 1 2 3 \
---var_list Cell_population Cell_type Time_point Donor
+--time_steps 1 \
+--var_list Cell_population Cell_type Time_point Donor \
+--mode GF_fine_tuned
 echo "--- Finished computing model"
 
 # # # Run python script for rna

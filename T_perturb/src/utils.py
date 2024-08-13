@@ -89,15 +89,10 @@ def compute_cos_similarity(
     gene_embeddings: `torch.tensor`
     """
     # get cls position and dec_embedding (index = time_step-1)
-    cls_position = outputs['cls_positions'][time_step - 1]
-    cls_embeddings = outputs['dec_embedding'][:, cls_position, :]
+    dec_embedding = outputs['dec_embedding'][time_step]
+    cls_embeddings = dec_embedding[:, 0, :]
     # exclude cls token from gene embeddings
-    if time_step == max(all_time_steps):
-        gene_embeddings = outputs['dec_embedding'][:, (cls_position + 1) :, :]
-    else:
-        gene_embeddings = outputs['dec_embedding'][
-            :, (cls_position + 1) : outputs['cls_positions'][time_step], :
-        ]
+    gene_embeddings = dec_embedding[:, 1:, :]
     cos_similarity = []
     for i in range(gene_embeddings.shape[0]):
         # gene level cosine similarity
@@ -433,6 +428,34 @@ def gumbel_noise(t):
 
 def gumbel_sample(t, temperature=1.0, dim=-1):
     return ((t / max(temperature, 1e-10)) + gumbel_noise(t)).argmax(dim=dim)
+
+
+def mean_nonpadding_embs(embs, pad, dim=1):
+    '''
+    Compute the mean of the non-padding embeddings.
+    Modified from Geneformer:
+    https://huggingface.co/ctheodoris/Geneformer/blob/main/geneformer/perturber_utils.py # noqa
+    Accessed: 2024-05-14
+    '''
+    pad_mask = pad.clone()
+    # mask should be opposite of pad
+    pad_mask[:, 0] = True
+    # our mask is the opposite of BERT mask
+    pad_mask = ~pad_mask
+    # create a tensor of original lengths
+    original_lens = pad_mask.sum(dim=1)
+
+    # create CLS token mask
+    if embs.dim() == 3:
+        # fill the masked positions in embs with zeros
+        masked_embs = embs.masked_fill(~pad_mask.unsqueeze(2), 0.0)
+        # compute the mean across the non-padding dimensions
+        mean_embs = masked_embs.sum(dim) / original_lens.view(-1, 1).float()
+
+    elif embs.dim() == 2:
+        masked_embs = embs.masked_fill(~pad_mask, 0.0)
+        mean_embs = masked_embs.sum(dim) / original_lens.float()
+    return mean_embs
 
 
 def generate_pad(tgt):
