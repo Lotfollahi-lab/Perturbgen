@@ -6,6 +6,7 @@ import math
 from typing import (
     Dict,
     List,
+    Literal,
     Optional,
 )
 
@@ -111,21 +112,22 @@ class SinusoidalPositionalEncoding(nn.Module):
         return x + pe
 
 
-# class LearntPositionalEncoding(nn.Module):
-#     def __init__(self, d_model, max_seq_length):
-#         super(LearntPositionalEncoding, self).__init__()
-#         self.position_embeddings = nn.Embedding(max_seq_length, d_model)
-#         self.register_buffer(
-#             "position_ids", torch.arange(max_seq_length).expand((1, -1)),
-#             persistent=False
-#         )
+class LearntPositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_seq_length):
+        super(LearntPositionalEncoding, self).__init__()
+        self.position_embeddings = nn.Embedding(max_seq_length, d_model)
+        # Register a buffer for position IDs,
+        # precomputed for the maximum sequence length
+        position_ids = torch.arange(max_seq_length).expand((1, -1))
+        self.register_buffer('position_ids', position_ids)
 
+    def forward(self, x, position_ids=None):
+        # TODO: register buffer
+        if position_ids is None:
+            position_ids = self.position_ids[:, : x.size(1)]
+        position_ids = position_ids.expand(x.size(0), -1)
 
-#     def forward(self, x, position_ids):
-#         #TODO: register buffer
-#         positions = torch.arange(x.size(1), device=x.device).expand(x.size(0), -1)
-
-#         return x + self.position_embeddings(x)
+        return x + self.position_embeddings(position_ids)
 
 
 class Mlp(nn.Module):
@@ -366,6 +368,8 @@ class Encoder(nn.Module):
         Dropout rate.
     d_ff: `int`
         Dimension of the feed forward network.
+    position_embedding: `str` (default: 'learnt')
+        Positional encoding type: ['sinusoidal', 'learnt'].
     Returns:
     --------
     output: `torch.Tensor`
@@ -382,14 +386,22 @@ class Encoder(nn.Module):
         nlayers: int = 6,
         dropout: float = 0.02,
         d_ff: int = 512,
+        position_embedding: Literal['sinusoidal', 'learnt'] = 'learnt',
     ):
         super().__init__()
-        self.positional_encoding = SinusoidalPositionalEncoding(
-            d_model=d_model,
-            max_seq_length=max_seq_length,
-            n_time_steps=n_time_steps,
-            mode='Transformer_encoder',
-        )
+        self.position_embedding = position_embedding
+        if self.position_embedding == 'sinusoidal':
+            self.positional_encoding = SinusoidalPositionalEncoding(
+                d_model=d_model,
+                max_seq_length=max_seq_length,
+                n_time_steps=n_time_steps,
+                mode='Transformer_encoder',
+            )
+        elif self.position_embedding == 'learnt':
+            self.positional_encoding = LearntPositionalEncoding(
+                d_model=d_model,
+                max_seq_length=max_seq_length,
+            )
         encoder_layers = TransformerEncoderLayer(
             d_model=d_model,
             nhead=nhead,
@@ -400,9 +412,10 @@ class Encoder(nn.Module):
         self.transformer_encoder = TransformerEncoder(
             encoder_layers,
             num_layers=nlayers,
-            # norm=nn.LayerNorm(d_model),
+            norm=nn.LayerNorm(d_model),
         )
         self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
+
         self.d_model = d_model
         self.total_vocab_size = total_vocab_size
         self.init_weights()
@@ -437,10 +450,13 @@ class Encoder(nn.Module):
         #         torch.ones(self.total_vocab_size), sequence_length, replacement=False
         #     )
         #     src[i] = tokens[sampled_indices]
-        src = self.token_embedding(src) * math.sqrt(self.d_model)
-        src = self.positional_encoding(x=src, tgt_time_step=0)
+        src_embedding = self.token_embedding(src) * math.sqrt(self.d_model)
+        if self.position_embedding == 'sinusoidal':
+            src_embedding = self.positional_encoding(x=src_embedding, tgt_time_step=0)
+        elif self.position_embedding == 'learnt':
+            src_embedding = self.positional_encoding(x=src_embedding)
         output = self.transformer_encoder(
-            src,
+            src_embedding,
             src_key_padding_mask=src_mask,
         )
         return output
@@ -460,6 +476,7 @@ class CellGen(nn.Module):
         time_steps: List[int] = [1, 2, 3],
         total_time_steps: int = 3,
         mode='GF_frozen',
+        position_embedding: Literal['sinusoidal', 'learnt'] = 'learnt',
     ):
         '''
         Description:
@@ -491,6 +508,8 @@ class CellGen(nn.Module):
         mode: `str`
             Mode of the encoder.
             Options: ['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder']
+        position_embedding: `str` (default: 'learnt')
+            Positional encoding type: ['sinusoidal', 'learnt'].
         Returns:
         --------
         outputs: `dict`
@@ -520,12 +539,22 @@ class CellGen(nn.Module):
         self.mask_token = total_vocab_size
         total_vocab_size = total_vocab_size + 1  # add one for padding token
         self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
-        self.positional_encoding = SinusoidalPositionalEncoding(
-            d_model=d_model,
-            max_seq_length=max_seq_length,
-            n_time_steps=total_time_steps,
-            mode=mode,
-        )
+        self.position_embedding = position_embedding
+        if position_embedding == 'sinusoidal':
+            print('Using sinusoidal positional encoding')
+            self.positional_encoding = SinusoidalPositionalEncoding(
+                d_model=d_model,
+                max_seq_length=max_seq_length,
+                n_time_steps=total_time_steps,
+                mode=mode,
+            )
+        elif position_embedding == 'learnt':
+            self.positional_encoding = LearntPositionalEncoding(
+                d_model=d_model,
+                max_seq_length=max_seq_length,
+            )
+        else:
+            raise ValueError(f'Invalid position embedding: {position_embedding}')
         if mode in ['GF_frozen', 'GF_fine_tuned']:
             self.encoder_layers = Geneformerwrapper(mode=mode)
         elif mode == 'Transformer_encoder':
@@ -534,6 +563,7 @@ class CellGen(nn.Module):
                 max_seq_length=max_seq_length,
                 n_time_steps=total_time_steps,
                 d_model=d_model,
+                position_embedding=position_embedding,
             )
         else:
             raise ValueError(f'Invalid encoder mode: {mode}')
@@ -698,8 +728,12 @@ class CellGen(nn.Module):
                 tgt_pad = tgt_pad_dict[f'tgt_pad_t{time_step}']
                 with torch.no_grad():
                     tgt_embedding = self.token_embedding(tgt_input_id)
-                    dec_embedding = self.positional_encoding(tgt_embedding, time_step)
-
+                    if self.position_embedding == 'sinusoidal':
+                        dec_embedding = self.positional_encoding(
+                            tgt_embedding, time_step
+                        )
+                    elif self.position_embedding == 'learnt':
+                        dec_embedding = self.positional_encoding(tgt_embedding)
                     # create context for the ones before the selected time step
                     # pad the rest
                     dec_outputs = self.call_decoder(
@@ -738,9 +772,12 @@ class CellGen(nn.Module):
         context_pads = list(context_pad_dict_.values())
         context_pad = torch.cat(context_pads, dim=1)
         selected_tgt_embedding = self.token_embedding(tgt_input_id)
-        selected_tgt_embedding = self.positional_encoding(
-            selected_tgt_embedding, tgt_time_step
-        )
+        if self.position_embedding == 'sinusoidal':
+            selected_tgt_embedding = self.positional_encoding(
+                selected_tgt_embedding, tgt_time_step
+            )
+        elif self.position_embedding == 'learnt':
+            selected_tgt_embedding = self.positional_encoding(selected_tgt_embedding)
         outputs = self.call_decoder(
             enc_output=context_embedding,
             src_attention_mask=context_pad,
@@ -806,7 +843,12 @@ class CellGen(nn.Module):
                 tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
                 tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{tgt_time_step}']
                 tgt_embedding = self.token_embedding(tgt_input_id)
-                tgt_embedding = self.positional_encoding(tgt_embedding, tgt_time_step)
+                if self.position_embedding == 'sinusoidal':
+                    tgt_embedding = self.positional_encoding(
+                        tgt_embedding, tgt_time_step
+                    )
+                elif self.position_embedding == 'learnt':
+                    tgt_embedding = self.positional_encoding(tgt_embedding)
                 if context_mode:
                     # distinction between selected time step and rest time steps
                     context_embedding_dict, context_pad_dict = self.generate_context(

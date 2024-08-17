@@ -90,7 +90,8 @@ sc.pl.embedding(
 plt.savefig('./res/full_data_umap_log_norm.pdf', dpi=300, bbox_inches='tight')
 plt.close()
 adata_cls = sc.read_h5ad(
-    f'{args.res_dir}/' '20240813_stratified_cls_embeddings_cosine_similarity.h5ad'
+    f'{args.res_dir}/'
+    '20240813_generate_adata_extrapolate_[3]__GF_fine_tuned_42_zinb_3.h5ad'
 )
 var_names = adata_cls.obsm['cosine_similarity'].columns
 # filter adata to only include genes in var_names
@@ -247,7 +248,7 @@ sc.pl.embedding(
     show=False,
 )
 plt.savefig(
-    f'{args.res_dir}/20240813_stratified_pairing_generate_umap_generate_s100_full.pdf',
+    f'{args.res_dir}/20240814_reproducing_neurips_generate_umap_generate_s100_full.pdf',
     bbox_inches='tight',
 )
 plt.close()
@@ -327,7 +328,10 @@ for gene, i in adata_cls.uns['activation_genes'].items():
 
 # Plotting generate results
 # --------------------------------
-adata = sc.read_h5ad(f'{args.res_dir}/')
+adata = sc.read_h5ad(
+    f'{args.res_dir}/'
+    '20240813_generate_adata_extrapolate_[3]__GF_fine_tuned_42_zinb_3.h5ad'
+)
 del adata.uns['Cell_type_colors']
 del adata.uns['Cell_population_colors']
 del adata.uns['Time_point_colors']
@@ -397,7 +401,7 @@ sc.pl.umap(
 )
 plt.savefig(f'./res/true_umap_{mode}.pdf', dpi=300, bbox_inches='tight')
 adata_full = sc.read_h5ad(
-    f'{args.res_dir}/h5ad_pairing_hvg/' 'cytoimmgen_tokenised_hvg.h5ad'
+    './T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg/cytoimmgen_hvg.h5ad'
 )
 adata_random = adata_full.copy()
 sc.pp.subsample(adata_random, n_obs=adata_true.n_obs)
@@ -486,8 +490,8 @@ adata_true.X = adata_true.layers['counts']
 emd_list = []
 mmd_list = []
 # print emd and mmd before normalisation
-# emd_df = evaluate_emd(adata_true, adata, None)
-# mmd_df = evaluate_mmd(adata=adata_true, pred_adata=adata, n_cells=10000)
+emd_df = evaluate_emd(adata_true, adata, None)
+mmd_df = evaluate_mmd(adata=adata_true, pred_adata=adata, n_cells=10000)
 print('EMD before normalisation: ', emd_df)
 print('MMD before normalisation: ', mmd_df)
 sc.pp.normalize_total(adata, target_sum=1e4)
@@ -498,7 +502,6 @@ emd_df = evaluate_emd(adata_true, adata, None)
 lin_reg_df = lin_reg_summary(adata_true, adata)
 
 mmd_df = evaluate_mmd(adata=adata_true, pred_adata=adata, n_cells=10000)
-
 
 print('EMD after normalisation: ', emd_df)
 print('MMD after normalisation: ', mmd_df)

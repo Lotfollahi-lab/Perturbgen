@@ -737,6 +737,7 @@ class CountDecoderTrainer(LightningModule):
         )
         # MSE
         mse_all = []
+
         for time_step in self.time_steps:
             pred_count = pred_counts_dict[time_step]
             true_count = batch[f'tgt_counts_t{time_step}']
@@ -764,7 +765,7 @@ class CountDecoderTrainer(LightningModule):
         # return Pearson correlation coefficient
         true_counts = torch.cat(self.val_true_counts_list)
         pred_counts = torch.cat(self.val_pred_counts_list)
-        mean_pearson = self.pearson(pred_counts=pred_counts, true_counts=true_counts)
+        mean_pearson = pearson(pred_counts=pred_counts, true_counts=true_counts)
         self.log(
             'val/pearson',
             mean_pearson,
@@ -774,7 +775,7 @@ class CountDecoderTrainer(LightningModule):
             sync_dist=True,
         )
         self.val_true_counts_list = []
-        self.val_ctrl_counts_list = []
+        self.val_pred_counts_list = []
 
     def test_step(self, batch, *args, **kwargs):
         tgt_input_id_dict = {}
@@ -886,7 +887,7 @@ class CountDecoderTrainer(LightningModule):
             # save adata
             pred_adata.write_h5ad(
                 f'{self.output_dir}/{self.date}_'
-                f'generate_adata_extrapolate_'
+                f'learnt_pos_pair_generate_adata_'
                 f'{self.time_steps}__{self.mode}_{self.seed}_'
                 f'{self.loss_mode}_{self.n_samples}.h5ad'
             )
@@ -914,7 +915,7 @@ class CountDecoderTrainer(LightningModule):
             pred_adata.layers['counts'] = true_counts.numpy()
             pred_adata.write_h5ad(f'{self.output_dir}/pred_adata.h5ad')
             # ----------------- calculate metrics -----------------
-            mean_pearson = self.pearson(pred_counts, true_counts)
+            mean_pearson = pearson(pred_counts, true_counts)
             # Pearson correlation coefficient
             self.log(
                 'test/pearson',
@@ -924,7 +925,7 @@ class CountDecoderTrainer(LightningModule):
                 logger=True,
             )
             # Pearson delta
-            mean_pearson_delta = self.pearson(pred_counts, true_counts, ctrl_counts)
+            mean_pearson_delta = pearson(pred_counts, true_counts, ctrl_counts)
             self.log(
                 'test/pearson_delta',
                 mean_pearson_delta,
