@@ -76,7 +76,7 @@ def get_args():
     parser.add_argument(
         '--pairing_mode',
         type=str,
-        default='stratified',
+        default='random',
         # default='random',
         choices=['stratified', 'random'],
         help='Cell pairing mode',
@@ -208,9 +208,9 @@ adata_subset.obs['n_counts'] = adata_subset.X.sum(axis=1)
 if not isinstance(adata_subset.X, csr_matrix):
     adata_subset.X = csr_matrix(adata_subset.X)
 
-adata_subset.write_h5ad(
-    f'{paired_h5ad_dir}/{args.dataset}_{args.gene_filtering_mode}.h5ad'
-)
+# adata_subset.write_h5ad(
+#     f'{paired_h5ad_dir}/{args.dataset}_{args.gene_filtering_mode}.h5ad'
+# )
 
 print('Finished preprocessing adata.')
 print('Start tokenisation of adata...')
@@ -265,33 +265,34 @@ for time_point in tqdm.tqdm(args.time_point_order):
     # subset adata by cell pairings
     adata_tmp = subset_adata(adata_subset, cell_pairings[time_point])
     # separate src and target directory
-    if not os.path.exists(f'{paired_h5ad_dir}_src'):
-        os.makedirs(f'{paired_h5ad_dir}_src')
-    if not os.path.exists(f'{paired_h5ad_dir}_tgt'):
-        os.makedirs(f'{paired_h5ad_dir}_tgt')
-    if not os.path.exists(f'{output_dir}_src'):
-        os.makedirs(f'{output_dir}_src')
-    if not os.path.exists(f'{output_dir}_tgt'):
-        os.makedirs(f'{output_dir}_tgt')
+    src_adata_dir = f'{paired_h5ad_dir}_src_random_pairing'
+    tgt_adata_dir = f'{paired_h5ad_dir}_tgt_random_pairing'
+    src_dataset_dir = f'{output_dir}_src_random_pairing'
+    tgt_dataset_dir = f'{output_dir}_tgt_random_pairing'
+    if not os.path.exists(src_adata_dir):
+        os.makedirs(src_adata_dir)
+    if not os.path.exists(tgt_adata_dir):
+        os.makedirs(tgt_adata_dir)
+    if not os.path.exists(src_dataset_dir):
+        os.makedirs(src_dataset_dir)
+    if not os.path.exists(tgt_dataset_dir):
+        os.makedirs(tgt_dataset_dir)
     # subset dataset by cell pairings
     if time_point == args.reference_time:
-        adata_tmp.write_h5ad(f'./{paired_h5ad_dir}_src/{time_point}.h5ad')
+        adata_tmp.write_h5ad(f'{src_adata_dir}/{time_point}.h5ad')
         # do not map input ids to row ids for Geneformer input
         # Geneformer needs initial token ids to extract correct embeddings
         if args.src_mode == 'Geneformer':
             dataset_tmp = dataset.select(cell_pairings[time_point])
-            dataset_tmp.save_to_disk(f'{output_dir}_src/{time_point}.dataset')
+            dataset_tmp.save_to_disk(f'{src_dataset_dir}/{time_point}.dataset')
         else:
-            if not os.path.exists(f'{output_dir}_src_transformer'):
-                os.makedirs(f'{output_dir}_src_transformer')
+            src_adata_transf_dir = f'{paired_h5ad_dir}_src_transformer'
+            if not os.path.exists(src_adata_transf_dir):
+                os.makedirs(src_adata_transf_dir)
             dataset_tmp = dataset_mapped.select(cell_pairings[time_point])
-            dataset_tmp.save_to_disk(
-                f'{output_dir}_src_transformer/{time_point}.dataset'
-            )
+            dataset_tmp.save_to_disk(f'{src_adata_transf_dir}/{time_point}.dataset')
     else:
-        adata_tmp.write_h5ad(
-            f'{paired_h5ad_dir}_tgt/' f'{n_tgt_iter}_{time_point}.h5ad'
-        )
+        adata_tmp.write_h5ad(f'{tgt_adata_dir}/' f'{n_tgt_iter}_{time_point}.h5ad')
         dataset_tmp = dataset_mapped.select(cell_pairings[time_point])
-        dataset_tmp.save_to_disk(f'{output_dir}_tgt/{n_tgt_iter}_{time_point}.dataset')
+        dataset_tmp.save_to_disk(f'{tgt_dataset_dir}/{n_tgt_iter}_{time_point}.dataset')
         n_tgt_iter += 1
