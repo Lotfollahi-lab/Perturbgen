@@ -63,6 +63,7 @@ class CellGenTrainer(LightningModule):
         total_time_steps: int = 3,
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         mode: str = 'GF_fine_tuned',
+        context_mode: bool = True,
         var_list: Optional[List[str]] = None,
         gene_names: Optional[List[str]] = None,
         mapping_dict_path: Optional[str] = None,
@@ -104,7 +105,7 @@ class CellGenTrainer(LightningModule):
         self.generate = generate
         self.tgt_vocab_size = tgt_vocab_size
         self.time_steps = time_steps
-
+        self.context_mode = context_mode
         self.test_dict: Dict[str, List[Any]] = {
             'true_counts': [],
             'cls_embeddings': [],
@@ -158,6 +159,7 @@ class CellGenTrainer(LightningModule):
             src_input_id=batch['src_input_ids'],
             tgt_input_id_dict=tgt_input_id_dict,
             not_masked=self.return_embeddings,
+            context_mode=self.context_mode,
         )
         return outputs
 
@@ -383,7 +385,7 @@ class CellGenTrainer(LightningModule):
             # save anndata
             adata.write_h5ad(
                 f'{self.output_dir}/{self.date}_'
-                f'stratified_cls_embeddings_cosine_similarity.h5ad'
+                f'stratfied_pairing_cls_embeddings_cosine_similarity.h5ad'
             )
             print('End saving embeddings -------------------')
 
@@ -402,23 +404,24 @@ class CountDecoderTrainer(LightningModule):
         weight_decay: float = 0.0,
         lr_scheduler_patience: float = 1.0,
         # lr_scheduler_factor: float = 0.8,
-        ckpt_masking_path: Optional[str] = None,
-        ckpt_count_path: Optional[str] = None,
-        conditions: Optional[Dict[Any, Any]] = None,
-        conditions_combined: Optional[List[Any]] = None,
         dropout: float = 0.0,
         generate: bool = False,
         var_list: List[str] = ['Time_point'],
-        tgt_adata: Optional[ad.AnnData] = None,
         time_steps: list = [1, 2],
         total_time_steps: int = 3,
         temperature: float = 2.0,
         iterations: int = 18,
         n_samples: int = 1,
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
-        mask_scheduler: Optional[str] = 'cosine',
         mode: str = 'GF_fine_tuned',
         seed: int = 42,
+        context_mode: bool = True,
+        mask_scheduler: Optional[str] = 'cosine',
+        tgt_adata: Optional[ad.AnnData] = None,
+        ckpt_masking_path: Optional[str] = None,
+        ckpt_count_path: Optional[str] = None,
+        conditions: Optional[Dict[Any, Any]] = None,
+        conditions_combined: Optional[List[Any]] = None,
         *args,
         **kwargs,
     ):
@@ -452,6 +455,7 @@ class CountDecoderTrainer(LightningModule):
             dropout=dropout,
             time_steps=time_steps,
             total_time_steps=total_time_steps,
+            context_mode=context_mode,
         )
 
         if ckpt_count_path is not None:
@@ -887,7 +891,7 @@ class CountDecoderTrainer(LightningModule):
             # save adata
             pred_adata.write_h5ad(
                 f'{self.output_dir}/{self.date}_'
-                f'learnt_pos_pair_generate_adata_'
+                f'stratified_pairing_generate_adata_'
                 f'{self.time_steps}__{self.mode}_{self.seed}_'
                 f'{self.loss_mode}_{self.n_samples}.h5ad'
             )

@@ -218,6 +218,12 @@ def get_args():
         default=42,
         help='seed for reproducibility',
     )
+    parser.add_argument(
+        '--context_mode',
+        type=str2bool,
+        default=True,
+        help='context mode for timepoints',
+    )
     args = parser.parse_args()
     return args
 
@@ -387,6 +393,7 @@ def main() -> None:
             output_dir=args.output_dir,
             var_list=args.var_list,
             mode=args.mode,
+            context_mode=args.context_mode,
         )
     elif args.test_mode == 'count':
         decoder_module = CountDecoderTrainer(
@@ -418,6 +425,7 @@ def main() -> None:
             n_samples=3,
             mode=args.mode,
             seed=args.seed,
+            context_mode=args.context_mode,
         )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')

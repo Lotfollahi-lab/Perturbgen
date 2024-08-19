@@ -222,6 +222,12 @@ def get_args():
         default=42,
         help='seed for reproducibility',
     )
+    parser.add_argument(
+        '--context_mode',
+        type=str2bool,
+        default=True,
+        help='context mode for timepoints',
+    )
     args = parser.parse_args()
     return args
 
@@ -392,6 +398,7 @@ def main() -> None:
             mapping_dict_path=args.mapping_dict_path,
             output_dir=args.output_dir,
             mode=args.mode,
+            context_mode=args.context_mode,
         )
     elif args.train_mode == 'count':
         decoder_module = CountDecoderTrainer(
@@ -420,6 +427,7 @@ def main() -> None:
             output_dir=args.output_dir,
             mode=args.mode,
             seed=args.seed,
+            context_mode=args.context_mode,
         )
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
