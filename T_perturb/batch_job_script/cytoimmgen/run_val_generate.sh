@@ -4,11 +4,11 @@
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
-#BSUB -o logs/learnt_pos_generate_inter_seed100_%J.out # output file
-#BSUB -e logs/learnt_pos_generate_inter_seed100_%J.err # error file
+#BSUB -o logs/stratified_pairing_generate_inter_seed100_%J.out # output file
+#BSUB -e logs/stratified_pairing_generate_inter_seed100_%J.err # error file
 #BSUB -M 150000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>150000] rusage[mem=150000]' # RAM memory part 1. Default: 100MB
-#BSUB -J learnt_pos_generate_inter_seed100 # job name
+#BSUB -J stratified_pairing_generate_inter_seed100 # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -20,6 +20,36 @@ cwd=$(pwd)
 export WANDB_DIR=$cwd/wandb
 # run script
 echo '--- Start computing model'
+
+# # Experimentation
+# # python3 $cwd/val.py \
+# python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
+# --test_mode count \
+# --split True \
+# --splitting_mode stratified \
+# --generate True \
+# --ckpt_count_path './T_perturb/T_perturb/Model/checkpoints/20240818_1103_stratified_pairing_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1_s_42-epoch=19.ckpt' \
+# --output_dir './T_perturb/T_perturb/plt/res/cytoimmgen' \
+# --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_stratified_pairing/0h.dataset" \
+# --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt_stratified_pairing" \
+# --src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src_stratified_pairing/0h.h5ad" \
+# --tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt_stratified_pairing" \
+# --batch_size 64 \
+# --max_len 300 \
+# --tgt_vocab_size 1261 \
+# --cellgen_lr 0.0001 \
+# --cellgen_wd 0.0001 \
+# --count_lr 0.00005 \
+# --count_wd 0.01 \
+# --num_layers 6 \
+# --loss_mode zinb \
+# --n_workers 32 \
+# --condition_keys Cell_culture_batch \
+# --time_steps 1 \
+# --var_list Cell_population Cell_type Time_point Donor \
+# --mode GF_fine_tuned
+# echo '--- Finished computing model'
+
 
 # # Interpolate
 # # python3 $cwd/val.py \
@@ -54,10 +84,10 @@ echo '--- Start computing model'
 # python3 $cwd/val.py \
 python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
 --test_mode count \
---split True \
+--split False \
 --splitting_mode stratified \
 --generate True \
---ckpt_count_path './T_perturb/T_perturb/Model/checkpoints/20240815_1220_learnt_position_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1_s_42-epoch=19.ckpt' \
+--ckpt_count_path './T_perturb/T_perturb/Model/checkpoints/20240819_2030_stratified_pairing_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1_s_42-epoch=19.ckpt' \
 --output_dir './T_perturb/T_perturb/plt/res/cytoimmgen' \
 --src_dataset './T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset' \
 --tgt_dataset_folder './T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt' \
@@ -76,5 +106,6 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --condition_keys Cell_culture_batch \
 --time_steps 1 \
 --var_list Cell_population Cell_type Time_point Donor \
---mode GF_fine_tuned
+--mode GF_fine_tuned \
+--context_mode False
 echo '--- Finished computing model'

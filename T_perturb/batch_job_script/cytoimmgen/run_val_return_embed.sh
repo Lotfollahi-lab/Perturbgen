@@ -4,11 +4,11 @@
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
-#BSUB -o logs/return_embed_%J.out # output file
-#BSUB -e logs/return_embed_%J.err # error file
+#BSUB -o logs/stratified_pairing_encoding_return_embed_%J.out # output file
+#BSUB -e logs/stratified_pairing_encoding_return_embed_%J.err # error file
 #BSUB -M 150000  # RAM memory part 2. Default: 100MB
 #BSUB -R "select[mem>150000] rusage[mem=150000]" # RAM memory part 1. Default: 100MB
-#BSUB -J cytoimmgen_return_embed # job name
+#BSUB -J stratified_pairing_encoding_cytoimmgen_return_embed # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -25,11 +25,11 @@ echo "--- Start computing model"
 # python3 $cwd/val.py \
 python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
 --test_mode masking \
---split False \
+--split True \
 --splitting_mode stratified \
 --return_embed True \
 --generate False \
---ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240813_1603_stratifiied_pairing_train_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1_s_42-epoch=19.ckpt" \
+--ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240819_1623_stratified_pairing_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1_s_42-epoch=19.ckpt" \
 --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
 --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset" \
 --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
@@ -38,17 +38,18 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --batch_size 64 \
 --max_len 300 \
 --tgt_vocab_size 1261 \
---cellgen_lr 0.001 \
---cellgen_wd 0.001 \
+--cellgen_lr 0.0001 \
+--cellgen_wd 0.0001 \
 --count_lr 0.00005 \
 --count_wd 0.01 \
 --d_ff 128 \
 --num_layers 6 \
---n_workers 32 \
+--n_workers 16 \
 --condition_keys Cell_culture_batch \
 --time_steps 1 \
 --var_list Cell_population Cell_type Time_point Donor \
---mode GF_fine_tuned
+--mode GF_fine_tuned \
+--context_mode False
 echo "--- Finished computing model"
 
 # # # Run python script for rna

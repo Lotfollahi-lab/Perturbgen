@@ -386,7 +386,7 @@ class Encoder(nn.Module):
         nlayers: int = 6,
         dropout: float = 0.02,
         d_ff: int = 512,
-        position_embedding: Literal['sinusoidal', 'learnt'] = 'learnt',
+        position_embedding: Literal['sinusoidal', 'learnt'] = 'sinusoidal',
     ):
         super().__init__()
         self.position_embedding = position_embedding
@@ -412,7 +412,7 @@ class Encoder(nn.Module):
         self.transformer_encoder = TransformerEncoder(
             encoder_layers,
             num_layers=nlayers,
-            norm=nn.LayerNorm(d_model),
+            # norm=nn.LayerNorm(d_model),
         )
         self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
 
@@ -476,7 +476,7 @@ class CellGen(nn.Module):
         time_steps: List[int] = [1, 2, 3],
         total_time_steps: int = 3,
         mode='GF_frozen',
-        position_embedding: Literal['sinusoidal', 'learnt'] = 'learnt',
+        position_embedding: Literal['sinusoidal', 'learnt'] = 'sinusoidal',
     ):
         '''
         Description:
@@ -541,7 +541,6 @@ class CellGen(nn.Module):
         self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
         self.position_embedding = position_embedding
         if position_embedding == 'sinusoidal':
-            print('Using sinusoidal positional encoding')
             self.positional_encoding = SinusoidalPositionalEncoding(
                 d_model=d_model,
                 max_seq_length=max_seq_length,
@@ -640,7 +639,7 @@ class CellGen(nn.Module):
         )
         # +1 to exclude pad and cls tokens from random token selection
         random_tokens = torch.randint(
-            1, self.tgt_vocab_size, labels.shape, dtype=torch.long, device=device
+            2, self.tgt_vocab_size, labels.shape, dtype=torch.long, device=device
         )
         tgt_input_id[indices_random] = random_tokens[indices_random]
         return tgt_input_id, labels
@@ -836,7 +835,7 @@ class CellGen(nn.Module):
         enc_output = self.call_encoder(src_input_id, src_attention_mask)
         # distinction between selected time step and rest time steps
         if (not_masked) and (tgt_input_id_dict is not None):
-            dec_embedding_list = {}
+            dec_embedding_dict = {}
             mean_embedding_dict = {}
             labels = None
             for tgt_time_step in self.time_steps:
@@ -849,7 +848,7 @@ class CellGen(nn.Module):
                     )
                 elif self.position_embedding == 'learnt':
                     tgt_embedding = self.positional_encoding(tgt_embedding)
-                if context_mode:
+                if (context_mode) and (len(self.time_steps) > 1):
                     # distinction between selected time step and rest time steps
                     context_embedding_dict, context_pad_dict = self.generate_context(
                         enc_output=enc_output,
@@ -879,13 +878,13 @@ class CellGen(nn.Module):
                         generate=False,
                         labels=labels,
                     )
-                dec_embedding_list[tgt_time_step] = outputs['dec_embedding']
+                dec_embedding_dict[tgt_time_step] = outputs['dec_embedding']
                 mean_embedding_dict[tgt_time_step] = mean_nonpadding_embs(
                     embs=outputs['dec_embedding'],
                     pad=tgt_pad,
                 )
             outputs['mean_embedding'] = mean_embedding_dict
-            outputs['dec_embedding'] = dec_embedding_list
+            outputs['dec_embedding'] = dec_embedding_dict
         else:
             if tgt_time_step is None:
                 tgt_time_step = np.random.choice(self.time_steps)
@@ -937,6 +936,23 @@ class CellGen(nn.Module):
                     tgt_input_id=tgt_input_id,
                     labels=labels,
                     generate=generate,
+                )
+            else:
+                tgt_embedding = self.token_embedding(tgt_input_id)
+                if self.position_embedding == 'sinusoidal':
+                    tgt_embedding = self.positional_encoding(
+                        tgt_embedding, tgt_time_step
+                    )
+                elif self.position_embedding == 'learnt':
+                    tgt_embedding = self.positional_encoding(tgt_embedding)
+                outputs = self.call_decoder(
+                    enc_output=enc_output,
+                    src_attention_mask=src_attention_mask,
+                    dec_embedding=tgt_embedding,
+                    tgt_pad=tgt_pad,
+                    time_random=tgt_time_step,
+                    generate=generate,
+                    labels=labels,
                 )
         return outputs
 
@@ -1018,6 +1034,7 @@ class CountDecoder(nn.Module):
         dropout: float = 0.0,
         time_steps: list = [1, 2],
         total_time_steps: int = 3,
+        context_mode: bool = True,
     ):
         '''
         Description:
@@ -1062,6 +1079,7 @@ class CountDecoder(nn.Module):
         self.time_steps = time_steps
         self.total_time_steps = list(range(1, total_time_steps + 1))
         self.cls_embedding = None
+        self.context_mode = context_mode
 
     def generate_pad(self, tgt):
         tgt_pad = tgt == 0
@@ -1076,8 +1094,8 @@ class CountDecoder(nn.Module):
             src_input_id=src_input_id,
             tgt_input_id_dict=tgt_input_id_dict,
             not_masked=True,
+            context_mode=self.context_mode,
         )
-
         count_outputs = {}
         for _, t in enumerate(self.time_steps):
             cls_embedding = outputs['mean_embedding'][t]
@@ -1156,6 +1174,7 @@ class CountDecoder(nn.Module):
             tgt_pad_dict_[f'tgt_pad_t{time_step}'] = tgt_pad
             tgt_input_id_key = f'tgt_input_id_t{time_step}'
             tgt_input_id = tgt_input_id_dict[tgt_input_id_key]
+
             # create ids and scores matrix for each batch
             ids = torch.full_like(tgt_input_id, self.mask_token, dtype=torch.long)
             # add cls token to the ids
@@ -1177,6 +1196,8 @@ class CountDecoder(nn.Module):
                 scores=scores,
                 tgt_time_step=time_step,
             )
+            print(outputs['dec_embedding'], outputs['dec_embedding'].shape)
+            print(tgt_pad, tgt_pad.shape)
             generate_id_dict[tgt_input_id_key] = generated_ids
             cls_embedding = mean_nonpadding_embs(
                 embs=outputs['dec_embedding'],
@@ -1245,7 +1266,6 @@ class CountDecoder(nn.Module):
         '''
         max_neg_value = -torch.finfo().max
         tmp_ids = generate_id_dict[f'tgt_input_id_t{tgt_time_step}'].clone()
-
         ids_to_keep = torch.zeros_like(tmp_ids, dtype=torch.long)
         for iteration, steps_until_x0 in tqdm(
             zip(
@@ -1286,6 +1306,7 @@ class CountDecoder(nn.Module):
                 generate_pad_dict=generate_pad_dict,
                 not_masked=False,
                 tgt_time_step=tgt_time_step,
+                context_mode=self.context_mode,
             )
             logits = outputs['dec_logits'][:, 1:, :].clone()
             # exclude cls token
@@ -1314,5 +1335,6 @@ class CountDecoder(nn.Module):
             # add cls token to the ids and update scores and ids
             scores[:, 1:] = scores_
             tmp_ids[:, 1:] = tmp_ids_
-
+        print('tmp_ids', tmp_ids.shape)
+        print(tmp_ids[:10, :10])
         return outputs, tmp_ids
