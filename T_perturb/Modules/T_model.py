@@ -848,7 +848,7 @@ class CellGen(nn.Module):
                     )
                 elif self.position_embedding == 'learnt':
                     tgt_embedding = self.positional_encoding(tgt_embedding)
-                if (context_mode) and (len(self.time_steps) > 1):
+                if context_mode:
                     # distinction between selected time step and rest time steps
                     context_embedding_dict, context_pad_dict = self.generate_context(
                         enc_output=enc_output,
@@ -1157,7 +1157,7 @@ class CountDecoder(nn.Module):
             - 'count_output_t{t}': Count prediction for time step t.
             - 'cls_embedding_t{t}': CLS token embeddings for time step t.
         '''
-        generate_id_dict = {}
+        generate_id_dict: Dict[str, torch.Tensor] = {}
         count_outputs: Dict[str, torch.Tensor] = {}
         tgt_pad_dict = self.call_padding(
             src_input_id, tgt_input_id_dict, self.total_time_steps
@@ -1196,8 +1196,6 @@ class CountDecoder(nn.Module):
                 scores=scores,
                 tgt_time_step=time_step,
             )
-            print(outputs['dec_embedding'], outputs['dec_embedding'].shape)
-            print(tgt_pad, tgt_pad.shape)
             generate_id_dict[tgt_input_id_key] = generated_ids
             cls_embedding = mean_nonpadding_embs(
                 embs=outputs['dec_embedding'],
@@ -1308,7 +1306,7 @@ class CountDecoder(nn.Module):
                 tgt_time_step=tgt_time_step,
                 context_mode=self.context_mode,
             )
-            logits = outputs['dec_logits'][:, 1:, :].clone()
+            logits = outputs['dec_logits'][:, 1:, :]
             # exclude cls token
             tmp_ids_ = tmp_ids[:, 1:].clone()
             scores_ = scores[:, 1:].clone()
@@ -1317,7 +1315,7 @@ class CountDecoder(nn.Module):
             for sample in range(logits.shape[0]):
                 unique_ids = torch.unique(ids_to_keep_[sample])
                 logits[sample, :, unique_ids] = -float('inf')
-            filtered_logits = top_k(logits, topk_filter_thres)
+            filtered_logits = top_k(logits.clone(), topk_filter_thres)
             temperature = starting_temperature * (
                 steps_until_x0 / iteration
             )  # temperature is annealed
