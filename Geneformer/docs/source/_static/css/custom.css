@@ -1,0 +1,40 @@
+/* top left logo */
+.wy-side-nav-search, .wy-nav-top {
+    background: linear-gradient(15deg, #13547a 0%, #80d0c7 100%);
+}
+
+
+/* unvisited link */
+.wy-nav-content a:link {
+  color: #067abd;
+}
+
+/* visited link */
+.wy-nav-content a:visited {
+  color: #4b827c;
+}
+
+/* mouse over link */
+.wy-nav-content a:hover {
+  color: #80d0c7;
+}
+
+/* selected link */
+.wy-nav-content a:active {
+  color: #4b827c;
+}
+
+/* class object */
+.sig.sig-object {
+    padding: 5px 5px 5px 5px;
+    background-color: #ececec;
+    border-style: solid;
+    border-color: black;
+    border-width: 1px 0;
+}
+
+/* parameter object */
+dt {
+    padding: 5px 5px 5px 5px;
+    background-color: #ececec;
+}
