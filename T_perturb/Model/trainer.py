@@ -39,7 +39,9 @@ from T_perturb.src.utils import (
 if torch.cuda.is_available():
     cuda_device_name = torch.cuda.get_device_name()
     # If the device is an A100, set the precision for matrix multiplication
-    if 'A100' in cuda_device_name:
+    if ('A100' in cuda_device_name) or ('NVIDIA H100 80GB HBM' in cuda_device_name):
+        print(f'Using {cuda_device_name} for training')
+        print('Set float32_matmul_precision to medium')
         torch.set_float32_matmul_precision('medium')
 
 
@@ -328,7 +330,6 @@ class CellGenTrainer(LightningModule):
                     mapping_dict=self.subset_tokenid_to_genename,
                     token_ids=token_ids,
                 )
-
                 self.marker_genes = marker_genes_dict
                 self.test_dict['true_counts'].append(
                     batch[f'tgt_counts_t{time_step}'].detach().cpu()
@@ -385,7 +386,7 @@ class CellGenTrainer(LightningModule):
             # save anndata
             adata.write_h5ad(
                 f'{self.output_dir}/{self.date}_'
-                f'stratfied_pairing_cls_embeddings_cosine_similarity.h5ad'
+                f'maskgit_masking_cls_embeddings_cosine_similarity.h5ad'
             )
             print('End saving embeddings -------------------')
 
@@ -891,8 +892,8 @@ class CountDecoderTrainer(LightningModule):
             # save adata
             pred_adata.write_h5ad(
                 f'{self.output_dir}/{self.date}_'
-                f'stratified_pairing_generate_adata_'
-                f'{self.time_steps}__{self.mode}_{self.seed}_'
+                f'masking_maskgit_stratified_pairing_generate_adata_'
+                f'{self.time_steps}_{self.mode}_{self.seed}_'
                 f'{self.loss_mode}_{self.n_samples}.h5ad'
             )
             print('---anndata generation completed')

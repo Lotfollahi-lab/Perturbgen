@@ -24,6 +24,7 @@ from T_perturb.src.utils import (
     mean_nonpadding_embs,
     noise_schedule,
     top_k,
+    uniform,
 )
 
 # def drop_path(x, drop_prob: float = 0.0, training: bool = False):
@@ -215,6 +216,16 @@ class CrossAttention(nn.Module):
 
         # attention, what we cannot get enough of
         attn = sim.softmax(dim=-1)
+        # if attn.shape[2] == 301:
+        #     print(attn.shape)
+        #     print(
+        #         'sum of score',
+        #         torch.sum(attn.reshape(64,8,301,301)[0,0,:,:], axis=0)
+        #         )
+        #     print(
+        #         'attention matrix',
+        #         attn.reshape(64,8,301,301)[0,0,:5,:5]
+        #         )
         out = einsum('b i j, b j d -> b i d', attn, v)
         out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
         return self.to_out(out)
@@ -407,7 +418,7 @@ class Encoder(nn.Module):
             nhead=nhead,
             dim_feedforward=d_ff,
             dropout=dropout,
-            batch_first=True,
+            # batch_first=True,
         )
         self.transformer_encoder = TransformerEncoder(
             encoder_layers,
@@ -450,16 +461,24 @@ class Encoder(nn.Module):
         #         torch.ones(self.total_vocab_size), sequence_length, replacement=False
         #     )
         #     src[i] = tokens[sampled_indices]
+        # transpose src:
+        # [batch_size, seq_len, d_model] -> [seq_len, batch_size, d_model]
+
         src_embedding = self.token_embedding(src) * math.sqrt(self.d_model)
         if self.position_embedding == 'sinusoidal':
             src_embedding = self.positional_encoding(x=src_embedding, tgt_time_step=0)
         elif self.position_embedding == 'learnt':
             src_embedding = self.positional_encoding(x=src_embedding)
-        output = self.transformer_encoder(
-            src_embedding,
-            src_key_padding_mask=src_mask,
-        )
+        src_embedding = src_embedding.transpose(0, 1)
+        output = self.transformer_encoder(src_embedding, src_key_padding_mask=src_mask)
+        # reverse transpose
+        output = output.transpose(0, 1)
         return output
+        # output = self.transformer_encoder(
+        #     src_embedding,
+        #     src_key_padding_mask=src_mask,
+        # )
+        # return output
 
 
 class CellGen(nn.Module):
@@ -589,7 +608,9 @@ class CellGen(nn.Module):
     #     initrange = 0.1
     #     self.token_embedding.weight.data.uniform_(-initrange, initrange)
 
-    def generate_mask(self, tgt_input_id, tgt_pad, mlm_probability=0.15):
+    def generate_mask(
+        self, tgt_input_id, tgt_pad, mlm_probability=0.15, mask_mode='MASKGIT'
+    ):
         '''
         Description:
         ------------
@@ -606,6 +627,8 @@ class CellGen(nn.Module):
             Target padding mask.
         mlm_probability: `float`
             Fraction of tokens to mask.
+        mask_mode: `str`
+            Masking mode: ['BERT', 'MASKGIT']
         Returns:
         --------
         tgt_input_id: `torch.Tensor`
@@ -615,33 +638,50 @@ class CellGen(nn.Module):
         '''
         device = tgt_input_id.device
         labels = tgt_input_id.clone()
-        probability_matrix = torch.full_like(
-            tgt_pad, mlm_probability, dtype=torch.float
-        )
-        # Do not mask CLS and PAD tokens
-        cls_tgt_pad = tgt_pad.clone()
-        cls_tgt_pad[:, 0] = True
-        probability_matrix = probability_matrix.masked_fill(cls_tgt_pad, 0)
-        masked_indices = torch.bernoulli(probability_matrix).bool()
-        labels[~masked_indices] = -100
+        if mask_mode == 'BERT':
+            probability_matrix = torch.full_like(
+                tgt_pad, mlm_probability, dtype=torch.float
+            )
+            # Do not mask CLS and PAD tokens
+            cls_tgt_pad = tgt_pad.clone()
+            cls_tgt_pad[:, 0] = True
 
-        # replace 80% of the tokens with mask token,
-        # 10% with random token, 10% with original token
-        indices_masked = (
-            torch.bernoulli(torch.full(labels.shape, 0.8, device=device)).bool()
-            & masked_indices
-        )
-        tgt_input_id[masked_indices] = self.mask_token
-        indices_random = (
-            torch.bernoulli(torch.full(labels.shape, 0.5, device=device)).bool()
-            & masked_indices
-            & ~indices_masked
-        )
-        # +1 to exclude pad and cls tokens from random token selection
-        random_tokens = torch.randint(
-            2, self.tgt_vocab_size, labels.shape, dtype=torch.long, device=device
-        )
-        tgt_input_id[indices_random] = random_tokens[indices_random]
+            probability_matrix = probability_matrix.masked_fill(cls_tgt_pad, 0)
+            masked_indices = torch.bernoulli(probability_matrix).bool()
+            labels[~masked_indices] = -100
+            # replace 80% of the tokens with mask token,
+            # 10% with random token, 10% with original token
+            indices_masked = (
+                torch.bernoulli(torch.full(labels.shape, 0.8, device=device)).bool()
+                & masked_indices
+            )
+            tgt_input_id[masked_indices] = self.mask_token
+            indices_random = (
+                torch.bernoulli(torch.full(labels.shape, 0.5, device=device)).bool()
+                & masked_indices
+                & ~indices_masked
+            )
+            # +1 to exclude pad and cls tokens from random token selection
+            random_tokens = torch.randint(
+                2, self.tgt_vocab_size, labels.shape, dtype=torch.long, device=device
+            )
+            tgt_input_id[indices_random] = random_tokens[indices_random]
+        elif mask_mode == 'MASKGIT':
+            sample_length = torch.sum(~tgt_pad, dim=1)
+            batch, seq_len = tgt_input_id.shape
+            rand_time = uniform((batch,), device=device)
+            rand_mask_probs = noise_schedule(rand_time, method='cosine')
+            num_token_masked = (
+                (torch.mul(sample_length, rand_mask_probs)).round().clamp(min=1)
+            )
+            rand_int = torch.rand((batch, seq_len), device=device)
+            rand_int[tgt_pad] = 1
+            batch_randperm = rand_int.argsort(dim=-1)
+            mask = batch_randperm < rearrange(num_token_masked, 'b -> b 1')
+            # do not mask CLS token
+            mask[:, 0] = False
+            tgt_input_id[mask] = self.mask_token
+            labels[~mask] = -100
         return tgt_input_id, labels
 
     def call_padding(
@@ -675,7 +715,9 @@ class CellGen(nn.Module):
         generate=False,
         labels=None,
     ):
+        t = 0
         for dec_layer in self.decoder_block:
+            # print('decoder layer',t)
             # see if concatenation of cls embedding
             dec_embedding = dec_layer(
                 x=dec_embedding,
@@ -683,6 +725,7 @@ class CellGen(nn.Module):
                 tgt_mask=tgt_pad,
                 enc_output=enc_output,
             )
+            t += 1
         # :TODO rewrite this part logits not needed for running the other timepoints
 
         decoder_logits = self.decoder_fc(dec_embedding)
@@ -708,7 +751,6 @@ class CellGen(nn.Module):
         context_embedding_dict['context_t0'] = enc_output
         context_pad_dict = {}
         context_pad_dict['src_pad'] = src_attention_mask
-
         # retrieve the embeddings to provide as context
         # pad the rest of the time steps
         for time_step in all_time_steps:
@@ -763,8 +805,8 @@ class CellGen(nn.Module):
     ):
         context_embedding_dict_ = context_embedding_dict.copy()
         context_pad_dict_ = context_pad_dict.copy()
-        if generate:
-            context_pad_dict_.pop(f'tgt_pad_t{tgt_time_step}')
+        # if generate:
+        #     context_pad_dict_.pop(f'tgt_pad_t{tgt_time_step}')
         context_tensors = list(context_embedding_dict_.values())
 
         context_embedding = torch.cat(context_tensors, dim=1)
@@ -841,13 +883,6 @@ class CellGen(nn.Module):
             for tgt_time_step in self.time_steps:
                 tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
                 tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{tgt_time_step}']
-                tgt_embedding = self.token_embedding(tgt_input_id)
-                if self.position_embedding == 'sinusoidal':
-                    tgt_embedding = self.positional_encoding(
-                        tgt_embedding, tgt_time_step
-                    )
-                elif self.position_embedding == 'learnt':
-                    tgt_embedding = self.positional_encoding(tgt_embedding)
                 if context_mode:
                     # distinction between selected time step and rest time steps
                     context_embedding_dict, context_pad_dict = self.generate_context(
@@ -868,6 +903,13 @@ class CellGen(nn.Module):
                         labels=labels,
                     )
                 else:
+                    tgt_embedding = self.token_embedding(tgt_input_id)
+                    if self.position_embedding == 'sinusoidal':
+                        tgt_embedding = self.positional_encoding(
+                            tgt_embedding, tgt_time_step
+                        )
+                    elif self.position_embedding == 'learnt':
+                        tgt_embedding = self.positional_encoding(tgt_embedding)
                     # does not include any context
                     outputs = self.call_decoder(
                         enc_output=enc_output,
@@ -926,8 +968,8 @@ class CellGen(nn.Module):
                     tgt_pad_dict=tgt_pad_dict,
                     generate=generate,
                 )
-                if generate:
-                    context_pad_dict = generate_pad_dict
+                # if generate:
+                #     context_pad_dict = generate_pad_dict
                 outputs = self.context_backprop(
                     context_embedding_dict=context_embedding_dict,
                     context_pad_dict=context_pad_dict,
@@ -938,6 +980,10 @@ class CellGen(nn.Module):
                     generate=generate,
                 )
             else:
+                # print('No context mode')
+                # print('tgt_time_step', tgt_time_step)
+                # print('tgt_input_id', tgt_input_id)
+                # print('tgt_pad', tgt_pad)
                 tgt_embedding = self.token_embedding(tgt_input_id)
                 if self.position_embedding == 'sinusoidal':
                     tgt_embedding = self.positional_encoding(
@@ -954,6 +1000,7 @@ class CellGen(nn.Module):
                     generate=generate,
                     labels=labels,
                 )
+
         return outputs
 
 
@@ -1179,7 +1226,6 @@ class CountDecoder(nn.Module):
             ids = torch.full_like(tgt_input_id, self.mask_token, dtype=torch.long)
             # add cls token to the ids
             ids[:, 0] = tgt_input_id[:, 0]
-            # ids[:, 0] = 0
             tgt_input_id_dict_[tgt_input_id_key] = ids
             # pad ids
             scores = torch.zeros_like(tgt_input_id, dtype=torch.float)
@@ -1201,6 +1247,7 @@ class CountDecoder(nn.Module):
                 embs=outputs['dec_embedding'],
                 pad=tgt_pad,
             )
+            # cls_embedding = outputs['dec_embedding'][:, 0, :]
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
             count_outputs[f'count_output_t{time_step}'] = count_outputs_tmp
             count_outputs[f'cls_embedding_t{time_step}'] = cls_embedding
@@ -1263,6 +1310,7 @@ class CountDecoder(nn.Module):
             Generated target token inputs.
         '''
         max_neg_value = -torch.finfo().max
+        scores[:, 0] = max_neg_value
         tmp_ids = generate_id_dict[f'tgt_input_id_t{tgt_time_step}'].clone()
         ids_to_keep = torch.zeros_like(tmp_ids, dtype=torch.long)
         for iteration, steps_until_x0 in tqdm(
@@ -1279,8 +1327,8 @@ class CountDecoder(nn.Module):
                 method=mask_scheduler,
             )
             batch_size, _ = scores.shape
-            unpadded = (scores != max_neg_value).sum(dim=1)
-            num_tokens_to_mask = (unpadded.float() * rand_mask_prob).long()
+            unmasked = (scores != max_neg_value).sum(dim=1)
+            num_tokens_to_mask = (unmasked.float() * rand_mask_prob).long()
             mask = torch.zeros_like(scores, dtype=torch.bool)
             indices_to_mask = torch.topk(
                 scores, num_tokens_to_mask.max(), dim=-1
@@ -1288,9 +1336,7 @@ class CountDecoder(nn.Module):
             # Mask the top `num_tokens_to_mask` positions for each sample
             for i in range(batch_size):
                 mask[i, indices_to_mask[i, : num_tokens_to_mask[i]]] = True
-            mask_to_keep_cls = mask.clone()
-            mask_to_keep_cls[:, 0] = False
-            tmp_ids = tmp_ids.masked_fill(mask_to_keep_cls, self.mask_token)
+            tmp_ids = tmp_ids.masked_fill(mask, self.mask_token)
             # keep indices which are not masked except for the CLS token
             ids_to_keep = torch.where(
                 mask,
@@ -1333,6 +1379,4 @@ class CountDecoder(nn.Module):
             # add cls token to the ids and update scores and ids
             scores[:, 1:] = scores_
             tmp_ids[:, 1:] = tmp_ids_
-        print('tmp_ids', tmp_ids.shape)
-        print(tmp_ids[:10, :10])
         return outputs, tmp_ids

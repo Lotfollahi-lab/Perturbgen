@@ -4,11 +4,11 @@
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
-#BSUB -o logs/random_pairing_count_GF_fine_tuned_%J.out # output file
-#BSUB -e logs/random_pairing_count_GF_fine_tuned_%J.err # error file
+#BSUB -o logs/masking_git_count_GF_fine_tuned_%J.out # output file
+#BSUB -e logs/masking_git_count_GF_fine_tuned_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
-#BSUB -J random_pairing_cytoimmgen_count_GF_fine_tuned # job name
+#BSUB -J masking_git_cytoimmgen_count_GF_fine_tuned # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -27,11 +27,11 @@ echo "--- Start computing model"
 # --split True \
 # --splitting_mode stratified \
 # --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
-# --ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240817_1822_random_pairing_train_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1_s_42-epoch=19.ckpt" \
-# --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_random_pairing/0h.dataset" \
-# --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt_random_pairing" \
-# --src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src_random_pairing/0h.h5ad" \
-# --tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt_random_pairing" \
+# --ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240817_1822_masking_git_train_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1_s_42-epoch=19.ckpt" \
+# --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_masking_git/0h.dataset" \
+# --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt_masking_git" \
+# --src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src_masking_git/0h.h5ad" \
+# --tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt_masking_git" \
 # --mapping_dict_path  "./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl" \
 # --batch_size 64 \
 # --max_len 300 \
@@ -90,7 +90,7 @@ python3 $cwd/train.py \
 --split True \
 --splitting_mode stratified \
 --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
---ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240819_1623_stratified_pairing_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1_s_42-epoch=19.ckpt" \
+--ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240821_1613_maskgit_masking_train_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-2_s_42-epoch=19.ckpt" \
 --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset" \
 --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
 --src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
@@ -110,8 +110,8 @@ python3 $cwd/train.py \
 --num_layers 6 \
 --loss_mode zinb \
 --condition_keys Cell_culture_batch \
---time_steps 1 \
+--time_steps 1 2 \
 --var_list Cell_population Cell_type Time_point Donor \
 --mode GF_fine_tuned \
---context_mode False
+--context_mode True
 echo "--- Finished computing model"
