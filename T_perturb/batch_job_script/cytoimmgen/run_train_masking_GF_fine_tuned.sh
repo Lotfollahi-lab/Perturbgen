@@ -4,11 +4,11 @@
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
-#BSUB -o logs/stratified_pairing_masking_%J.out # output file
-#BSUB -e logs/stratified_pairing_masking_%J.err # error file
+#BSUB -o logs/w_context_stratified_pairing_masking_%J.out # output file
+#BSUB -e logs/w_context_stratified_pairing_masking_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
-#BSUB -J stratified_pairing_cytoimmgen_masking # job name
+#BSUB -J w_context_stratified_pairing_cytoimmgen_masking # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -97,8 +97,8 @@ python3 $cwd/train.py \
 --d_ff 128 \
 --num_layers 6 \
 --condition_keys Cell_culture_batch \
---time_steps 1 \
+--time_steps 1 2 \
 --var_list Cell_population Cell_type Time_point Donor \
 --mode GF_fine_tuned \
---context_mode False
+--context_mode True
 echo "--- Finished computing model"

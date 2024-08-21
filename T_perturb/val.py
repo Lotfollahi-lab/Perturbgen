@@ -176,7 +176,7 @@ def get_args():
     parser.add_argument(
         '--mask_scheduler',
         type=str,
-        default='pow',
+        default='cosine',
         help='mask scheduler [cosine, exp, pow]',
     )
     parser.add_argument('--temperature', type=float, default=1.5, help='temperature')
@@ -505,6 +505,7 @@ def main() -> None:
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
         devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
+        limit_test_batches=500.0,
     )
     # Finally, kick of the training process.
     if args.test_mode == 'masking':

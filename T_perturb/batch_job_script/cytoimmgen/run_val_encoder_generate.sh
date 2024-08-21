@@ -72,8 +72,9 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --loss_mode zinb \
 --n_workers 32 \
 --condition_keys Cell_culture_batch \
---time_steps 3 \
+--time_steps 1 \
 --var_list Cell_population Cell_type Time_point Donor \
 --mode Transformer_encoder \
---seed 100
+--seed 100 \
+--context_mode True
 echo "--- Finished computing model"

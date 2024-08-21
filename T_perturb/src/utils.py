@@ -374,7 +374,12 @@ def subset_adata(adata, cell_pairings):
     return adata_subsetted
 
 
-def noise_schedule(ratio, total_tokens, method, exponent=2.0):
+def noise_schedule(
+    ratio,
+    method,
+    exponent=2.0,
+    total_tokens=None,
+):
     '''
     Noise schedule from Google MaskGIT paper
     URL: https://github.com/google-research/maskgit/blob/1db23594e1bd328ee78eadcd148a19281cd0f5b8/maskgit/libml/mask_schedule.py#L21 # noqa
@@ -393,10 +398,6 @@ def noise_schedule(ratio, total_tokens, method, exponent=2.0):
     # Clamps mask into [epsilon, 1)
     mask_ratio = torch.clamp(mask_ratio, 1e-6, 1.0)
     return mask_ratio
-
-
-def uniform(shape, min=0, max=1, device=None):
-    return torch.zeros(shape, device=device).float().uniform_(min, max)
 
 
 def prob_mask_like(shape, prob, device=None):
@@ -428,6 +429,10 @@ def gumbel_noise(t):
 
 def gumbel_sample(t, temperature=1.0, dim=-1):
     return ((t / max(temperature, 1e-10)) + gumbel_noise(t)).argmax(dim=dim)
+
+
+def uniform(shape, min=0, max=1, device=None):
+    return torch.zeros(shape, device=device).float().uniform_(min, max)
 
 
 def mean_nonpadding_embs(embs, pad, dim=1):
