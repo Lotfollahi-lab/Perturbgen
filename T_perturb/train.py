@@ -25,7 +25,7 @@ from T_perturb.src.utils import (
 
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/')
+    os.chdir('/lustre/scratch126/cellgen/team205/bair/')
     print('Changed working directory to root of repository')
 
 

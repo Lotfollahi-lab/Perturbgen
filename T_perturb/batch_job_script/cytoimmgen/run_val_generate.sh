@@ -13,9 +13,9 @@
 # load cuda
 module load cuda-12.1.1
 
-# activate pyenv
-source /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/.petra_cuda12/bin/activate
-cwd=$(pwd)
+# # activate pyenv
+# source /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/.petra_cuda12/bin/activate
+# cwd=$(pwd)
 
 export WANDB_DIR=$cwd/wandb
 # run script
@@ -23,7 +23,7 @@ echo '--- Start computing model'
 
 # Interpolate
 # python3 $cwd/val.py \
-python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
+python3 /lustre/scratch126/cellgen/team205/bair/T_perturb/T_perturb/val.py \
 --test_mode count \
 --split False \
 --splitting_mode stratified \

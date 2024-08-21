@@ -2,8 +2,8 @@
 #!/bin/bash
 #BSUB -q normal # run CPU job
 #BSUB -n 32 # number of cores
-#BSUB -G teamtrynka # groupname for billing
-#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
+#BSUB -G team361 # groupname for billing
+#BSUB -cwd /lustre/scratch126/cellgen/team205/bair/T_perturb/T_perturb # working directory
 #BSUB -o logs/masking_%J.out # output file
 #BSUB -e logs/masking_%J.err # error file
 #BSUB -M 1500000  # RAM memory part 2. Default: 100MB
@@ -11,8 +11,8 @@
 #BSUB -J GF_tokenisation # job name
 
 # activate python environment
-source /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/.petra_cuda12/bin/activate
-cwd=$(pwd)
+# source /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/.petra_cuda12/bin/activate
+cwd="/lustre/scratch126/cellgen/team205/bair/T_perturb/T_perturb"
 
 echo "--- Start tokenisation"
 

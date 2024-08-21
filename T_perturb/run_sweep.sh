@@ -13,9 +13,9 @@
 # load cuda
 module load cuda-12.1.1
 
-# activate environment
-source /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/.petra_cuda12/bin/activate
-cwd=$(pwd)
+# # activate environment
+# source /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/.petra_cuda12/bin/activate
+# cwd=$(pwd)
 
 export WANDB_DIR=$cwd/wandb
 # run sweep

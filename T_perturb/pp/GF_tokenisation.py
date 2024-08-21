@@ -25,7 +25,7 @@ np.random.seed(seed_no)
 
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/')
+    os.chdir('/lustre/scratch126/cellgen/team205/bair/')
     print('Changed working directory to root of repository')
 
 
@@ -34,7 +34,7 @@ def get_args():
     parser.add_argument(
         '--h5ad_path',
         type=str,
-        default='./data/h5d_files/cytoimmgen.h5ad',
+        default='/lustre/scratch126/cellgen/team205/av13/PETRA/data/h5d_files/cytoimmgen.h5ad',
         # default='./data/20240423_eb/EB.h5ad',
         help='Path to h5ad file',
     )
@@ -140,7 +140,7 @@ adata = sc.read_h5ad(args.h5ad_path)
 if 'ensembl_id' not in adata.var.columns:
     adata = map_ensembl_to_genename(
         adata,
-        './data/h5d_files/phase2_data_qced_cells_cellCycleScored_geneMetadata.csv.gz',
+        '/lustre/scratch126/cellgen/team205/av13/PETRA/data/h5d_files/phase2_data_qced_cells_cellCycleScored_geneMetadata.csv.gz',
     )
     adata.var['ensembl_id'] = adata.var_names
 else:
@@ -172,7 +172,7 @@ else:
 # filter adata for only genes occuring in the token dictionary
 (adata_subset, token_id_to_row_id_dict, row_id_to_gene_name) = tokenid_mapping(
     adata,
-    './generative_modelling_omic/Geneformer/geneformer/token_dictionary.pkl',
+    '/lustre/scratch126/cellgen/team205/bair/T_perturb/Geneformer/geneformer/token_dictionary.pkl',
     exclude_non_GF_genes=True,
 )
 # save mapping dictionnary

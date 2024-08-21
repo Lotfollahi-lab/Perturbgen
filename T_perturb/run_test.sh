@@ -10,13 +10,13 @@
 #BSUB -J test_transformer # job name
 
 # activate pyenv
-source /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/.petra_cuda12/bin/activate
+source /nfs/team205/ha11/miniconda3/envs/rinzler/bin/activate
 cwd=$(pwd)
 
 # export WANDB_DIR=$cwd/wandb
 # run script
 echo "--- Start testing CellGen training"
-python -m unittest discover /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/tests/
+python -m unittest discover /lustre/scratch126/cellgen/team205/bair/T_perturb/T_perturb/tests/
 echo "Testing CellGen training finished ---"
 
 # echo "--- Start testing CellGen generation"

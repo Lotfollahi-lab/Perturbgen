@@ -18,7 +18,7 @@ from T_perturb.tests.test_cellgen_training import dummy_dataset
 
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/')
+    os.chdir('/lustre/scratch126/cellgen/team205/bair/')
 
 
 # create cell x gene matrix with 100 cells and 100 genes
