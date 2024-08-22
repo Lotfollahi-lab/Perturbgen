@@ -892,7 +892,7 @@ class CountDecoderTrainer(LightningModule):
             # save adata
             pred_adata.write_h5ad(
                 f'{self.output_dir}/{self.date}_'
-                f'masking_maskgit_stratified_pairing_generate_adata_'
+                f'random_pairing_stratified_pairing_generate_adata_'
                 f'{self.time_steps}_{self.mode}_{self.seed}_'
                 f'{self.loss_mode}_{self.n_samples}.h5ad'
             )

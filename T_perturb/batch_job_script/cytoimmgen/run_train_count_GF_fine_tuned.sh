@@ -21,36 +21,36 @@ export WANDB_DIR=$cwd/wandb
 # Run python script to train count decoder
 echo "--- Start computing model"
 
-# # Experimentation
-# python3 $cwd/train.py \
-# --train_mode count \
-# --split True \
-# --splitting_mode stratified \
-# --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
-# --ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240817_1822_masking_git_train_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1_s_42-epoch=19.ckpt" \
-# --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_masking_git/0h.dataset" \
-# --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt_masking_git" \
-# --src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src_masking_git/0h.h5ad" \
-# --tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt_masking_git" \
-# --mapping_dict_path  "./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl" \
-# --batch_size 64 \
-# --max_len 300 \
-# --epochs 20 \
-# --tgt_vocab_size 1261 \
-# --cellgen_lr 0.0001 \
-# --count_lr 0.005 \
-# --cellgen_wd 0.0001 \
-# --count_wd 0.001 \
-# --mlm_prob 0.15 \
-# --n_workers 32 \
-# --d_ff 128 \
-# --num_layers 6 \
-# --loss_mode zinb \
-# --condition_keys Cell_culture_batch \
-# --time_steps 1 \
-# --var_list Cell_population Cell_type Time_point Donor \
-# --mode GF_fine_tuned
-# echo "--- Finished computing model"
+# Experimentation
+python3 $cwd/train.py
+--train_mode count \
+--split True \
+--splitting_mode stratified \
+--output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
+--ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240822_1638_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1_s_42-epoch=19.ckpt" \
+--src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_random_pairing/0h.dataset" \
+--tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt_random_pairing" \
+--src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src_random_pairing/0h.h5ad" \
+--tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt_random_pairing" \
+--mapping_dict_path  "./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl" \
+--batch_size 64 \
+--max_len 300 \
+--epochs 20 \
+--tgt_vocab_size 1261 \
+--cellgen_lr 0.0001 \
+--count_lr 0.005 \
+--cellgen_wd 0.0001 \
+--count_wd 0.001 \
+--mlm_prob 0.15 \
+--n_workers 32 \
+--d_ff 128 \
+--num_layers 6 \
+--loss_mode zinb \
+--condition_keys Cell_culture_batch \
+--time_steps 1 \
+--var_list Cell_population Cell_type Time_point Donor \
+--mode GF_fine_tuned
+echo "--- Finished computing model"
 
 # #interpolation
 # # python3 $cwd/train.py \
@@ -84,34 +84,34 @@ echo "--- Start computing model"
 # --mode GF_fine_tuned
 # echo "--- Finished computing model"
 
-# extrapolation
-python3 $cwd/train.py \
---train_mode count \
---split True \
---splitting_mode stratified \
---output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
---ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240821_1613_maskgit_masking_train_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-2_s_42-epoch=19.ckpt" \
---src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset" \
---tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
---src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
---tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt" \
---mapping_dict_path  "./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl" \
---batch_size 64 \
---max_len 300 \
---epochs 20 \
---tgt_vocab_size 1261 \
---cellgen_lr 0.0001 \
---count_lr 0.005 \
---cellgen_wd 0.0001 \
---count_wd 0.001 \
---mlm_prob 0.15 \
---n_workers 32 \
---d_ff 128 \
---num_layers 6 \
---loss_mode zinb \
---condition_keys Cell_culture_batch \
---time_steps 1 2 \
---var_list Cell_population Cell_type Time_point Donor \
---mode GF_fine_tuned \
---context_mode True
-echo "--- Finished computing model"
+# # extrapolation
+# python3 $cwd/train.py \
+# --train_mode count \
+# --split True \
+# --splitting_mode stratified \
+# --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
+# --ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240821_1613_maskgit_masking_train_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-2_s_42-epoch=19.ckpt" \
+# --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset" \
+# --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
+# --src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
+# --tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt" \
+# --mapping_dict_path  "./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl" \
+# --batch_size 64 \
+# --max_len 300 \
+# --epochs 20 \
+# --tgt_vocab_size 1261 \
+# --cellgen_lr 0.0001 \
+# --count_lr 0.005 \
+# --cellgen_wd 0.0001 \
+# --count_wd 0.001 \
+# --mlm_prob 0.15 \
+# --n_workers 32 \
+# --d_ff 128 \
+# --num_layers 6 \
+# --loss_mode zinb \
+# --condition_keys Cell_culture_batch \
+# --time_steps 1 2 \
+# --var_list Cell_population Cell_type Time_point Donor \
+# --mode GF_fine_tuned \
+# --context_mode True
+# echo "--- Finished computing model"

@@ -91,8 +91,8 @@ plt.savefig('./res/full_data_umap_log_norm.pdf', dpi=300, bbox_inches='tight')
 plt.close()
 adata_cls = sc.read_h5ad(
     f'{args.res_dir}/'
-    '20240821_wo_context_stratified_pairing_'
-    'generate_adata_[1]_GF_fine_tuned_42_zinb_3.h5ad'
+    '20240822_random_pairing_stratified_pairing'
+    '_generate_adata_[1]_GF_fine_tuned_42_zinb_3.h5ad'
 )
 var_names = adata_cls.obsm['cosine_similarity'].columns
 # filter adata to only include genes in var_names
@@ -250,7 +250,7 @@ sc.pl.embedding(
 )
 plt.savefig(
     f'{args.res_dir}/'
-    '20240821_maskgit_masking_tp3_generate_'
+    '20240822_random_pairing_generate_'
     'reproducibillity_umap_generate_s100_full.pdf',
     bbox_inches='tight',
 )
