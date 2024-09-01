@@ -59,8 +59,8 @@ class TestAnnDataEquality(unittest.TestCase):
             'baseline_adata_extrapolate_Transformer_encoder_42_zinb_1.h5ad'
         )
         anndata_path2 = (
-            './T_perturb/T_perturb/tests/res/20240901_random_pairing_stratified_'
-            'pairing_generate_adata_[1, 2]_Transformer_encoder_42_zinb_1.h5ad'
+            './T_perturb/T_perturb/tests/res/20240901_random_pairing_stratified'
+            '_pairing_generate_adata_[1, 2]_Transformer_encoder_42_zinb_1.h5ad'
         )
 
         # Load AnnData objects

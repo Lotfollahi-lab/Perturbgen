@@ -803,26 +803,10 @@ class CellGen(nn.Module):
         # if generate:
         #     context_pad_dict_.pop(f'tgt_pad_t{tgt_time_step}')
         context_tensors = list(context_embedding_dict_.values())
-
         context_embedding = torch.cat(context_tensors, dim=1)
         context_pads = list(context_pad_dict_.values())
         context_pad = torch.cat(context_pads, dim=1)
-        # selected_tgt_embedding = self.token_embedding(tgt_input_id)
-        # if self.position_embedding == 'sinusoidal':
-        #     selected_tgt_embedding = self.positional_encoding(
-        #         selected_tgt_embedding, tgt_time_step
-        #     )
-        # elif self.position_embedding == 'learnt':
-        #     selected_tgt_embedding = self.positional_encoding(selected_tgt_embedding)
-        # outputs = self.call_decoder(
-        #     enc_output=context_embedding,
-        #     src_attention_mask=context_pad,
-        #     dec_embedding=selected_tgt_embedding,
-        #     tgt_pad=tgt_pad,
-        #     time_random=tgt_time_step,
-        #     generate=generate,
-        #     labels=labels,
-        # )
+
         return context_embedding, context_pad
 
     def forward(
@@ -888,12 +872,14 @@ class CellGen(nn.Module):
                         tgt_input_id_dict=tgt_input_id_dict,
                         tgt_pad_dict=tgt_pad_dict,
                     )
-                    # concatenate all time steps except the selected time step
-                    enc_output, src_attention_mask = self.concatenate_context(
+                    # context should be all the ones before the selected time step
+                    enc_output_, src_attention_mask_ = self.concatenate_context(
                         context_embedding_dict=context_embedding_dict,
                         context_pad_dict=context_pad_dict,
                     )
-
+                else:
+                    enc_output_ = enc_output
+                    src_attention_mask_ = src_attention_mask
                 tgt_embedding = self.token_embedding(tgt_input_id)
                 if self.position_embedding == 'sinusoidal':
                     tgt_embedding = self.positional_encoding(
@@ -903,8 +889,8 @@ class CellGen(nn.Module):
                     tgt_embedding = self.positional_encoding(tgt_embedding)
                 # does not include any context
                 outputs = self.call_decoder(
-                    enc_output=enc_output,
-                    src_attention_mask=src_attention_mask,
+                    enc_output=enc_output_,
+                    src_attention_mask=src_attention_mask_,
                     dec_embedding=tgt_embedding,
                     tgt_pad=tgt_pad,
                     time_random=tgt_time_step,
@@ -961,11 +947,11 @@ class CellGen(nn.Module):
                 )
                 # if generate:
                 #     context_pad_dict = generate_pad_dict
-                # concatenate all time steps except the selected time step
                 enc_output, src_attention_mask = self.concatenate_context(
                     context_embedding_dict=context_embedding_dict,
                     context_pad_dict=context_pad_dict,
                 )
+
             tgt_embedding = self.token_embedding(tgt_input_id)
             if self.position_embedding == 'sinusoidal':
                 tgt_embedding = self.positional_encoding(tgt_embedding, tgt_time_step)
