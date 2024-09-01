@@ -175,11 +175,11 @@ class CellGenTestTrainingCase(unittest.TestCase):
                 checkpoint_callback.best_model_score, 'Checkpoint should have a score'
             )
 
-    # def test_training_loop_with_checkpoint(self):
-    #     self.test_transformer_training_loop(save_checkpoint=True)
+    def test_training_loop_with_checkpoint(self):
+        self.test_transformer_training_loop(save_checkpoint=True)
 
-    def test_training_loop_without_checkpoint(self):
-        self.test_transformer_training_loop(save_checkpoint=False)
+    # def test_training_loop_without_checkpoint(self):
+    #     self.test_transformer_training_loop(save_checkpoint=False)
 
 
 if __name__ == '__main__':
