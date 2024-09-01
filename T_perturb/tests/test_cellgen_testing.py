@@ -58,7 +58,6 @@ class CellGenTestGenerationCase(unittest.TestCase):
             num_samples=100,
             total_time_steps=self.total_time_steps,
         )
-        print(tgt_datasets)
         if condition_keys is None:
             condition_keys = 'tmp_batch'
             # create a mock vector if there are no batch effect
