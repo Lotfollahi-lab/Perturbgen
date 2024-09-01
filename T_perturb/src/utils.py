@@ -65,11 +65,11 @@ def mean_nonpadding_embs(embs, pad, dim=1):
     https://huggingface.co/ctheodoris/Geneformer/blob/main/geneformer/perturber_utils.py # noqa
     Accessed: 2024-05-14
     '''
-    pad_ = pad.clone()
+    pad_mask = pad.clone()
     # mask should be opposite of pad
-    pad_[:, 0] = True
+    pad_mask[:, 0] = True
     # our mask is the opposite of BERT mask
-    pad_mask = ~pad_
+    pad_mask = ~pad_mask
     # create a tensor of original lengths
     original_lens = pad_mask.sum(dim=1)
 
@@ -77,7 +77,6 @@ def mean_nonpadding_embs(embs, pad, dim=1):
     if embs.dim() == 3:
         # fill the masked positions in embs with zeros
         masked_embs = embs.masked_fill(~pad_mask.unsqueeze(2), 0.0)
-
         # compute the mean across the non-padding dimensions
         mean_embs = masked_embs.sum(dim) / original_lens.view(-1, 1).float()
 
@@ -382,7 +381,10 @@ def subset_adata_dataset(
 
 
 def noise_schedule(
-    ratio: float, total_tokens: int, method: str, exponent: float = 2.0
+    ratio: float,
+    method: str,
+    exponent: float = 2.0,
+    total_tokens: Optional[int] = None,
 ) -> torch.Tensor:
     '''
     Description:
@@ -403,17 +405,19 @@ def noise_schedule(
     exponent: `float`
         Exponent for 'pow' method.
     '''
-    total_tokens = torch.tensor(total_tokens, dtype=torch.float)
     if method == 'uniform':
         mask_ratio = 1.0 - ratio
     elif 'pow' in method:
         mask_ratio = 1.0 - ratio**exponent
     elif method == 'cosine':
         mask_ratio = torch.cos(ratio * math.pi * 0.5)
+
     elif method == 'log':
-        mask_ratio = -torch.log2(ratio) / torch.log2(total_tokens)
+        if total_tokens:
+            mask_ratio = -torch.log2(ratio) / torch.log2(total_tokens)
     elif method == 'exp':
-        mask_ratio = 1 - torch.exp2(-torch.log2(total_tokens) * (1 - ratio))
+        if total_tokens:
+            mask_ratio = 1 - torch.exp2(-torch.log2(total_tokens) * (1 - ratio))
     # Clamps mask into [epsilon, 1)
     mask_ratio = torch.clamp(mask_ratio, 1e-6, 1.0)
     return mask_ratio

@@ -36,7 +36,7 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --cell_pairing_dir "./CellGen-reproducibility/ipf_copd/processed_data/cell_pairing" \
 --batch_size 32 \
 --max_len 1650 \
---epochs 50 \
+--epochs 20 \
 --tgt_vocab_size 25426 \
 --cellgen_lr 0.0001 \
 --cellgen_wd 0.0001 \

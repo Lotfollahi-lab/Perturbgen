@@ -16,6 +16,7 @@ from T_perturb.src.utils import (
     generate_padding,
     mean_nonpadding_embs,
     noise_schedule,
+    uniform,
 )
 
 # from datetime import datetime
@@ -87,21 +88,22 @@ class SinusoidalPositionalEncoding(nn.Module):
         return x + self.pe[:, : x.size(1)]
 
 
-# class LearntPositionalEncoding(nn.Module):
-#     def __init__(self, d_model, max_seq_length):
-#         super(LearntPositionalEncoding, self).__init__()
-#         self.position_embeddings = nn.Embedding(max_seq_length, d_model)
-#         self.register_buffer(
-#             'position_ids',
-#             torch.arange(max_seq_length).expand((1, -1)),
-#             persistent=False,
-#         )
+class LearntPositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_seq_length):
+        super(LearntPositionalEncoding, self).__init__()
+        self.position_embeddings = nn.Embedding(max_seq_length, d_model)
+        # Register a buffer for position IDs,
+        # precomputed for the maximum sequence length
+        position_ids = torch.arange(max_seq_length).expand((1, -1))
+        self.register_buffer('position_ids', position_ids)
 
-#     def forward(self, x, position_ids):
-#         # TODO: register buffer
-#         positions = torch.arange(x.size(1), device=x.device).expand(x.size(0), -1)
+    def forward(self, x, position_ids=None):
+        # TODO: register buffer
+        if position_ids is None:
+            position_ids = self.position_ids[:, : x.size(1)]
+        position_ids = position_ids.expand(x.size(0), -1)
 
-#         return x + self.position_embeddings(x)
+        return x + self.position_embeddings(position_ids)
 
 
 class Mlp(nn.Module):
@@ -631,12 +633,20 @@ class Encoder(nn.Module):
         nlayers: int = 6,
         dropout: float = 0.02,
         d_ff: int = 512,
+        position_embedding: Literal['sinusoidal', 'learnt'] = 'learnt',
     ):
         super().__init__()
-        self.positional_encoding = SinusoidalPositionalEncoding(
-            d_model=d_model,
-            max_seq_length=max_seq_length,
-        )
+        self.position_embedding = position_embedding
+        if position_embedding == 'sinusoidal':
+            self.positional_encoding = SinusoidalPositionalEncoding(
+                d_model=d_model,
+                max_seq_length=max_seq_length,
+            )
+        else:
+            self.positional_encoding = LearntPositionalEncoding(
+                d_model=d_model,
+                max_seq_length=max_seq_length,
+            )
         encoder_layers = TransformerEncoderLayer(
             d_model=d_model,
             nhead=nhead,
@@ -669,10 +679,13 @@ class Encoder(nn.Module):
         output: `torch.Tensor`
             shape ``[batch_size, seq_len, total_vocab_size]``
         '''
-        src = self.token_embedding(src) * math.sqrt(self.d_model)
+        src_embedding = self.token_embedding(src) * math.sqrt(self.d_model)
         src = self.positional_encoding(x=src)
         output = self.transformer_encoder(src, src_key_padding_mask=src_mask)
-
+        if self.position_embedding == 'sinusoidal':
+            src_embedding = self.positional_encoding(x=src_embedding)
+        elif self.position_embedding == 'learnt':
+            src_embedding = self.positional_encoding(x=src_embedding)
         return output
 
 
@@ -692,6 +705,7 @@ class CellGen(nn.Module):
             'GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'
         ] = 'GF_frozen',
         moe_type: Literal['moe_attention', 'none', 'moe_ffn'] = 'none',
+        position_embedding: Literal['sinusoidal', 'learnt'] = 'learnt',
     ):
         '''
         Description:
@@ -725,6 +739,8 @@ class CellGen(nn.Module):
         moe_type: `str`
             Mode of the MoE.
             Options: ['moe_attention', 'none', 'moe_ffn']
+        position_embedding: `str` (default: 'learnt')
+            Positional encoding type: ['sinusoidal', 'learnt'].
 
         Returns:
         --------
@@ -753,10 +769,19 @@ class CellGen(nn.Module):
         )  # add one for each cls token
         self.mask_token = 1  # as defined in Geneformer
         self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
-        self.positional_encoding = SinusoidalPositionalEncoding(
-            d_model=d_model,
-            max_seq_length=max_seq_length,
-        )
+        self.position_embedding = position_embedding
+        if position_embedding == 'sinusoidal':
+            self.positional_encoding = SinusoidalPositionalEncoding(
+                d_model=d_model,
+                max_seq_length=max_seq_length,
+            )
+        elif position_embedding == 'learnt':
+            self.positional_encoding = LearntPositionalEncoding(
+                d_model=d_model,
+                max_seq_length=max_seq_length,
+            )
+        else:
+            raise ValueError(f'Invalid position embedding: {position_embedding}')
         if encoder_type in ['GF_frozen', 'GF_fine_tuned']:
             self.encoder_layers = Geneformerwrapper(mode=encoder_type)
         elif encoder_type == 'Transformer_encoder':
@@ -792,27 +817,9 @@ class CellGen(nn.Module):
         initrange = 0.1
         self.token_embedding.weight.data.uniform_(-initrange, initrange)
 
-    # def generate_pad_testing(
-    #     self, tgt_input_id_dict, tgt_pad, mlm_probability=0.15, time_step=2
-    # ):
-    #     tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_step}']
-    #     labels = tgt_input_id.clone()
-    #     # Initialize probability_matrix tensor without specifying device
-    #     probability_matrix = torch.full_like(
-    #         tgt_pad, mlm_probability, dtype=torch.float
-    #     )
-    #     cls_tgt_pad = tgt_pad.clone()
-    #     cls_tgt_pad[:, 0] = True
-    #     probability_matrix = probability_matrix.masked_fill(
-    #         cls_tgt_pad, 0
-    #     )  # add CLS token to the tokens
-    #     tgt_mask = torch.bernoulli(probability_matrix).bool()
-    #     labels[~tgt_mask] = -100
-
-    #     return labels, tgt_mask
-    # get cell embeddings excluding padding
-
-    def generate_mask(self, tgt_input_id, tgt_pad, mlm_probability=0.15):
+    def generate_mask(
+        self, tgt_input_id, tgt_pad, mlm_probability=0.15, mask_mode='MASKGIT'
+    ):
         '''
         Description:
         ------------
@@ -830,7 +837,8 @@ class CellGen(nn.Module):
             Target padding mask.
         mlm_probability: `float`
             Fraction of tokens to mask.
-
+        mask_mode: `str`
+            Masking mode: ['BERT', 'MASKGIT']
         Returns:
         --------
         tgt_input_id: `torch.Tensor`
@@ -840,46 +848,51 @@ class CellGen(nn.Module):
         '''
         device = tgt_input_id.device
         labels = tgt_input_id.clone()
-        probability_matrix = torch.full_like(
-            tgt_pad, mlm_probability, dtype=torch.float
-        )
-        # Do not mask CLS and PAD tokens
-        cls_tgt_pad = tgt_pad.clone()
-        cls_tgt_pad[:, 0] = True
-        probability_matrix = probability_matrix.masked_fill(cls_tgt_pad, 0)
-        masked_indices = torch.bernoulli(probability_matrix).bool()
-        labels[~masked_indices] = -100
+        if mask_mode == 'BERT':
+            probability_matrix = torch.full_like(
+                tgt_pad, mlm_probability, dtype=torch.float
+            )
+            # Do not mask CLS and PAD tokens
+            cls_tgt_pad = tgt_pad.clone()
+            cls_tgt_pad[:, 0] = True
 
-        # replace 80% of the tokens with mask token,
-        # 10% with random token, 10% with original token
-        indices_masked = (
-            torch.bernoulli(torch.full(labels.shape, 0.8, device=device)).bool()
-            & masked_indices
-        )
-        tgt_input_id[masked_indices] = self.mask_token
-        indices_random = (
-            torch.bernoulli(torch.full(labels.shape, 0.5, device=device)).bool()
-            & masked_indices
-            & ~indices_masked
-        )
-        # +1 to exclude pad and cls tokens from random token selection
-        random_tokens = torch.randint(
-            1, self.tgt_vocab_size, labels.shape, dtype=torch.long, device=device
-        )
-        tgt_input_id[indices_random] = random_tokens[indices_random]
-        # 10% remain unmasked
+            probability_matrix = probability_matrix.masked_fill(cls_tgt_pad, 0)
+            masked_indices = torch.bernoulli(probability_matrix).bool()
+            labels[~masked_indices] = -100
+            # replace 80% of the tokens with mask token,
+            # 10% with random token, 10% with original token
+            indices_masked = (
+                torch.bernoulli(torch.full(labels.shape, 0.8, device=device)).bool()
+                & masked_indices
+            )
+            tgt_input_id[masked_indices] = self.mask_token
+            indices_random = (
+                torch.bernoulli(torch.full(labels.shape, 0.5, device=device)).bool()
+                & masked_indices
+                & ~indices_masked
+            )
+            # +1 to exclude pad and cls tokens from random token selection
+            random_tokens = torch.randint(
+                2, self.tgt_vocab_size, labels.shape, dtype=torch.long, device=device
+            )
+            tgt_input_id[indices_random] = random_tokens[indices_random]
+        elif mask_mode == 'MASKGIT':
+            sample_length = torch.sum(~tgt_pad, dim=1)
+            batch, seq_len = tgt_input_id.shape
+            rand_time = uniform((batch,), device=device)
+            rand_mask_probs = noise_schedule(rand_time, method='cosine')
+            num_token_masked = (
+                (torch.mul(sample_length, rand_mask_probs)).round().clamp(min=1)
+            )
+            rand_int = torch.rand((batch, seq_len), device=device)
+            rand_int[tgt_pad] = 1
+            batch_randperm = rand_int.argsort(dim=-1)
+            mask = batch_randperm < rearrange(num_token_masked, 'b -> b 1')
+            # do not mask CLS token
+            mask[:, 0] = False
+            tgt_input_id[mask] = self.mask_token
+            labels[~mask] = -100
         return tgt_input_id, labels
-
-    # def call_padding(
-    #     self,
-    #     tgt_input_id_dict,
-    #     time_steps,
-    # ):
-    #     tgt_pad_dict = {}
-    #     for time_step in time_steps:
-    #         tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_step}']
-    #         tgt_pad_dict[f'tgt_pad_t{time_step}'] = generate_pad(tgt_input_id)
-    #     return tgt_pad_dict
 
     def call_encoder(self, src_input_id, src_attention_mask):
         if self.encoder_type in ['GF_frozen', 'GF_fine_tuned']:
@@ -933,100 +946,6 @@ class CellGen(nn.Module):
             outputs['cls_positions'] = cls_positions
         return outputs
 
-    # def generate_context(
-    #     self,
-    #     enc_output,
-    #     src_attention_mask,
-    #     tgt_time_step,
-    #     all_time_steps,
-    #     tgt_input_id_dict,
-    #     tgt_pad_dict,
-    #     cls_positions=None,
-    #     generate=False,
-    # ):
-    #     context_embedding_dict = {}
-    #     context_embedding_dict['context_t0'] = enc_output
-    #     context_pad_dict = {}
-    #     context_pad_dict['src_pad'] = src_attention_mask
-
-    #     # retrieve the embeddings to provide as context
-    #     # pad the rest of the time steps
-    #     for time_step in all_time_steps:
-    #         # exclude tgt_time_step from the context
-    #         if time_step != tgt_time_step:
-    #             # if (generate is True) and (time_step in self.time_steps):
-    #             # only provide previous time steps as context
-    #             if len(context_embedding_dict) > 1:
-    #                 context_tensors = list(context_embedding_dict.values())
-    #                 context = torch.cat(context_tensors, dim=1)
-    #             else:
-    #                 context = enc_output
-    #             context_pads = list(context_pad_dict.values())
-    #             context_pad = torch.cat(context_pads, dim=1)
-    #             tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_step}']
-    #             tgt_pad = tgt_pad_dict[f'tgt_pad_t{time_step}']
-    #             with torch.no_grad():
-    #                 tgt_embedding = self.token_embedding(tgt_input_id)
-    #                 dec_embedding = self.positional_encoding(tgt_embedding, time_step)
-
-    #                 # create context for the ones before the selected time step
-    #                 # pad the rest
-    #                 dec_outputs = self.call_decoder(
-    #                     enc_output=context,
-    #                     src_attention_mask=context_pad,
-    #                     dec_embedding=dec_embedding,
-    #                     tgt_pad=tgt_pad,
-    #                     time_random=time_step,
-    #                     generate=generate,
-    #                     labels=None,
-    #                     cls_positions=cls_positions,
-    #                 )
-    #             context_embedding_dict[f'context_t{time_step}'] = dec_outputs[
-    #                 'dec_embedding'
-    #             ]
-    #             # append the current pad to the previous context pad
-    #             context_pad_dict[f'tgt_pad_t{time_step}'] = tgt_pad
-    #     return context_embedding_dict, context_pad_dict
-
-    # def context_backprop(
-    #     self,
-    #     context_embedding_dict,
-    #     context_pad_dict,
-    #     tgt_pad,
-    #     tgt_time_step,
-    #     tgt_input_id,
-    #     labels=None,
-    #     cls_positions=None,
-    #     generate=False,
-    # ):
-    #     # selected_tgt_pad = context_pad_dict[f'tgt_pad_t{tgt_time_step}']
-
-    #     context_embedding_dict_ = context_embedding_dict.clone()
-    #     context_pad_dict_ = context_pad_dict.clone()
-    #     if generate:
-    #         context_pad_dict_.pop(f'tgt_pad_t{tgt_time_step}')
-    #     context_tensors = list(context_embedding_dict_.values())
-
-    #     context_embedding = torch.cat(context_tensors, dim=1)
-    #     context_pads = list(context_pad_dict_.values())
-    #     context_pad = torch.cat(context_pads, dim=1)
-    #     selected_tgt_embedding = self.token_embedding(tgt_input_id)
-
-    #     selected_tgt_embedding = self.positional_encoding(
-    #         selected_tgt_embedding, tgt_time_step
-    #     )
-    #     outputs = self.call_decoder(
-    #         enc_output=context_embedding,
-    #         src_attention_mask=context_pad,
-    #         dec_embedding=selected_tgt_embedding,
-    #         tgt_pad=tgt_pad,
-    #         time_random=tgt_time_step,
-    #         generate=generate,
-    #         labels=labels,
-    #         cls_positions=cls_positions,
-    #     )
-    #     return outputs
-
     def forward(
         self,
         src_input_id: torch.Tensor,
@@ -1063,7 +982,8 @@ class CellGen(nn.Module):
         outputs: `dict`
             Output dictionary
         '''
-
+        src_attention_mask = generate_padding(src_input_id)
+        enc_output = self.call_encoder(src_input_id, src_attention_mask)
         if apply_attn_mask:
             tgt_pad = generate_padding(tgt_input_id)
             tgt_input_id, labels = self.generate_mask(
@@ -1080,14 +1000,16 @@ class CellGen(nn.Module):
                 labels = None
             elif tgt_input_id is not None:
                 tgt_pad = generate_padding(tgt_input_id)
-                labels = None
                 generate = False
-        src_attention_mask = generate_padding(src_input_id)
-        enc_output = self.call_encoder(src_input_id, src_attention_mask)
+                labels = None
+
         # only extract context for all the ones before the selected time step
         # rest will be padded
         tgt_embedding = self.token_embedding(tgt_input_id)
-        tgt_embedding = self.positional_encoding(tgt_embedding)
+        if self.position_embedding == 'sinusoidal':
+            tgt_embedding = self.positional_encoding(tgt_embedding)
+        elif self.position_embedding == 'learnt':
+            tgt_embedding = self.positional_encoding(tgt_embedding)
         outputs = self.call_decoder(
             enc_output=enc_output,
             src_attention_mask=src_attention_mask,
