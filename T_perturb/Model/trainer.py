@@ -267,6 +267,7 @@ class CellGenTrainer(LightningModule):
         # add task token to the ids
         ids[:, 0] = tgt_input_id[:, 0]
         scores = torch.zeros_like(tgt_input_id, dtype=torch.float)
+        # taking care of padding tokens
         scores = scores.masked_fill(tgt_pad, -torch.finfo().max)
         ids = ids.masked_fill(tgt_pad, 0)
         # scores[:, 0] = 1.0
@@ -312,14 +313,12 @@ class CellGenTrainer(LightningModule):
 
         Parameters:
         -----------
-        generate_id_dict: `dict`
-            Dictionary of target token inputs for generation.
-        generate_pad_dict: `dict`
-            Dictionary of target padding masks for generation.
+        ids: `torch.Tensor`
+            Target token inputs.
+        tgt_pad: `torch.Tensor`
+            Padding mask for the target tokens.
         src_input_id: `torch.Tensor`
             Source token input.
-        demask_fn: `nn.Module`
-            Pretrained model for demasking.
         mask_scheduler: `str`
             Mask scheduler function.
             Options: ['uniform', 'pow', 'cosine', 'log', 'exp']
@@ -347,7 +346,9 @@ class CellGenTrainer(LightningModule):
             Generated target token inputs.
         '''
         max_neg_value = -torch.finfo().max
-        task_token = ids[:, 0]
+        # avoid predicting cls token
+        scores[:, 0] = max_neg_value
+        ids_to_keep = torch.zeros_like(ids, dtype=torch.long)
         for iteration, steps_until_x0 in tqdm(
             zip(
                 torch.linspace(0, 1, iterations),
@@ -361,21 +362,20 @@ class CellGenTrainer(LightningModule):
                 total_tokens=ids.shape[1],
                 method=mask_scheduler,
             )
-            ids_to_keep = torch.zeros_like(ids, dtype=torch.long)
-            batch_size, seq_len = scores.shape
-            unpadded = (scores != max_neg_value).sum(dim=1)
-            num_token_masked = (unpadded.float() * rand_mask_prob).long()
+            batch_size, _ = scores.shape
+            unmasked = (scores != max_neg_value).sum(dim=1)
+            num_tokens_to_mask = (unmasked.float() * rand_mask_prob).long()
             mask = torch.zeros_like(scores, dtype=torch.bool)
-            masked_indices = torch.topk(scores, num_token_masked.max(), dim=-1).indices
-            mask = mask.scatter(1, masked_indices, True)
+            indices_to_mask = torch.topk(
+                scores, num_tokens_to_mask.max(), dim=-1
+            ).indices
             # Mask the top `num_tokens_to_mask` positions for each sample
             for i in range(batch_size):
-                mask[i, masked_indices[i, : num_token_masked[i]]] = True
+                mask[i, indices_to_mask[i, : num_tokens_to_mask[i]]] = True
             ids = ids.masked_fill(mask, self.mask_token)
             # print('scores',scores[:5,:])
             # print('ids',ids[:5,:])
             # keep indices which are not masked
-            ids[:, 0] = task_token
             ids_to_keep = torch.where(
                 mask,
                 torch.tensor(0, dtype=ids.dtype, device=ids.device),
@@ -390,20 +390,15 @@ class CellGenTrainer(LightningModule):
             )
             logits = outputs['dec_logits']
             # exclude cls token
-            ids_ = ids[:, 1:]
-            scores_ = scores[:, 1:]
-            ids_to_keep_ = ids_to_keep[:, 1:]
-            # avoid predicting already predicted tokens
-            # thus set the logits to max_neg_value
-            unique_ids_per_sample = [torch.unique(ids) for ids in ids_to_keep_]
-            # Create a mask for the logits to set specific positions to max_neg_value
-            logits_mask = torch.zeros_like(logits).bool()
+            ids_ = ids[:, 1:].clone()
+            scores_ = scores[:, 1:].clone()
+            ids_to_keep_ = ids_to_keep[:, 1:].clone()
+            # Create a mask of already predicted tokens
+            for sample in range(logits.shape[0]):
+                unique_ids = torch.unique(ids_to_keep_[sample])
+                logits[sample, :, unique_ids] = -float('inf')
 
-            for i, unique_ids in enumerate(unique_ids_per_sample):
-                logits_mask[i, :, unique_ids] = True
-            logits[logits_mask] = max_neg_value
-
-            filtered_logits = top_k(logits, topk_filter_thres)
+            filtered_logits = top_k(logits.clone(), topk_filter_thres)
             temperature = starting_temperature * (
                 steps_until_x0 / iteration
             )  # temperature is annealed

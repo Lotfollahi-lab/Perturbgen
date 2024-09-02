@@ -415,9 +415,13 @@ def noise_schedule(
     elif method == 'log':
         if total_tokens:
             mask_ratio = -torch.log2(ratio) / torch.log2(total_tokens)
+        else:
+            raise ValueError('total_tokens must be provided for log method')
     elif method == 'exp':
         if total_tokens:
             mask_ratio = 1 - torch.exp2(-torch.log2(total_tokens) * (1 - ratio))
+        else:
+            raise ValueError('total_tokens must be provided for exp method')
     # Clamps mask into [epsilon, 1)
     mask_ratio = torch.clamp(mask_ratio, 1e-6, 1.0)
     return mask_ratio
