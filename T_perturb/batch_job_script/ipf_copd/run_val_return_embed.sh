@@ -27,11 +27,11 @@ echo "--- Start computing model"
 # python3 $cwd/val.py \
 python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
 --test_mode masking \
---split True \
+--split False \
 --splitting_mode random \
 --return_embed True \
 --generate False \
---ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240901_2209_ipf_copd_train_masking_lr_0.0001_wd_0.0001_batch_32_mlmp_0.15_ntask_2_s_42-epoch=19.ckpt" \
+--ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240903_1231_moe_attn_train_masking_lr_0.0001_wd_0.0001_batch_32_mlmp_0.15_ntask_2_s_42-epoch=19.ckpt" \
 --output_dir "./CellGen-reproducibility/ipf_copd/res" \
 --src_dataset "./CellGen-reproducibility/ipf_copd/processed_data/dataset_hvg_src/Control.dataset" \
 --tgt_dataset_folder "./CellGen-reproducibility/ipf_copd/processed_data/dataset_hvg_tgt/" \
@@ -44,13 +44,11 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --tgt_vocab_size 25426 \
 --cellgen_lr 0.0001 \
 --cellgen_wd 0.0001 \
---count_lr 0.00005 \
---count_wd 0.01 \
 --n_workers 16 \
 --d_ff 128 \
 --num_layers 1 \
 --n_task_conditions 2 \
 --var_list CellType_Category Manuscript_Identity Subclass_Cell_Identity Celltype_HLCA disease IPF_signature IPF_signature_disease profibrotic_mac_signature \
 --encoder_type GF_frozen \
---moe_type none
+--moe_type moe_attention
 echo "--- Finished computing model"

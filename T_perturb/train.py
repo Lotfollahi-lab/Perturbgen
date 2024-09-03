@@ -248,17 +248,107 @@ def main() -> None:
     print('Loading and preprocessing data...')
 
     tgt_datasets = read_dataset_files(args.tgt_dataset_folder, 'dataset')
-    tgt_adatas = read_dataset_files(args.tgt_adata_folder, 'h5ad')
     src_dataset = load_from_disk(args.src_dataset)
-    src_adata = sc.read_h5ad(args.src_adata)
+    # Preprocessing adata for cell pairing
+    if args.train_mode == 'count':
+        tgt_adatas = read_dataset_files(args.tgt_adata_folder, 'h5ad')
+        # only load counts not entire anndata
+        tgt_counts_dict = {}
+        for keys, tgt_adata in tgt_adatas.items():
+            tgt_counts_dict[keys] = tgt_adata.X
+        src_adata = sc.read_h5ad(args.src_adata)
+        src_counts = src_adata.X
+
+        if args.loss_mode == 'mse':
+            # log normalize data only for mse loss
+            sc.pp.normalize_total(src_adata, target_sum=1e4)
+            sc.pp.log1p(src_adata)
+            for _, tgt_adata in tgt_adatas.items():
+                sc.pp.normalize_total(tgt_adata, target_sum=1e4)
+                sc.pp.log1p(tgt_adata)
+            # ZINB count loss preprocessing
+        # ----------------------------------------------------------------------------------
+        tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.n_task_conditions}']
+        if args.condition_keys is None:
+            args.condition_keys = 'tmp_batch'
+            # create a mock vector if there are no batch effect
+            tgt_adata_tmp.obs[args.condition_keys] = 1
+
+        if isinstance(args.condition_keys, str):
+            condition_keys_ = [args.condition_keys]
+        else:
+            condition_keys_ = args.condition_keys
+
+        if args.conditions is None:
+            if args.condition_keys is not None:
+                conditions_ = {}
+                for cond in condition_keys_:
+                    conditions_[cond] = tgt_adata_tmp.obs[cond].unique().tolist()
+            else:
+                conditions_ = {}
+        else:
+            conditions_ = args.conditions
+
+        if args.conditions_combined is None:
+            if len(condition_keys_) > 1:
+                tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[
+                    args.condition_keys
+                ].apply(lambda x: '_'.join(x), axis=1)
+            else:
+                tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[
+                    args.condition_keys
+                ]
+            conditions_combined_ = (
+                tgt_adata_tmp.obs['conditions_combined'].unique().tolist()
+            )
+        else:
+            conditions_combined_ = args.conditions_combined
+
+        condition_encodings = {
+            cond: {
+                k: v for k, v in zip(conditions_[cond], range(len(conditions_[cond])))
+            }
+            for cond in conditions_.keys()
+        }
+        conditions_combined_encodings = {
+            k: v for k, v in zip(conditions_combined_, range(len(conditions_combined_)))
+        }
+
+        if (condition_encodings is not None) and (condition_keys_ is not None):
+            conditions = [
+                label_encoder(
+                    tgt_adata_tmp,
+                    encoder=condition_encodings[condition_keys_[i]],
+                    condition_key=condition_keys_[i],
+                )
+                for i in range(len(condition_encodings))
+            ]
+            conditions = torch.tensor(conditions, dtype=torch.long).T
+            conditions_combined = label_encoder(
+                tgt_adata_tmp,
+                encoder=conditions_combined_encodings,
+                condition_key='conditions_combined',
+            )
+            conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
+    else:
+        src_counts = None
+        tgt_counts_dict = None
+        tgt_adatas = None
+        conditions = None
+        conditions_combined = None
+        condition_keys_ = None
+        condition_encodings = None
+        conditions_combined_ = None
+        conditions_combined_encodings = None
     # cell pairing
     if args.cell_pairing_dir:
         cell_pairing = read_dataset_files(args.cell_pairing_dir, 'pkl')
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
-    tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.n_task_conditions}']
     if args.split:
+        # TODO: rewrite stratified splitting to not depend on tgt adata
         if args.splitting_mode == 'stratified':
+            tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.n_task_conditions}']
             # start preprocessing to avoid loading anndata into datamodule
             train_indices, val_indices, test_indices = stratified_split(
                 tgt_adata=tgt_adata_tmp,
@@ -343,88 +433,15 @@ def main() -> None:
                 range(len(tgt_datasets[f'tgt_dataset_t{args.n_task_conditions}']))
             )
             # check if the train indices are the same for both adata and dataset
-            subset_adata = tgt_adata_tmp[train_indices]
-            subset_dataset = tgt_datasets[
-                f'tgt_dataset_t{args.n_task_conditions}'
-            ].select(train_indices)
-            assert (
-                subset_adata.obs['cell_pairing_index'].tolist()
-                == subset_dataset['cell_pairing_index']
-            )
-    # if tgt_adata.X.__class__.__name__ == 'csr_matrix':
-    #     tgt_adata.X = tgt_adata.X.A
-    # if src_adata.X.__class__.__name__ == 'csr_matrix':
-    #     src_adata.X = src_adata.X.A
-    if args.loss_mode == 'mse':
-        # log normalize data only for mse loss
-        sc.pp.normalize_total(src_adata, target_sum=1e4)
-        sc.pp.log1p(src_adata)
-        for _, tgt_adata in tgt_adatas.items():
-            sc.pp.normalize_total(tgt_adata, target_sum=1e4)
-            sc.pp.log1p(tgt_adata)
-
-    # ZINB count loss preprocessing
-    # ----------------------------------------------------------------------------------
-
-    if args.condition_keys is None:
-        args.condition_keys = 'tmp_batch'
-        # create a mock vector if there are no batch effect
-        tgt_adata_tmp.obs[args.condition_keys] = 1
-
-    if isinstance(args.condition_keys, str):
-        condition_keys_ = [args.condition_keys]
-    else:
-        condition_keys_ = args.condition_keys
-
-    if args.conditions is None:
-        if args.condition_keys is not None:
-            conditions_ = {}
-            for cond in condition_keys_:
-                conditions_[cond] = tgt_adata_tmp.obs[cond].unique().tolist()
-        else:
-            conditions_ = {}
-    else:
-        conditions_ = args.conditions
-
-    if args.conditions_combined is None:
-        if len(condition_keys_) > 1:
-            tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[
-                args.condition_keys
-            ].apply(lambda x: '_'.join(x), axis=1)
-        else:
-            tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[
-                args.condition_keys
-            ]
-        conditions_combined_ = (
-            tgt_adata_tmp.obs['conditions_combined'].unique().tolist()
-        )
-    else:
-        conditions_combined_ = args.conditions_combined
-
-    condition_encodings = {
-        cond: {k: v for k, v in zip(conditions_[cond], range(len(conditions_[cond])))}
-        for cond in conditions_.keys()
-    }
-    conditions_combined_encodings = {
-        k: v for k, v in zip(conditions_combined_, range(len(conditions_combined_)))
-    }
-
-    if (condition_encodings is not None) and (condition_keys_ is not None):
-        conditions = [
-            label_encoder(
-                tgt_adata_tmp,
-                encoder=condition_encodings[condition_keys_[i]],
-                condition_key=condition_keys_[i],
-            )
-            for i in range(len(condition_encodings))
-        ]
-        conditions = torch.tensor(conditions, dtype=torch.long).T
-        conditions_combined = label_encoder(
-            tgt_adata_tmp,
-            encoder=conditions_combined_encodings,
-            condition_key='conditions_combined',
-        )
-        conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
+            if tgt_adata_tmp:
+                subset_adata = tgt_adata_tmp[train_indices]
+                subset_dataset = tgt_datasets[
+                    f'tgt_dataset_t{args.n_task_conditions}'
+                ].select(train_indices)
+                assert (
+                    subset_adata.obs['cell_pairing_index'].tolist()
+                    == subset_dataset['cell_pairing_index']
+                )
 
     print('Data loaded and preprocessed.')
     # Initialize model module
@@ -483,12 +500,6 @@ def main() -> None:
         raise ValueError('train_mode not recognised, needs to be masking or count')
     # Initialize data module
     # ----------------------------------------------------------------------------------
-
-    # only load counts not entire anndata
-    tgt_counts_dict = {}
-    for keys, tgt_adata in tgt_adatas.items():
-        tgt_counts_dict[keys] = tgt_adata.X
-    src_counts = src_adata.X
 
     if args.train_mode == 'masking':
         data_module = CellGenDataModule(
@@ -551,7 +562,7 @@ def main() -> None:
         if args.split:
             monitor_metric = 'val/perplexity'
         else:
-            monitor_metric = 'train/perplexity'
+            monitor_metric = 'train/masking_loss'
         mode = 'min'
     elif args.train_mode == 'count':
         filename = (
@@ -609,6 +620,11 @@ def main() -> None:
         verbose=False,
         mode=mode,
     )
+    # advanced_profiler = AdvancedProfiler(
+    #     dirpath='/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/plt/misc/profiler',
+    #     filename='profiler',
+    # )
+    # device_stats = DeviceStatsMonitor()
     accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
     print('Using device {}.'.format(accelerator))
     # deepspeed_strategy = DeepSpeedStrategy(

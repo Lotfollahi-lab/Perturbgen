@@ -13,6 +13,7 @@ import torch
 from datasets import DatasetDict
 from geneformer.perturber_utils import pad_tensor_list
 from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
+from pandas import Categorical
 from pytorch_lightning import LightningDataModule
 from scipy.sparse import csr_matrix
 from torch.utils.data import (
@@ -173,9 +174,11 @@ class CellGenDataModule(LightningDataModule):
             str_i = str(i)
             dataset_params = {
                 'src_dataset': self.src_dataset,
-                'src_counts': self.src_counts,
                 'tgt_datasets': self.tgt_datasets[f'tgt_dataset_t{str_i}'],
-                'tgt_counts_dict': self.tgt_counts_dict[f'tgt_h5ad_t{str_i}'],
+                'tgt_counts_dict': self.tgt_counts_dict[f'tgt_h5ad_t{str_i}']
+                if self.tgt_counts_dict is not None
+                else None,
+                'src_counts': self.src_counts if self.src_counts is not None else None,
             }
 
             if self.condition_encodings is not None:
@@ -258,13 +261,16 @@ class CellGenDataModule(LightningDataModule):
         src_input_ids = pad_tensor_list(
             src_input_ids, self.max_len, self.pad_token_id, model_input_size
         )
-        src_counts = None
-        if 'src_counts' in batch[0]:
+
+        if batch[0]['src_counts'] is not None:
             if isinstance(batch[0]['src_counts'], csr_matrix):
                 src_counts = [torch.tensor(d['src_counts'].A) for d in batch]
             else:
                 src_counts = [torch.tensor(d['src_counts']) for d in batch]
             src_counts = torch.cat(src_counts, dim=0)
+        else:
+            src_counts = None
+
         if self.condition_encodings:
             condition = [d['conditions'] for d in batch]
             condition_combined = torch.stack([d['conditions_combined'] for d in batch])
@@ -278,17 +284,22 @@ class CellGenDataModule(LightningDataModule):
             tgt_input_ids, self.max_len, self.pad_token_id, model_input_size
         )
         model_input_size = torch.max(tgt_length)
-        if isinstance(batch[0]['tgt_counts'], csr_matrix):
-            tgt_counts_matrices = [d['tgt_counts'].A for d in batch]
-        else:
-            tgt_counts_matrices = [d['tgt_counts'] for d in batch]
+        if batch[0]['tgt_counts'] is not None:
+            if isinstance(batch[0]['tgt_counts'], csr_matrix):
+                tgt_counts_matrices = [d['tgt_counts'].A for d in batch]
+            else:
+                tgt_counts_matrices = [d['tgt_counts'] for d in batch]
 
-        tgt_counts = [torch.tensor(matrix) for matrix in tgt_counts_matrices]
-        tgt_size_factor = [
-            torch.tensor(np.ravel(matrix.sum(axis=1))) for matrix in tgt_counts_matrices
-        ]
-        tgt_counts = torch.cat(tgt_counts, dim=0)
-        tgt_size_factor = torch.cat(tgt_size_factor, dim=0)
+            tgt_counts = [torch.tensor(matrix) for matrix in tgt_counts_matrices]
+            tgt_size_factor = [
+                torch.tensor(np.ravel(matrix.sum(axis=1)))
+                for matrix in tgt_counts_matrices
+            ]
+            tgt_counts = torch.cat(tgt_counts, dim=0)
+            tgt_size_factor = torch.cat(tgt_size_factor, dim=0)
+        else:
+            tgt_counts = None
+            tgt_size_factor = None
         tgt_cell_idx = [d['tgt_dataset']['cell_pairing_index'] for d in batch]
         out = {
             'src_input_ids': src_input_ids,
@@ -304,6 +315,16 @@ class CellGenDataModule(LightningDataModule):
         }
         for var in self.var_list:
             out[var] = [d['tgt_dataset'][var] for d in batch]
+        if out['disease'] is not None:
+            categories = out['disease']
+            num_classes = len(set(categories))
+            # Convert categories to indices and then to one-hot encoding
+            category_indices = torch.tensor(
+                Categorical(categories).codes, dtype=torch.long
+            )
+            one_hot_labels = torch.eye(num_classes)[category_indices]
+            out['moe_categories'] = one_hot_labels
+            out['moe_num_classes'] = num_classes
         return out
 
 

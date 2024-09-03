@@ -142,6 +142,9 @@ class CellGenTrainer(LightningModule):
             'cell_idx': [],
             'gene_embeddings': [],
             'router_probs': [],
+            'tgt_input_ids': [],
+            'disease_repeat': [],
+            'token_rank': [],
         }
         for var in self.var_list:
             self.test_dict[var] = []
@@ -421,39 +424,24 @@ class CellGenTrainer(LightningModule):
     def training_step(self, batch, *args, **kwargs):
         # logits, labels, count_output, count_dropout = self.forward(batch)
         outputs = self.forward(batch)
-        categories = batch['disease']
-        num_classes = len(set(categories))
 
         dec_logits = outputs['dec_logits']
         labels = outputs['labels']
         expert_logits_list = outputs['expert_logits_list']
 
-        perp = self.perplexity(dec_logits, labels)
+        # perp = self.perplexity(dec_logits, labels)
         dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
         labels = labels.contiguous().view(-1)
 
         masking_loss = self.masking_loss(dec_logits, labels)
 
         if expert_logits_list is not None:
-            # Create a mapping dictionary
-            category_to_int = {
-                category: idx for idx, category in enumerate(set(categories))
-            }
-            # Convert the category list to a tensor of indices
-            category_indices = torch.tensor(
-                [category_to_int[category] for category in categories],
-                device=expert_logits_list[0].device,
-            )
-            # Efficient one-hot encoding using scatter_
-            one_hot_labels = torch.zeros(
-                len(categories), num_classes, device=expert_logits_list[0].device
-            )
-            one_hot_labels.scatter_(1, category_indices.unsqueeze(1), 1)
-
             # Calculate the BCE loss for each class
             expert_loss = [
-                self.bce_loss(expert_logits_list[i].squeeze(-1), one_hot_labels[:, i])
-                for i in range(num_classes)
+                self.bce_loss(
+                    expert_logits_list[i].squeeze(-1), batch['moe_categories'][:, i]
+                )
+                for i in range(batch['moe_num_classes'])
             ]
             moe_loss = sum(expert_loss)
 
@@ -487,17 +475,17 @@ class CellGenTrainer(LightningModule):
             sync_dist=True,
         )
 
-        self.log(
-            'train/perplexity',
-            perp,
-            on_step=True,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            batch_size=batch['src_input_ids'].shape[0],
-            rank_zero_only=True,
-            sync_dist=True,
-        )
+        # self.log(
+        #     'train/perplexity',
+        #     perp,
+        #     on_step=False,
+        #     on_epoch=True,
+        #     prog_bar=True,
+        #     logger=True,
+        #     batch_size=batch['src_input_ids'].shape[0],
+        #     rank_zero_only=True,
+        #     sync_dist=True,
+        # )
 
         return total_loss
 
@@ -541,6 +529,7 @@ class CellGenTrainer(LightningModule):
     def test_step(self, batch, *args, **kwargs):
         if self.return_embeddings:
             tgt_ids = batch['tgt_input_ids']
+
             if self.generate:
                 outputs, pred_ids = self.iterative_generate(
                     src_input_id=batch['src_input_ids'],
@@ -669,6 +658,22 @@ class CellGenTrainer(LightningModule):
             )
             for var in self.var_list:
                 self.test_dict[var].append(batch[var])
+        if self.moe_type != 'none':
+            router_probs = outputs['router_probs'].detach().cpu()
+            router_probs_flat = router_probs.view(-1, router_probs.shape[-1])
+            self.test_dict['router_probs'].append(router_probs_flat)
+            tgt_ids_flat = token_ids.view(-1).detach().cpu()
+            self.test_dict['tgt_input_ids'].append(tgt_ids_flat)
+            disease_array = np.array(batch['disease'])
+            self.test_dict['disease_repeat'].append(
+                np.repeat(disease_array, token_ids.shape[1])
+            )
+            # create enumerated array based on the sequence length of the target ids
+            token_rank = np.arange(token_ids.shape[1])
+            # repeat the array based on the number of samples
+            self.test_dict['token_rank'].append(
+                np.repeat(token_rank, token_ids.shape[0])
+            )
 
     def on_test_epoch_end(self):
         if self.return_embeddings:
@@ -709,6 +714,23 @@ class CellGenTrainer(LightningModule):
                 f'cls_embeddings_{self.moe_type}_generate_{self.generate}.h5ad'
             )
             print('End saving embeddings -------------------')
+        if self.moe_type != 'none':
+            router_probs = torch.cat(self.test_dict['router_probs']).numpy()
+            token_ids = torch.cat(self.test_dict['tgt_input_ids']).numpy()
+            disease = np.concatenate(self.test_dict['disease_repeat'])
+            token_rank = np.concatenate(self.test_dict['token_rank'])
+            # create a dataframe of all the data
+            df = pd.DataFrame(
+                {
+                    'router_probs_expert_1': router_probs[:, 0],
+                    'router_probs_expert_2': router_probs[:, 1],
+                    'token_ids': token_ids,
+                    'token_rank': token_rank,
+                    'disease': disease,
+                }
+            )
+            # save the dataframe
+            df.to_csv(f'{self.output_dir}/{self.date}_router_probs.csv', index=False)
 
 
 class CountDecoderTrainer(LightningModule):

@@ -316,7 +316,7 @@ class SoftGatingFFN(nn.Module):
                         embs=weighted_output, pad=tgt_mask
                     )
                     expert_logits_list[j] = classifier(expert_logits)
-        return moe_output, expert_logits_list, selected_gate_probs
+        return moe_output, expert_logits_list, gate_probs
 
 
 class SoftGatingAttention(nn.Module):
@@ -381,8 +381,13 @@ class SoftGatingAttention(nn.Module):
     def forward(self, x, tgt_mask):
         # Filter to keep only the top-k experts active
         gate_logits = self.token_gating_layer(x)
+        # print(gate_logits.shape)
         top_k_values, top_k_indices = torch.topk(gate_logits, self.top_k)
+
+        # print(top_k_indices[:10, :10, :])
         gate_probs = F.softmax(top_k_values, dim=-1)
+        # print(gate_probs.shape)
+        # print(gate_probs[:10,:10, :])
         # Soft gating token routing mechanism
         moe_output = torch.zeros_like(x)
         # Store logits for each expert separately in a list
@@ -420,7 +425,7 @@ class SoftGatingAttention(nn.Module):
                     )
                     # apply classifier to the expert output
                     expert_logits_list[j] = classifier(expert_logits)
-        return moe_output, expert_logits_list, selected_gate_probs
+        return moe_output, expert_logits_list, gate_probs
 
 
 class Block(nn.Module):
@@ -531,7 +536,7 @@ class Block(nn.Module):
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
         x = self.norm2(x + self.dropout(attn_output))
         if self.mode == 'moe_ffn':
-            ff_output, moe_embs_dict = self.feed_forward(x, tgt_mask)
+            ff_output, moe_embs_dict, router_probs = self.feed_forward(x, tgt_mask)
         else:
             ff_output = self.feed_forward(x)
         x = self.norm3(x + self.dropout(ff_output))
