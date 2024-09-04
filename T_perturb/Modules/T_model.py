@@ -222,7 +222,7 @@ class FeedForward(nn.Module):
         return self.w2(nn.functional.silu(self.w1(x)) * self.w3(x))  # type: ignore
 
 
-class SoftGatingFFN(nn.Module):
+class SoftGatingMoE(nn.Module):
     '''
     Description:
     ------------
@@ -256,22 +256,41 @@ class SoftGatingFFN(nn.Module):
         num_classes: int,
         top_k: int,
         hidden_size: int = 64,
+        moe_type: Literal['moe_attention', 'none', 'moe_ffn'] = 'none',
+        num_heads: int = 8,
+        d_ff: int = 128,
+        dropout: float = 0.0,
     ):
         super().__init__()
         self.top_k = top_k
         self.num_classes = num_classes
         self.num_experts = num_experts
+        self.moe_type = moe_type
         # Initialize experts
-        self.experts = nn.ModuleList(
-            [
-                FeedForward(
-                    dim=dim,
-                    hidden_dim=hidden_size,
-                )
-                for _ in range(num_experts)
-            ]
-        )
-        self.classifiers = nn.ModuleList(nn.Linear(dim, 1) for _ in range(num_experts))
+        if moe_type == 'moe_ffn':
+            self.experts = nn.ModuleList(
+                [
+                    FeedForward(
+                        dim=dim,
+                        hidden_dim=hidden_size,
+                    )
+                    for _ in range(num_experts)
+                ]
+            )
+        elif moe_type == 'moe_attention':
+            self.experts = nn.ModuleList(
+                [
+                    CrossAttention(
+                        query_dim=dim,
+                        num_heads=num_heads,
+                        dim_head=d_ff,
+                        dropout=dropout,
+                        context_dim=None,
+                    )
+                    for _ in range(num_experts)
+                ]
+            )
+        self.classifier = nn.Linear(dim, 1)
         # learn gate weights one on batch and one on token level
         # :TODO: set bias of token layer to false
         self.token_gating_layer = nn.Linear(dim, num_experts, bias=True)
@@ -279,115 +298,14 @@ class SoftGatingFFN(nn.Module):
     def forward(self, x, tgt_mask):
         # Filter to keep only the top-k experts active
         gate_logits = self.token_gating_layer(x)
-        top_k_values, top_k_indices = torch.topk(gate_logits, self.top_k)
-        gate_probs = F.softmax(top_k_values, dim=-1)
-        # Soft gating token routing mechanism
-        moe_output = torch.zeros_like(x)
-        # Store logits for each expert separately in a list
-        expert_logits_list = [
-            torch.zeros(x.size(0), 1, device=x.device) for _ in range(self.num_experts)
-        ]
-        # Gather the top-k expert indices and their corresponding weights
-        # Efficiently select outputs from the top experts
-        for i in range(self.top_k):
-            selected_expert_indices = top_k_indices[:, :, i]  # [batch_size, seq_length]
-            selected_gate_probs = gate_probs[:, :, i]  # [batch_size, seq_length]
-            for j, (expert, classifier) in enumerate(
-                zip(self.experts, self.classifiers)
-            ):
-                mask = selected_expert_indices == j  # [batch_size, seq_length]
-                # # compute proportion of tokens assigned to each expert
-                # proportion = mask.sum() / (mask.size(0) * mask.size(1))
-                # what happens to padding, should we prevent padding
-                if mask.any():
-                    expert_input = (
-                        x * mask.unsqueeze(-1).float()
-                    )  # Apply mask to the input
-                    expert_output = expert(
-                        expert_input
-                    )  # [seq_length, batch_size, hidden_size]
-                    weighted_output = (
-                        expert_output
-                        * mask.unsqueeze(-1).float()
-                        * selected_gate_probs.unsqueeze(-1).float()
-                    )
-                    moe_output += weighted_output
-                    expert_logits = mean_nonpadding_embs(
-                        embs=weighted_output, pad=tgt_mask
-                    )
-                    expert_logits_list[j] = classifier(expert_logits)
-        return moe_output, expert_logits_list, gate_probs
-
-
-class SoftGatingAttention(nn.Module):
-    '''
-    Description:
-    ------------
-    Soft gating MoE mechanism for token routing for transformers.
-    Expert entities consist of self attention modules.
-
-    Parameters:
-    -----------
-    dim: `int`
-        Query dimension.
-    num_experts: `int`
-        Number of experts.
-    num_classes: `int`
-        Number of classes.
-    top_k: `int`
-        Number of top experts to keep.
-    dropout: `float`
-        Dropout rate.
-
-    Returns:
-    --------
-    attn_output: `torch.Tensor`
-        Output tensor.
-    moe_embs_dict: `dict`
-        Dictionary of expert embeddings aggregated by mean non-padding tokens.
-    '''
-
-    def __init__(
-        self,
-        dim: int,
-        num_experts: int,
-        num_classes: int,
-        top_k: int,
-        num_heads: int = 8,
-        d_ff: int = 64,
-        dropout: float = 0.0,
-    ):
-        super().__init__()
-        self.top_k = top_k
-        self.num_classes = num_classes
-        self.num_experts = num_experts
-        # Initialize experts
-        self.experts = nn.ModuleList(
-            [
-                CrossAttention(
-                    query_dim=dim,
-                    num_heads=num_heads,
-                    dim_head=d_ff,
-                    dropout=dropout,
-                    context_dim=None,
-                )
-                for _ in range(num_experts)
-            ]
+        # apply padding mask
+        gate_logits = gate_logits.masked_fill(
+            tgt_mask.unsqueeze(-1), -torch.finfo().max
         )
-        self.classifiers = nn.ModuleList(nn.Linear(dim, 1) for _ in range(num_experts))
-        # learn gate weights one on batch and one on token level
-        self.token_gating_layer = nn.Linear(dim, num_experts)
-
-    def forward(self, x, tgt_mask):
-        # Filter to keep only the top-k experts active
-        gate_logits = self.token_gating_layer(x)
-        # print(gate_logits.shape)
         top_k_values, top_k_indices = torch.topk(gate_logits, self.top_k)
-
-        # print(top_k_indices[:10, :10, :])
-        gate_probs = F.softmax(top_k_values, dim=-1)
-        # print(gate_probs.shape)
-        # print(gate_probs[:10,:10, :])
+        # add temperature scaling for the logits to make the distribution smoother
+        temperature = 2.0
+        gate_probs = F.softmax(top_k_values / temperature, dim=-1)
         # Soft gating token routing mechanism
         moe_output = torch.zeros_like(x)
         # Store logits for each expert separately in a list
@@ -399,21 +317,21 @@ class SoftGatingAttention(nn.Module):
         for i in range(self.top_k):
             selected_expert_indices = top_k_indices[:, :, i]  # [batch_size, seq_length]
             selected_gate_probs = gate_probs[:, :, i]  # [batch_size, seq_length]
-            for j, (expert, classifier) in enumerate(
-                zip(self.experts, self.classifiers)
-            ):
+            for j, expert in enumerate(self.experts):
                 mask = selected_expert_indices == j  # [batch_size, seq_length]
                 # # compute proportion of tokens assigned to each expert
                 # proportion = mask.sum() / (mask.size(0) * mask.size(1))
                 # what happens to padding, should we prevent padding
-
                 if mask.any():
                     expert_input = (
                         x * mask.unsqueeze(-1).float()
                     )  # Apply mask to the input
-                    expert_output = expert(
-                        expert_input, mask=tgt_mask
-                    )  # [seq_length, batch_size, hidden_size]
+                    if self.moe_type == 'moe_ffn':
+                        expert_output = expert(
+                            expert_input
+                        )  # [seq_length, batch_size, hidden_size]
+                    elif self.moe_type == 'moe_attention':
+                        expert_output = expert(expert_input, mask=tgt_mask)
                     weighted_output = (
                         expert_output
                         * mask.unsqueeze(-1).float()
@@ -423,8 +341,7 @@ class SoftGatingAttention(nn.Module):
                     expert_logits = mean_nonpadding_embs(
                         embs=weighted_output, pad=tgt_mask
                     )
-                    # apply classifier to the expert output
-                    expert_logits_list[j] = classifier(expert_logits)
+                    expert_logits_list[j] = self.classifier(expert_logits)
         return moe_output, expert_logits_list, gate_probs
 
 
@@ -439,8 +356,8 @@ class Block(nn.Module):
         act_layer: nn.Module = nn.GELU,
         norm_layer: nn.Module = nn.LayerNorm,
         context_dim: Optional[int] = None,
-        num_experts: int = 3,
-        num_classes: int = 3,
+        num_experts: int = 2,
+        num_classes: int = 2,
         top_k: int = 2,
         mode: Literal['moe_attention', 'none', 'moe_ffn'] = 'none',
     ):
@@ -479,7 +396,7 @@ class Block(nn.Module):
         self.norm1 = norm_layer(dim)
 
         if self.mode == 'moe_attention':
-            self.moe = SoftGatingAttention(
+            self.moe_attn = SoftGatingMoE(
                 dim=dim,
                 num_experts=num_experts,
                 num_classes=num_classes,
@@ -487,19 +404,15 @@ class Block(nn.Module):
                 d_ff=d_ff,
                 top_k=top_k,
                 dropout=dropout,
+                moe_type=mode,
             )
-
-        elif (self.mode == 'none') or (self.mode == 'moe_ffn'):
+        else:
             self.self_attn = CrossAttention(
                 query_dim=dim,
                 context_dim=None,
                 num_heads=num_heads,
                 dim_head=d_ff,
                 dropout=dropout,
-            )
-        else:
-            raise ValueError(
-                f'Invalid mode: {mode}, choose from [moe_attention, none, moe_ffn]'
             )
         self.norm2 = norm_layer(dim)
         self.cross_attn = CrossAttention(
@@ -511,12 +424,13 @@ class Block(nn.Module):
         )
         self.norm3 = norm_layer(dim)
         if self.mode == 'moe_ffn':
-            self.feed_forward = SoftGatingFFN(
+            self.moe_feed_forward = SoftGatingMoE(
                 dim=dim,
                 num_experts=num_experts,
                 num_classes=num_classes,
                 top_k=top_k,
                 hidden_size=hidden_size,
+                moe_type=mode,
             )
         else:
             self.feed_forward = Mlp(
@@ -526,8 +440,7 @@ class Block(nn.Module):
 
     def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None):
         if self.mode == 'moe_attention':
-            attn_output, moe_embs_dict, router_probs = self.moe(x, tgt_mask)
-
+            attn_output, moe_embs_dict, router_probs = self.moe_attn(x, tgt_mask)
         else:
             attn_output = self.self_attn(x, mask=tgt_mask)
             moe_embs_dict = None
@@ -536,7 +449,7 @@ class Block(nn.Module):
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
         x = self.norm2(x + self.dropout(attn_output))
         if self.mode == 'moe_ffn':
-            ff_output, moe_embs_dict, router_probs = self.feed_forward(x, tgt_mask)
+            ff_output, moe_embs_dict, router_probs = self.moe_feed_forward(x, tgt_mask)
         else:
             ff_output = self.feed_forward(x)
         x = self.norm3(x + self.dropout(ff_output))

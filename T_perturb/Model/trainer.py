@@ -69,6 +69,7 @@ class CellGenTrainer(LightningModule):
         lr: float = 1e-3,
         # lr_scheduler_patience: float = 5.0,
         return_embeddings: bool = False,
+        return_moe_probs: bool = True,
         generate: bool = False,
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         var_list: List[str] = ['Time_point'],
@@ -130,6 +131,7 @@ class CellGenTrainer(LightningModule):
         self.mse = MeanSquaredError()
 
         self.return_embeddings = return_embeddings
+        self.return_moe_probs = return_moe_probs
         self.generate = generate
         self.tgt_vocab_size = tgt_vocab_size
         self.var_list = var_list
@@ -658,7 +660,7 @@ class CellGenTrainer(LightningModule):
             )
             for var in self.var_list:
                 self.test_dict[var].append(batch[var])
-        if self.moe_type != 'none':
+        if self.return_moe_probs:
             router_probs = outputs['router_probs'].detach().cpu()
             router_probs_flat = router_probs.view(-1, router_probs.shape[-1])
             self.test_dict['router_probs'].append(router_probs_flat)
@@ -666,14 +668,13 @@ class CellGenTrainer(LightningModule):
             self.test_dict['tgt_input_ids'].append(tgt_ids_flat)
             disease_array = np.array(batch['disease'])
             self.test_dict['disease_repeat'].append(
-                np.repeat(disease_array, token_ids.shape[1])
+                np.tile(disease_array, token_ids.shape[1])
             )
             # create enumerated array based on the sequence length of the target ids
             token_rank = np.arange(token_ids.shape[1])
+            token_repeat = np.tile(token_rank, token_ids.shape[0])
             # repeat the array based on the number of samples
-            self.test_dict['token_rank'].append(
-                np.repeat(token_rank, token_ids.shape[0])
-            )
+            self.test_dict['token_rank'].append(token_repeat)
 
     def on_test_epoch_end(self):
         if self.return_embeddings:
@@ -714,7 +715,7 @@ class CellGenTrainer(LightningModule):
                 f'cls_embeddings_{self.moe_type}_generate_{self.generate}.h5ad'
             )
             print('End saving embeddings -------------------')
-        if self.moe_type != 'none':
+        if self.return_moe_probs:
             router_probs = torch.cat(self.test_dict['router_probs']).numpy()
             token_ids = torch.cat(self.test_dict['tgt_input_ids']).numpy()
             disease = np.concatenate(self.test_dict['disease_repeat'])
@@ -729,8 +730,14 @@ class CellGenTrainer(LightningModule):
                     'disease': disease,
                 }
             )
+            df['gene_name'] = df['token_ids'].map(self.tokenid_to_genename_dict)
+            # remove padding and task token
+            df = df[(df['token_ids'] != 0) & (df['token_ids'] != 25426)]
             # save the dataframe
-            df.to_csv(f'{self.output_dir}/{self.date}_router_probs.csv', index=False)
+            df.to_csv(
+                f'{self.output_dir}/{self.date}_{self.moe_type}_router_probs.csv',
+                index=False,
+            )
 
 
 class CountDecoderTrainer(LightningModule):

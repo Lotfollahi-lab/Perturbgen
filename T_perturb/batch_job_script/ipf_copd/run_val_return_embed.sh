@@ -27,11 +27,11 @@ echo "--- Start computing model"
 # python3 $cwd/val.py \
 python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
 --test_mode masking \
---split False \
+--split True \
 --splitting_mode random \
 --return_embed True \
 --generate False \
---ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240903_1231_moe_attn_train_masking_lr_0.0001_wd_0.0001_batch_32_mlmp_0.15_ntask_2_s_42-epoch=19.ckpt" \
+--ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240904_2214_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_48_mlmp_0.15_ntask_2_s_42-epoch=00.ckpt" \
 --output_dir "./CellGen-reproducibility/ipf_copd/res" \
 --src_dataset "./CellGen-reproducibility/ipf_copd/processed_data/dataset_hvg_src/Control.dataset" \
 --tgt_dataset_folder "./CellGen-reproducibility/ipf_copd/processed_data/dataset_hvg_tgt/" \

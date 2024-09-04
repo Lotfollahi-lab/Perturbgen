@@ -391,7 +391,7 @@ def main() -> None:
                 else:
                     train_dict_, val_dict_, test_dict_ = randomised_mapping_dir_split(
                         mapping_dir=cell_pairing,
-                        train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
+                        train_prop=args.train_prop,  # 0.8, 0.1, 0.1 train, val, test
                         test_prop=args.test_prop,
                         seed=args.seed,
                     )
@@ -582,7 +582,7 @@ def main() -> None:
         dirpath=checkpoint_path,
         filename=f'{filename}-' + '{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=10,
+        every_n_epochs=1,
         verbose=True,
         # monitor=monitor_metric,
         mode=mode,
