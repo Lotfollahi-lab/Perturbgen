@@ -1,5 +1,5 @@
 #!/bin/bash
-#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
 #BSUB -gpu 'mode=exclusive_process:num=1:block=yes' # request for exclusive access to gpu
 #BSUB -n 16 # number of cores
 #BSUB -G teamtrynka # groupname for billing
@@ -31,7 +31,7 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --splitting_mode random \
 --return_embed True \
 --generate False \
---ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240904_2214_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_48_mlmp_0.15_ntask_2_s_42-epoch=00.ckpt" \
+--ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240905_1608_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_16_mlmp_0.15_ntask_2_s_42-epoch=00.ckpt" \
 --output_dir "./CellGen-reproducibility/ipf_copd/res" \
 --src_dataset "./CellGen-reproducibility/ipf_copd/processed_data/dataset_hvg_src/Control.dataset" \
 --tgt_dataset_folder "./CellGen-reproducibility/ipf_copd/processed_data/dataset_hvg_tgt/" \
@@ -50,5 +50,5 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --n_task_conditions 2 \
 --var_list CellType_Category Manuscript_Identity Subclass_Cell_Identity Celltype_HLCA disease IPF_signature IPF_signature_disease profibrotic_mac_signature \
 --encoder_type GF_frozen \
---moe_type moe_attention
+--moe_type moe_ffn
 echo "--- Finished computing model"

@@ -295,13 +295,20 @@ class SoftGatingMoE(nn.Module):
         # :TODO: set bias of token layer to false
         self.token_gating_layer = nn.Linear(dim, num_experts, bias=True)
 
-    def forward(self, x, tgt_mask):
+    def forward(
+        self,
+        x,
+        tgt_pad,
+        task_categories=None,
+        tgt_mask_id_bool=None,
+    ):
         # Filter to keep only the top-k experts active
         gate_logits = self.token_gating_layer(x)
-        # apply padding mask
         gate_logits = gate_logits.masked_fill(
-            tgt_mask.unsqueeze(-1), -torch.finfo().max
+            tgt_mask_id_bool.unsqueeze(-1), -torch.finfo(gate_logits.dtype).max
         )
+        # apply padding mask
+        gate_logits = gate_logits.masked_fill(tgt_pad.unsqueeze(-1), -torch.finfo().max)
         top_k_values, top_k_indices = torch.topk(gate_logits, self.top_k)
         # add temperature scaling for the logits to make the distribution smoother
         temperature = 2.0
@@ -331,17 +338,20 @@ class SoftGatingMoE(nn.Module):
                             expert_input
                         )  # [seq_length, batch_size, hidden_size]
                     elif self.moe_type == 'moe_attention':
-                        expert_output = expert(expert_input, mask=tgt_mask)
+                        expert_output = expert(expert_input, mask=tgt_pad)
                     weighted_output = (
                         expert_output
                         * mask.unsqueeze(-1).float()
                         * selected_gate_probs.unsqueeze(-1).float()
                     )
                     moe_output += weighted_output
-                    expert_logits = mean_nonpadding_embs(
-                        embs=weighted_output, pad=tgt_mask
+                    # combine padding and mask token to ignore for classification
+                    combined_mask = tgt_mask_id_bool | tgt_pad
+                    # Mask should not be part of expert logits
+                    expert_embedding = mean_nonpadding_embs(
+                        embs=weighted_output, pad=combined_mask
                     )
-                    expert_logits_list[j] = self.classifier(expert_logits)
+                    expert_logits_list[j] = self.classifier(expert_embedding)
         return moe_output, expert_logits_list, gate_probs
 
 
@@ -438,9 +448,22 @@ class Block(nn.Module):
             )  # add hidden size
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, src_mask=None, tgt_mask=None, enc_output=None):
+    def forward(
+        self,
+        x,
+        src_mask=None,
+        tgt_mask=None,
+        enc_output=None,
+        task_categories=None,
+        tgt_mask_id_bool=None,
+    ):
         if self.mode == 'moe_attention':
-            attn_output, moe_embs_dict, router_probs = self.moe_attn(x, tgt_mask)
+            attn_output, moe_embs_dict, router_probs = self.moe_attn(
+                x,
+                tgt_mask,
+                task_categories,
+                tgt_mask_id_bool,
+            )
         else:
             attn_output = self.self_attn(x, mask=tgt_mask)
             moe_embs_dict = None
@@ -449,7 +472,12 @@ class Block(nn.Module):
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
         x = self.norm2(x + self.dropout(attn_output))
         if self.mode == 'moe_ffn':
-            ff_output, moe_embs_dict, router_probs = self.moe_feed_forward(x, tgt_mask)
+            ff_output, moe_embs_dict, router_probs = self.moe_feed_forward(
+                x,
+                tgt_mask,
+                task_categories,
+                tgt_mask_id_bool,
+            )
         else:
             ff_output = self.feed_forward(x)
         x = self.norm3(x + self.dropout(ff_output))
@@ -831,6 +859,8 @@ class CellGen(nn.Module):
         generate=False,
         labels=None,
         cls_positions=None,
+        task_categories=None,
+        tgt_mask_id_bool=None,
     ):
         for dec_layer in self.decoder_block:
             # see if concatenation of cls embedding
@@ -839,6 +869,8 @@ class CellGen(nn.Module):
                 src_mask=src_attention_mask,
                 tgt_mask=tgt_pad,
                 enc_output=enc_output,
+                task_categories=task_categories,
+                tgt_mask_id_bool=tgt_mask_id_bool,
             )
 
         # :TODO rewrite this part logits not needed for running the other timepoints
@@ -868,6 +900,7 @@ class CellGen(nn.Module):
         self,
         src_input_id: torch.Tensor,
         apply_attn_mask: Optional[bool] = False,
+        task_categories: Optional[list] = None,
         tgt_input_id: Optional[torch.Tensor] = None,
         cls_positions: Optional[torch.Tensor] = None,
         generate_id: Optional[dict] = None,
@@ -910,6 +943,7 @@ class CellGen(nn.Module):
                 self.mlm_probability,
             )
             generate = False
+
         else:
             if (generate_id is not None) and (generate_pad is not None):
                 tgt_input_id = generate_id
@@ -928,6 +962,8 @@ class CellGen(nn.Module):
             tgt_embedding = self.positional_encoding(tgt_embedding)
         elif self.position_embedding == 'learnt':
             tgt_embedding = self.positional_encoding(tgt_embedding)
+        # create mask for the mask token for the MoE
+        tgt_mask_id_bool = tgt_input_id == self.mask_token
         outputs = self.call_decoder(
             enc_output=enc_output,
             src_attention_mask=src_attention_mask,
@@ -936,6 +972,8 @@ class CellGen(nn.Module):
             generate=generate,
             labels=labels,
             cls_positions=cls_positions,
+            task_categories=task_categories,
+            tgt_mask_id_bool=tgt_mask_id_bool,
         )
         return outputs
 

@@ -323,8 +323,8 @@ class CellGenDataModule(LightningDataModule):
                 Categorical(categories).codes, dtype=torch.long
             )
             one_hot_labels = torch.eye(num_classes)[category_indices]
-            out['moe_categories'] = one_hot_labels
-            out['moe_num_classes'] = num_classes
+            out['moe_one_hot_categories'] = one_hot_labels
+            out['moe_categories'] = Categorical(categories).categories
         return out
 
 

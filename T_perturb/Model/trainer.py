@@ -178,6 +178,7 @@ class CellGenTrainer(LightningModule):
             src_input_id=batch['src_input_ids'],
             tgt_input_id=batch['tgt_input_ids'],
             apply_attn_mask=self.apply_attn_mask,
+            task_categories=batch['moe_categories'],
         )
         # print('Loaded checkpoint of masking model')
         # pattern = re.compile(r'decoder_fc.weight')
@@ -426,7 +427,6 @@ class CellGenTrainer(LightningModule):
     def training_step(self, batch, *args, **kwargs):
         # logits, labels, count_output, count_dropout = self.forward(batch)
         outputs = self.forward(batch)
-
         dec_logits = outputs['dec_logits']
         labels = outputs['labels']
         expert_logits_list = outputs['expert_logits_list']
@@ -436,14 +436,14 @@ class CellGenTrainer(LightningModule):
         labels = labels.contiguous().view(-1)
 
         masking_loss = self.masking_loss(dec_logits, labels)
-
         if expert_logits_list is not None:
             # Calculate the BCE loss for each class
             expert_loss = [
                 self.bce_loss(
-                    expert_logits_list[i].squeeze(-1), batch['moe_categories'][:, i]
+                    expert_logits_list[i].squeeze(-1),
+                    batch['moe_one_hot_categories'][:, i],
                 )
-                for i in range(batch['moe_num_classes'])
+                for i in range(len(batch['moe_categories']))
             ]
             moe_loss = sum(expert_loss)
 

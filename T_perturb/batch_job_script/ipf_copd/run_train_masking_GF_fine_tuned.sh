@@ -1,5 +1,5 @@
 #!/bin/bash
-#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
 #BSUB -gpu 'mode=exclusive_process:num=4:block=yes' # request for exclusive access to gpu
 #BSUB -n 16 # number of cores
 #BSUB -G teamtrynka # groupname for billing
@@ -34,7 +34,7 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --src_adata "./CellGen-reproducibility/ipf_copd/processed_data/h5ad_pairing_hvg_src/Control.h5ad" \
 --tgt_adata_folder "./CellGen-reproducibility/ipf_copd/processed_data/h5ad_pairing_hvg_tgt" \
 --cell_pairing_dir "./CellGen-reproducibility/ipf_copd/processed_data/cell_pairing" \
---batch_size 48 \
+--batch_size 16 \
 --max_len 1650 \
 --epochs 1 \
 --tgt_vocab_size 25426 \
@@ -47,6 +47,6 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --n_task_conditions 2 \
 --var_list CellType_Category Manuscript_Identity Subclass_Cell_Identity Celltype_HLCA disease IPF_signature IPF_signature_disease profibrotic_mac_signature \
 --encoder_type GF_frozen \
---moe_type moe_attention \
+--moe_type moe_ffn \
 --alpha 0.2
 echo "--- Finished computing model"
