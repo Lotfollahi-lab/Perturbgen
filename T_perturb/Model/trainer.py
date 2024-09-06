@@ -436,6 +436,7 @@ class CellGenTrainer(LightningModule):
         labels = labels.contiguous().view(-1)
 
         masking_loss = self.masking_loss(dec_logits, labels)
+        expert_logits_list = None
         if expert_logits_list is not None:
             # Calculate the BCE loss for each class
             expert_loss = [

@@ -266,6 +266,7 @@ class SoftGatingMoE(nn.Module):
         self.num_classes = num_classes
         self.num_experts = num_experts
         self.moe_type = moe_type
+        print(f'Number of experts: {num_experts}')
         # Initialize experts
         if moe_type == 'moe_ffn':
             self.experts = nn.ModuleList(
@@ -291,9 +292,10 @@ class SoftGatingMoE(nn.Module):
                 ]
             )
         self.classifier = nn.Linear(dim, 1)
+        self.jitter_noise = 0.0
         # learn gate weights one on batch and one on token level
         # :TODO: set bias of token layer to false
-        self.token_gating_layer = nn.Linear(dim, num_experts, bias=True)
+        self.token_gating_layer = nn.Linear(dim, num_experts, bias=False)
 
     def forward(
         self,
@@ -302,57 +304,91 @@ class SoftGatingMoE(nn.Module):
         task_categories=None,
         tgt_mask_id_bool=None,
     ):
+        batch_size, sequence_length, hidden_dim = x.shape
+        temperature = 1.0
         # Filter to keep only the top-k experts active
-        gate_logits = self.token_gating_layer(x)
-        gate_logits = gate_logits.masked_fill(
-            tgt_mask_id_bool.unsqueeze(-1), -torch.finfo(gate_logits.dtype).max
-        )
-        # apply padding mask
-        gate_logits = gate_logits.masked_fill(tgt_pad.unsqueeze(-1), -torch.finfo().max)
-        top_k_values, top_k_indices = torch.topk(gate_logits, self.top_k)
+        if self.training and self.jitter_noise > 0:
+            x *= torch.empty_like(x).uniform_(
+                1.0 - self.jitter_noise, 1.0 + self.jitter_noise
+            )
+        x = x.view(-1, hidden_dim)
+        # router_logits: (batch * sequence_length, n_experts)
+        gate_logits = self.token_gating_layer(x) / temperature
+        print('gate logits', gate_logits)
+        print(gate_logits.shape)
+        # gaussian_noise = Normal(self.mean, self.std)
+        # noise = gaussian_noise.sample(gate_logits.shape).squeeze(-1)
+        # gate_logits = gate_logits + noise
+        # gate_logits = gate_logits.masked_fill(
+        #     tgt_mask_id_bool.unsqueeze(-1), -torch.finfo(gate_logits.dtype).max
+        # )
+
+        # # apply padding mask
+        # gate_logits = gate_logits.masked_fill(
+        #     tgt_pad.unsqueeze(-1),
+        #     -torch.finfo().max
+        #     )
         # add temperature scaling for the logits to make the distribution smoother
-        temperature = 2.0
-        gate_probs = F.softmax(top_k_values / temperature, dim=-1)
-        # Soft gating token routing mechanism
-        moe_output = torch.zeros_like(x)
+
+        routing_weights = F.softmax(gate_logits, dim=1, dtype=torch.float)
+        # save routing weights for visualization
+        routing_weights_ = routing_weights.view(
+            batch_size, sequence_length, self.num_experts
+        )
+        routing_weights, selected_experts = torch.topk(
+            routing_weights, self.top_k, dim=-1
+        )
+        routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
+        # print('top k values', routing_weights[:20,:])
+        # print(routing_weights.shape)
+        # we cast back to the input dtype
+        routing_weights = routing_weights.to(x.dtype)
         # Store logits for each expert separately in a list
         expert_logits_list = [
             torch.zeros(x.size(0), 1, device=x.device) for _ in range(self.num_experts)
         ]
+
+        final_hidden_states = torch.zeros(
+            (batch_size * sequence_length, hidden_dim), dtype=x.dtype, device=x.device
+        )
+
+        # One hot encode the selected experts to create an expert mask
+        # this will be used to easily index which expert is going to be sollicitated
+        expert_mask = torch.nn.functional.one_hot(
+            selected_experts, num_classes=self.num_classes
+        ).permute(
+            2, 1, 0
+        )  # 🔍 for compatibility of different gate size
+        # print(expert_mask.shape)
+        # print('expert mask', expert_mask)
+
         # Gather the top-k expert indices and their corresponding weights
-        # Efficiently select outputs from the top experts
-        for i in range(self.top_k):
-            selected_expert_indices = top_k_indices[:, :, i]  # [batch_size, seq_length]
-            selected_gate_probs = gate_probs[:, :, i]  # [batch_size, seq_length]
-            for j, expert in enumerate(self.experts):
-                mask = selected_expert_indices == j  # [batch_size, seq_length]
-                # # compute proportion of tokens assigned to each expert
-                # proportion = mask.sum() / (mask.size(0) * mask.size(1))
-                # what happens to padding, should we prevent padding
-                if mask.any():
-                    expert_input = (
-                        x * mask.unsqueeze(-1).float()
-                    )  # Apply mask to the input
-                    if self.moe_type == 'moe_ffn':
-                        expert_output = expert(
-                            expert_input
-                        )  # [seq_length, batch_size, hidden_size]
-                    elif self.moe_type == 'moe_attention':
-                        expert_output = expert(expert_input, mask=tgt_pad)
-                    weighted_output = (
-                        expert_output
-                        * mask.unsqueeze(-1).float()
-                        * selected_gate_probs.unsqueeze(-1).float()
-                    )
-                    moe_output += weighted_output
-                    # combine padding and mask token to ignore for classification
-                    combined_mask = tgt_mask_id_bool | tgt_pad
-                    # Mask should not be part of expert logits
-                    expert_embedding = mean_nonpadding_embs(
-                        embs=weighted_output, pad=combined_mask
-                    )
-                    expert_logits_list[j] = self.classifier(expert_embedding)
-        return moe_output, expert_logits_list, gate_probs
+        for expert_idx in range(0, len(self.experts)):
+            expert_layer = self.experts[expert_idx]
+            idx, top_x = torch.where(expert_mask[expert_idx])
+            # Index the correct hidden states and compute the expert hidden state for
+            # the current expert. We need to make sure to multiply the output hidden
+            # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
+            current_state = x[None, top_x].reshape(-1, hidden_dim)
+            current_hidden_states = (
+                expert_layer(current_state) * routing_weights[top_x, idx, None]
+            )
+            # However `index_add_` only support torch tensors for indexing so we'll use
+            # the `top_x` tensor here.
+            final_hidden_states.index_add_(0, top_x, current_hidden_states.to(x.dtype))
+            weighted_output = final_hidden_states.reshape(
+                batch_size, sequence_length, hidden_dim
+            )
+            combined_mask = tgt_mask_id_bool | tgt_pad
+            # Mask should not be part of expert logits
+            expert_embedding = mean_nonpadding_embs(
+                embs=weighted_output, pad=combined_mask
+            )
+            expert_logits_list[expert_idx] = self.classifier(expert_embedding)
+        final_hidden_states = final_hidden_states.reshape(
+            batch_size, sequence_length, hidden_dim
+        )
+        return final_hidden_states, expert_logits_list, routing_weights_
 
 
 class Block(nn.Module):
@@ -605,11 +641,11 @@ class Encoder(nn.Module):
 
         self.d_model = d_model
 
-        self.init_weights()
+    #     self.init_weights()
 
-    def init_weights(self) -> None:
-        initrange = 0.1
-        self.token_embedding.weight.data.uniform_(-initrange, initrange)
+    # def init_weights(self) -> None:
+    #     initrange = 0.1
+    #     self.token_embedding.weight.data.uniform_(-initrange, initrange)
 
     def forward(self, src: torch.Tensor, src_mask: torch.Tensor = None) -> torch.Tensor:
         '''
@@ -756,12 +792,13 @@ class CellGen(nn.Module):
         )
         self.decoder_fc = nn.Linear(d_model, tgt_vocab_size)
         self.dropout = nn.Dropout(dropout)
-        # TODO: remove init weight
-        self.init_weights()
 
-    def init_weights(self) -> None:
-        initrange = 0.1
-        self.token_embedding.weight.data.uniform_(-initrange, initrange)
+    #     # TODO: remove init weight
+    #     self.init_weights()
+
+    # def init_weights(self) -> None:
+    #     initrange = 0.1
+    #     self.token_embedding.weight.data.uniform_(-initrange, initrange)
 
     def generate_mask(
         self, tgt_input_id, tgt_pad, mlm_probability=0.15, mask_mode='MASKGIT'
@@ -830,6 +867,9 @@ class CellGen(nn.Module):
             num_token_masked = (
                 (torch.mul(sample_length, rand_mask_probs)).round().clamp(min=1)
             )
+
+            # exclude case where all tokens are masked based on sample length
+            num_token_masked = num_token_masked.clamp(max=sample_length - 1)
             rand_int = torch.rand((batch, seq_len), device=device)
             rand_int[tgt_pad] = 1
             batch_randperm = rand_int.argsort(dim=-1)
