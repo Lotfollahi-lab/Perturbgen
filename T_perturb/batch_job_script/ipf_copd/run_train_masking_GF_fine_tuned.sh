@@ -34,9 +34,9 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --src_adata "./CellGen-reproducibility/ipf_copd/processed_data/h5ad_pairing_hvg_src/Control.h5ad" \
 --tgt_adata_folder "./CellGen-reproducibility/ipf_copd/processed_data/h5ad_pairing_hvg_tgt" \
 --cell_pairing_dir "./CellGen-reproducibility/ipf_copd/processed_data/cell_pairing" \
---batch_size 16 \
+--batch_size 48 \
 --max_len 1650 \
---epochs 1 \
+--epochs 20 \
 --tgt_vocab_size 25426 \
 --cellgen_lr 0.0001 \
 --cellgen_wd 0.0001 \

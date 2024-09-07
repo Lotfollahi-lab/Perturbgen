@@ -436,7 +436,6 @@ class CellGenTrainer(LightningModule):
         labels = labels.contiguous().view(-1)
 
         masking_loss = self.masking_loss(dec_logits, labels)
-        expert_logits_list = None
         if expert_logits_list is not None:
             # Calculate the BCE loss for each class
             expert_loss = [
@@ -447,6 +446,8 @@ class CellGenTrainer(LightningModule):
                 for i in range(len(batch['moe_categories']))
             ]
             moe_loss = sum(expert_loss)
+            if moe_loss == float('nan'):
+                raise ValueError('Loss is nan')
 
             self.log(
                 'train/moe_loss',

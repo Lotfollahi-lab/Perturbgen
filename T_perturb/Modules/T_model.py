@@ -266,7 +266,6 @@ class SoftGatingMoE(nn.Module):
         self.num_classes = num_classes
         self.num_experts = num_experts
         self.moe_type = moe_type
-        print(f'Number of experts: {num_experts}')
         # Initialize experts
         if moe_type == 'moe_ffn':
             self.experts = nn.ModuleList(
@@ -304,6 +303,12 @@ class SoftGatingMoE(nn.Module):
         task_categories=None,
         tgt_mask_id_bool=None,
     ):
+        '''
+        Adapted from the Mistral huggingface repository:
+        URL:
+        https://github.com/huggingface/transformers/blob/66bc4def9505fa7c7fe4aa7a248c34a026bb552b/src/transformers/models/mixtral/modeling_mixtral.py#L681 # noqa
+        Accessed: 2024-09-07
+        '''
         batch_size, sequence_length, hidden_dim = x.shape
         temperature = 1.0
         # Filter to keep only the top-k experts active
@@ -314,8 +319,6 @@ class SoftGatingMoE(nn.Module):
         x = x.view(-1, hidden_dim)
         # router_logits: (batch * sequence_length, n_experts)
         gate_logits = self.token_gating_layer(x) / temperature
-        print('gate logits', gate_logits)
-        print(gate_logits.shape)
         # gaussian_noise = Normal(self.mean, self.std)
         # noise = gaussian_noise.sample(gate_logits.shape).squeeze(-1)
         # gate_logits = gate_logits + noise
@@ -867,15 +870,18 @@ class CellGen(nn.Module):
             num_token_masked = (
                 (torch.mul(sample_length, rand_mask_probs)).round().clamp(min=1)
             )
-
             # exclude case where all tokens are masked based on sample length
-            num_token_masked = num_token_masked.clamp(max=sample_length - 1)
+            # -2: avoid CLS token and leave at least one token unmasked
+            num_token_masked = num_token_masked.clamp(max=sample_length - 2)
             rand_int = torch.rand((batch, seq_len), device=device)
+            # avoid masking pad and CLS token
             rand_int[tgt_pad] = 1
+            # mask CLS token by setting the last token to 0
+            # consequently, it will get highest rank after sorting at position 0
+            rand_int[:, seq_len - 1] = 0
             batch_randperm = rand_int.argsort(dim=-1)
+
             mask = batch_randperm < rearrange(num_token_masked, 'b -> b 1')
-            # do not mask CLS token
-            mask[:, 0] = False
             tgt_input_id[mask] = self.mask_token
             labels[~mask] = -100
         return tgt_input_id, labels
