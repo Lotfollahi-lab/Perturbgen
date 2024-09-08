@@ -48,6 +48,6 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --var_list CellType_Category Manuscript_Identity Subclass_Cell_Identity Celltype_HLCA disease IPF_signature IPF_signature_disease profibrotic_mac_signature \
 --encoder_type GF_frozen \
 --moe_type moe_ffn \
---alpha 0.2 \
+--alpha 0.5 \
 --seed 100
 echo "--- Finished computing model"

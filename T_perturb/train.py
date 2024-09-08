@@ -582,7 +582,7 @@ def main() -> None:
         dirpath=checkpoint_path,
         filename=f'{filename}-' + '{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=1,
+        every_n_epochs=10,
         verbose=True,
         # monitor=monitor_metric,
         mode=mode,
@@ -642,6 +642,7 @@ def main() -> None:
         accelerator='auto',
         devices=-1 if torch.cuda.is_available() else 0,
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
+        gradient_clip_algorithm='norm',
     )
     print('Starting training...')
     if os.getcwd().split('/')[-1] != 'healthy_imm_expr':

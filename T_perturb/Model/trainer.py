@@ -43,8 +43,6 @@ from T_perturb.src.utils import (
 )
 
 # from deepspeed.ops.adam import FusedAdam
-
-
 if torch.cuda.is_available():
     cuda_device_name = torch.cuda.get_device_name()
     # If the device is an A100, set the precision for matrix multiplication
@@ -52,6 +50,89 @@ if torch.cuda.is_available():
         print(f'Using {cuda_device_name} for training')
         print('Set float32_matmul_precision to medium')
         torch.set_float32_matmul_precision('medium')
+
+
+def load_balancing_loss_func(
+    gate_logits: torch.Tensor,
+    num_experts: torch.Tensor = None,
+    top_k=2,
+    attention_mask: Optional[torch.Tensor] = None,
+) -> float:
+    r"""
+    Computes auxiliary load balancing loss as in Switch Transformer -
+    implemented in Pytorch.
+
+    See Switch Transformer (https://arxiv.org/abs/2101.03961) for more details.
+    This function implements the loss function
+    presented in equations (4) - (6) of the paper.
+    It aims at penalizing cases where the routing between
+    experts is too unbalanced.
+
+    Args:
+        gate_logits (Union[`torch.Tensor`, Tuple[torch.Tensor]):
+            Logits from the `gate`,
+            should be a tuple of model.config.num_hidden_layers tensors of
+            shape [batch_size X sequence_length, num_experts].
+        attention_mask (`torch.Tensor`, *optional*):
+            The attention_mask used in forward function
+            shape [batch_size X sequence_length] if not None.
+        num_experts (`int`, *optional*):
+            Number of experts
+
+    Returns:
+        The auxiliary loss.
+    """
+    # if gate_logits is None or not isinstance(gate_logits, tuple):
+    #     return 0
+
+    # if isinstance(gate_logits, tuple):
+    #     compute_device = gate_logits[0].device
+    #     concatenated_gate_logits = torch.cat([
+    #         layer_gate.to(compute_device) for layer_gate in gate_logits
+    #         ], dim=0)
+    gate_logits_single_layer = gate_logits.clone()
+    routing_weights = torch.nn.functional.softmax(gate_logits_single_layer, dim=-1)
+    _, selected_experts = torch.topk(routing_weights, top_k, dim=-1)
+    expert_mask = torch.nn.functional.one_hot(selected_experts, num_experts)
+
+    if attention_mask is None:
+        # Compute the percentage of tokens routed to each experts
+        tokens_per_expert = torch.mean(expert_mask.float(), dim=0)
+
+        # Compute the average probability of routing to these experts
+        router_prob_per_expert = torch.mean(routing_weights, dim=0)
+    else:
+        batch_size, sequence_length = attention_mask.shape
+        num_hidden_layers = gate_logits_single_layer.shape[0] // (
+            batch_size * sequence_length
+        )
+
+        # Compute the mask that masks all padding tokens as 0
+        # with the same shape of expert_mask
+        expert_attention_mask = (
+            attention_mask[None, :, :, None, None]
+            .expand(
+                (num_hidden_layers, batch_size, sequence_length, top_k, num_experts)
+            )
+            .reshape(-1, top_k, num_experts)
+        )
+        # Compute the percentage of tokens routed to each experts
+        tokens_per_expert = torch.sum(
+            expert_mask.float() * expert_attention_mask, dim=0
+        ) / torch.sum(expert_attention_mask, dim=0)
+        # Compute the mask that masks all padding tokens as
+        # 0 with the same shape of tokens_per_expert
+        router_per_expert_attention_mask = (
+            attention_mask[None, :, :, None]
+            .expand((num_hidden_layers, batch_size, sequence_length, num_experts))
+            .reshape(-1, num_experts)
+        )
+        # Compute the average probability of routing to these experts
+        router_prob_per_expert = torch.sum(
+            routing_weights * router_per_expert_attention_mask, dim=0
+        ) / torch.sum(router_per_expert_attention_mask, dim=0)
+    overall_loss = torch.sum(tokens_per_expert * router_prob_per_expert.unsqueeze(0))
+    return overall_loss * num_experts
 
 
 class CellGenTrainer(LightningModule):
@@ -79,12 +160,15 @@ class CellGenTrainer(LightningModule):
         moe_type: Literal['moe_attention', 'none', 'moe_ffn'] = 'none',
         alpha: float = 0.5,
         n_task_conditions: int = 2,
+        num_experts: int = 2,
+        num_classes: int = 2,
         gene_names: Optional[List[str]] = None,
         tokenid_to_genename_dict: Optional[str] = None,
         mask_scheduler: Optional[str] = 'cosine',
         temperature: Optional[float] = 2.0,
         iterations: Optional[int] = 18,
         apply_attn_mask: Optional[bool] = False,
+        moe_loss_mode: Optional[str] = 'moe_loss',
         *args,
         **kwargs,
     ) -> None:
@@ -102,6 +186,8 @@ class CellGenTrainer(LightningModule):
             encoder_type=encoder_type,
             moe_type=moe_type,
             n_task_conditions=n_task_conditions,
+            num_experts=num_experts,
+            num_classes=num_classes,
         )
         # if ckpt_masking_path is not None:
         #     print('Start loading checkpoint of masking model')
@@ -172,6 +258,8 @@ class CellGenTrainer(LightningModule):
             self.mask_scheduler = mask_scheduler
             self.temperature = temperature
             self.iterations = iterations
+        self.num_experts = num_experts
+        self.moe_loss_mode = moe_loss_mode
 
     def forward(self, batch):
         outputs = self.transformer(
@@ -434,9 +522,30 @@ class CellGenTrainer(LightningModule):
         # perp = self.perplexity(dec_logits, labels)
         dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
         labels = labels.contiguous().view(-1)
-
+        loss = 0
         masking_loss = self.masking_loss(dec_logits, labels)
-        if expert_logits_list is not None:
+        loss += masking_loss
+        if self.moe_loss_mode == 'aux_loss':
+            tgt_pad = generate_padding(batch['tgt_input_ids'])
+            aux_loss = load_balancing_loss_func(
+                outputs['gate_logits'],
+                self.num_experts,
+                top_k=2,
+                attention_mask=~tgt_pad,
+            )
+            self.log(
+                'train/aux_loss',
+                aux_loss,
+                on_step=True,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+                batch_size=batch['src_input_ids'].shape[0],
+                rank_zero_only=True,
+                sync_dist=True,
+            )
+            loss += self.alpha * aux_loss
+        elif self.moe_loss_mode == 'moe_loss':
             # Calculate the BCE loss for each class
             expert_loss = [
                 self.bce_loss(
@@ -446,9 +555,8 @@ class CellGenTrainer(LightningModule):
                 for i in range(len(batch['moe_categories']))
             ]
             moe_loss = sum(expert_loss)
-            if moe_loss == float('nan'):
-                raise ValueError('Loss is nan')
-
+            if torch.isnan(moe_loss):
+                raise ValueError('Loss is NaN')
             self.log(
                 'train/moe_loss',
                 moe_loss,
@@ -460,12 +568,7 @@ class CellGenTrainer(LightningModule):
                 rank_zero_only=True,
                 sync_dist=True,
             )
-            total_loss = (1 - self.alpha) * masking_loss + self.alpha * moe_loss
-        else:
-            total_loss = masking_loss
-        # # Convert class_column to one-hot encoded target matrix
-        # target = torch.zeros(len(class_column), num_classes)
-        # target[torch.arange(len(class_column)), class_column] = 1
+            loss += self.alpha * moe_loss
 
         self.log(
             'train/masking_loss',
@@ -478,20 +581,7 @@ class CellGenTrainer(LightningModule):
             rank_zero_only=True,
             sync_dist=True,
         )
-
-        # self.log(
-        #     'train/perplexity',
-        #     perp,
-        #     on_step=False,
-        #     on_epoch=True,
-        #     prog_bar=True,
-        #     logger=True,
-        #     batch_size=batch['src_input_ids'].shape[0],
-        #     rank_zero_only=True,
-        #     sync_dist=True,
-        # )
-
-        return total_loss
+        return loss
 
     def on_train_epoch_end(self):
         pass
