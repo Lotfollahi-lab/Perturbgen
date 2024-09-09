@@ -13,6 +13,7 @@ from pytorch_lightning.callbacks import TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 
 from T_perturb.Dataloaders.datamodule import CellGenDataModule
+from T_perturb.Model.perturber import CellGenPerturber
 from T_perturb.Model.trainer import CellGenTrainer, CountDecoderTrainer
 from T_perturb.src.utils import (
     label_encoder,
@@ -37,7 +38,7 @@ def get_args():
         '--test_mode',
         type=str,
         default='count',
-        help='Mode [masking, count]',
+        help='Mode [masking, count, perturb_masking, perturb_count]',
     )
     parser.add_argument(
         '--split',
@@ -224,6 +225,20 @@ def get_args():
         default=True,
         help='context mode for timepoints',
     )
+    parser.add_argument(
+        '--perturbation_mode',
+        type=str,
+        default=None,
+        choices=['KO'],
+        help='perturbation mode',
+    )
+    parser.add_argument(
+        '--perturbation_genes',
+        type=str,
+        nargs='+',
+        default=None,
+        help='perturbation genes',
+    )
     args = parser.parse_args()
     return args
 
@@ -395,6 +410,32 @@ def main() -> None:
             mode=args.mode,
             context_mode=args.context_mode,
         )
+    elif args.test_mode == 'perturb_masking':
+        pretrained_module = CellGenPerturber(
+            perturbation_mode=args.perturbation_mode,
+            perturbation_genes=args.perturbation_genes,
+            tgt_vocab_size=args.tgt_vocab_size,
+            d_model=256,
+            num_heads=8,
+            num_layers=args.num_layers,
+            d_ff=args.d_ff,
+            max_seq_length=args.max_len + 100,
+            dropout=args.cellgen_dropout,
+            weight_decay=args.cellgen_wd,
+            lr=args.cellgen_lr,
+            # lr_scheduler_patience=5.0,
+            # lr_scheduler_factor=0.8,
+            return_embeddings=args.return_embeddings,
+            generate=args.generate,
+            time_steps=args.time_steps,
+            total_time_steps=n_total_timepoints,
+            mapping_dict_path=args.mapping_dict_path,
+            gene_names=tgt_adata_tmp.var['gene_name'],
+            output_dir=args.output_dir,
+            var_list=args.var_list,
+            mode=args.mode,
+            context_mode=args.context_mode,
+        )
     elif args.test_mode == 'count':
         decoder_module = CountDecoderTrainer(
             ckpt_masking_path=args.ckpt_masking_path,
@@ -508,7 +549,7 @@ def main() -> None:
         limit_test_batches=500.0,
     )
     # Finally, kick of the training process.
-    if args.test_mode == 'masking':
+    if args.test_mode == 'masking' or args.test_mode == 'perturb_masking':
         trainer.test(
             pretrained_module,
             data_module,
@@ -520,7 +561,9 @@ def main() -> None:
             data_module,
         )
     else:
-        raise ValueError('test_mode not recognised, needs to be masking or count')
+        raise ValueError(
+            'test_mode not recognised, needs to be masking, perturb_masking, or count'
+        )
 
 
 if __name__ == '__main__':
