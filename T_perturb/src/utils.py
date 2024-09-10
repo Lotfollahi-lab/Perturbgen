@@ -4,11 +4,11 @@ import os
 import pickle
 from pathlib import Path
 from typing import (
-    Any,
     Dict,
     List,
     Literal,
     Optional,
+    Tuple,
 )
 
 import anndata as ad
@@ -17,7 +17,6 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 import torch
-import tqdm
 from datasets import DatasetDict, load_from_disk
 from geneformer import EmbExtractor
 from geneformer.emb_extractor import get_embs, label_cell_embs
@@ -556,14 +555,12 @@ def subset_adata(adata, cell_pairings):
 
 
 def pairing_src_to_tgt_cells(
-    adata_subset: ad.AnnData,
-    pairing_mode: str,
-    pairing_obs: str,
-    dataset_type: str,
+    dataset: DatasetDict,
+    pairing_col: str,
+    src_condition: List[str],
+    tgt_conditions: List[str],
     seed_no: int = 42,
-    src_condition: Optional[List[str]] = None,
-    tgt_conditions: Optional[List[str]] = None,
-) -> Dict[str, List[str]]:
+) -> Dict[str, List[Tuple[int, int]]]:
     """
     Description:
     ------------
@@ -572,125 +569,64 @@ def pairing_src_to_tgt_cells(
 
     Parameters:
     -----------
-    adata_subset: `~anndata.AnnData`
-        Annotated data matrix subsetted to include only DEGs.
-    pairing_mode: `str`
-        Mode to pair cells. Choose between 'random' and 'stratified'.
-    dataset_type: `str`
-        Type of dataset. Choose between 'conditional' and 'temporal'.
-    pairing_obs: `str`
-        obs column name in anndate which is used as pairing condition
-    seed: `int`
+    dataset: `datasets.DatasetDict`
+        Huggingface dataset.
+    pairing_col: `str`
+        Column name of pairing conditions in dataset.
+    src_condition: `List[str]`
+        Source condition for control cells.
+    tgt_conditions: `List[str]`
+        Target conditions for perturbed cells.
+    seed_no: `int`
         Seed for random number generator.
-    src_condition: `Optional[List[str]]`
-        Source/control condition for cell pairing.
-        Select a category in pairing_obs column.
-    tgt_conditions: `Optional[List[str]]`
-        Target/perturbed condition for cell pairing.
-        Select categories in pairing_obs column.
-
 
     Returns:
     --------
-    cell_pairings: `Dict[str, List[str]]`
-        Dictionary containing pairing indices of control and perturbed cells.
+    cell_pairings: `Dict[str, List[Tuple[int, int]]]`
+        Dictionary of indices of paired cells.
     """
     np.random.seed(seed_no)
-    # initiate dict to store condition specific adata
-    adata_dict = {}
-    # initiate dict to store cell pairing
-    cell_pairings: Dict[Any, Any] = {}
-    if pairing_mode == 'stratified':
-        # replace index by row number
-        adata_subset_ = adata_subset.copy()
-        adata_subset_.obs = adata_subset_.obs.reset_index()
-        # drop Donor if they do not have Cell_type, Donor in all the Time_points
-        adata_grouped = adata_subset_.obs[
-            adata_subset_.obs.groupby(['Donor', 'Cell_type'])[pairing_obs].transform(
-                'nunique'
-            )
-            == 4
-        ]
-        dropped_donors = (
-            adata_subset.obs['Donor'].nunique() - adata_grouped['Donor'].nunique()
+    cell_pairings = {}
+    pairing_cond = np.array(dataset[pairing_col])
+    # find where pairing_cond == src_condition
+    src_indices = np.where(pairing_cond == src_condition[0])[0]
+    for tgt_condition in tgt_conditions:
+        tgt_indices = np.where(pairing_cond == tgt_condition)[0]
+        tmp_cell_no = len(tgt_indices)
+        src_indices_ = np.random.choice(
+            src_indices,
+            tmp_cell_no,
+            replace=True,
+        ).tolist()
+        cell_pairings[f'{src_condition[0]}_{tgt_condition}'] = list(
+            zip(src_indices_, tgt_indices)
         )
-        print(f'dropped {dropped_donors} donors')
-        resting_cells = adata_grouped.loc[adata_grouped[pairing_obs] == '0h', :]
-        grouped = adata_grouped.groupby(['Donor', 'Cell_type'])
-        for idx, resting in tqdm.tqdm(
-            resting_cells.iterrows(), total=resting_cells.shape[0]
-        ):
-            # get the indices of the other time points for the same cell type and donor
-            group = grouped.get_group((resting['Donor'], resting['Cell_type']))
-            indices_16h = group[group[pairing_obs] == '16h'].index
-            indices_40h = group[group[pairing_obs] == '40h'].index
-            indices_5d = group[group[pairing_obs] == '5d'].index
-            cell_pairings['0h'].append(idx)
-            cell_pairings['16h'].append(np.random.choice(indices_16h))
-            cell_pairings['40h'].append(np.random.choice(indices_40h))
-            cell_pairings['5d'].append(np.random.choice(indices_5d))
+    return cell_pairings
 
-    elif pairing_mode == 'random':
-        max_reference_cond = ''
-        if src_condition is not None:
-            for condition in src_condition:
-                adata_dict[condition] = adata_subset.obs.loc[
-                    adata_subset.obs[pairing_obs] == condition, :
-                ]
-                adata_dict[condition] = adata_dict[condition].reset_index()
-        if tgt_conditions is not None:
-            for condition in tgt_conditions:
-                adata_dict[condition] = adata_subset.obs.loc[
-                    adata_subset.obs[pairing_obs] == condition, :
-                ]
-                adata_dict[condition] = adata_dict[condition].reset_index()
-                if (
-                    (dataset_type == 'conditional')
-                    and (tgt_conditions is not None)
-                    and (src_condition is not None)
-                ):
-                    if condition in tgt_conditions:
-                        tgt_indices = adata_dict[condition].index.tolist()
-                        tmp_cell_no = len(tgt_indices)
-                        mapping_name = f'{src_condition[0]}_{condition}'
-                        src_indices = np.random.choice(
-                            adata_dict[src_condition[0]].index,
-                            tmp_cell_no,
-                            replace=True,
-                        ).tolist()
-                        cell_pairings[mapping_name] = dict(
-                            zip(src_indices, tgt_indices)
-                        )
-                    elif condition in src_condition:
-                        pass
-                    else:
-                        raise ValueError(f'{condition} not in {pairing_obs}')
-                # Check if this adata_tmp has more rows than the current maximum
-                elif dataset_type == 'temporal':
-                    tgt_cell_no = len(adata_dict[condition])
-                    max_reference_cond = condition
+    # if (
+    #     (dataset_type == 'conditional')
+    #     and (tgt_conditions is not None)
+    #     and (src_condition is not None)
+    # ):
+    #     if condition in tgt_conditions:
+    #         tgt_indices = adata_dict[condition].index.tolist()
+    #         tmp_cell_no = len(tgt_indices)
+    #         print(src_condition)
+    #         mapping_name = f'{src_condition[0]}_{condition}'
 
-        if dataset_type == 'temporal':
-            # randomly sample from each condition
-            ref_adata = adata_dict[max_reference_cond]
-            cell_pairings[max_reference_cond] = ref_adata.index.tolist()
-            for rest_time, adata_ in adata_dict.items():
-                if rest_time != max_reference_cond:
-                    cell_pairings[rest_time] = np.random.choice(
-                        adata_.index, tgt_cell_no, replace=True
-                    ).tolist()
-            # remove reference time from dictionary
-            del adata_dict[max_reference_cond]
-            for rest_time, adata_ in adata_dict.items():
-                cell_pairings[rest_time] = np.random.choice(
-                    adata_.index, tgt_cell_no, replace=True
-                ).tolist()
-        elif dataset_type == 'conditional':
-            pass
-        else:
-            raise ValueError('dataset_type must be either conditional or temporal')
-    else:
-        raise ValueError('pairing_mode must be either random or stratified')
+    #         src_indices = np.random.choice(
+    #             adata_dict[src_condition[0]].index,
+    #             tmp_cell_no,
+    #             replace=True,
+    #         ).tolist()
+    #         cell_pairings[mapping_name] = dict(
+    #             zip(src_indices, tgt_indices)
+    #         )
+    #     elif condition in src_condition:
+    #         pass
+    #     else:
+    #         raise ValueError(f'{condition} not in {pairing_obs}')
+
     return cell_pairings
 
 

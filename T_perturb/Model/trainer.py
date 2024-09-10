@@ -131,7 +131,11 @@ def load_balancing_loss_func(
         router_prob_per_expert = torch.sum(
             routing_weights * router_per_expert_attention_mask, dim=0
         ) / torch.sum(router_per_expert_attention_mask, dim=0)
+        print(f'tokens_per_expert: {tokens_per_expert}')
+        print(f'router_prob_per_expert: {router_prob_per_expert}')
     overall_loss = torch.sum(tokens_per_expert * router_prob_per_expert.unsqueeze(0))
+    print(f'overall_loss: {overall_loss}')
+    raise
     return overall_loss * num_experts
 
 
@@ -168,7 +172,7 @@ class CellGenTrainer(LightningModule):
         temperature: Optional[float] = 2.0,
         iterations: Optional[int] = 18,
         apply_attn_mask: Optional[bool] = False,
-        moe_loss_mode: Optional[str] = 'moe_loss',
+        moe_loss_mode: Optional[str] = 'aux_loss',
         *args,
         **kwargs,
     ) -> None:
@@ -804,7 +808,7 @@ class CellGenTrainer(LightningModule):
             # save anndata
             adata.write_h5ad(
                 f'{self.output_dir}/{self.date}_'
-                f'cls_embeddings_{self.moe_type}_generate_{self.generate}.h5ad'
+                f'cls_embeddings_{self.moe_type}_generate_{self.generate}_aux_loss.h5ad'
             )
             print('End saving embeddings -------------------')
         if self.return_moe_probs:
@@ -827,7 +831,8 @@ class CellGenTrainer(LightningModule):
             df = df[(df['token_ids'] != 0) & (df['token_ids'] != 25426)]
             # save the dataframe
             df.to_csv(
-                f'{self.output_dir}/{self.date}_{self.moe_type}_router_probs.csv',
+                f'{self.output_dir}/{self.date}_'
+                '{self.moe_type}_router_probs_aux_loss.csv',
                 index=False,
             )
 

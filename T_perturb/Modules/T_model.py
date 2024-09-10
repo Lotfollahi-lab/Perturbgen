@@ -316,6 +316,9 @@ class SoftGatingMoE(nn.Module):
             x *= torch.empty_like(x).uniform_(
                 1.0 - self.jitter_noise, 1.0 + self.jitter_noise
             )
+        # keep track of CLS token for each batch
+        cls_mask = torch.zeros_like(tgt_pad, dtype=torch.bool)
+        cls_mask[:, 0] = True
         x = x.view(-1, hidden_dim)
         # router_logits: (batch * sequence_length, n_experts)
         gate_logits = self.token_gating_layer(x) / temperature
