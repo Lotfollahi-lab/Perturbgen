@@ -767,46 +767,63 @@ def randomised_mapping_dir_split(
     return train_dict, val_dict, test_dict
 
 
-def stratified_split(
-    tgt_adata: ad.AnnData,
+def dataset_split(
+    tgt_dataset: DatasetDict,
+    condition_keys: List[str],
     train_prop: float,
     test_prop: float,
-    groups: List[str],
     seed: int = 42,
+    mode: str = 'stratified',
 ):
     """
     Description:
     ------------
-    Stratified split of dataset based on cell type.
+    Stratified split of dataset based on given conditions
     """
     np.random.seed(seed)
-    # define train, val and test size based on unique groups
-    # extract unique groups and counts
-    # groups =
-    groups_df = tgt_adata.obs[groups].copy()
-    if len(groups) > 1:
-        groups_df.loc[:, 'stratified'] = groups_df.loc[:, groups].apply(
-            lambda x: '_'.join(x), axis=1
+    if mode == 'stratified':
+        # combine conditions to create unique groups
+        combined_conditions = [
+            '_'.join(item)
+            for item in zip(*(tgt_dataset[key] for key in condition_keys))
+        ]
+        combined_conditions = np.array(combined_conditions)
+        # get unique groups and indices and return group indices
+        unique_groups, inverse_indices = np.unique(
+            combined_conditions, return_inverse=True
         )
-    else:
-        groups_df.loc[:, 'stratified'] = groups_df.loc[:, groups]
-    groups_df.reset_index(drop=True, inplace=True)
-    unique_groups = groups_df['stratified'].unique()
-    group_indices = [np.where(groups_df['stratified'] == i)[0] for i in unique_groups]
-    train_indices, test_indices, val_indices = [], [], []
+        # Use a list comprehension to collect indices for each group
+        group_indices = [
+            np.where(inverse_indices == group_idx)[0]
+            for group_idx in range(len(unique_groups))
+        ]
+        print(group_indices)
+        train_indices, test_indices, val_indices = [], [], []
 
-    for indices in group_indices:
-        assert (
-            len(np.unique(groups_df.iloc[indices].stratified)) == 1
-        ), 'groups are not stratified'
-        # split indices into train, val and test set
-        np.random.shuffle(indices)
-        train_size = np.round(train_prop * len(indices)).astype(int)
-        test_size = np.round(test_prop * len(indices)).astype(int)
-        # val_size = len(indices) - train_size - test_size
-        train_indices.extend(indices[:train_size])
-        test_indices.extend(indices[train_size : train_size + test_size])
-        val_indices.extend(indices[train_size + test_size :])
+        for indices in group_indices:
+            # split indices into train, val and test set
+            np.random.shuffle(indices)
+            print(indices)
+            train_size = np.round(train_prop * len(indices)).astype(int)
+            test_size = np.round(test_prop * len(indices)).astype(int)
+            # val_size = len(indices) - train_size - test_size
+            train_indices.extend(indices[:train_size])
+            test_indices.extend(indices[train_size : train_size + test_size])
+            val_indices.extend(indices[train_size + test_size :])
+    else:
+        n_cells = len(tgt_dataset)
+        indices = np.arange(n_cells)
+        # define train, val and test size
+        train_size = np.round(train_prop * n_cells).astype(int)
+        test_size = np.round(test_prop * n_cells).astype(int)
+        train_indices = np.random.choice(indices, train_size, replace=False)
+        indices_ = np.setdiff1d(indices, train_indices)
+        test_indices = np.random.choice(indices_, test_size, replace=False)
+        indices_ = np.setdiff1d(indices_, test_indices)
+        val_indices = indices_
+    print(f'Train size: {len(train_indices)}')
+    print(f'Val size: {len(val_indices)}')
+    print(f'Test size: {len(test_indices)}')
     return train_indices, val_indices, test_indices
 
 

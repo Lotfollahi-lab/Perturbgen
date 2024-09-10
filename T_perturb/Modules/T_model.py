@@ -19,6 +19,9 @@ from T_perturb.src.utils import (
     uniform,
 )
 
+# from torch.nn.attention.flex_attention import flex_attention, create_block_mask
+
+
 # from datetime import datetime
 
 # def drop_path(x, drop_prob: float = 0.0, training: bool = False):
@@ -175,6 +178,9 @@ class CrossAttention(nn.Module):
             nn.Linear(inner_dim, query_dim), nn.Dropout(dropout)  # projection head
         )
 
+    def mask_mod(b, h, q_idx, kv_idx, padding_mask):
+        return padding_mask[b, kv_idx]
+
     def forward(self, x, context=None, mask=None):
         h = self.num_heads
         q = self.to_q(x)
@@ -182,6 +188,25 @@ class CrossAttention(nn.Module):
             context = x
         k = self.to_k(context)
         v = self.to_v(context)
+        # batch_size, seq_len, _ = q.shape
+        # block_mask = create_block_mask(
+        #     self.mask_mod, batch_size, h, seq_len, seq_len, device=x.device
+        # )
+        # print(block_mask)
+        # raise
+
+        # with torch.backends.cuda.sdp_kernel(
+        #     enable_flash=True,
+        #     enable_math=True,
+        #     enable_mem_efficient=True,
+        # ):
+        # out = torch.nn.functional.scaled_dot_product_attention(
+        #     query=q,
+        #     key=k,
+        #     value=v,
+        #     dropout_p=0.0,
+        #     is_causal=False
+        #     )
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
         sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
         if mask is not None:
@@ -698,8 +723,8 @@ class CellGen(nn.Module):
         ] = 'GF_frozen',
         moe_type: Literal['moe_attention', 'none', 'moe_ffn'] = 'none',
         position_embedding: Literal['sinusoidal', 'learnt'] = 'learnt',
-        num_experts: int = 2,
-        num_classes: int = 2,
+        num_experts: int = 3,
+        num_classes: int = 3,
     ):
         '''
         Description:

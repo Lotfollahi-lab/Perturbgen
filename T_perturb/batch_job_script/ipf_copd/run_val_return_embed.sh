@@ -28,7 +28,7 @@ echo "--- Start computing model"
 python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
 --test_mode masking \
 --split True \
---splitting_mode random \
+--splitting_mode stratified \
 --return_embed True \
 --generate False \
 --ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240908_2031_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_48_mlmp_0.15_ntask_2_s_100-epoch=19.ckpt" \

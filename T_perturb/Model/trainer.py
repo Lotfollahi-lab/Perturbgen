@@ -131,11 +131,7 @@ def load_balancing_loss_func(
         router_prob_per_expert = torch.sum(
             routing_weights * router_per_expert_attention_mask, dim=0
         ) / torch.sum(router_per_expert_attention_mask, dim=0)
-        print(f'tokens_per_expert: {tokens_per_expert}')
-        print(f'router_prob_per_expert: {router_prob_per_expert}')
     overall_loss = torch.sum(tokens_per_expert * router_prob_per_expert.unsqueeze(0))
-    print(f'overall_loss: {overall_loss}')
-    raise
     return overall_loss * num_experts
 
 
@@ -164,8 +160,8 @@ class CellGenTrainer(LightningModule):
         moe_type: Literal['moe_attention', 'none', 'moe_ffn'] = 'none',
         alpha: float = 0.5,
         n_task_conditions: int = 2,
-        num_experts: int = 2,
-        num_classes: int = 2,
+        num_experts: int = 3,
+        num_classes: int = 3,
         gene_names: Optional[List[str]] = None,
         tokenid_to_genename_dict: Optional[str] = None,
         mask_scheduler: Optional[str] = 'cosine',
