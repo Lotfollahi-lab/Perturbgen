@@ -196,7 +196,7 @@ class CellGenPerturber(CellGenTrainer):
                 if v in self.perturbation_genes
             }
             for gene in self.perturbation_genes:
-                if gene not in perturbation_genes_ids:
+                if gene != 'first_gene' and gene not in perturbation_genes_ids:
                     continue
 
                 for time_step in self.time_steps:
