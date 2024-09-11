@@ -306,7 +306,7 @@ class Geneformerwrapper(nn.Module):
     def __init__(
         self,
         model_path='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/T_perturb/Geneformer/',
+        't_generative/T_perturb/Geneformer/gf-12L-95M-i4096/',
         output_attentions=False,
         output_hidden_states=True,
         mode='GF_frozen',

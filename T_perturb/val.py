@@ -389,7 +389,7 @@ def main() -> None:
     if args.test_mode == 'masking':
         pretrained_module = CellGenTrainer(
             tgt_vocab_size=args.tgt_vocab_size,
-            d_model=256,
+            d_model=512,
             num_heads=8,
             num_layers=args.num_layers,
             d_ff=args.d_ff,
@@ -415,7 +415,7 @@ def main() -> None:
             perturbation_mode=args.perturbation_mode,
             perturbation_genes=args.perturbation_genes,
             tgt_vocab_size=args.tgt_vocab_size,
-            d_model=256,
+            d_model=512,
             num_heads=8,
             num_layers=args.num_layers,
             d_ff=args.d_ff,
@@ -441,7 +441,7 @@ def main() -> None:
             ckpt_masking_path=args.ckpt_masking_path,
             ckpt_count_path=args.ckpt_count_path,
             tgt_vocab_size=args.tgt_vocab_size,
-            d_model=256,
+            d_model=512,
             num_heads=8,
             num_layers=args.num_layers,
             d_ff=args.d_ff,

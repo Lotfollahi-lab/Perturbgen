@@ -172,7 +172,7 @@ else:
 # filter adata for only genes occuring in the token dictionary
 (adata_subset, token_id_to_row_id_dict, row_id_to_gene_name) = tokenid_mapping(
     adata,
-    './generative_modelling_omic/Geneformer/geneformer/token_dictionary.pkl',
+    './generative_modelling_omic/Geneformer/geneformer/token_dictionary_gc95M.pkl',
     exclude_non_GF_genes=True,
 )
 # save mapping dictionnary
@@ -208,9 +208,9 @@ adata_subset.obs['n_counts'] = adata_subset.X.sum(axis=1)
 if not isinstance(adata_subset.X, csr_matrix):
     adata_subset.X = csr_matrix(adata_subset.X)
 
-# adata_subset.write_h5ad(
-#     f'{paired_h5ad_dir}/{args.dataset}_{args.gene_filtering_mode}.h5ad'
-# )
+adata_subset.write_h5ad(
+    f'{paired_h5ad_dir}/{args.dataset}_{args.gene_filtering_mode}.h5ad'
+)
 
 print('Finished preprocessing adata.')
 print('Start tokenisation of adata...')

@@ -382,7 +382,7 @@ def main() -> None:
         pretrained_module = CellGenTrainer(
             # tgt_vocab_size=1820,  # 704 for degs, 1820 for tokenised
             tgt_vocab_size=args.tgt_vocab_size,  # max token id + 1 for padding
-            d_model=256,
+            d_model=512,
             num_heads=8,
             num_layers=args.num_layers,
             d_ff=args.d_ff,
@@ -405,7 +405,7 @@ def main() -> None:
             ckpt_masking_path=args.ckpt_masking_path,
             ckpt_count_path=None,
             tgt_vocab_size=args.tgt_vocab_size,
-            d_model=256,
+            d_model=512,
             num_heads=8,
             num_layers=args.num_layers,
             d_ff=args.d_ff,

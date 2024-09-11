@@ -27,7 +27,7 @@ fonttools==4.49.0
 frozenlist==1.4.1
 fsspec==2024.2.0
 future==1.0.0
--e git+https://huggingface.co/ctheodoris/Geneformer@0960cf63969aa0dfdb00c6fd46316a3fbe7a1c9b#egg=geneformer
+-e git+https://huggingface.co/ctheodoris/Geneformer@85f295ed4989c02aa5e4a4e18d0179570da52081#egg=geneformer
 gitdb==4.0.11
 GitPython==3.1.42
 graphtools==1.5.3
@@ -117,6 +117,7 @@ sympy==1.12
 -e git+ssh://git@github.com/amirvhd/T_perturb.git@2c02b52f8e6d2f2f00b53b7dca7b71a8be1c32de#egg=T_perturb
 tasklogger==1.2.0
 tdigest==0.5.2.2
+tensorboard==2.17.1
 threadpoolctl==3.3.0
 tokenizers==0.15.2
 torch==2.3.0.dev20240314+cu121
