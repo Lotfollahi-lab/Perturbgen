@@ -10,6 +10,8 @@ from einops import rearrange, repeat
 from torch import einsum, nn
 from torch.functional import F
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
+from torch.nn.attention import SDPBackend, sdpa_kernel
+from torch.nn.functional import scaled_dot_product_attention
 from transformers import BertForMaskedLM
 
 from T_perturb.src.utils import (
@@ -18,9 +20,6 @@ from T_perturb.src.utils import (
     noise_schedule,
     uniform,
 )
-
-# from torch.nn.attention.flex_attention import flex_attention, create_block_mask
-
 
 # from datetime import datetime
 
@@ -178,35 +177,7 @@ class CrossAttention(nn.Module):
             nn.Linear(inner_dim, query_dim), nn.Dropout(dropout)  # projection head
         )
 
-    def mask_mod(b, h, q_idx, kv_idx, padding_mask):
-        return padding_mask[b, kv_idx]
-
-    def forward(self, x, context=None, mask=None):
-        h = self.num_heads
-        q = self.to_q(x)
-        if context is None:
-            context = x
-        k = self.to_k(context)
-        v = self.to_v(context)
-        # batch_size, seq_len, _ = q.shape
-        # block_mask = create_block_mask(
-        #     self.mask_mod, batch_size, h, seq_len, seq_len, device=x.device
-        # )
-        # print(block_mask)
-        # raise
-
-        # with torch.backends.cuda.sdp_kernel(
-        #     enable_flash=True,
-        #     enable_math=True,
-        #     enable_mem_efficient=True,
-        # ):
-        # out = torch.nn.functional.scaled_dot_product_attention(
-        #     query=q,
-        #     key=k,
-        #     value=v,
-        #     dropout_p=0.0,
-        #     is_causal=False
-        #     )
+    def normal_attention(self, q, k, v, h, mask=None):
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
         sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
         if mask is not None:
@@ -214,11 +185,48 @@ class CrossAttention(nn.Module):
             max_neg_value = -torch.finfo(sim.dtype).max
             mask = repeat(mask, 'b j -> (b h) () j', h=h)
             sim.masked_fill_(mask, max_neg_value)
-
-        # attention, what we cannot get enough of
         attn = sim.softmax(dim=-1)
         out = einsum('b i j, b j d -> b i d', attn, v)
         out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
+        return out
+
+    def sdpa_attention(self, q, k, v, h, mask=None):
+        q, k, v = map(lambda t: t.to(torch.bfloat16), (q, k, v))
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=h), (q, k, v))
+        if mask is not None:
+            # Expand the mask to match the target shape:
+            # [batch_size, num_heads, seq_len, seq_len]
+            mask = mask.unsqueeze(1).unsqueeze(2)
+            mask = mask.expand(-1, 8, 2048, 2048)
+            # negate mask so that padding tokens=False
+            mask = ~mask
+        with sdpa_kernel(backends=[SDPBackend.EFFICIENT_ATTENTION, SDPBackend.MATH]):
+            out = scaled_dot_product_attention(
+                query=q,
+                key=k,
+                value=v,
+                attn_mask=mask,
+                is_causal=False,
+            )
+        out = rearrange(out, ' b h n d -> b n (h d)', h=h)
+        return out
+
+    def forward(self, x, context=None, mask=None, attention_mode='sdpa'):
+        h = self.num_heads
+        q = self.to_q(x)
+        if context is None:
+            context = x
+        k = self.to_k(context)
+        v = self.to_v(context)
+        if x.dtype == torch.float16:
+            if attention_mode == 'normal':
+                out = self.normal_attention(q, k, v, h, mask)
+            elif attention_mode == 'sdpa':
+                out = self.sdpa_attention(q, k, v, h, mask)
+            else:
+                raise ValueError(f'Invalid attention mode: {attention_mode}')
+        else:
+            out = self.normal_attention(q, k, v, h, mask)
         return self.to_out(out)
 
 
@@ -725,6 +733,7 @@ class CellGen(nn.Module):
         position_embedding: Literal['sinusoidal', 'learnt'] = 'learnt',
         num_experts: int = 3,
         num_classes: int = 3,
+        compile: bool = True,
     ):
         '''
         Description:
@@ -811,8 +820,8 @@ class CellGen(nn.Module):
         else:
             raise ValueError(f'Invalid encoder mode: {encoder_type}')
         self.encoder_type = encoder_type
-        self.decoder_block = nn.ModuleList(
-            [
+        if compile:
+            block = torch.compile(
                 Block(
                     dim=d_model,
                     num_heads=num_heads,
@@ -824,9 +833,20 @@ class CellGen(nn.Module):
                     num_classes=num_classes,
                     mode=moe_type,
                 )
-                for _ in range(num_layers)
-            ]
-        )
+            )
+        else:
+            block = Block(
+                dim=d_model,
+                num_heads=num_heads,
+                d_ff=d_ff,
+                hidden_size=d_model,
+                dropout=dropout,
+                top_k=2,
+                num_experts=num_experts,
+                num_classes=num_classes,
+                mode=moe_type,
+            )
+        self.decoder_block = nn.ModuleList([block for _ in range(num_layers)])
         self.decoder_fc = nn.Linear(d_model, tgt_vocab_size)
         self.dropout = nn.Dropout(dropout)
         self.moe_type = moe_type

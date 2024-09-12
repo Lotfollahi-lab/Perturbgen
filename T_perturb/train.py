@@ -13,7 +13,7 @@ import torch
 from datasets import load_from_disk
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.strategies import DDPStrategy
+from pytorch_lightning.strategies import DDPStrategy  # , DeepSpeedStrategy
 
 from T_perturb.Dataloaders.datamodule import CellGenDataModule
 from T_perturb.Model.trainer import CellGenTrainer
@@ -554,7 +554,17 @@ def main() -> None:
     #     filename='profiler',
     # )
     # device_stats = DeviceStatsMonitor()
-    accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
+    # from deepspeed.ops.adam import FusedAdam
+    # set
+    if torch.cuda.is_available():
+        cuda_device_name = torch.cuda.get_device_name()
+        # If the device is an A100, set the precision for matrix multiplication
+        if ('A100' in cuda_device_name) or ('H100' in cuda_device_name):
+            print(f'Using {cuda_device_name} for training')
+            precision = '16-mixed'
+        else:
+            precision = '32'
+        accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
     print('Using device {}.'.format(accelerator))
     # deepspeed_strategy = DeepSpeedStrategy(
     #     stage=2,
@@ -568,9 +578,11 @@ def main() -> None:
             early_stop_callback,
         ],
         max_epochs=args.epochs,
-        accelerator='auto',
+        precision=precision,
+        accelerator=accelerator,
         devices=-1 if torch.cuda.is_available() else 0,
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
+        # strategy=deepspeed_strategy,
         gradient_clip_algorithm='norm',
     )
     print('Starting training...')
