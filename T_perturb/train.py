@@ -13,7 +13,10 @@ import torch
 from datasets import load_from_disk
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.strategies import DDPStrategy  # , DeepSpeedStrategy
+from pytorch_lightning.strategies import DeepSpeedStrategy  # DDPStrategy
+from pytorch_lightning.utilities.deepspeed import (
+    convert_zero_checkpoint_to_fp32_state_dict,
+)
 
 from T_perturb.Dataloaders.datamodule import CellGenDataModule
 from T_perturb.Model.trainer import CellGenTrainer
@@ -47,15 +50,13 @@ def get_args():
     parser.add_argument(
         '--output_dir',
         type=str,
-        # default='./T_perturb/T_perturb/plt/res/cytoimmgen',
-        default='./T_perturb/T_perturb/plt/res/eb',
+        default='./T_perturb/T_perturb/plt/res/cytoimmgen',
         help='store dataset name',
     )
     parser.add_argument(
         '--splitting_mode',
         type=str,
-        default='random',
-        # default='stratified',
+        default='stratified',
         choices=['random', 'stratified', 'unseen_cond'],
         help='splitting mode',
     )
@@ -67,44 +68,28 @@ def get_args():
         default=None,
         help='path to checkpoint',
     )
-
     parser.add_argument(
         '--src_dataset',
         type=str,
         default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset',
-        # default=(
-        #     './T_perturb/T_perturb/pp/res/eb/'
-        #     'dataset_all_src/eb_all_Day 00-03.dataset'
-        # ),
-        # default='./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
         '--tgt_dataset',
         type=str,
         default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt',
-        # default='./T_perturb/T_perturb/pp/res/eb/dataset_all_tgt',
-        # default='./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt',
         help='path to tokenised activated data',
     )
     parser.add_argument(
         '--src_adata',
         type=str,
         default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
-        # default=(
-        #     './T_perturb/T_perturb/pp/'
-        #     'res/eb/h5ad_pairing_all_src/eb_all_Day 00-03.h5ad'
-        # ),
-        # default='./T_perturb/T_perturb/pp/res/cytoimmgen/'
-        # 'h5ad_pairing_hvg_src/0h.h5ad',
         help='path to src',
     )
     parser.add_argument(
         '--tgt_adata',
         type=str,
         default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt',
-        # default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_all_tgt',
-        # default='./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt',
         help='path to tgt',
     )
     parser.add_argument(
@@ -124,16 +109,12 @@ def get_args():
     parser.add_argument(
         '--max_len',
         type=int,
-        # default=300,
-        # default=2048,
         default=263,
         help='max sequence length',
     )  # check how many genes there are
     parser.add_argument(
         '--tgt_vocab_size',
         type=int,
-        # default=1261,
-        # default=15280,
         default=2001,
         help='vocab size (max token id + 1) in dataset for padding',
     )
@@ -234,9 +215,6 @@ def get_args():
 
 
 def main() -> None:
-    # for reproducible results
-    # torch.backends.cudnn.benchmark = False
-    # torch.backends.cudnn.deterministic = True
     """Run training."""
     args = get_args()
     # PyTorch Lightning allows to set all necessary seeds in one function call.
@@ -245,11 +223,11 @@ def main() -> None:
     # Load and preprocess data
     # ----------------------------------------------------------------------------------
     print('Loading and preprocessing data...')
-
     tgt_dataset = load_from_disk(args.tgt_dataset)
     src_dataset = load_from_disk(args.src_dataset)
     with open(args.pairing_metadata, 'rb') as f:
         pairing_metadata = pickle.load(f)
+
     # # Preprocessing adata for cell pairing
     # if args.train_mode == 'count':
     #     tgt_adatas = read_dataset_files(args.tgt_adata_folder, 'h5ad')
@@ -554,22 +532,21 @@ def main() -> None:
     #     filename='profiler',
     # )
     # device_stats = DeviceStatsMonitor()
-    # from deepspeed.ops.adam import FusedAdam
-    # set
+
     if torch.cuda.is_available():
         cuda_device_name = torch.cuda.get_device_name()
-        # If the device is an A100, set the precision for matrix multiplication
-        if ('A100' in cuda_device_name) or ('H100' in cuda_device_name):
-            print(f'Using {cuda_device_name} for training')
-            precision = '16-mixed'
-        else:
-            precision = '32'
-        accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
+        print(f'Using {cuda_device_name} for training')
+    accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
     print('Using device {}.'.format(accelerator))
-    # deepspeed_strategy = DeepSpeedStrategy(
-    #     stage=2,
-    # )
-    ddp_strategy = DDPStrategy(find_unused_parameters=True)
+    ds_config = {
+        'bf16': {'enabled': True},
+        'fp16': {'enabled': False},
+        'zero_optimization': {'stage': 2},
+    }
+    deepspeed_strategy = DeepSpeedStrategy(
+        config=ds_config,
+    )
+    # ddp_strategy = DDPStrategy(find_unused_parameters=True)
     trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=[
@@ -578,12 +555,13 @@ def main() -> None:
             early_stop_callback,
         ],
         max_epochs=args.epochs,
-        precision=precision,
+        # precision=precision,
         accelerator=accelerator,
         devices=-1 if torch.cuda.is_available() else 0,
-        strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
-        # strategy=deepspeed_strategy,
+        # strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
+        strategy=deepspeed_strategy,
         gradient_clip_algorithm='norm',
+        accumulate_grad_batches=10,
     )
     print('Starting training...')
     if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
@@ -602,12 +580,9 @@ def main() -> None:
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
     # #collate deepzero checkpoint
-    # if torch.cuda.device_count() > 1:
-    #     save_path = f'./Model/checkpoints/{filename}'
-    #     convert_zero_checkpoint_to_fp32_state_dict(
-    #         save_path,
-    #         f'{save_path}.pt'
-    #     )
+    if torch.cuda.device_count() > 1:
+        save_path = f'./Model/checkpoints/{filename}'
+        convert_zero_checkpoint_to_fp32_state_dict(save_path, f'{save_path}.pt')
 
 
 if __name__ == '__main__':

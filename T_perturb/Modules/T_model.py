@@ -191,7 +191,6 @@ class CrossAttention(nn.Module):
         return out
 
     def sdpa_attention(self, q, k, v, h, mask=None):
-        q, k, v = map(lambda t: t.to(torch.bfloat16), (q, k, v))
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=h), (q, k, v))
         if mask is not None:
             # Expand the mask to match the target shape:
@@ -218,7 +217,7 @@ class CrossAttention(nn.Module):
             context = x
         k = self.to_k(context)
         v = self.to_v(context)
-        if x.dtype == torch.float16:
+        if (x.dtype == torch.float16) or (x.dtype == torch.bfloat16):
             if attention_mode == 'normal':
                 out = self.normal_attention(q, k, v, h, mask)
             elif attention_mode == 'sdpa':
@@ -733,7 +732,6 @@ class CellGen(nn.Module):
         position_embedding: Literal['sinusoidal', 'learnt'] = 'learnt',
         num_experts: int = 3,
         num_classes: int = 3,
-        compile: bool = True,
     ):
         '''
         Description:
@@ -820,32 +818,18 @@ class CellGen(nn.Module):
         else:
             raise ValueError(f'Invalid encoder mode: {encoder_type}')
         self.encoder_type = encoder_type
-        if compile:
-            block = torch.compile(
-                Block(
-                    dim=d_model,
-                    num_heads=num_heads,
-                    d_ff=d_ff,
-                    hidden_size=d_model,
-                    dropout=dropout,
-                    top_k=2,
-                    num_experts=num_experts,
-                    num_classes=num_classes,
-                    mode=moe_type,
-                )
-            )
-        else:
-            block = Block(
-                dim=d_model,
-                num_heads=num_heads,
-                d_ff=d_ff,
-                hidden_size=d_model,
-                dropout=dropout,
-                top_k=2,
-                num_experts=num_experts,
-                num_classes=num_classes,
-                mode=moe_type,
-            )
+
+        block = Block(
+            dim=d_model,
+            num_heads=num_heads,
+            d_ff=d_ff,
+            hidden_size=d_model,
+            dropout=dropout,
+            top_k=2,
+            num_experts=num_experts,
+            num_classes=num_classes,
+            mode=moe_type,
+        )
         self.decoder_block = nn.ModuleList([block for _ in range(num_layers)])
         self.decoder_fc = nn.Linear(d_model, tgt_vocab_size)
         self.dropout = nn.Dropout(dropout)

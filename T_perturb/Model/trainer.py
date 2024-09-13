@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from deepspeed.ops.adam import FusedAdam
 from einops import rearrange
 
 # from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
@@ -153,7 +154,6 @@ class CellGenTrainer(LightningModule):
         n_task_conditions: int = 2,
         num_experts: int = 3,
         num_classes: int = 3,
-        gene_names: Optional[List[str]] = None,
         tokenid_to_genename_dict: Optional[str] = None,
         mask_scheduler: Optional[str] = 'cosine',
         temperature: Optional[float] = 2.0,
@@ -180,6 +180,7 @@ class CellGenTrainer(LightningModule):
             num_experts=num_experts,
             num_classes=num_classes,
         )
+        # self.transformer = torch.compile(self.transformer)
         # if ckpt_masking_path is not None:
         #     print('Start loading checkpoint of masking model')
         #     print(ckpt_masking_path)
@@ -232,7 +233,6 @@ class CellGenTrainer(LightningModule):
         # )  # add one for each cls token
         self.mask_token = 1  # as defined in Geneformer
         self.marker_genes = None
-        self.gene_names = gene_names
         # initialize task token for different conditions (e.g. diseases)
         self.output_dir = output_dir
         # create directory if not exist
@@ -271,11 +271,15 @@ class CellGenTrainer(LightningModule):
         return outputs
 
     def configure_optimizers(self):
-        parameters = [{'params': self.transformer.parameters(), 'lr': self.lr}]
-        optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
-        # optimizer = FusedAdam(
-        #     self.transformer.parameters(), lr=self.lr, weight_decay=self.weight_decay
-        # )
+        parameters = [
+            {
+                'params': self.transformer.parameters(),
+                'lr': self.lr,
+                'weight_decay': self.weight_decay,
+            }
+        ]
+        # optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
+        optimizer = FusedAdam(parameters)
         # lr_scheduler = WarmupCosineLR(
         #     optimizer,
         #     total_num_steps=2000,
@@ -614,7 +618,6 @@ class CellGenTrainer(LightningModule):
     def test_step(self, batch, *args, **kwargs):
         if self.return_embeddings:
             tgt_ids = batch['tgt_input_ids']
-
             if self.generate:
                 outputs, pred_ids = self.iterative_generate(
                     src_input_id=batch['src_input_ids'],
@@ -725,7 +728,6 @@ class CellGenTrainer(LightningModule):
                 token_ids=token_ids,
             )
             self.marker_genes = marker_genes_dict
-            self.test_dict['true_counts'].append(batch['tgt_counts'].detach().cpu())
             self.test_dict['cls_embeddings'].append(
                 outputs['cls_embedding'].detach().cpu()
             )
@@ -735,58 +737,61 @@ class CellGenTrainer(LightningModule):
             self.test_dict['cosine_similarities'].append(
                 marker_cos_similarity.detach().cpu()
             )
-            if batch['combined_batch'] is not None:
-                self.test_dict['batch'].append(batch['combined_batch'].detach().cpu())
+            # if batch['combined_batch'] is not None:
+            #     self.test_dict['batch'].append(batch['combined_batch'].detach().cpu())
             self.test_dict['cell_idx'].append(cell_ids)
             self.test_dict['gene_embeddings'].append(
                 marker_gene_embeddings.detach().cpu()
             )
             for var in self.var_list:
                 self.test_dict[var].append(batch[var])
-        if self.return_moe_probs:
-            router_probs = outputs['router_probs'].detach().cpu()
-            router_probs_flat = router_probs.view(-1, router_probs.shape[-1])
-            self.test_dict['router_probs'].append(router_probs_flat)
-            tgt_ids_flat = token_ids.view(-1).detach().cpu()
-            self.test_dict['tgt_input_ids'].append(tgt_ids_flat)
-            disease_array = np.array(batch['disease'])
-            self.test_dict['disease_repeat'].append(
-                np.tile(disease_array, token_ids.shape[1])
-            )
-            # create enumerated array based on the sequence length of the target ids
-            token_rank = np.arange(token_ids.shape[1])
-            token_repeat = np.tile(token_rank, token_ids.shape[0])
-            # repeat the array based on the number of samples
-            self.test_dict['token_rank'].append(token_repeat)
+            if self.return_moe_probs:
+                router_probs = outputs['router_probs'].detach().cpu()
+                router_probs_flat = router_probs.view(-1, router_probs.shape[-1])
+                self.test_dict['router_probs'].append(router_probs_flat)
+                tgt_ids_flat = token_ids.view(-1).detach().cpu()
+                self.test_dict['tgt_input_ids'].append(tgt_ids_flat)
+                disease_array = np.array(batch['disease'])
+                self.test_dict['disease_repeat'].append(
+                    np.tile(disease_array, token_ids.shape[1])
+                )
+                # create enumerated array based on the sequence length of the target ids
+                token_rank = np.arange(token_ids.shape[1])
+                token_repeat = np.tile(token_rank, token_ids.shape[0])
+                # repeat the array based on the number of samples
+                self.test_dict['token_rank'].append(token_repeat)
+        else:
+            raise ValueError('return_embeddings must be True')
 
     def on_test_epoch_end(self):
         if self.return_embeddings:
             print('Start saving embeddings -------------------')
             cls_embeddings = torch.cat(self.test_dict['cls_embeddings'])
-            true_counts = torch.cat(self.test_dict['true_counts'])
+            mean_embeddings = torch.cat(self.test_dict['mean_embeddings'])
+            # true_counts = torch.cat(self.test_dict['true_counts'])
             cosine_similarities = torch.cat(self.test_dict['cosine_similarities'])
             var_dict = {}
             for var in self.var_list:
                 var_dict[var] = np.concatenate(self.test_dict[var])
             test_obs = pd.DataFrame(var_dict)
-            if 'combined_batch' in self.test_dict.keys():
-                batch = torch.cat(self.test_dict['batch'])
-                test_obs['batch'] = np.array(batch)
+            # if 'combined_batch' in self.test_dict.keys():
+            #     batch = torch.cat(self.test_dict['batch'])
+            #     test_obs['batch'] = np.array(batch)
             cell_ids = np.concatenate(self.test_dict['cell_idx'])
             gene_embeddings = torch.cat(self.test_dict['gene_embeddings'])
             test_obs['cell_idx'] = cell_ids
             adata = ad.AnnData(
-                X=true_counts.numpy(),
+                X=cls_embeddings.numpy(),
+                # X=true_counts.numpy(),
                 obs=test_obs,
                 obsm={
-                    'cls_embeddings': cls_embeddings.numpy(),
+                    'mean_embeddings': mean_embeddings.numpy(),
                     'gene_embeddings': gene_embeddings.numpy(),
                 },
                 uns={
                     'marker_genes': self.marker_genes,
                 },
             )
-            adata.var_names = self.gene_names
             df = pd.DataFrame(
                 cosine_similarities.numpy(), columns=self.marker_genes.keys()
             )
@@ -819,7 +824,7 @@ class CellGenTrainer(LightningModule):
             # save the dataframe
             df.to_csv(
                 f'{self.output_dir}/{self.date}_'
-                '{self.moe_type}_router_probs_aux_loss.csv',
+                f'{self.moe_type}_router_probs_aux_loss.csv',
                 index=False,
             )
 

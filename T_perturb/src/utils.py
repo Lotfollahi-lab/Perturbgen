@@ -797,13 +797,11 @@ def dataset_split(
             np.where(inverse_indices == group_idx)[0]
             for group_idx in range(len(unique_groups))
         ]
-        print(group_indices)
         train_indices, test_indices, val_indices = [], [], []
 
         for indices in group_indices:
             # split indices into train, val and test set
             np.random.shuffle(indices)
-            print(indices)
             train_size = np.round(train_prop * len(indices)).astype(int)
             test_size = np.round(test_prop * len(indices)).astype(int)
             # val_size = len(indices) - train_size - test_size

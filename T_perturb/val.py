@@ -2,33 +2,24 @@
 
 import argparse
 import os
+import pickle
 import uuid
 from datetime import datetime
 
 import pytorch_lightning as pl
-import scanpy as sc
 import torch
 from datasets import load_from_disk
 from pytorch_lightning.callbacks import TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 
 from T_perturb.Dataloaders.datamodule import CellGenDataModule
-from T_perturb.Model.trainer import CellGenTrainer, CountDecoderTrainer
-from T_perturb.src.utils import (
-    label_encoder,
-    randomised_mapping_dir_split,
-    randomised_split,
-    read_dataset_files,
-    str2bool,
-    stratified_split,
-)
+from T_perturb.Model.trainer import CellGenTrainer  # , CountDecoderTrainer
+from T_perturb.src.utils import dataset_split, str2bool
 
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
     os.chdir('/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/')
     print('Changed working directory to root of repository')
-
-print(os.getcwd())
 
 
 def get_args():
@@ -37,7 +28,7 @@ def get_args():
     parser.add_argument(
         '--test_mode',
         type=str,
-        default='count',
+        default='masking',
         help='Mode [masking, count]',
     )
     parser.add_argument(
@@ -50,13 +41,11 @@ def get_args():
         '--output_dir',
         type=str,
         default='./T_perturb/T_perturb/plt/res/cytoimmgen',
-        # default='./T_perturb/T_perturb/plt/res/eb',
         help='store dataset name',
     )
     parser.add_argument(
         '--splitting_mode',
         type=str,
-        # default='random',
         default='stratified',
         choices=['random', 'stratified', 'unseen_cond'],
         help='splitting mode',
@@ -90,30 +79,22 @@ def get_args():
     parser.add_argument(
         '--tokenid_to_genename_dict',
         type=str,
-        # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl',
-        # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
         default='./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl',
     )
     parser.add_argument(
         '--src_dataset',
         type=str,
-        # default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset',
-        # default=(
-        #     './T_perturb/T_perturb/pp/res/eb/'
-        #     'dataset_all_src/eb_all_Day 00-03.dataset'
-        # ),
         default='./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
-        '--tgt_dataset_folder',
+        '--tgt_dataset',
         type=str,
-        # default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt',
         default='./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt/',
         help='path to tokenised activated data',
     )
     parser.add_argument(
-        '--cell_pairing_dir',
+        '--pairing_metadata',
         type=str,
         default=None,
         help='path to pkl file used for cell pairing',
@@ -121,7 +102,6 @@ def get_args():
     parser.add_argument(
         '--src_adata',
         type=str,
-        # default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
         default=(
             './T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad'
         ),
@@ -130,12 +110,11 @@ def get_args():
     parser.add_argument(
         '--tgt_adata_folder',
         type=str,
-        # default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt',
         default=('./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt'),
         help='path to tgt',
     )
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
-    parser.add_argument('--shuffle', type=bool, default=False, help='shuffle')
+    parser.add_argument('--shuffle', type=str2bool, default=False, help='shuffle')
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
     )
@@ -143,15 +122,11 @@ def get_args():
         '--max_len',
         type=int,
         default=300,
-        # default=2048,
-        # default=263,
         help='max sequence length',
     )
     parser.add_argument(
         '--tgt_vocab_size',
         type=int,
-        # default=1261,
-        # default=15280,
         default=1997,
         help='vocab size (max token id + 1) in dataset for padding',
     )
@@ -254,187 +229,144 @@ def main() -> None:
     pl.seed_everything(args.seed)
     torch.manual_seed(args.seed)
     # Load and preprocess data
+    # ----------------------------------------------------------------------------------
     print('Loading and preprocessing data...')
-    tgt_datasets = read_dataset_files(args.tgt_dataset_folder, 'dataset')
-    tgt_adatas = read_dataset_files(args.tgt_adata_folder, 'h5ad')
+    tgt_dataset = load_from_disk(args.tgt_dataset)
     src_dataset = load_from_disk(args.src_dataset)
-    src_adata = sc.read_h5ad(args.src_adata)
-    # cell pairing
-    if args.cell_pairing_dir:
-        cell_pairing = read_dataset_files(args.cell_pairing_dir, 'pkl')
+    with open(args.pairing_metadata, 'rb') as f:
+        pairing_metadata = pickle.load(f)
+
+    # # Preprocessing adata for cell pairing
+    # if args.train_mode == 'count':
+    #     tgt_adatas = read_dataset_files(args.tgt_adata_folder, 'h5ad')
+    #     # only load counts not entire anndata
+    #     tgt_counts_dict = {}
+    #     for keys, tgt_adata in tgt_adatas.items():
+    #         tgt_counts_dict[keys] = tgt_adata.X
+    #     src_adata = sc.read_h5ad(args.src_adata)
+    #     src_counts = src_adata.X
+
+    #     if args.loss_mode == 'mse':
+    #         # log normalize data only for mse loss
+    #         sc.pp.normalize_total(src_adata, target_sum=1e4)
+    #         sc.pp.log1p(src_adata)
+    #         for _, tgt_adata in tgt_adatas.items():
+    #             sc.pp.normalize_total(tgt_adata, target_sum=1e4)
+    #             sc.pp.log1p(tgt_adata)
+    #         # ZINB count loss preprocessing
+    #     # --------------------------------------------------
+    #     tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.n_task_conditions}']
+    #     if args.condition_keys is None:
+    #         args.condition_keys = 'tmp_batch'
+    #         # create a mock vector if there are no batch effect
+    #         tgt_adata_tmp.obs[args.condition_keys] = 1
+
+    #     if isinstance(args.condition_keys, str):
+    #         condition_keys_ = [args.condition_keys]
+    #     else:
+    #         condition_keys_ = args.condition_keys
+
+    #     if args.conditions is None:
+    #         if args.condition_keys is not None:
+    #             conditions_ = {}
+    #             for cond in condition_keys_:
+    #                 conditions_[cond] = tgt_adata_tmp.obs[cond].unique().tolist()
+    #         else:
+    #             conditions_ = {}
+    #     else:
+    #         conditions_ = args.conditions
+
+    #     if args.conditions_combined is None:
+    #         if len(condition_keys_) > 1:
+    #             tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[
+    #                 args.condition_keys
+    #             ].apply(lambda x: '_'.join(x), axis=1)
+    #         else:
+    #             tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[
+    #                 args.condition_keys
+    #             ]
+    #         conditions_combined_ = (
+    #             tgt_adata_tmp.obs['conditions_combined'].unique().tolist()
+    #         )
+    #     else:
+    #         conditions_combined_ = args.conditions_combined
+
+    #     condition_encodings = {
+    #         cond: {
+    #             k: v for k, v in zip(conditions_[cond], range(len(conditions_[cond])))
+    #         }
+    #         for cond in conditions_.keys()
+    #     }
+    # conditions_combined_encodings = {
+    #     k: v for k, v in zip(
+    #         conditions_combined_,
+    #         range(len(conditions_combined_))
+    #         )
+    # }
+
+    #     if (condition_encodings is not None) and (condition_keys_ is not None):
+    #         conditions = [
+    #             label_encoder(
+    #                 tgt_adata_tmp,
+    #                 encoder=condition_encodings[condition_keys_[i]],
+    #                 condition_key=condition_keys_[i],
+    #             )
+    #             for i in range(len(condition_encodings))
+    #         ]
+    #         conditions = torch.tensor(conditions, dtype=torch.long).T
+    #         conditions_combined = label_encoder(
+    #             tgt_adata_tmp,
+    #             encoder=conditions_combined_encodings,
+    #             condition_key='conditions_combined',
+    #         )
+    #         conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
+    # else:
+    #     src_counts = None
+    #     tgt_counts_dict = None
+    #     tgt_adatas = None
+    #     conditions = None
+    #     conditions_combined = None
+    #     condition_keys_ = None
+    #     condition_encodings = None
+    #     conditions_combined_ = None
+    #     conditions_combined_encodings = None
+    # # cell pairing
+    # if args.cell_pairing_dir:
+    #     cell_pairing = read_dataset_files(args.cell_pairing_dir, 'pkl')
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
-    tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.n_task_conditions}'].copy()
     if args.split:
-        if args.splitting_mode == 'stratified':
-            # start preprocessing to avoid loading anndata into datamodule
-            train_indices, val_indices, test_indices = stratified_split(
-                tgt_adata=tgt_adata_tmp,
-                train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
-                test_prop=args.test_prop,
-                groups=['Cell_type', 'Donor'],
-                seed=args.seed,
-            )
-
-            # check that indices are unique to avoid data leakage
-            assert len(set(train_indices).intersection(val_indices)) == 0
-            assert len(set(train_indices).intersection(test_indices)) == 0
-            assert len(set(val_indices).intersection(test_indices)) == 0
-        elif args.splitting_mode == 'random':
-            train_indices = None
-            val_indices = None
-            test_indices = None
-            if cell_pairing:
-                train_dict = {}
-                val_dict = {}
-                test_dict = {}
-                if any(isinstance(value, dict) for value in cell_pairing.values()):
-                    for values, cell_pairing_dict in cell_pairing.items():
-                        (
-                            train_dict_,
-                            val_dict_,
-                            test_dict_,
-                        ) = randomised_mapping_dir_split(
-                            mapping_dir=cell_pairing_dict,
-                            train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
-                            test_prop=args.test_prop,
-                            seed=args.seed,
-                        )
-                        train_dict[values] = train_dict_
-                        val_dict[values] = val_dict_
-                        test_dict[values] = test_dict_
-                else:
-                    train_dict_, val_dict_, test_dict_ = randomised_mapping_dir_split(
-                        mapping_dir=cell_pairing,
-                        train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
-                        test_prop=args.test_prop,
-                        seed=args.seed,
-                    )
-                    train_dict['cell_pairing'] = train_dict_
-                    val_dict['cell_pairing'] = val_dict_
-                    test_dict['cell_pairing'] = test_dict_
-            else:
-                train_indices, val_indices, test_indices = randomised_split(
-                    adata=tgt_adata_tmp,
-                    train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
-                    test_prop=args.test_prop,
-                    seed=args.seed,
-                )
-                print(
-                    f'Number of samples in train set: {len(train_indices)}\n'
-                    f'Number of samples in val set: {len(val_indices)}\n'
-                    f'Number of samples in test set: {len(test_indices)}'
-                )
-        # elif split == 'unseen_donor':
-        #     train, val, test = unseen_donor_split()
-        else:
-            raise ValueError(
-                "split is not available, must be either '"
-                "random','stratified' or 'unseen_donor'"
-            )
-
-    else:
-        if cell_pairing:
-            train_indices = None
-            val_indices = None
-            test_indices = None
-            train_dict = cell_pairing
-            val_dict = None
-            test_dict = cell_pairing
-        else:
-            # return all the indices
-            train_indices = list(range(len(src_dataset)))
-            val_indices = None
-            test_indices = list(
-                range(len(tgt_datasets[f'tgt_dataset_t{args.n_task_conditions}']))
-            )
-            # check if the train indices are the same for both adata and dataset
-            subset_adata = tgt_adata_tmp[train_indices]
-            subset_dataset = tgt_datasets[
-                f'tgt_dataset_t{args.n_task_conditions}'
-            ].select(train_indices)
-            assert (
-                subset_adata.obs['cell_pairing_index'].tolist()
-                == subset_dataset['cell_pairing_index']
-            )
-    if args.loss_mode == 'mse':
-        # log normalize data only for mse loss
-        sc.pp.normalize_total(src_adata, target_sum=1e4)
-        sc.pp.log1p(src_adata)
-        for _, tgt_adata in tgt_adatas.items():
-            sc.pp.normalize_total(tgt_adata, target_sum=1e4)
-            sc.pp.log1p(tgt_adata)
-    # ZINB count loss preprocessing
-    # ----------------------------------------------------------------------------------
-
-    if args.condition_keys is None:
-        args.condition_keys = 'tmp_batch'
-        # create a mock vector if there are no batch effect
-        tgt_adata_tmp.obs[args.condition_keys] = 1
-
-    if isinstance(args.condition_keys, str):
-        condition_keys_ = [args.condition_keys]
-    else:
-        condition_keys_ = args.condition_keys
-
-    if args.conditions is None:
-        if args.condition_keys is not None:
-            conditions_ = {}
-            for cond in condition_keys_:
-                conditions_[cond] = tgt_adata_tmp.obs[cond].unique().tolist()
-        else:
-            conditions_ = {}
-    else:
-        conditions_ = args.conditions
-
-    if args.conditions_combined is None:
-        if len(condition_keys_) > 1:
-            tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[
-                args.condition_keys
-            ].apply(lambda x: '_'.join(x), axis=1)
-        else:
-            tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[
-                args.condition_keys
-            ]
-        conditions_combined_ = (
-            tgt_adata_tmp.obs['conditions_combined'].unique().tolist()
+        train_indices, val_indices, test_indices = dataset_split(
+            tgt_dataset=tgt_dataset,
+            condition_keys=['disease', 'dataset_id'],
+            train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
+            test_prop=args.test_prop,
+            seed=args.seed,
+            mode=args.splitting_mode,
         )
     else:
-        conditions_combined_ = args.conditions_combined
-
-    condition_encodings = {
-        cond: {k: v for k, v in zip(conditions_[cond], range(len(conditions_[cond])))}
-        for cond in conditions_.keys()
-    }
-    conditions_combined_encodings = {
-        k: v for k, v in zip(conditions_combined_, range(len(conditions_combined_)))
-    }
-
-    if (condition_encodings is not None) and (condition_keys_ is not None):
-        conditions = [
-            label_encoder(
-                tgt_adata_tmp,
-                encoder=condition_encodings[condition_keys_[i]],
-                condition_key=condition_keys_[i],
-            )
-            for i in range(len(condition_encodings))
-        ]
-        conditions = torch.tensor(conditions, dtype=torch.long).T
-        conditions_combined = label_encoder(
-            tgt_adata_tmp,
-            encoder=conditions_combined_encodings,
-            condition_key='conditions_combined',
-        )
-        conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
-    # TODO: remove timesteps from count decoder code
-    time_steps = [1]
+        # return all the indices
+        train_indices = list(range(len(tgt_dataset)))
+        val_indices = None
+        test_indices = list(range(len(tgt_dataset)))
+        # # check if the train indices are the same for both adata and dataset
+        # if tgt_adata_tmp:
+        #     subset_adata = tgt_adata_tmp[train_indices]
+        #     subset_dataset = tgt_datasets[
+        #         f'tgt_dataset_t{args.n_task_conditions}'
+        #     ].select(train_indices)
+        #     assert (
+        #         subset_adata.obs['cell_pairing_index'].tolist()
+        #         == subset_dataset['cell_pairing_index']
+        #     )
 
     print('Data loaded and preprocessed.')
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.test_mode == 'masking':
         pretrained_module = CellGenTrainer(
-            tgt_vocab_size=args.tgt_vocab_size,
+            # tgt_vocab_size=1820,  # 704 for degs, 1820 for tokenised
+            tgt_vocab_size=args.tgt_vocab_size,  # max token id + 1 for padding
             d_model=256,
             num_heads=8,
             num_layers=args.num_layers,
@@ -449,7 +381,6 @@ def main() -> None:
             apply_attn_mask=False,
             generate=args.generate,
             n_task_conditions=args.n_task_conditions,
-            gene_names=tgt_adata_tmp.var['gene_name'],
             output_dir=args.output_dir,
             var_list=args.var_list,
             encoder_type=args.encoder_type,
@@ -459,37 +390,37 @@ def main() -> None:
             iterations=args.iterations,
             mask_scheduler=args.mask_scheduler,
         )
-    elif args.test_mode == 'count':
-        decoder_module = CountDecoderTrainer(
-            ckpt_masking_path=args.ckpt_masking_path,
-            ckpt_count_path=args.ckpt_count_path,
-            tgt_vocab_size=args.tgt_vocab_size,
-            d_model=256,
-            num_heads=8,
-            num_layers=args.num_layers,
-            d_ff=args.d_ff,
-            max_seq_length=args.max_len + 100,
-            loss_mode=args.loss_mode,
-            lr=args.count_lr,
-            weight_decay=args.count_wd,
-            # lr_scheduler_patience=5.0,
-            # lr_scheduler_factor=0.8,
-            apply_attn_mask=False,
-            conditions=conditions_,
-            conditions_combined=conditions_combined_,
-            dropout=args.count_dropout,
-            generate=args.generate,
-            tgt_adata=tgt_adatas,
-            time_steps=time_steps,
-            temperature=args.temperature,
-            iterations=args.iterations,
-            mask_scheduler=args.mask_scheduler,
-            output_dir=args.output_dir,
-            var_list=args.var_list,
-            n_samples=3,
-            mode=args.mode,
-            seed=args.seed,
-        )
+    # elif args.test_mode == 'count':
+    #     decoder_module = CountDecoderTrainer(
+    #         ckpt_masking_path=args.ckpt_masking_path,
+    #         ckpt_count_path=args.ckpt_count_path,
+    #         tgt_vocab_size=args.tgt_vocab_size,
+    #         d_model=256,
+    #         num_heads=8,
+    #         num_layers=args.num_layers,
+    #         d_ff=args.d_ff,
+    #         max_seq_length=args.max_len + 100,
+    #         loss_mode=args.loss_mode,
+    #         lr=args.count_lr,
+    #         weight_decay=args.count_wd,
+    #         # lr_scheduler_patience=5.0,
+    #         # lr_scheduler_factor=0.8,
+    #         apply_attn_mask=False,
+    #         conditions=conditions_,
+    #         conditions_combined=conditions_combined_,
+    #         dropout=args.count_dropout,
+    #         generate=args.generate,
+    #         tgt_adata=tgt_adatas,
+    #         time_steps=time_steps,
+    #         temperature=args.temperature,
+    #         iterations=args.iterations,
+    #         mask_scheduler=args.mask_scheduler,
+    #         output_dir=args.output_dir,
+    #         var_list=args.var_list,
+    #         n_samples=3,
+    #         mode=args.mode,
+    #         seed=args.seed,
+    #     )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')
     # Initialize data module
@@ -499,33 +430,27 @@ def main() -> None:
     # resort to the supposedly optimal AutoAugment policy.
     # change dataloader and input
     # create count dictionnary
-    tgt_counts_dict = {}
-    for keys, tgt_adata in tgt_adatas.items():
-        tgt_counts_dict[keys] = tgt_adata.X
-    src_counts = src_adata.X
     data_module = CellGenDataModule(
         src_dataset=src_dataset,
-        tgt_datasets=tgt_datasets,
-        src_counts=src_counts,
-        tgt_counts_dict=tgt_counts_dict,
+        tgt_dataset=tgt_dataset,
+        pairing_metadata=pairing_metadata,
+        # src_counts=src_counts,  # TODO: do not pass counts in datamodule
+        # tgt_counts_dict=tgt_counts_dict,
         batch_size=args.batch_size,
         num_workers=args.n_workers,
         shuffle=args.shuffle,
         max_len=args.max_len,
         split=args.split,
-        train_indices=None,
-        val_indices=None,
+        train_indices=train_indices,
+        val_indices=val_indices,
         test_indices=test_indices,
-        train_dict=None,
-        val_dict=None,
-        test_dict=test_dict,
         var_list=args.var_list,
     )
     # Setup trainer
     # ----------------------------------------------------------------------------------
     run_id = datetime.now().strftime('%Y%m%d_%H%M_cellgen')
     log_path = os.path.join(
-        './T_perturb/T_perturb/wandb/wandb',
+        args.log_dir,
         run_id,
     )
     os.makedirs(os.path.join(os.getcwd(), log_path), exist_ok=True)
@@ -536,14 +461,14 @@ def main() -> None:
         wandb_logger = WandbLogger(
             project='ttransformer_sweep',
             name=f'{run_id}_{str(uuid.uuid4())[:6]}',
-            save_dir='./T_perturb/T_perturb/wandb/wandb',
+            save_dir=args.log_dir,
             log_model='all',
         )  # noqa
     else:
         wandb_logger = WandbLogger(
             project='ttransformer_sweep',
             name=f'{run_id}',
-            save_dir='./T_perturb/T_perturb/wandb/wandb',
+            save_dir=args.log_dir,
             log_model='all',
         )  # noqa
 
@@ -551,7 +476,17 @@ def main() -> None:
     # For training larger models in a distributed settings, this needs more care.
     accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
     print('Using device {}.'.format(accelerator))
-
+    if torch.cuda.is_available():
+        cuda_device_name = torch.cuda.get_device_name()
+        # If the device is an A100, set the precision for matrix multiplication
+        if ('A100' in cuda_device_name) or ('H100' in cuda_device_name):
+            print(f'Using {cuda_device_name} for training')
+        #     precision = '16-mixed'
+        #     torch.set_float32_matmul_precision('medium')
+        # else:
+        #     precision = '32'
+    accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
+    print('Using device {}.'.format(accelerator))
     # Instantiate trainer object.
     # The lightning trainer has a large number of parameters that can improve the
     # training experience. It is recommended to check out the lightning docs for
@@ -562,6 +497,7 @@ def main() -> None:
         logger=wandb_logger,
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
+        # precision=precision,
         devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
     )
     if args.test_mode == 'masking':
@@ -570,11 +506,11 @@ def main() -> None:
             data_module,
             ckpt_path=args.ckpt_masking_path,
         )
-    elif args.test_mode == 'count':
-        trainer.test(
-            decoder_module,
-            data_module,
-        )
+    # elif args.test_mode == 'count':
+    #     trainer.test(
+    #         decoder_module,
+    #         data_module,
+    #     )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')
 

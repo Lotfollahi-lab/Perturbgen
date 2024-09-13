@@ -16,7 +16,7 @@
 module load cuda-12.1.1
 
 # activate pyenv
-source /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/.petra_cuda12/bin/activate
+ource /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/.torch25/bin/activate
 cwd=$(pwd)
 
 # export WANDB_DIR=$cwd/wandb
