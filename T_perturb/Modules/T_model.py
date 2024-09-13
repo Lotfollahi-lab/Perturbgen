@@ -566,7 +566,7 @@ class Block(nn.Module):
 class Geneformerwrapper(nn.Module):
     def __init__(
         self,
-        model_path='./T_perturb/Geneformer/',
+        model_path='./T_perturb/Geneformer/gf-6L-30M-i2048',
         output_attentions=False,
         output_hidden_states=True,
         mode='GF_frozen',
