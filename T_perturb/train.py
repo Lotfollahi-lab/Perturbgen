@@ -141,6 +141,7 @@ def get_args():
     parser.add_argument(
         '--cellgen_lr', type=float, default=0.0001, help='learning rate'
     )
+    
     parser.add_argument('--count_lr', type=float, default=0.00005, help='learning rate')
     parser.add_argument('--cellgen_wd', type=float, default=0.0001, help='weight decay')
     parser.add_argument('--count_wd', type=float, default=0.01, help='weight decay')

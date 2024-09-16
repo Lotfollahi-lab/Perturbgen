@@ -31,6 +31,7 @@ from T_perturb.src.utils import (
     pearson,
     return_cos_similarity,
     return_gene_embeddings,
+    WarmupScheduler
 )
 
 # from deepspeed.ops.adam import FusedAdam
@@ -57,7 +58,8 @@ class CellGenTrainer(LightningModule):
         dropout: float = 0.0,
         mlm_probability: float = 0.15,
         weight_decay: float = 0.0,
-        lr: float = 1e-3,
+        initial_lr: float = 1e-5,
+        end_lr: float = 1e-3,
         # lr_scheduler_patience: float = 5.0,
         return_embeddings: bool = False,
         generate: bool = False,
@@ -69,6 +71,8 @@ class CellGenTrainer(LightningModule):
         var_list: Optional[List[str]] = None,
         gene_names: Optional[List[str]] = None,
         mapping_dict_path: Optional[str] = None,
+        num_epochs: int= 5,
+        warmup_epochs: int=1,
         *args,
         **kwargs,
     ) -> None:
@@ -87,12 +91,14 @@ class CellGenTrainer(LightningModule):
             total_time_steps=total_time_steps,
             mode=mode,
         )
-
+        self.num_epochs = num_epochs
+        self.warmup_epochs = warmup_epochs
         self.masking_loss = nn.CrossEntropyLoss()
         self.timepoint_loss = nn.CrossEntropyLoss()
 
         self.weight_decay = weight_decay
-        self.lr = lr
+        self.initial_lr = initial_lr 
+        self.end_lr = end_lr
         # self.lr_scheduler_patience = lr_scheduler_patience
         # self.lr_scheduler_factor = lr_scheduler_factor
         self.perplexity = Perplexity(ignore_index=-100)
@@ -168,6 +174,12 @@ class CellGenTrainer(LightningModule):
     def configure_optimizers(self):
         parameters = [{'params': self.transformer.parameters(), 'lr': self.lr}]
         optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
+        # Calculate total steps and warmup steps based on number_of_batches_per_epoch
+        number_of_batches_per_epoch = len(self.trainer.datamodule.train_dataloader())
+        total_steps = self.num_epochs * number_of_batches_per_epoch
+        warmup_steps = self.warmup_epochs * number_of_batches_per_epoch
+        scheduler = WarmupScheduler(optimizer, warmup_steps=warmup_steps, initial_lr=self.initial_lr, end_lr=self.end_lr)
+
         # optimizer = FusedAdam(
         #     self.transformer.parameters(), lr=self.lr, weight_decay=self.weight_decay
         # )
@@ -180,9 +192,10 @@ class CellGenTrainer(LightningModule):
         # )
         return {
             'optimizer': optimizer,
-            # 'lr_scheduler': lr_scheduler,
+            'lr_scheduler': scheduler,
             # 'scheduler_type': 'WarmupCosineLR',
             'monitor': 'train/masking_loss',
+            'interval': 'step',
         }
 
     def training_step(self, batch, *args, **kwargs):
