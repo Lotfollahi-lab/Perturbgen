@@ -23,7 +23,7 @@ echo "--- Start computing model"
 
 # ----------------- Create folder to save results and copy the script -----------------
 RES_DIR="/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/iclr"
-RES_NAME="cytoimmgen/extrapolation"
+RES_NAME="sdpa_ablation"
 # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
 # Get the current timestamp
@@ -37,13 +37,13 @@ python3 $cwd/train.py \
 --train_mode masking \
 --split False \
 --splitting_mode stratified \
---output_dir $RES_DIR/$RES_NAME/res \
---src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_4096/0h.dataset" \
---tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt_4096" \
---src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src_4096/0h.h5ad" \
---tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt_4096" \
+--output_dir $RES_DIR/$RES_NAME \
+--src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_random_pairing_4096/0h.dataset" \
+--tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt_random_pairing_4096" \
+--src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src_random_pairing_4096/0h.h5ad" \
+--tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt_random_pairing_4096" \
 --mapping_dict_path  "./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl" \
---batch_size 512 \
+--batch_size 256 \
 --max_len 300 \
 --epochs 50 \
 --tgt_vocab_size 1254 \
@@ -57,6 +57,5 @@ python3 $cwd/train.py \
 --time_steps 1 2 \
 --var_list Cell_population Cell_type Time_point Donor \
 --mode GF_frozen \
---context_mode True \
---seed 0
+--context_mode True
 echo "--- Finished computing model"

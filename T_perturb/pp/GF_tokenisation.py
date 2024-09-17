@@ -131,6 +131,7 @@ def get_args():
 
 
 # Preprocess adata
+# default='0h',
 # ----------------
 args = get_args()
 print('Start preprocessing adata...')
@@ -265,18 +266,21 @@ token_id_to_row_id_dict = pickle.load(
 )
 if not os.path.exists(paired_dataset_dir):
     os.makedirs(paired_dataset_dir)
+# ignore CLS token because of redudancy with time task token
 dataset_mapped = dataset.map(
-    lambda example: map_input_ids_to_row_id(example, token_id_to_row_id_dict)
+    lambda example: map_input_ids_to_row_id(
+        example, token_id_to_row_id_dict, ignore_tokens=[2]
+    )
 )
 n_tgt_iter = 1  # for enumerating the timepoints
 for time_point in tqdm.tqdm(args.time_point_order):
     # subset adata by cell pairings
     adata_tmp = subset_adata(adata_subset, cell_pairings[time_point])
     # separate src and target directory
-    src_adata_dir = f'{paired_h5ad_dir}_src_random_pairing_4096'
-    tgt_adata_dir = f'{paired_h5ad_dir}_tgt_random_pairing_4096'
-    src_dataset_dir = f'{output_dir}_src_random_pairing_4096'
-    tgt_dataset_dir = f'{output_dir}_tgt_random_pairing_4096'
+    src_adata_dir = f'{paired_h5ad_dir}_src_4096'
+    tgt_adata_dir = f'{paired_h5ad_dir}_tgt_4096'
+    src_dataset_dir = f'{output_dir}_src_4096'
+    tgt_dataset_dir = f'{output_dir}_tgt_4096'
     if not os.path.exists(src_adata_dir):
         os.makedirs(src_adata_dir)
     if not os.path.exists(tgt_adata_dir):

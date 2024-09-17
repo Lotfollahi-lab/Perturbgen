@@ -23,7 +23,7 @@ echo '--- Start computing model'
 
 # ----------------- Create folder to save results and copy the script -----------------
 RES_DIR="/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/iclr"
-RES_NAME="cytoimmgen/interpolation"
+RES_NAME="cytoimmgen_interpolation"
 # if directory does not e
 echo create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
@@ -40,12 +40,12 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --split False \
 --splitting_mode stratified \
 --generate True \
---ckpt_count_path './T_perturb/T_perturb/iclr/cytoimmgen/interpolation/res/checkpoints/20240917_2127_cellgen_train_count_lr_0.005_wd_0.001_batch_256_zinb_tp_1-3_s_42-epoch=19.ckpt' \
---output_dir $RES_DIR/$RES_NAME/res \
---src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_4096/0h.dataset" \
---tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt_4096" \
---src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src_4096/0h.h5ad" \
---tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt_4096" \
+--ckpt_count_path './T_perturb/T_perturb/iclr/cytoimmgen_interpolation/checkpoints/20240916_1458_masking-epoch9_train_count_lr_0.005_wd_0.001_batch_256_zinb_tp_1-3_s_42-epoch=19.ckpt' \
+--output_dir $RES_DIR/$RES_NAME \
+--src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_random_pairing_4096/0h.dataset" \
+--tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt_random_pairing_4096" \
+--src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src_random_pairing_4096/0h.h5ad" \
+--tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt_random_pairing_4096" \
 --mapping_dict_path  "./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl" \
 --batch_size 256 \
 --max_len 300 \

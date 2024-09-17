@@ -648,8 +648,10 @@ class CellGen(nn.Module):
         self.time_steps = time_steps
         self.total_time_steps = list(range(1, total_time_steps + 1))
         self.mask_token = 1
+        # add number of CLS tokens to the vocab size
+        total_vocab_size = tgt_vocab_size + total_time_steps
         # total_vocab_size = total_vocab_size + 1  # add one for padding token
-        self.token_embedding = nn.Embedding(tgt_vocab_size, d_model, padding_idx=0)
+        self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
         self.position_embedding = position_embedding
         if position_embedding == 'sinusoidal':
             self.positional_encoding = SinusoidalPositionalEncoding(
@@ -1192,6 +1194,7 @@ class CountDecoder(nn.Module):
         # exclude pad (-1) to get the number of genes
 
         self.count_decoder = CountHead(loss_mode, n_genes, d_model, dropout)
+        # total_vocab_size = tgt_vocab_size + total_time_steps
         if add_mask_id:
             self.mask_token = 1
 

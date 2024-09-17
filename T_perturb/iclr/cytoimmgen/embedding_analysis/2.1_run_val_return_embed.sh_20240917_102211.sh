@@ -14,7 +14,7 @@
 module load cuda-12.1.1
 
 # activate pyenv
-source /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/.cellgen_4096/bin/activate
+source /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/.petra_cuda12/bin/activate
 cwd=$(pwd)
 
 # export WANDB_DIR=$cwd/wandb
@@ -23,7 +23,7 @@ echo "--- Start computing model"
 
 # ----------------- Create folder to save results and copy the script -----------------
 RES_DIR="/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/iclr"
-RES_NAME="cytoimmgen/embedding_analysis/"
+RES_NAME="cytoimmgen_embedding_analysis"
 # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
 # Get the current timestamp
@@ -40,12 +40,12 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --splitting_mode stratified \
 --return_embed True \
 --generate False \
---ckpt_masking_path "./T_perturb/T_perturb/iclr/cytoimmgen/embedding_analysis/res/checkpoints/20240917_2001_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_512_mlmp_0.15_tp_1-2-3_s_42-epoch=19.ckpt" \
+--ckpt_masking_path "./T_perturb/T_perturb/iclr/cytoimmgen_embedding_analysis/checkpoints/20240917_0018_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_256_mlmp_0.15_tp_1-2-3_s_42-epoch=19.ckpt" \
 --output_dir $RES_DIR/$RES_NAME/res \
---src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_4096/0h.dataset" \
---tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt_4096" \
---src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src_4096/0h.h5ad" \
---tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt_4096" \
+--src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_random_pairing_4096/0h.dataset" \
+--tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt_random_pairing_4096" \
+--src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src_random_pairing_4096/0h.h5ad" \
+--tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt_random_pairing_4096" \
 --batch_size 256 \
 --max_len 300 \
 --tgt_vocab_size 1254 \
@@ -62,3 +62,32 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --mode GF_fine_tuned \
 --context_mode False
 echo "--- Finished computing model"
+
+# # # Run python script for rna
+# # python3 $cwd/val.py \
+# python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
+# --test_mode masking \
+# --split True \
+# --splitting_mode stratified \
+# --return_embed True \
+# --generate False \
+# --ckpt_count_path "./T_perturb/T_perturb/Model/checkpoints/20240517_1225_petra_train_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-2-3.ckpt" \
+# --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
+# --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset" \
+# --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
+# --src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
+# --tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt" \
+# --batch_size 64 \
+# --max_len 300 \
+# --tgt_vocab_size 1261 \
+# --cellgen_lr 0.001 \
+# --cellgen_wd 0.0001 \
+# --count_lr 0.00005 \
+# --count_wd 0.01 \
+# --d_ff 32 \
+# --num_layers 1 \
+# --n_workers 32 \
+# --condition_keys Cell_culture_batch \
+# --time_steps 1 2 3 \
+# --var_list Cell_population Cell_type Time_point Donor
+# echo "--- Finished computing model"

@@ -4,7 +4,11 @@ import os
 import pickle
 import re
 from pathlib import Path
-from typing import Dict, List
+from typing import (
+    Dict,
+    List,
+    Optional,
+)
 
 import anndata as ad
 import geneformer.perturber_utils as pu
@@ -91,7 +95,7 @@ def compute_cos_similarity(
     """
     # get cls position and dec_embedding (index = time_step-1)
     dec_embedding = outputs['dec_embedding'][time_step]
-    cls_embeddings = dec_embedding[:, 0, :]
+    cls_embeddings = outputs['mean_embedding'][time_step]
     # exclude cls token from gene embeddings
     gene_embeddings = dec_embedding[:, 1:, :]
     cos_similarity = []
@@ -364,9 +368,17 @@ def tokenid_mapping(
 
 
 # use dictionary to map token_id to input_ids
-def map_input_ids_to_row_id(dataset, token_id_to_row_id_dict):
+def map_input_ids_to_row_id(
+    dataset: DatasetDict,
+    token_id_to_row_id_dict: Dict,
+    ignore_tokens: Optional[List] = None,
+):
+    if ignore_tokens is None:
+        ignore_tokens = []
     dataset['input_ids'] = [
-        token_id_to_row_id_dict.get(item, item) for item in dataset['input_ids']
+        token_id_to_row_id_dict.get(item, item)
+        for item in dataset['input_ids']
+        if item not in ignore_tokens
     ]
     return dataset
 

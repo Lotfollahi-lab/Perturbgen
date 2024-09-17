@@ -37,7 +37,7 @@ python3 $cwd/train.py \
 --train_mode masking \
 --split False \
 --splitting_mode stratified \
---output_dir $RES_DIR/$RES_NAME/res \
+--output_dir $RES_DIR/$RES_NAME \
 --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_4096/0h.dataset" \
 --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt_4096" \
 --src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src_4096/0h.h5ad" \
@@ -57,6 +57,5 @@ python3 $cwd/train.py \
 --time_steps 1 2 \
 --var_list Cell_population Cell_type Time_point Donor \
 --mode GF_frozen \
---context_mode True \
---seed 0
+--context_mode True
 echo "--- Finished computing model"

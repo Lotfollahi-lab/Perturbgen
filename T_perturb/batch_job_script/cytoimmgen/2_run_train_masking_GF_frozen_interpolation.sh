@@ -14,7 +14,7 @@
 module load cuda-12.1.1
 
 # activate pyenv
-source /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/.torch25/bin/activate
+source /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/.cellgen_4096/bin/activate
 cwd=$(pwd)
 
 export WANDB_DIR=$cwd/wandb
@@ -23,25 +23,25 @@ echo "--- Start computing model"
 
 # ----------------- Create folder to save results and copy the script -----------------
 RES_DIR="/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/iclr"
-RES_NAME="cytoimmgen_interpolation"
+RES_NAME="cytoimmgen/interpolation"
 # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
 # Get the current timestamp
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 # copy the current script to the result directory
-cp $0 $RES_DIR/$RES_NAME/run_train_masking_GF_frozen_interpolation_$TIMESTAMP.sh
-echo "Copying script to $RES_DIR/$RES_NAME/run_train_masking_GF_frozen_interpolation_$TIMESTAMP.sh"
+cp $0 $RES_DIR/$RES_NAME/2_run_train_masking_GF_frozen_interpolation_$TIMESTAMP.sh
+echo "Copying script to $RES_DIR/$RES_NAME/2_run_train_masking_GF_frozen_interpolation_$TIMESTAMP.sh"
 
 # ----------------- Interpolation -----------------
 python3 $cwd/train.py \
 --train_mode masking \
 --split False \
 --splitting_mode stratified \
---output_dir $RES_DIR/$RES_NAME \
---src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_random_pairing_4096/0h.dataset" \
---tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt_random_pairing_4096" \
---src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src_random_pairing_4096/0h.h5ad" \
---tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt_random_pairing_4096" \
+--output_dir $RES_DIR/$RES_NAME/res \
+--src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_4096/0h.dataset" \
+--tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt_4096" \
+--src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src_4096/0h.h5ad" \
+--tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt_4096" \
 --mapping_dict_path  "./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl" \
 --batch_size 512 \
 --max_len 300 \
@@ -56,5 +56,6 @@ python3 $cwd/train.py \
 --condition_keys Cell_culture_batch \
 --time_steps 1 3 \
 --var_list Cell_population Cell_type Time_point Donor \
---mode GF_frozen
+--mode GF_frozen \
+--seed 0
 echo "--- Finished computing model"
