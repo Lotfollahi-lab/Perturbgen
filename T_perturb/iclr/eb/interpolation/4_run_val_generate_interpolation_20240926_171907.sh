@@ -44,14 +44,14 @@ python3 $cwd/val.py \
 --splitting_mode random \
 --generate True \
 --output_dir $RES_DIR/$RES_NAME/res \
---ckpt_count_path './T_perturb/T_perturb/iclr/eb/interpolation/res/checkpoints/20240922_1428_cellgen_train_count_lr_0.0001_wd_0.0001_batch_32_zinb_tp_1-2-4_s_42_mask_exp-epoch=99.ckpt' \
---src_dataset './T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset' \
---tgt_dataset_folder './T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt' \
+--ckpt_count_path './T_perturb/T_perturb/iclr/eb/interpolation/res/checkpoints/20240926_1639_cellgen_train_count_lr_0.0001_wd_0.0001_batch_32_zinb_tp_1-2-4_s_42_pos_time_pos_sin-epoch=99.ckpt' \
+--src_dataset './T_perturb/T_perturb/pp/res/eb/dataset_hvg_subsetted_src/Day 00-03.dataset' \
+--tgt_dataset_folder './T_perturb/T_perturb/pp/res/eb/dataset_hvg_subsetted_tgt' \
 --src_adata './T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad' \
 --tgt_adata_folder './T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt' \
 --batch_size 64 \
---max_len 300 \
---tgt_vocab_size 20274 \
+--max_len 270 \
+--tgt_vocab_size 1730 \
 --cellgen_lr 0.001 \
 --cellgen_wd 0.0001 \
 --count_lr 0.0001 \
@@ -62,5 +62,6 @@ python3 $cwd/val.py \
 --n_workers 32 \
 --time_steps 3 \
 --var_list Time_point \
---mask_scheduler 'exp'
+--positional_encoding sin_learnt \
+--mask_scheduler 'cosine'
 echo '--- Finished computing model'

@@ -62,5 +62,5 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --time_steps 1 2 4 \
 --var_list Time_point \
 --mode GF_frozen \
---mask_scheduler 'exp'
+--mask_scheduler 'cosine'
 echo '--- Finished computing model'

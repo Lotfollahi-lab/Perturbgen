@@ -23,7 +23,7 @@ echo '--- Start computing model'
 
 # ----------------- Create folder to save results and copy the script -----------------
 RES_DIR="/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/iclr"
-RES_NAME="cytoimmgen/postional_encoding"
+RES_NAME="cytoimmgen/masking_scheduler"
 # if directory does not e
 echo create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
@@ -40,14 +40,14 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --split False \
 --splitting_mode stratified \
 --generate True \
---ckpt_count_path './T_perturb/T_perturb/iclr/cytoimmgen/positional_encoding/res/checkpoints/20240925_0823_cellgen_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1-3_s_42_pos_comb_sin-epoch=01.ckpt' \
+--ckpt_count_path './T_perturb/T_perturb/iclr/cytoimmgen/masking_scheduler/res/checkpoints/20240921_1828_cellgen_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1-3_s_42_mask_exp-epoch=01.ckpt' \
 --output_dir $RES_DIR/$RES_NAME/res \
 --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset" \
 --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
 --src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
 --tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt" \
 --mapping_dict_path  "./T_perturb/Geneformer/geneformer/token_dictionary_gc95M.pkl" \
---batch_size 128 \
+--batch_size 64 \
 --max_len 300 \
 --tgt_vocab_size 20274 \
 --cellgen_lr 0.0001 \
@@ -63,5 +63,5 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --mode GF_frozen \
 --positional_encoding comb_sin \
 --hvg_gene_list_dir "./T_perturb/T_perturb/iclr/cytoimmgen/generation/hvg_list.pkl" \
---mask_scheduler 'cosine'
+--mask_scheduler 'exp'
 echo '--- Finished computing model'

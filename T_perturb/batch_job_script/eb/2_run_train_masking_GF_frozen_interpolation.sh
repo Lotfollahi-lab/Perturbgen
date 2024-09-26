@@ -44,15 +44,15 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --split False \
 --splitting_mode random \
 --output_dir $RES_DIR/$RES_NAME/res \
---src_dataset './T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset' \
---tgt_dataset_folder './T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt' \
+--src_dataset './T_perturb/T_perturb/pp/res/eb/dataset_hvg_subsetted_src/Day 00-03.dataset' \
+--tgt_dataset_folder './T_perturb/T_perturb/pp/res/eb/dataset_hvg_subsetted_tgt' \
 --src_adata './T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad' \
 --tgt_adata_folder './T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt' \
 --mapping_dict_path  './T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl' \
 --batch_size 32 \
---max_len 300 \
+--max_len 270 \
 --epochs 100 \
---tgt_vocab_size 20274 \
+--tgt_vocab_size 1730 \
 --cellgen_lr 0.001 \
 --cellgen_wd 0.0001 \
 --mlm_prob 0.15 \
@@ -62,6 +62,7 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --time_steps 1 2 4 \
 --var_list Time_point \
 --mode GF_frozen \
---mask_scheduler 'exp'
+--positional_encoding sin_learnt \
+--mask_scheduler 'cosine'
 
 # echo '--- Finished computing model'

@@ -317,8 +317,11 @@ def main() -> None:
                         f'tgt_dataset_t{time_step}'
                     ].select(pairing_index)
                     tgt_adatas[file_name] = tgt_adata[pairing_index]
-    with open(args.hvg_gene_list_dir, 'rb') as f:
-        hvg_gene_list = pickle.load(f)
+    if args.hvg_gene_list_dir:
+        with open(args.hvg_gene_list_dir, 'rb') as f:
+            hvg_gene_list = pickle.load(f)
+    else:
+        hvg_gene_list = None
     # create gene list for guided generation
     if args.guided_gene_list_dir:
         guided_gene_df = pd.read_csv(args.guided_gene_list_dir)
@@ -339,12 +342,16 @@ def main() -> None:
         unique_genes_df = cell_type_df[
             cell_type_df['gene_id'].isin(unique_genes)
         ].copy()
+        unique_genes_df['unique'] = True
         if unique_genes_df.shape[0] == 0:
             raise ValueError(
                 f'No unique genes found in guided '
                 f'gene list for {args.generate_cell_type}'
             )
-
+        unique_token_dict = {
+            k: v
+            for k, v in zip(unique_genes_df['gene_name'], unique_genes_df['token_id'])
+        }
         # find shared genes in the guided gene list
         shared_genes = cell_type_df[~cell_type_df['gene_id'].isin(unique_genes)][
             'gene_id'
@@ -355,15 +362,17 @@ def main() -> None:
         # else:
         #     shared_genes = shared_genes
         shared_genes_df = cell_type_df[cell_type_df['gene_id'].isin(shared_genes)]
-        print(f'Unique genes: {unique_genes_df}')
-        print(f'Shared genes: {shared_genes_df.shape[0]}')
-        all_genes_df = pd.concat([unique_genes_df, shared_genes_df])
-        token_dict = {
-            k: v for k, v in zip(all_genes_df['gene_name'], all_genes_df['token_id'])
+        shared_token_dict = {
+            k: v
+            for k, v in zip(shared_genes_df['gene_name'], shared_genes_df['token_id'])
         }
-        print(f'Guided gene list created with {len(token_dict)} genes')
+        print(
+            f'Guided gene list created with {len(unique_token_dict)} genes'
+            f' and {len(shared_token_dict)} shared genes'
+        )
     else:
-        token_dict = None
+        unique_token_dict = None
+        shared_token_dict = None
 
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
@@ -554,7 +563,8 @@ def main() -> None:
             positional_encoding=args.positional_encoding,
             context_mode=args.context_mode,
             n_genes=tgt_adata_tmp.X.shape[1],
-            guided_gene_list=token_dict,
+            unique_gene_list=unique_token_dict,
+            shared_gene_list=shared_token_dict,
             hvg_gene_list=hvg_gene_list,
         )
     else:

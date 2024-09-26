@@ -472,12 +472,15 @@ def main() -> None:
             total_time_steps=n_total_timepoints,
             var_list=args.var_list,
         )
+
     elif args.train_mode == 'count':
         data_module = CellGenDataModule(
             src_dataset=src_dataset,
             tgt_datasets=tgt_datasets,
             src_counts=src_counts,
             tgt_counts_dict=tgt_counts_dict,
+            src_pca=src_adata.obsm['X_pca_scaled'],
+            tgt_pca_dict={k: v.obsm['X_pca_scaled'] for k, v in tgt_adatas.items()},
             batch_size=args.batch_size,
             num_workers=args.n_workers,
             shuffle=args.shuffle,

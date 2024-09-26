@@ -59,5 +59,5 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --var_list Cell_population Cell_type Time_point Donor \
 --mode GF_frozen \
 --context_mode True \
---mask_scheduler 'cosine' \
+--mask_scheduler 'cosine'
 echo "--- Finished computing model"

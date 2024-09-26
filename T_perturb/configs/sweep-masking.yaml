@@ -12,35 +12,38 @@ parameters:
   splitting_mode:
     value: stratified
   epochs:
-   value: 20
+   value: 5
   output_dir:
-    value: './T_perturb/T_perturb/plt/res/cytoimmgen'
+    value: './T_perturb/T_perturb/iclr/cytoimmgen/sweep/res/checkpoints'
   src_dataset:
-    value: './T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset'
+    value: "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset"
   tgt_dataset_folder:
-    value: './T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt'
+    value: "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt"
   src_adata:
-    value: './T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad'
+    value: "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad"
   tgt_adata_folder:
-    value: './T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt'
-  batch_size:
-    value: 64
+    value: "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt"
   max_len:
     value: 300
   tgt_vocab_size:
-    value: 1261
+    value: 20274
   condition_keys:
     value: 'Cell_culture_batch'
-  petra_lr:
-    value: 0.0001
+  mask_scheduler:
+    value: 'cosine'
+  positional_encoding:
+    value: 'time_pos_sin'
+  batch_size:
+    values: [64, 128]
+  cellgen_lr:
+    values: [0.0001, 0.0005, 0.00005]
   num_layers:
-    values: [6]
+    values: [4, 5, 6]
   d_ff:
-    values: [32, 128]
-  mlm_prob:
-    values: [0.15, 0.3, 0.45]
-  petra_wd:
-    values: [0.001, 0.0001]
+    values: [64, 128]
+  cellgen_wd:
+    values: [0.0001, 0.0005, 0.00005]
+
   # petra_lr:
   #   distribution: log_uniform
   #   min: 0.00001

@@ -486,7 +486,7 @@ class Encoder(nn.Module):
         d_ff: int = 512,
         position_embedding: Literal[
             'time_pos_sin', 'comb_sin', 'sin_learnt'
-        ] = 'comb_sin',
+        ] = 'time_pos_sin',
     ):
         super().__init__()
         self.position_embedding = position_embedding
@@ -1012,6 +1012,7 @@ class CellGen(nn.Module):
                 mean_embedding_dict[tgt_time_step] = outputs['mean_embedding']
             outputs['mean_embedding'] = mean_embedding_dict
             outputs['dec_embedding'] = dec_embedding_dict
+
         else:
             if tgt_time_step is None:
                 tgt_time_step = np.random.choice(self.time_steps)
@@ -1077,7 +1078,6 @@ class CellGen(nn.Module):
                 time_random=tgt_time_step,
                 labels=labels,
             )
-
             # if context_mode:
             #     context_embedding_dict, context_pad_dict = self.generate_context(
             #         enc_output=enc_output,
@@ -1287,7 +1287,6 @@ class CountDecoder(nn.Module):
         # self_cond_prob=0.9,
         iterations: int = 18,  # optimal of iterations in MaskGIT
         mask_scheduler: str = 'cosine',
-        guided_gene_list: Optional[dict] = None,
         hvg_gene_list: Optional[dict] = None,
     ):
         '''
@@ -1330,9 +1329,16 @@ class CountDecoder(nn.Module):
         for time_step in self.time_steps:
             tgt_input_id_dict_ = {k: v.clone() for k, v in tgt_input_id_dict.items()}
             tgt_pad_dict_ = {k: v.clone() for k, v in tgt_pad_dict.items()}
+            # use max shape instead of genes you like to generate
             pad_tensor = torch.ones_like(tgt_pad_dict_[f'tgt_pad_t{time_step}'])
+            if pad_tensor.shape[1] > max_len:
+                # set the rest of the tokens to zero
+                pad_tensor[:, max_len:] = 0
+            tgt_pad = self.generate_pad(pad_tensor)
+            tgt_pad_dict_[f'tgt_pad_t{time_step}'] = tgt_pad
             tgt_input_id_key = f'tgt_input_ids_t{time_step}'
             tgt_input_id = tgt_input_id_dict[tgt_input_id_key]
+
             # create ids and scores matrix for each batch
             ids = torch.full_like(tgt_input_id, self.mask_token, dtype=torch.long)
             # add cls token to the ids
@@ -1340,17 +1346,95 @@ class CountDecoder(nn.Module):
             tgt_input_id_dict_[tgt_input_id_key] = ids
             # pad ids
             scores = torch.zeros_like(tgt_input_id, dtype=torch.float)
-            prompt_length = 1
+            outputs, generated_ids = self.generate_sequence(
+                generate_id_dict=tgt_input_id_dict_,
+                generate_pad_dict=tgt_pad_dict_,
+                src_input_id=src_input_id,
+                demask_fn=self.pretrained_model,
+                mask_scheduler=mask_scheduler,
+                can_remask_prev_masked=can_remask_prev_masked,
+                topk_filter_thres=topk_filter_thres,
+                starting_temperature=temperature,
+                iterations=iterations,
+                scores=scores,
+                tgt_time_step=time_step,
+                prompt_length=1,
+                hvg_gene_list=hvg_gene_list,
+            )
+            generate_id_dict[tgt_input_id_key] = generated_ids
+            cls_embedding = mean_nonpadding_embs(
+                embs=outputs['dec_embedding'],
+                pad=tgt_pad,
+            )
+            # cls_embedding = outputs['dec_embedding'][:, 0, :]
+            count_outputs_tmp = self.count_decoder.forward(cls_embedding)
+            count_outputs[f'count_output_t{time_step}'] = count_outputs_tmp
+            count_outputs[f'cls_embedding_t{time_step}'] = cls_embedding
+        return count_outputs, generate_id_dict
+
+    def guided_generate(
+        self,
+        src_input_id: torch.Tensor,
+        tgt_input_id_dict: dict,
+        max_len: int,
+        can_remask_prev_masked: bool = False,
+        topk_filter_thres: float = 0.9,
+        # time_steps=[1, 2, 3],
+        temperature: float = 2.0,  # keep in range 2.0-3.0
+        # self_cond_prob=0.9,
+        iterations: int = 18,  # optimal of iterations in MaskGIT
+        mask_scheduler: str = 'cosine',
+        unique_gene_list: Optional[dict] = None,
+        shared_gene_list: Optional[dict] = None,
+        hvg_gene_list: Optional[dict] = None,
+    ):
+        '''
+        Description:
+        topk_filter_thres: `float`
+            Top-k filter threshold based on the logits.
+        temperature: `float`
+            Temperature to increase or decrease the randomness of the predictions.
+        iterations: `int`
+            Number of iterations until all tokens are predicted.
+        mask_scheduler: `str`
+            Mask scheduler function.
+            Options: ['uniform', 'pow', 'cosine', 'log', 'exp']
+        Returns:
+        --------
+        count_outputs: `dict`
+            Output dictionary containing the following keys:
+            - 'count_output_t{t}': Count prediction for time step t.
+            - 'cls_embedding_t{t}': CLS token embeddings for time step t.
+        '''
+        generate_id_dict: Dict[str, torch.Tensor] = {}
+        count_outputs: Dict[str, torch.Tensor] = {}
+        tgt_pad_dict = self.call_padding(
+            src_input_id, tgt_input_id_dict, self.total_time_steps
+        )
+        for time_step in self.time_steps:
+            tgt_input_id_dict_ = {k: v.clone() for k, v in tgt_input_id_dict.items()}
+            tgt_pad_dict_ = {k: v.clone() for k, v in tgt_pad_dict.items()}
+            pad_tensor = torch.ones_like(tgt_pad_dict_[f'tgt_pad_t{time_step}'])
+            tgt_input_id_key = f'tgt_input_ids_t{time_step}'
+            tgt_input_id = tgt_input_id_dict[tgt_input_id_key]
+            # create ids and scores matrix for each batch
+            ids = torch.full_like(tgt_input_id, self.mask_token, dtype=torch.long)
+            # add cls token to the ids
+            ids[:, 0] = tgt_input_id[:, 0]
+
+            tgt_input_id_dict_[tgt_input_id_key] = ids
+            # pad ids
+            scores = torch.zeros_like(tgt_input_id, dtype=torch.float)
+            cls_length = max_len
             # predict the first n genes in first iteration
-            if guided_gene_list:
-                prompt_length_tmp = 10
+            if (unique_gene_list is not None) and (time_step == 1):
+                prompt_length = 10
                 pad_tensor_ = pad_tensor.clone()
-                pad_tensor_[:, prompt_length_tmp:] = 0
+                pad_tensor_[:, prompt_length:] = 0
                 tgt_pad_ = self.generate_pad(pad_tensor_)
                 tgt_pad_dict_[f'tgt_pad_t{time_step}'] = tgt_pad_
-
                 # pad ids
-                ids[:, prompt_length_tmp:] = 0
+                ids[:, prompt_length:] = 0
                 tgt_input_id_dict_[tgt_input_id_key] = ids
                 # use a two-step process to decode the genes
                 outputs, ids_ = self.generate_sequence(
@@ -1365,19 +1449,17 @@ class CountDecoder(nn.Module):
                     iterations=10,
                     scores=scores,
                     tgt_time_step=time_step,
-                    guided_gene_list=guided_gene_list,
+                    unique_gene_list=unique_gene_list,
+                    shared_gene_list=shared_gene_list,
                     hvg_gene_list=hvg_gene_list,
-                    prompt_length=prompt_length,
+                    prompt_length=cls_length,
                 )
                 # unpad the rest of ids
-                ids_[:, prompt_length_tmp:] = 1
+                ids_[:, prompt_length:] = 1
                 tgt_input_id_dict_[tgt_input_id_key] = ids_
-                prompt_length = prompt_length_tmp
-
             # generate the rest of the genes
             # use max shape instead of genes you like to generate
-            guided_gene_list = None
-
+            # guided_gene_list = None
             if pad_tensor.shape[1] > max_len:
                 # set the rest of the tokens to zero
                 # TODO: change back to max_len
@@ -1386,6 +1468,7 @@ class CountDecoder(nn.Module):
             ids[:, 100:] = 0
             tgt_pad = self.generate_pad(pad_tensor)
             tgt_pad_dict_[f'tgt_pad_t{time_step}'] = tgt_pad
+            tgt_pad = tgt_pad_dict_[f'tgt_pad_t{time_step}']
             outputs, generated_ids = self.generate_sequence(
                 generate_id_dict=tgt_input_id_dict_,
                 generate_pad_dict=tgt_pad_dict_,
@@ -1398,9 +1481,10 @@ class CountDecoder(nn.Module):
                 iterations=iterations,
                 scores=scores,
                 tgt_time_step=time_step,
-                guided_gene_list=guided_gene_list,
+                unique_gene_list=None,
+                shared_gene_list=None,
                 hvg_gene_list=hvg_gene_list,
-                prompt_length=prompt_length,
+                prompt_length=cls_length,
             )
             generate_id_dict[tgt_input_id_key] = generated_ids
             cls_embedding = mean_nonpadding_embs(
@@ -1426,9 +1510,10 @@ class CountDecoder(nn.Module):
         starting_temperature: float = 2.0,
         iterations: int = 18,
         tgt_time_step: Optional[int] = 1,
-        guided_gene_list: Optional[dict] = None,
+        prompt_length: int = 1,
+        unique_gene_list: Optional[dict] = None,
+        shared_gene_list: Optional[dict] = None,
         hvg_gene_list: Optional[dict] = None,
-        prompt_length: int = 0,
     ):
         '''
         Description:
@@ -1522,8 +1607,6 @@ class CountDecoder(nn.Module):
                 context_mode=self.context_mode,
             )
             logits = outputs['dec_logits'][:, prompt_length:, :]
-            print(min(logits.flatten()), max(logits.flatten()))
-
             all_genes = torch.arange(
                 logits.shape[-1], device=logits.device, dtype=torch.long
             )
@@ -1544,55 +1627,24 @@ class CountDecoder(nn.Module):
                 mask = ~torch.isin(all_genes, hvg_genes_to_keep)
                 genes_to_mask = all_genes[mask]
                 logits[:, :, genes_to_mask] = max_neg_value
-            if guided_gene_list is not None:
-                # logits_prompt = logits[:, :total_tokens.max(), :]
-                # #choose the top n genes based on num_tokens_to_mask
-                # num_topk_genes = (
-                #     total_tokens.max() - num_tokens_to_mask.max()
-                #     ).long()*3
-                # if num_topk_genes > 0:
-                #     filtered_logits_prompt = top_k(
-                #         logits_prompt.clone(),
-                #         topk_filter_thres
-                #         )
-                #     temperature = starting_temperature * (
-                #         steps_until_x0 / iteration
-                #     )  # temperature is annealed
-                #     ids_to_sample = gumbel_sample(
-                #         filtered_logits_prompt,
-                #         temperature=temperature,
-                #         dim=-1
-                #         )
-                #     ids_to_sample_flat = ids_to_sample.flatten()
-                #     indices = torch.randperm(
-                #         ids_to_sample_flat.shape[0]
-                #         )[:num_topk_genes]
-                #     sampled_top_indices = ids_to_sample_flat[indices]
+            if (unique_gene_list is not None) and (shared_gene_list is not None):
                 # set all the logits to -inf
                 # except for the genes in the guided gene list
                 # select all genes except the guided genes
-                all_genes = torch.arange(
-                    logits.shape[-1], device=logits.device, dtype=torch.long
-                )
                 # remove guided genes from all genes
-                genes_to_keep = torch.tensor(
-                    list(guided_gene_list.values()),
-                    device=logits.device,
-                    dtype=torch.long,
-                )
-                # if num_topk_genes > 0:
-                #     # include sample top indices
-                #     genes_to_keep = torch.cat(
-                #         [genes_to_keep, sampled_top_indices]
-                #     )
-                mask = ~torch.isin(all_genes, genes_to_keep)
-                genes_to_mask = all_genes[mask]
-                logits[:, :, genes_to_mask] = max_neg_value
+
+                # increase the logits of the genes_to_keep
+                unique_genes = list(unique_gene_list.values())
+                shared_genes = list(shared_gene_list.values())
+                logits[:, :, unique_genes] = logits[:, :, unique_genes] + 5
+                logits[:, :, shared_genes] = logits[:, :, shared_genes] + 2
+                # mask = ~torch.isin(all_genes, genes_to_keep)
+                # genes_to_mask = all_genes[mask]
+                # logits[:, :, genes_to_mask] = max_neg_value
             # exclude cls token
             tmp_ids_ = tmp_ids[:, prompt_length:].clone()
             scores_ = scores[:, prompt_length:].clone()
             ids_to_keep_ = ids_to_keep[:, prompt_length:].clone()
-
             # Create a mask of already predicted tokens
             for sample in range(logits.shape[0]):
                 unique_ids = torch.unique(ids_to_keep_[sample])
@@ -1612,7 +1664,6 @@ class CountDecoder(nn.Module):
 
             if not can_remask_prev_masked:
                 scores_ = scores_.masked_fill(~is_mask, max_neg_value)
-
             # add cls token to the ids and update scores and ids
             scores[:, prompt_length:] = scores_
             tmp_ids[:, prompt_length:] = tmp_ids_

@@ -117,7 +117,9 @@ def evaluate_mmd(
     condition_key=None,
     de_genes_dict=None,
     n_cells=None,
+    seed=42,
 ):
+    np.random.seed(seed)
     mmd_list = []
     if n_cells:
         if n_cells < adata.shape[0]:

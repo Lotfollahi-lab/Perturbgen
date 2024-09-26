@@ -428,7 +428,17 @@ def subset_adata(adata, cell_pairings):
     adata_obs_subsetted = adata_.obs.loc[cell_pairings]
     obs = adata_obs_subsetted
     var = adata_.var.loc[df.columns]
-    adata_subsetted = ad.AnnData(X=subset_df.values, obs=obs, var=var)
+    # if there is X_pca_scaled do the same subsetting
+    if 'X_pca_scaled' in adata_.obsm.keys():
+        df_pca = pd.DataFrame(adata_.obsm['X_pca_scaled'], index=adata_.obs.index)
+        df_pca.reset_index(drop=True, inplace=True)
+        subset_df_pca = df_pca.loc[cell_pairings]
+    adata_subsetted = ad.AnnData(
+        X=subset_df.values,
+        obs=obs,
+        var=var,
+        obsm={'X_pca_scaled': subset_df_pca.values},
+    )
     adata_subsetted.obs_names.name = None
     adata_subsetted.X = csr_matrix(adata_subsetted.X)
     return adata_subsetted

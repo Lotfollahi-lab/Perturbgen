@@ -11,11 +11,13 @@ from datasets import load_from_disk
 from geneformer import TranscriptomeTokenizer
 from scipy.sparse import csr_matrix
 
-from T_perturb.src.utils import (  # map_input_ids_to_row_id,; tokenid_mapping,
+from T_perturb.src.utils import (  # tokenid_mapping,
     map_ensembl_to_genename,
+    map_input_ids_to_row_id,
     pairing_src_to_tgt_cells,
     str2bool,
     subset_adata,
+    tokenid_mapping,
 )
 
 seed_no = 42
@@ -115,7 +117,7 @@ def get_args():
     parser.add_argument(
         '--exclude_non_GF_genes',
         type=str2bool,
-        default=False,
+        default=True,
         help='Exclude genes in anndata that are not in Geneformer dictionary',
     )
     parser.add_argument(
@@ -150,9 +152,17 @@ if args.gene_filtering_mode == 'hvg':
     adata.layers['counts'] = adata.X.copy()
     sc.pp.normalize_total(adata, target_sum=1e4)
     sc.pp.log1p(adata)
+    # compute PCS on all genes
+    sc.pp.pca(adata, n_comps=100)
+    # scale PC
+    coords = adata.obsm['X_pca']
+    coords = (coords - coords.mean(axis=0)) / coords.std(axis=0)
+    adata.obsm['X_pca_scaled'] = coords
     sc.pp.highly_variable_genes(adata, n_top_genes=2000)
     adata = adata[:, adata.var['highly_variable']].copy()
     adata.X = adata.layers['counts']  # need raw counts
+    # compute 100 PCs
+
     # duplicate one gene in the anndata to test the deduplication
 elif args.gene_filtering_mode == 'degs':
     # Filter adata for only DEGs
@@ -187,12 +197,7 @@ token_to_genename = {
 with open('./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl', 'wb') as file:
     pickle.dump(token_to_genename, file)
 
-# # filter adata for only genes occuring in the token dictionary
-# (adata_subset, token_id_to_row_id_dict, row_id_to_gene_name) = tokenid_mapping(
-#     adata,
-#     './T_perturb/Geneformer/geneformer/token_dictionary_gc95M.pkl',
-#     exclude_non_GF_genes=args.exclude_non_GF_genes,
-# )
+
 # # ignore CLS token because of redudancy with time task token
 # if pd.NA in token_id_to_row_id_dict:
 #     del token_id_to_row_id_dict[pd.NA]
@@ -232,31 +237,48 @@ adata.obs = adata.obs[args.var_list]
 adata.var = adata.var[['gene_name', 'ensembl_id']]
 adata.obs['n_counts'] = adata.X.sum(axis=1)
 
-with open(
-    './T_perturb/Geneformer/geneformer/ensembl_mapping_dict_gc95M.pkl', 'rb'
-) as f:
-    gene_mapping_dict = pickle.load(f)
-gene_ids_collapsed = [
-    gene_mapping_dict.get(gene_id.upper()) for gene_id in adata.var.ensembl_id
-]
-gene_ids_collapsed_in_dict = [
-    gene for gene in gene_ids_collapsed if gene in token_dict.keys()
-]
-adata_duplicated = adata.copy()
-adata_duplicated.var['ensembl_id_collapsed'] = gene_ids_collapsed
-adata_duplicated.var_names = gene_ids_collapsed
-adata = adata[:, ~adata_duplicated.var.index.isna()]
 
+# with open(
+#     './T_perturb/Geneformer/geneformer/ensembl_mapping_dict_gc95M.pkl', 'rb'
+# ) as f:
+#     gene_mapping_dict = pickle.load(f)
+# gene_ids_collapsed = [
+#     gene_mapping_dict.get(gene_id.upper()) for gene_id in adata.var.ensembl_id
+# ]
+# gene_ids_collapsed_in_dict = [
+#     gene for gene in gene_ids_collapsed if gene in token_dict.keys()
+# ]
+# adata_duplicated = adata.copy()
+# adata_duplicated.var['ensembl_id_collapsed'] = gene_ids_collapsed
+# adata_duplicated.var_names = gene_ids_collapsed
+# adata = adata[:, ~adata_duplicated.var.index.isna()]
 
 adata.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}_{args.gene_filtering_mode}.h5ad')
 
+# subset adata to only genes in the token dictionary
+# filter adata for only genes occuring in the token dictionary
+(adata_subset, token_id_to_row_id_dict, row_id_to_gene_name) = tokenid_mapping(
+    adata,
+    './T_perturb/Geneformer/geneformer/token_dictionary_gc95M.pkl',
+    exclude_non_GF_genes=True,
+)
+# create separate directory only for tokenisation
+output_tmp_dir = (
+    f'./T_perturb/T_perturb/pp/res/{args.dataset}'
+    f'/dataset_{args.gene_filtering_mode}_subsetted'
+)
+if not os.path.exists(output_tmp_dir):
+    os.makedirs(output_tmp_dir)
+adata_subset.write_h5ad(
+    f'{output_tmp_dir}/{args.dataset}_{args.gene_filtering_mode}.h5ad'
+)
 print('Finished preprocessing adata.')
 print('Start tokenisation of adata...')
 input_dir = paired_h5ad_dir
 
 output_dir = (
     f'./T_perturb/T_perturb/pp/res/{args.dataset}'
-    f'/dataset_{args.gene_filtering_mode}'
+    f'/dataset_{args.gene_filtering_mode}_subsetted'
 )
 var_to_keep: Dict[str, str] = {v: v for v in args.var_list}.copy()
 
@@ -272,9 +294,9 @@ tk = TranscriptomeTokenizer(
 )
 # time it
 tk.tokenize_data(
-    data_directory=f'{paired_h5ad_dir}',
+    data_directory=output_tmp_dir,
     output_directory=output_dir,
-    output_prefix=f'{args.dataset}_{args.gene_filtering_mode}',  # name of output file
+    output_prefix=(f'{args.dataset}_{args.gene_filtering_mode}_subsetted'),
     file_format='h5ad',  # format [loom, h5ad]
 )
 
@@ -282,7 +304,7 @@ print('Finished tokenisation.')
 # ---------------- Cell pairing and save adata/dataset by time point ----------------
 # filter and save dataset by time point
 dataset = load_from_disk(
-    f'{output_dir}/{args.dataset}_{args.gene_filtering_mode}.dataset'
+    f'{output_dir}/{args.dataset}_{args.gene_filtering_mode}_subsetted.dataset'
 )
 adata_subset = sc.read_h5ad(
     f'{paired_h5ad_dir}/{args.dataset}_{args.gene_filtering_mode}.h5ad'
@@ -296,7 +318,8 @@ cell_pairings = pairing_src_to_tgt_cells(
     seed_no=seed_no,
 )
 paired_dataset_dir = (
-    f'./T_perturb/T_perturb/res/{args.dataset}/' f'dataset_{args.gene_filtering_mode}'
+    f'./T_perturb/T_perturb/res/{args.dataset}/'
+    f'dataset_{args.gene_filtering_mode}_subsetted'
 )
 # token_id_to_row_id_dict = pickle.load(
 #     open(
@@ -305,20 +328,12 @@ paired_dataset_dir = (
 #         'rb',
 #     )
 # )
-
-if not os.path.exists(paired_dataset_dir):
-    os.makedirs(paired_dataset_dir)
-
-token_to_ignore = 2
-
-
-def filter_out_token(example):
-    # Remove CLS token from input_ids
-    example['input_ids'] = [id for id in example['input_ids'] if id != token_to_ignore]
-    return example
-
-
-filtered_dataset = dataset.map(filter_out_token, num_proc=8)
+dataset_mapped = dataset.map(
+    lambda example: map_input_ids_to_row_id(
+        example, token_id_to_row_id_dict, ignore_tokens=[2]
+    ),
+    num_proc=8,
+)
 n_tgt_iter = 1  # for enumerating the timepoints
 for time_point in tqdm.tqdm(args.time_point_order):
     # subset adata by cell pairings
@@ -342,16 +357,16 @@ for time_point in tqdm.tqdm(args.time_point_order):
         # do not map input ids to row ids for Geneformer input
         # Geneformer needs initial token ids to extract correct embeddings
         if args.src_mode == 'Geneformer':
-            dataset_tmp = filtered_dataset.select(cell_pairings[time_point])
+            dataset_tmp = dataset.select(cell_pairings[time_point])
             dataset_tmp.save_to_disk(f'{src_dataset_dir}/{time_point}.dataset')
         else:
             src_adata_transf_dir = f'{paired_h5ad_dir}_src_transformer'
             if not os.path.exists(src_adata_transf_dir):
                 os.makedirs(src_adata_transf_dir)
-            dataset_tmp = filtered_dataset.select(cell_pairings[time_point])
+            dataset_tmp = dataset_mapped.select(cell_pairings[time_point])
             dataset_tmp.save_to_disk(f'{src_adata_transf_dir}/{time_point}.dataset')
     else:
         adata_tmp.write_h5ad(f'{tgt_adata_dir}/' f'{n_tgt_iter}_{time_point}.h5ad')
-        dataset_tmp = filtered_dataset.select(cell_pairings[time_point])
+        dataset_tmp = dataset_mapped.select(cell_pairings[time_point])
         dataset_tmp.save_to_disk(f'{tgt_dataset_dir}/{n_tgt_iter}_{time_point}.dataset')
         n_tgt_iter += 1
