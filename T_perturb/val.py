@@ -192,7 +192,7 @@ def get_args():
         help='mask scheduler [cosine, exp, pow]',
     )
     parser.add_argument('--temperature', type=float, default=1.0, help='temperature')
-    parser.add_argument('--sequence_length', type=int, default=200, help='iterations')
+    parser.add_argument('--sequence_length', type=int, default=300, help='iterations')
     parser.add_argument('--iterations', type=int, default=20, help='iterations')
     parser.add_argument('--conditions', type=dict, default=None, help='conditions')
     parser.add_argument(

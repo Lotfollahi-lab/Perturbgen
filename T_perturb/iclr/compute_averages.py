@@ -522,7 +522,131 @@ plt.savefig(
 plt.close()
 
 # sequence length ablation for emd and pearson_r
-
+s_50_df = pd.read_csv(
+    'T_perturb/T_perturb/iclr/eb/generation/res/'
+    '20241002-07:43_psin_learnt_mcosine_t1.0_i20_s42_seq50_metrics.csv',
+    index_col=0,
+)
+s_50_df = s_50_df.T
+s_50_df.rename(columns={0: 's_50'}, inplace=True)
+s_100_df = pd.read_csv(
+    'T_perturb/T_perturb/iclr/eb/generation/res/'
+    '20241002-07:50_psin_learnt_mcosine_t1.0_i20_s42_s100_metrics.csv',
+    index_col=0,
+)
+s_100_df = s_100_df.T
+s_100_df.rename(columns={0: 's_100'}, inplace=True)
+s_150_df = pd.read_csv(
+    'T_perturb/T_perturb/iclr/eb/generation/res/'
+    '20241002-07:52_psin_learnt_mcosine_t1.0_i20_s42_s150_metrics.csv',
+    index_col=0,
+)
+s_150_df = s_150_df.T
+s_150_df.rename(columns={0: 's_150'}, inplace=True)
+s_200_df = pd.read_csv(
+    'T_perturb/T_perturb/iclr/eb/generation/res/'
+    '20241002-07:54_psin_learnt_mcosine_t1.0_i20_s42_s200_metrics.csv',
+    index_col=0,
+)
+s_200_df = s_200_df.T
+s_200_df.rename(columns={0: 's_200'}, inplace=True)
+# concatenate the dataframes
+s_300_df = pd.read_csv(
+    'T_perturb/T_perturb/iclr/eb/generation/res/'
+    '20241002-07:56_psin_learnt_mcosine_t1.0_i20_s42_s300_metrics.csv',
+    index_col=0,
+)
+s_300_df = s_300_df.T
+s_300_df.rename(columns={0: 's_300'}, inplace=True)
+sequence_length_summary = pd.concat(
+    [s_50_df, s_100_df, s_150_df, s_200_df, s_300_df], axis=1
+)
+# creating the same summary for rouge1, emd and pearson_r
+sequence_length_summary_long = sequence_length_summary.stack().reset_index()
+sequence_length_summary_long.columns = ['metric', 'sequence_length', 'value']
+# strip the 's' from the iteration column
+sequence_length_summary_long['sequence_length'] = sequence_length_summary_long[
+    'sequence_length'
+].str.strip('s_')
+# make the sequence_length column a float
+sequence_length_summary_long['sequence_length'] = sequence_length_summary_long[
+    'sequence_length'
+].astype(float)
+# plot x = iteration, y = value for rouge1_25,
+# rouge1_100, rouge1_370 each with separate lines for each metric
+# line plot for each metric
+rouge_summary_long = sequence_length_summary_long[
+    sequence_length_summary_long['metric'].str.contains('rouge1')
+]
+rouge_summary_long['metric'] = rouge_summary_long['metric'].str.replace('rouge1_', '')
+rouge_summary_long.rename(columns={'metric': 'rouge1'}, inplace=True)
+sns.lineplot(
+    data=rouge_summary_long, x='sequence_length', y='value', hue='rouge1', linewidth=4
+)
+handles, labels = plt.gca().get_legend_handles_labels()
+by_label = dict(zip(labels, handles))
+plt.legend(
+    by_label.values(),
+    by_label.keys(),
+    title='rouge1 \nsequence length',
+    loc='center left',
+    bbox_to_anchor=(1, 0.5),
+)
+plt.savefig(
+    'T_perturb/T_perturb/iclr/final_results/'
+    'sequence_length_ablation_summary_rouge_plot.pdf',
+    bbox_inches='tight',
+)
+plt.close()
+# create a line plot for emd and pearson_r
+emd_summary_long = sequence_length_summary_long[
+    sequence_length_summary_long['metric'].str.contains('emd')
+]
+emd_summary_long.rename(columns={'metric': 'emd'}, inplace=True)
+sns.lineplot(
+    data=emd_summary_long, x='sequence_length', y='value', hue='emd', linewidth=4
+)
+handles, labels = plt.gca().get_legend_handles_labels()
+by_label = dict(zip(labels, handles))
+plt.legend(
+    by_label.values(),
+    by_label.keys(),
+    title='emd',
+    loc='center left',
+    bbox_to_anchor=(1, 0.5),
+)
+plt.savefig(
+    'T_perturb/T_perturb/iclr/final_results/'
+    'sequence_length_ablation_summary_emd_plot.pdf',
+    bbox_inches='tight',
+)
+plt.close()
+# plot for pearson_r
+pearson_r_summary_long = sequence_length_summary_long[
+    sequence_length_summary_long['metric'].str.contains('pearson_r')
+]
+pearson_r_summary_long.rename(columns={'metric': 'pearson_r'}, inplace=True)
+sns.lineplot(
+    data=pearson_r_summary_long,
+    x='sequence_length',
+    y='value',
+    hue='pearson_r',
+    linewidth=4,
+)
+handles, labels = plt.gca().get_legend_handles_labels()
+by_label = dict(zip(labels, handles))
+plt.legend(
+    by_label.values(),
+    by_label.keys(),
+    title='pearson_r',
+    loc='center left',
+    bbox_to_anchor=(1, 0.5),
+)
+plt.savefig(
+    'T_perturb/T_perturb/iclr/final_results/'
+    'sequence_length_ablation_summary_pearson_r_plot.pdf',
+    bbox_inches='tight',
+)
 
 # plot EMD for each iteration
 emd_summary_long = generation_summary_long[

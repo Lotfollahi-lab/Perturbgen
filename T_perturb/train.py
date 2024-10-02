@@ -560,7 +560,7 @@ def main() -> None:
             f'p{args.positional_encoding}_m_{args.mask_scheduler}'
             f'_tp_{time_steps_str}_s_{args.seed}'
         )
-        if len(val_indices) > 0:
+        if val_indices:
             monitor_metric = 'val/perplexity'
         else:
             monitor_metric = 'train/perplexity'
@@ -572,7 +572,7 @@ def main() -> None:
             f'{args.loss_mode}_tp_{time_steps_str}_s_'
             f'{args.seed}_pos_{args.positional_encoding}_m_{args.mask_scheduler}'
         )
-        if len(val_indices) > 0:
+        if val_indices:
             monitor_metric = 'val/mse'
             mode = 'min'
         else:
