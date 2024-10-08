@@ -1049,7 +1049,7 @@ class CountDecoderTrainer(LightningModule):
                     var_dict[var] = np.concatenate(self.test_dict[var])
                 test_obs = pd.DataFrame(var_dict)
             else:
-                test_obs = None
+                test_obs = pd.DataFrame()
             test_obs['cell_idx'] = cell_ids
             cls_embeddings = torch.cat(self.test_dict['cls_embeddings']).detach().cpu()
             pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs)

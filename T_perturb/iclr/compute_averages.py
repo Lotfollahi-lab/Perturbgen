@@ -588,7 +588,7 @@ by_label = dict(zip(labels, handles))
 plt.legend(
     by_label.values(),
     by_label.keys(),
-    title='rouge1 \nsequence length',
+    title='rouge1',
     loc='center left',
     bbox_to_anchor=(1, 0.5),
 )
@@ -611,7 +611,6 @@ by_label = dict(zip(labels, handles))
 plt.legend(
     by_label.values(),
     by_label.keys(),
-    title='emd',
     loc='center left',
     bbox_to_anchor=(1, 0.5),
 )
@@ -638,7 +637,6 @@ by_label = dict(zip(labels, handles))
 plt.legend(
     by_label.values(),
     by_label.keys(),
-    title='pearson_r',
     loc='center left',
     bbox_to_anchor=(1, 0.5),
 )

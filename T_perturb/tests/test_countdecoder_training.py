@@ -27,6 +27,7 @@ def dummy_cell_gene_matrix(
     num_genes: int = 100,
     total_time_steps: Optional[int] = None,
 ):
+    np.random.seed(42)
     lambda_param = 10
     if total_time_steps is None:
         gex_matrix = np.random.poisson(lambda_param, (num_cells, num_genes))
@@ -55,6 +56,7 @@ class CellGenTestTrainingCase(unittest.TestCase):
 
     def setUp(self):
         pl.seed_everything(42)
+        np.random.seed(42)
 
         # set conditions and conditions_combined to None if no batch effect
         conditions = None
@@ -161,6 +163,7 @@ class CellGenTestTrainingCase(unittest.TestCase):
             loss_mode='zinb',
             lr=1e-3,
             weight_decay=0.0,
+            n_genes=self.num_genes,
             # lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             conditions=conditions_,
@@ -171,7 +174,7 @@ class CellGenTestTrainingCase(unittest.TestCase):
             temperature=1.5,
             iterations=19,
             mask_scheduler='pow',
-            output_dir='./T_perturb/T_perturb/plt/res/cytoimmgen',
+            output_dir='./T_perturb/T_perturb/plt/res/',
             mode='Transformer_encoder',
             seed=42,
         )

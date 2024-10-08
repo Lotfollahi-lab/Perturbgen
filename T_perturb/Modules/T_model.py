@@ -1371,7 +1371,19 @@ class CountDecoder(nn.Module):
         tgt_pad_dict = self.call_padding(
             src_input_id, tgt_input_id_dict, self.total_time_steps
         )
+        tgt_input_id_dict_ = {}
+        # tgt_pad_dict_ = {'tgt_pad_t1': tgt_input_id_dict[f'tgt_pad_t1']}
+        # tgt_input_id_dict_ = {'tgt_input_id': tgt_input_id_dict['tgt_input_ids_t1']}
         for time_step in self.time_steps:
+            # append the current time step to the dictionary
+            # tgt_input_id_dict_.update({
+            #     f'tgt_input_ids_t{time_step}':
+            #     tgt_input_id_dict[f'tgt_input_ids_t{time_step}']}
+            #     )
+            # tgt_pad_dict_.update({
+            #     f'tgt_pad_t{time_step}':
+            #     tgt_pad_dict[f'tgt_pad_t{time_step}']
+            #     })
             tgt_input_id_dict_ = {k: v.clone() for k, v in tgt_input_id_dict.items()}
             tgt_pad_dict_ = {k: v.clone() for k, v in tgt_pad_dict.items()}
             # use max shape instead of genes you like to generate
@@ -1405,6 +1417,8 @@ class CountDecoder(nn.Module):
                 prompt_length=1,
             )
             generate_id_dict[tgt_input_id_key] = generated_ids
+            # overwrite the previous ids
+            tgt_input_id_dict_[tgt_input_id_key] = generated_ids
 
             cls_embedding = mean_nonpadding_embs(
                 embs=outputs['dec_embedding'],

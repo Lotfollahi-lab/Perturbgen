@@ -32,6 +32,7 @@ class CellGenTestGenerationCase(unittest.TestCase):
 
     def setUp(self):
         pl.seed_everything(42)
+        np.random.seed(42)
 
         # set conditions and conditions_combined to None if no batch effect
         conditions = None
@@ -142,6 +143,7 @@ class CellGenTestGenerationCase(unittest.TestCase):
             # lr_scheduler_factor=0.8,
             conditions=conditions_,
             conditions_combined=conditions_combined_,
+            n_genes=self.num_genes,
             dropout=0.0,
             time_steps=self.time_step,
             total_time_steps=2,

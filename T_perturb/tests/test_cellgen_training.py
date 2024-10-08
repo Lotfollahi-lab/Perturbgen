@@ -22,6 +22,7 @@ def dummy_dataset(
     num_samples: int = 100,
     total_time_steps: Optional[int] = None,
 ):
+    np.random.seed(42)
     if total_time_steps is None:
         # Generate unique indices for each sample using NumPy
         input_ids_np = np.array(
@@ -32,8 +33,14 @@ def dummy_dataset(
         )
         input_ids = torch.tensor(input_ids_np, dtype=torch.long)
         input_ids[:, -10:] = 0
+        # add cell_pairing_index for testing
+        cell_idx = np.arange(num_samples)
         dataset = Dataset.from_dict(
-            {'input_ids': input_ids, 'length': [len(input_ids)] * num_samples}
+            {
+                'input_ids': input_ids,
+                'length': [len(input_ids)] * num_samples,
+                'cell_pairing_index': cell_idx,
+            }
         )
         return dataset
     else:
@@ -83,10 +90,14 @@ class CellGenTestTrainingCase(unittest.TestCase):
             dropout=0,
             mlm_probability=0.15,
             weight_decay=0.0,
-            lr=1e-3,
+            end_lr=1e-3,
             time_steps=self.time_step,
             total_time_steps=self.total_time_steps,
             mode='Transformer_encoder',
+            mapping_dict_path=(
+                './T_perturb/T_perturb/pp/res/'
+                'cytoimmgen/token_id_to_genename_hvg.pkl'
+            ),
         )
         self.transformer = transformer
 

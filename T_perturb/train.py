@@ -239,9 +239,6 @@ def get_args():
 
 
 def main() -> None:
-    # for reproducible results
-    # torch.backends.cudnn.benchmark = False
-    # torch.backends.cudnn.deterministic = True
     """Run training."""
     args = get_args()
     # PyTorch Lightning allows to set all necessary seeds in one function call.
