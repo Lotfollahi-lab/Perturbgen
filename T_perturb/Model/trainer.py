@@ -48,11 +48,11 @@ from T_perturb.src.utils import (
 def set_matmul_precision_for_device():
     if torch.cuda.is_available():
         cuda_device_name = torch.cuda.get_device_name()
-    # If the device is an A100, set the precision for matrix multiplication
-    if ('A100' in cuda_device_name) or ('NVIDIA H100 80GB HBM' in cuda_device_name):
-        print(f'Using {cuda_device_name} for training')
-        print('Set float32_matmul_precision to medium')
-        torch.set_float32_matmul_precision('medium')
+        # If the device is an A100, set the precision for matrix multiplication
+        if ('A100' in cuda_device_name) or ('NVIDIA H100 80GB HBM' in cuda_device_name):
+            print(f'Using {cuda_device_name} for training')
+            print('Set float32_matmul_precision to medium')
+            torch.set_float32_matmul_precision('medium')
 
 
 class CellGenTrainer(LightningModule):

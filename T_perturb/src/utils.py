@@ -281,7 +281,7 @@ def pearson(
         pred_counts = pred_counts - ctrl_counts
         true_counts = true_counts - ctrl_counts
     num_outputs = true_counts.shape[0]
-    pearson = PearsonCorrCoef(num_outputs=num_outputs).to('cuda')
+    pearson = PearsonCorrCoef(num_outputs=num_outputs).to(pred_counts.device)
     pred_counts_t = pred_counts.transpose(0, 1)
     true_counts_t = true_counts.transpose(0, 1)
     pearson_output = pearson(pred_counts_t, true_counts_t)
