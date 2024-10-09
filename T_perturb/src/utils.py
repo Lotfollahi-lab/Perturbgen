@@ -236,6 +236,79 @@ def return_gene_embeddings(
     return gene_embeddings_res
 
 
+def return_prediction_adata(
+    test_dict: dict,
+    obs_key: list,
+    marker_genes: dict,
+    output_dir: str,
+    file_name: str,
+    gene_names: list,
+):
+    """
+    Description:
+    ------------
+    This function returns anndata object with predicted counts.
+
+    Parameters:
+    -----------
+    test_dict: `dict`
+        Dictionary containing test data.
+    obs_key: `list`
+        List of keys to include in adata.obs.
+    marker_genes: `dict`
+        List of marker genes.
+
+    Returns:
+    --------
+    adata: `~anndata.AnnData` \n
+        Annotated data matrix with predicted counts. \n
+        - adata.X: `~numpy.ndarray`
+            Array of predicted counts.
+        - adata.obs: `~pandas.DataFrame`
+            DataFrame of obs_key.
+        - adata.var: `~pandas.DataFrame`
+            DataFrame of gene names.
+        - adata.obsm: `dict`
+            'cls_embeddings': `~numpy.ndarray`
+                Array of cls embeddings.
+            'gene_embeddings': `~numpy.ndarray`
+                Array of gene embeddings.
+            'cosine_similarity': `~pandas.DataFrame`
+                DataFrame of cosine similarities.
+    """
+    # adata.X
+    true_counts = torch.cat(test_dict['true_counts'], dim=0).numpy()
+    # adata.obsm
+    cls_embeddings = torch.cat(test_dict['cls_embeddings'], dim=0).numpy()
+    gene_embeddings = torch.cat(test_dict['gene_embeddings'], dim=0).numpy()
+    cos_similarity = torch.cat(test_dict['cosine_similarities'], dim=0).numpy()
+    cos_similarity_df = pd.DataFrame(cos_similarity, columns=marker_genes.keys())
+    # adata.obs
+    obs_dict = {obs: np.concatenate(test_dict[obs]) for obs in obs_key}
+    test_obs = pd.DataFrame(obs_dict)
+    # adata.var
+    if gene_names is not None:
+        test_var = pd.DataFrame(gene_names, columns=['gene_name'])
+    adata = ad.AnnData(
+        X=true_counts,
+        obs=test_obs,
+        var=test_var if gene_names is not None else None,
+        obsm={
+            'cls_embeddings': cls_embeddings,
+            'gene_embeddings': gene_embeddings,
+        },
+        uns={
+            'marker_genes': marker_genes,
+        },
+    )
+    if gene_names is not None:
+        adata.var_names = adata.var['gene_name']
+        adata.var = adata.var.drop(columns=['gene_name'])
+    cos_similarity_df.index = adata.obs.index
+    adata.obsm['cosine_similarity'] = cos_similarity_df
+    adata.write_h5ad(os.path.join(output_dir, file_name))
+
+
 def modify_ckpt_state_dict(
     checkpoint,
     replace_str,
