@@ -524,7 +524,6 @@ class CountDecoderTrainer(LightningModule):
         self.decoder = CountDecoder(
             pretrained_model=pretrained_model,
             loss_mode=loss_mode,
-            tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
             dropout=dropout,
             time_steps=time_steps,

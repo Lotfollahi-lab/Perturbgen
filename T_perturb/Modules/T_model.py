@@ -1007,174 +1007,35 @@ class CellGen(nn.Module):
         src_attention_mask = generate_pad(src_input_id)
         enc_output = self.call_encoder(src_input_id, src_attention_mask)
 
-        #
-        # # distinction between selected time step and rest time steps
-        # if (not_masked) and (tgt_input_id_dict is not None):
-        #     print('not masking')
-        #     labels = None # no masking loss
-        #     sorted_time_steps = sorted(self.time_steps)
-        #     context_time_steps = sorted_time_steps
-        # elif not_masked==False:
-        #     if tgt_time_step is None:
-        #         print('masking')
-        #         sorted_time_steps = [np.random.choice(self.time_steps)]
-        #         context_time_steps = sorted(self.time_steps)
-        #     elif generate_id_dict is not None:
-        #         print('generation')
-        #         tgt_input_id_dict = generate_id_dict
-        #         sorted_time_steps = [tgt_time_step]
-        #         context_time_steps = sorted(self.total_time_steps)
-        #         labels = None
-        # dec_embedding_dict = {}
-        # mean_embedding_dict = {}
-        # for tgt_time_step in sorted_time_steps:
-        #     tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
-        #     tgt_input_id = tgt_input_id_dict[f'tgt_input_ids_t{tgt_time_step}']
-
-        #     if context_mode:
-        #         # distinction between selected time step and rest time steps
-        #         context_output, context_mask = self.generate_context(
-        #             enc_output=enc_output,
-        #             src_attention_mask=src_attention_mask,
-        #             tgt_time_step=tgt_time_step,
-        #             all_time_steps=context_time_steps,
-        #             tgt_input_id_dict=tgt_input_id_dict,
-        #             tgt_pad_dict=tgt_pad_dict,
-        #         )
-        #     if (not_masked==False) & (generate_id_dict is None):
-        #         print('masking')
-        #         # apply masking during first stage of MLM training
-        #         tgt_input_id, labels = self.generate_mask(
-        #             tgt_input_id,
-        #             tgt_pad,
-        #             self.mlm_probability,
-        #             mask_mode='MASKGIT',
-        #             mask_scheduler=self.mask_scheduler,
-        #         )
-        #         print(tgt_input_id)
-
-        #     tgt_embedding = self.token_embedding(tgt_input_id)
-
-        #     if self.position_embedding == 'time_pos_sin':
-        #         tgt_embedding = self.time_sin_pos_encoding(
-        #             tgt_embedding, tgt_time_step
-        #         )
-        #         tgt_embedding = self.pos_sin_pos_encoding(tgt_embedding)
-        #     elif self.position_embedding == 'sin_learnt':
-        #         tgt_embedding = self.time_sin_pos_encoding(
-        #             tgt_embedding, tgt_time_step
-        #         )
-        #         tgt_embedding = self.learnt_pos_encoding(tgt_embedding)
-        #     elif self.position_embedding == 'comb_sin':
-        #         tgt_embedding = self.comb_pos_encoding(
-        #             tgt_embedding,
-        #             tgt_time_step=tgt_time_step,
-        #         )
-        #     # does not include any context
-        #     outputs = self.call_decoder(
-        #         enc_output=context_output if context_mode else enc_output,
-        #         src_attention_mask=context_mask
-        #         if context_mode
-        #         else src_attention_mask,
-        #         dec_embedding=tgt_embedding,
-        #         tgt_pad=tgt_pad,
-        #         time_random=tgt_time_step,
-        #         labels=labels,
-        #     )
-        #     dec_embedding_dict[tgt_time_step] = outputs['dec_embedding']
-        #     mean_embedding_dict[tgt_time_step] = outputs['mean_embedding']
-        # if len(sorted_time_steps) == 1:
-        #     outputs = outputs
-        #     print(outputs)
-        # else:
-        #     outputs['mean_embedding'] = mean_embedding_dict
-        #     outputs['dec_embedding'] = dec_embedding_dict
+        # distinction between selected time step and rest time steps
         if (not_masked) and (tgt_input_id_dict is not None):
-            dec_embedding_dict = {}
-            mean_embedding_dict = {}
-            labels = None
+            print('not masking')
             sorted_time_steps = sorted(self.time_steps)
-            for tgt_time_step in sorted_time_steps:
-                tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
-                tgt_input_id = tgt_input_id_dict[f'tgt_input_ids_t{tgt_time_step}']
-                if context_mode:
-                    # distinction between selected time step and rest time steps
-                    context_output, context_mask = self.generate_context(
-                        enc_output=enc_output,
-                        src_attention_mask=src_attention_mask,
-                        tgt_time_step=tgt_time_step,
-                        all_time_steps=self.time_steps,
-                        tgt_input_id_dict=tgt_input_id_dict,
-                        tgt_pad_dict=tgt_pad_dict,
-                    )
-
-                tgt_embedding = self.token_embedding(tgt_input_id)
-
-                if self.position_embedding == 'time_pos_sin':
-                    tgt_embedding = self.time_sin_pos_encoding(
-                        tgt_embedding, tgt_time_step
-                    )
-                    tgt_embedding = self.pos_sin_pos_encoding(tgt_embedding)
-                elif self.position_embedding == 'sin_learnt':
-                    tgt_embedding = self.time_sin_pos_encoding(
-                        tgt_embedding, tgt_time_step
-                    )
-                    tgt_embedding = self.learnt_pos_encoding(tgt_embedding)
-                elif self.position_embedding == 'comb_sin':
-                    tgt_embedding = self.comb_pos_encoding(
-                        tgt_embedding,
-                        tgt_time_step=tgt_time_step,
-                    )
-                # does not include any context
-                outputs = self.call_decoder(
-                    enc_output=context_output if context_mode else enc_output,
-                    src_attention_mask=context_mask
-                    if context_mode
-                    else src_attention_mask,
-                    dec_embedding=tgt_embedding,
-                    tgt_pad=tgt_pad,
-                    time_random=tgt_time_step,
-                    labels=labels,
-                )
-                dec_embedding_dict[tgt_time_step] = outputs['dec_embedding']
-                mean_embedding_dict[tgt_time_step] = outputs['mean_embedding']
-            outputs['mean_embedding'] = mean_embedding_dict
-            outputs['dec_embedding'] = dec_embedding_dict
-        else:
+            context_time_steps = sorted_time_steps
+        elif not_masked is False:
             if tgt_time_step is None:
-                tgt_time_step = np.random.choice(self.time_steps)
-            if generate_id_dict is not None:
+                print('masking')
+                sorted_time_steps = [np.random.choice(self.time_steps)]
+                context_time_steps = sorted(self.time_steps)
+            elif generate_id_dict is not None:
+                print('generation')
                 tgt_input_id_dict = generate_id_dict
-                # generate = True
-                context_time_steps = self.total_time_steps
-                labels = None
-
+                sorted_time_steps = [tgt_time_step]
+                context_time_steps = sorted(self.total_time_steps)
+        dec_embedding_dict = {}
+        mean_embedding_dict = {}
+        for tgt_time_step in sorted_time_steps:
             tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
             if tgt_input_id_dict is not None:
                 tgt_input_id = tgt_input_id_dict[f'tgt_input_ids_t{tgt_time_step}']
             else:
                 raise ValueError(
-                    f'tgt_input_ids_dict is {tgt_input_id_dict} and'
-                    f'generate_id_dict is {generate_id_dict}'
+                    'tgt_input_id_dict or generate_id_dict must be provided'
                 )
-
-            if generate_id_dict is None:
-                # generate = False
-                context_time_steps = self.time_steps
-                tgt_input_id, labels = self.generate_mask(
-                    tgt_input_id,
-                    tgt_pad,
-                    self.mlm_probability,
-                    mask_mode='MASKGIT',
-                    mask_scheduler=self.mask_scheduler,
-                )
-            # only extract context for all the ones before the selected time step
-            # rest will be padded
-            # ---Initialise the decoder embeddings
-            # to provide as context for selected time step---
 
             if context_mode:
-                enc_output, src_attention_mask = self.generate_context(
+                # distinction between selected time step and rest time steps
+                context_output, context_mask = self.generate_context(
                     enc_output=enc_output,
                     src_attention_mask=src_attention_mask,
                     tgt_time_step=tgt_time_step,
@@ -1182,10 +1043,23 @@ class CellGen(nn.Module):
                     tgt_input_id_dict=tgt_input_id_dict,
                     tgt_pad_dict=tgt_pad_dict,
                 )
-                # if generate:
-                #     context_pad_dict = generate_pad_dict
+            if (not_masked is False) & (generate_id_dict is None):
+                print('masking')
+                # apply masking during first stage of MLM training
+                tgt_input_id, labels = self.generate_mask(
+                    tgt_input_id,
+                    tgt_pad,
+                    self.mlm_probability,
+                    mask_mode='MASKGIT',
+                    mask_scheduler=self.mask_scheduler,
+                )
+                print(tgt_input_id)
+            else:
+                # no true labels for MLM loss
+                labels = None
 
             tgt_embedding = self.token_embedding(tgt_input_id)
+
             if self.position_embedding == 'time_pos_sin':
                 tgt_embedding = self.time_sin_pos_encoding(tgt_embedding, tgt_time_step)
                 tgt_embedding = self.pos_sin_pos_encoding(tgt_embedding)
@@ -1197,15 +1071,23 @@ class CellGen(nn.Module):
                     tgt_embedding,
                     tgt_time_step=tgt_time_step,
                 )
+            # does not include any context
             outputs = self.call_decoder(
-                enc_output=enc_output,
-                src_attention_mask=src_attention_mask,
+                enc_output=context_output if context_mode else enc_output,
+                src_attention_mask=context_mask if context_mode else src_attention_mask,
                 dec_embedding=tgt_embedding,
                 tgt_pad=tgt_pad,
                 time_random=tgt_time_step,
                 labels=labels,
             )
-
+            dec_embedding_dict[tgt_time_step] = outputs['dec_embedding']
+            mean_embedding_dict[tgt_time_step] = outputs['mean_embedding']
+        if len(sorted_time_steps) == 1:
+            outputs = outputs
+            print(outputs)
+        else:
+            outputs['mean_embedding'] = mean_embedding_dict
+            outputs['dec_embedding'] = dec_embedding_dict
         return outputs
 
 
@@ -1225,8 +1107,8 @@ class CountHead(nn.Module):
         -----------
         loss_mode: `str`
             Loss mode. Options: ['mse', 'zinb', 'nb']
-        tgt_vocab_size: `int`
-            Target vocabulary size.
+        n_genes: `int`
+            number of genes to be predicted.
         d_model: `int`
             Token embedding dimension.
         dropout: `float`
@@ -1279,7 +1161,6 @@ class CountDecoder(nn.Module):
         self,
         pretrained_model: nn.Module = None,
         loss_mode: str = 'zinb',
-        tgt_vocab_size: int = 25426,
         d_model: int = 128,
         add_mask_id: bool = True,
         dropout: float = 0.0,
@@ -1300,8 +1181,6 @@ class CountDecoder(nn.Module):
             Pretrained Seq2Seq model.
         loss_mode: `str`
             Loss mode. Options: ['mse', 'zinb', 'nb']
-        tgt_vocab_size: `int`
-            Target vocabulary size.
         d_model: `int`
             Token embedding dimension.
         add_mask_id: `bool`
@@ -1320,12 +1199,8 @@ class CountDecoder(nn.Module):
         super(CountDecoder, self).__init__()
         self.pretrained_model = pretrained_model
         self.embed_dim = d_model
-
         self.loss_mode = loss_mode
-        # exclude pad (-1) to get the number of genes
-
         self.count_decoder = CountHead(loss_mode, n_genes, d_model, dropout)
-        # total_vocab_size = tgt_vocab_size + total_time_steps
         if add_mask_id:
             self.mask_token = 1
 
@@ -1371,7 +1246,6 @@ class CountDecoder(nn.Module):
         tgt_input_id_dict: dict,
         can_remask_prev_masked: bool = False,
         topk_filter_thres: float = 0.9,
-        # time_steps=[1, 2, 3],
         temperature: float = 2.0,  # keep in range 2.0-3.0
         # self_cond_prob=0.9,
         iterations: int = 18,  # optimal of iterations in MaskGIT
@@ -1383,15 +1257,14 @@ class CountDecoder(nn.Module):
         ------------
         Generate sequences for the target tokens
         adopted from MaskGIT using the pretrained model.
-        Use mean non-padding embeddings for count prediction.
+        After T iterations when all tokens are predicted,
+        use mean non-padding embeddings for count prediction.
         Parameters:
         -----------
         src_input_id: `torch.Tensor`
             Source token input.
         tgt_input_id_dict: `dict`
             Dictionary of target token inputs from different time steps.
-        max_len: `int`
-            Maximum length of the generated sequence.
         can_remask_prev_masked: `bool`
             Whether to remask previously masked tokens.
         topk_filter_thres: `float`
@@ -1403,12 +1276,16 @@ class CountDecoder(nn.Module):
         mask_scheduler: `str`
             Mask scheduler function.
             Options: ['uniform', 'pow', 'cosine', 'log', 'exp']
+        sequence_length: `int`
+            Maximum length of the generated sequence.
         Returns:
         --------
-        count_outputs: `dict`
-            Output dictionary containing the following keys:
-            - 'count_output_t{t}': Count prediction for time step t.
-            - 'cls_embedding_t{t}': CLS token embeddings for time step t.
+        `tuple` containing:
+            - count_outputs: `dict`
+                Output dictionary containing the following keys:
+                - 'count_output_t{t}': Count prediction for time step t.
+                - 'cls_embedding_t{t}': CLS token embeddings for time step t.
+            - 'generate_id_dict': Dictionary of generated token ids.
         '''
         generate_id_dict: Dict[str, torch.Tensor] = {}
         count_outputs: Dict[str, torch.Tensor] = {}
@@ -1642,15 +1519,16 @@ class CountDecoder(nn.Module):
             Target time step to generate sequence for.
         Returns:
         --------
-        outputs: `dict`
-            Output dictionary containing the following keys:
-            - 'dec_logits': Decoder logits.
-            - 'labels': True labels for masked tokens.
-            - 'selected_time_step': Selected time step.
-            - 'dec_embedding': Decoder embeddings.
-            - 'mean_embedding': Mean embeddings for non-padding tokens.
-        tmp_ids: `torch.Tensor`
-            Generated target token inputs.
+        `tuple` containing:
+            outputs: `dict`
+                Output dictionary containing the following keys:
+                - 'dec_logits': Decoder logits.
+                - 'labels': True labels for masked tokens.
+                - 'selected_time_step': Selected time step.
+                - 'dec_embedding': Decoder embeddings.
+                - 'mean_embedding': Mean embeddings for non-padding tokens.
+            tmp_ids: `torch.Tensor`
+                Generated target token inputs.
         '''
         max_neg_value = -torch.finfo().max
         scores[:, :prompt_length] = max_neg_value

@@ -78,6 +78,7 @@ class CellGenTestTrainingCase(unittest.TestCase):
 
     def setUp(self):
         pl.seed_everything(42)
+        np.random.seed(42)
 
         # Load transformer model and count decoder
         transformer = CellGenTrainer(
