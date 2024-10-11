@@ -276,6 +276,7 @@ def return_prediction_adata(
             'cosine_similarity': `~pandas.DataFrame`
                 DataFrame of cosine similarities.
     """
+    print('---Start saving embeddings')
     # adata.X
     true_counts = torch.cat(test_dict['true_counts'], dim=0).numpy()
     # adata.obsm
@@ -307,6 +308,53 @@ def return_prediction_adata(
     cos_similarity_df.index = adata.obs.index
     adata.obsm['cosine_similarity'] = cos_similarity_df
     adata.write_h5ad(os.path.join(output_dir, file_name))
+    print('End saving embeddings---')
+
+
+def return_generation_adata(
+    test_dict: dict,
+    obs_key: list,
+    output_dir: str,
+    file_name: str,
+):
+    print('---Generating anndata')
+    # TODO: clean up no if and else needed
+    # adata.X
+    pred_counts = torch.cat(test_dict['pred_counts']).numpy()
+    # adata.layers['counts']
+    true_counts = torch.cat(test_dict['true_counts']).numpy()
+    # adata.obsm
+    cls_embeddings = torch.cat(test_dict['cls_embeddings']).numpy()
+    # adata.obs
+    obs_dict = {obs: np.concatenate(test_dict[obs]) for obs in obs_key}
+    test_obs = pd.DataFrame(obs_dict)
+    # create adata
+    adata = ad.AnnData(
+        X=pred_counts,
+        obs=test_obs,
+        obsm={'cls_embeddings': cls_embeddings},
+        layers={'counts': true_counts},
+    )
+    adata.write_h5ad(os.path.join(output_dir, file_name))
+    print('anndata generation completed---')
+    return adata
+
+
+def scale_pca(adata):
+    '''
+    Description
+    ------------
+    This function returns scaled PCA on log-normalised counts
+    to compute EMD and MMD.
+    '''
+    sc.pp.normalize_total(adata, target_sum=1e4)
+    sc.pp.log1p(adata)
+    sc.tl.pca(adata, svd_solver='arpack', n_comps=5)
+    # scale PCA
+    coords = adata.obsm['X_pca']
+    coords = (coords - coords.mean(axis=0)) / coords.std(axis=0)
+    adata.obsm['X_pca_scaled'] = coords
+    return adata
 
 
 def modify_ckpt_state_dict(
@@ -593,7 +641,6 @@ def mean_nonpadding_embs(embs, pad, dim=1):
         masked_embs = embs.masked_fill(~pad_mask.unsqueeze(2), 0.0)
         # compute the mean across the non-padding dimensions
         mean_embs = masked_embs.sum(dim) / original_lens.view(-1, 1).float()
-
     elif embs.dim() == 2:
         masked_embs = embs.masked_fill(~pad_mask, 0.0)
         mean_embs = masked_embs.sum(dim) / original_lens.float()

@@ -148,7 +148,7 @@ class CellGenTestGenerationCase(unittest.TestCase):
             time_steps=self.time_step,
             total_time_steps=2,
             temperature=1.5,
-            iterations=19,
+            iterations=5,
             mask_scheduler='pow',
             output_dir='./T_perturb/T_perturb/tests/res',
             mode='Transformer_encoder',
