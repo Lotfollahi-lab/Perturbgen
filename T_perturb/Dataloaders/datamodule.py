@@ -14,28 +14,6 @@ from scipy.sparse import csr_matrix
 from torch.utils.data import DataLoader, Dataset
 
 
-# Dummy dataset
-class DummyDataset(torch.utils.data.Dataset):
-    def __init__(self, max_len, tgt_vocab_size):
-        self.max_len = max_len
-        self.tgt_vocab_size = tgt_vocab_size
-
-    def __len__(self):
-        return 1000  # Dummy number of samples
-
-    def __getitem__(self, idx):
-        # Dummy input data (replace with your actual data loading)
-        src_input_ids = torch.randint(0, self.tgt_vocab_size, (self.max_len,))
-        tgt_input_ids = torch.randint(0, self.tgt_vocab_size, (self.max_len,))
-        src_input_ids[:, -5:] = 0
-        tgt_input_ids[:, -5:] = 0
-
-        return {
-            'src': src_input_ids,
-            'tgt': tgt_input_ids,
-        }
-
-
 class CellGenDataset(Dataset):
     def __init__(
         self,
@@ -109,7 +87,6 @@ class CellGenDataset(Dataset):
         return self.dataset_length
 
 
-# two dataloader vs one dataloader
 class CellGenDataModule(LightningDataModule):
     def __init__(
         self,
@@ -136,7 +113,7 @@ class CellGenDataModule(LightningDataModule):
         """
         Description:
         ------------
-        Custom datamodule for Petra tokenised data.
+        Custom datamodule for CellGen tokenised data.
         """
         super().__init__()
         print('Start datamodule')
@@ -144,9 +121,12 @@ class CellGenDataModule(LightningDataModule):
         self.tgt_datasets = tgt_datasets
         self.src_counts = src_counts
         self.tgt_counts_dict = tgt_counts_dict
-        self.batch_size = batch_size
-        self.num_workers = num_workers
-        self.shuffle = shuffle
+        self.dataloader_args = {
+            'batch_size': batch_size,
+            'shuffle': shuffle,
+            'num_workers': num_workers,
+        }
+
         token_dictionary_file = TOKEN_DICTIONARY_FILE
         with open(token_dictionary_file, 'rb') as f:
             self.gene_token_dict = pickle.load(f)
@@ -169,120 +149,73 @@ class CellGenDataModule(LightningDataModule):
         # form of dictionary with key: value pairs based on condition_keys
 
     def setup(self, stage=None):
+        dataset_args = {
+            'src_dataset': self.src_dataset,
+            'tgt_datasets': self.tgt_datasets,
+            'src_counts': self.src_counts,
+            'tgt_counts_dict': self.tgt_counts_dict,
+            'time_steps': self.time_steps,
+        }
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
             if self.condition_encodings is not None:
-                self.train_dataset = CellGenDataset(
-                    src_dataset=self.src_dataset,
-                    tgt_datasets=self.tgt_datasets,
-                    split_indices=self.train_indices,
-                    src_counts=self.src_counts,
-                    tgt_counts_dict=self.tgt_counts_dict,
-                    time_steps=self.time_steps,
-                    conditions=self.conditions
-                    if self.condition_keys is not None
-                    else None,
-                    conditions_combined=self.conditions_combined
-                    if self.condition_keys is not None
-                    else None,
+                dataset_args['split_indices'] = self.train_indices
+                dataset_args['conditions'] = (
+                    self.conditions if self.condition_keys is not None else None
                 )
+                dataset_args['conditions_combined'] = (
+                    self.conditions_combined
+                    if self.condition_keys is not None
+                    else None
+                )
+                self.train_dataset = CellGenDataset(**dataset_args)
                 if self.val_indices is not None:
-                    self.val_dataset = CellGenDataset(
-                        src_dataset=self.src_dataset,
-                        tgt_datasets=self.tgt_datasets,
-                        split_indices=self.val_indices,
-                        src_counts=self.src_counts,
-                        tgt_counts_dict=self.tgt_counts_dict,
-                        time_steps=self.time_steps,
-                        conditions=self.conditions
-                        if self.condition_keys is not None
-                        else None,
-                        conditions_combined=self.conditions_combined
-                        if self.condition_keys is not None
-                        else None,
-                    )
+                    dataset_args['split_indices'] = self.val_indices
+                    self.val_dataset = CellGenDataset(**dataset_args)
                 else:
                     self.val_dataset = None
             else:
-                self.train_dataset = CellGenDataset(
-                    src_dataset=self.src_dataset,
-                    tgt_datasets=self.tgt_datasets,
-                    split_indices=self.train_indices,
-                    src_counts=self.src_counts,
-                    tgt_counts_dict=self.tgt_counts_dict,
-                    time_steps=self.time_steps,
-                )
+                dataset_args['split_indices'] = self.train_indices
+                self.train_dataset = CellGenDataset(**dataset_args)
                 if self.val_indices is not None:
-                    self.val_dataset = CellGenDataset(
-                        src_dataset=self.src_dataset,
-                        tgt_datasets=self.tgt_datasets,
-                        split_indices=self.val_indices,
-                        src_counts=self.src_counts,
-                        tgt_counts_dict=self.tgt_counts_dict,
-                        time_steps=self.time_steps,
-                    )
+                    dataset_args['split_indices'] = self.val_indices
+                    self.val_dataset = CellGenDataset(**dataset_args)
                 else:
                     self.val_dataset = None
         if stage == 'test' or stage is None:
             # use all time steps to provide as context
-            self.time_steps = list(range(1, self.total_time_steps + 1))
+            dataset_args['time_steps'] = list(range(1, self.total_time_steps + 1))
+            dataset_args['split_indices'] = self.test_indices
             if self.condition_encodings is not None:
-                self.test_dataset = CellGenDataset(
-                    src_dataset=self.src_dataset,
-                    tgt_datasets=self.tgt_datasets,
-                    split_indices=self.test_indices,
-                    src_counts=self.src_counts,
-                    tgt_counts_dict=self.tgt_counts_dict,
-                    time_steps=self.time_steps,
-                    conditions=self.conditions
-                    if self.condition_keys is not None
-                    else None,
-                    conditions_combined=self.conditions_combined
-                    if self.condition_keys is not None
-                    else None,
+                dataset_args['conditions'] = (
+                    self.conditions if self.condition_keys is not None else None
                 )
+                dataset_args['conditions_combined'] = (
+                    self.conditions_combined
+                    if self.condition_keys is not None
+                    else None
+                )
+                self.test_dataset = CellGenDataset(**dataset_args)
             else:
-                self.test_dataset = CellGenDataset(
-                    src_dataset=self.src_dataset,
-                    tgt_datasets=self.tgt_datasets,
-                    split_indices=self.test_indices,
-                    src_counts=self.src_counts,
-                    tgt_counts_dict=self.tgt_counts_dict,
-                    time_steps=self.time_steps,
-                )
+                self.test_dataset = CellGenDataset(**dataset_args)
 
     def train_dataloader(self):
-        data = DataLoader(
-            self.train_dataset,
-            batch_size=self.batch_size,
-            shuffle=self.shuffle,
-            num_workers=self.num_workers,
-            collate_fn=self.collate,
-        )
+        self.dataloader_args['collate_fn'] = self.collate
+        data = DataLoader(**self.dataloader_args)
         return data
 
     def val_dataloader(self):
+        self.dataloader_args['shuffle'] = False
+        self.dataloader_args['collate_fn'] = self.collate
         if self.split:
-            data = DataLoader(
-                self.val_dataset,
-                batch_size=self.batch_size,
-                shuffle=False,
-                num_workers=self.num_workers,
-                collate_fn=self.collate,
-            )
+            data = DataLoader(**self.dataloader_args)
             return data
         else:
             return []
 
     def test_dataloader(self):
-        data = DataLoader(
-            self.test_dataset,
-            batch_size=self.batch_size,
-            shuffle=self.shuffle,
-            num_workers=self.num_workers,
-            collate_fn=self.collate,
-            # persistent_workers=True,
-        )
+        self.dataloader_args['collate_fn'] = self.collate
+        data = DataLoader(**self.dataloader_args)
         return data
 
     def collate(self, batch):

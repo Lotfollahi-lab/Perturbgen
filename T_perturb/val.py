@@ -17,7 +17,7 @@ from pytorch_lightning.loggers import WandbLogger
 from T_perturb.Dataloaders.datamodule import CellGenDataModule
 from T_perturb.Model.trainer import CellGenTrainer, CountDecoderTrainer
 from T_perturb.src.utils import (
-    label_encoder,
+    condition_for_count_loss,
     randomised_split,
     read_dataset_files,
     str2bool,
@@ -427,71 +427,18 @@ def main() -> None:
             sc.pp.normalize_total(tgt_adata, target_sum=1e4)
             sc.pp.log1p(tgt_adata)
 
-    # ZINB count loss preprocessing
+    # ZINB and NB count loss preprocessing
     # ----------------------------------------------------------------------------------
-
-    if args.condition_keys is None:
-        args.condition_keys = 'tmp_batch'
-        # create a mock vector if there are no batch effect
-        tgt_adata_tmp.obs[args.condition_keys] = 1
-
-    if isinstance(args.condition_keys, str):
-        condition_keys_ = [args.condition_keys]
-    else:
-        condition_keys_ = args.condition_keys
-
-    if args.conditions is None:
-        if args.condition_keys is not None:
-            conditions_ = {}
-            for cond in condition_keys_:
-                conditions_[cond] = tgt_adata_tmp.obs[cond].unique().tolist()
-        else:
-            conditions_ = {}
-    else:
-        conditions_ = args.conditions
-
-    if args.conditions_combined is None:
-        if len(condition_keys_) > 1:
-            tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[
-                args.condition_keys
-            ].apply(lambda x: '_'.join(x), axis=1)
-        else:
-            tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[
-                args.condition_keys
-            ]
-        conditions_combined_ = (
-            tgt_adata_tmp.obs['conditions_combined'].unique().tolist()
-        )
-    else:
-        conditions_combined_ = args.conditions_combined
-
-    condition_encodings = {
-        cond: {k: v for k, v in zip(conditions_[cond], range(len(conditions_[cond])))}
-        for cond in conditions_.keys()
-    }
-    conditions_combined_encodings = {
-        k: v for k, v in zip(conditions_combined_, range(len(conditions_combined_)))
-    }
-
-    if (condition_encodings is not None) and (condition_keys_ is not None):
-        conditions = [
-            label_encoder(
-                tgt_adata_tmp,
-                encoder=condition_encodings[condition_keys_[i]],
-                condition_key=condition_keys_[i],
-            )
-            for i in range(len(condition_encodings))
-        ]
-        conditions = torch.tensor(conditions, dtype=torch.long).T
-        conditions_combined = label_encoder(
-            tgt_adata_tmp,
-            encoder=conditions_combined_encodings,
-            condition_key='conditions_combined',
-        )
-        conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
-
-    print('Data loaded and preprocessed.')
-    # count number of unique timepoints
+    (
+        conditions,
+        condition_encodings,
+        conditions_combined,
+        conditions_,
+        condition_keys_,
+        conditions_combined_,
+    ) = condition_for_count_loss(
+        args.condition_keys, args.conditions, args.conditions_combined, tgt_adata_tmp
+    )
     n_total_timepoints = len(tgt_adatas)
 
     # Initialize model module

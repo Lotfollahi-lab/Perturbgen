@@ -100,6 +100,106 @@ def map_ensembl_to_genename(
     return adata
 
 
+def condition_for_count_loss(
+    condition_keys: str,
+    conditions: dict,
+    conditions_combined: list,
+    tgt_adata_tmp: ad.AnnData,
+):
+    '''
+    Description:
+    ------------
+    This function encodes conditions for count loss.
+
+    Parameters:
+    -----------
+    condition_keys: `str`
+        Key to encode conditions.
+    conditions: `dict`
+        Dictionary of conditions.
+    conditions_combined: `list`
+        List of combined conditions.
+    tgt_adata_tmp: `~anndata.AnnData`
+        target adata object.
+
+    Returns:
+    --------
+    conditions: `torch.tensor`
+        Tensor of encoded conditions.
+    condition_encodings: `dict`
+        Dictionary of condition encodings.
+    conditions_combined: `torch.tensor`
+        Tensor of encoded combined conditions.
+    conditions_: `dict`
+        Dictionary of conditions.
+    condition_keys_: `list`
+        List of condition keys.
+    conditions_combined_: `list`
+        List of combined conditions.
+    '''
+    if condition_keys is None:
+        condition_keys = 'tmp_batch'
+        # create a mock vector if there are no batch effect
+        tgt_adata_tmp.obs[condition_keys] = 1
+    condition_keys_ = [condition_keys]
+
+    if conditions is None:
+        if condition_keys is not None:
+            conditions_ = {}
+            for cond in condition_keys_:
+                conditions_[cond] = tgt_adata_tmp.obs[cond].unique().tolist()
+        else:
+            conditions_ = {}
+    else:
+        conditions_ = conditions
+
+    if conditions_combined is None:
+        if len(condition_keys_) > 1:
+            tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[
+                condition_keys
+            ].apply(lambda x: '_'.join(x), axis=1)
+        else:
+            tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[condition_keys]
+        conditions_combined_ = (
+            tgt_adata_tmp.obs['conditions_combined'].unique().tolist()
+        )
+    else:
+        conditions_combined_ = conditions_combined
+
+    condition_encodings: Dict[str, Dict[str, int]] = {
+        cond: {k: v for k, v in zip(conditions_[cond], range(len(conditions_[cond])))}
+        for cond in conditions_.keys()
+    }
+    conditions_combined_encodings = {
+        k: v for k, v in zip(conditions_combined_, range(len(conditions_combined_)))
+    }
+
+    if (condition_encodings is not None) and (condition_keys_ is not None):
+        conditions_tmp = [
+            label_encoder(
+                tgt_adata_tmp,
+                encoder=condition_encodings[condition_keys_[i]],
+                condition_key=condition_keys_[i],
+            )
+            for i in range(len(condition_encodings))
+        ]
+        conditions = torch.tensor(conditions_tmp, dtype=torch.long).T
+        conditions_combined = label_encoder(
+            tgt_adata_tmp,
+            encoder=conditions_combined_encodings,
+            condition_key='conditions_combined',
+        )
+        conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
+    return (
+        conditions,
+        condition_encodings,
+        conditions_combined,
+        conditions_,
+        condition_keys_,
+        conditions_combined_,
+    )
+
+
 def compute_cos_similarity(
     outputs: dict,
     time_step: int,
@@ -257,6 +357,12 @@ def return_prediction_adata(
         List of keys to include in adata.obs.
     marker_genes: `dict`
         List of marker genes.
+    output_dir: `str`
+        Directory to save files in
+    file_name: `str`
+        Filename for output file
+    gene_names: `list`
+        Name of var_names for adata
 
     Returns:
     --------
@@ -317,6 +423,38 @@ def return_generation_adata(
     output_dir: str,
     file_name: str,
 ):
+    """
+    Description:
+    ------------
+    This function returns anndata object with predicted counts.
+
+    Parameters:
+    -----------
+    test_dict: `dict`
+        Dictionary containing test data.
+    obs_key: `list`
+        List of keys to include in adata.obs.
+    output_dir: `str`
+        Directory to save files in
+    file_name: `str`
+        Filename for output file
+
+    Returns:
+    --------
+    adata: `~anndata.AnnData` \n
+        Annotated data matrix with predicted counts. \n
+        - adata.X: `~numpy.ndarray`
+            Array of predicted counts.
+        - adata.obs: `~pandas.DataFrame`
+            DataFrame of obs_key.
+        - adata.var: `~pandas.DataFrame`
+            DataFrame of gene names.
+        - adata.obsm: `dict`
+            'cls_embeddings': `~numpy.ndarray`
+                Array of cls embeddings.
+        - adata.layers: `~numpy.ndarray`
+                Array of true counts.
+    """
     print('---Generating anndata')
     # TODO: clean up no if and else needed
     # adata.X
@@ -747,7 +885,7 @@ def pairing_src_to_tgt_cells(
     return cell_pairings
 
 
-def label_encoder(adata, encoder, condition_key=None):
+def label_encoder(adata, encoder, condition_key=None) -> np.ndarray:
     """
     Description:
     ------------
@@ -766,8 +904,6 @@ def label_encoder(adata, encoder, condition_key=None):
     -------
     labels: `~numpy.ndarray`
          Array of encoded labels
-    label_encoder: Dict
-         dictionary with labels and encoded labels as key, value pairs.
     """
     unique_conditions = list(np.unique(adata.obs[condition_key]))
     labels = np.zeros(adata.shape[0])

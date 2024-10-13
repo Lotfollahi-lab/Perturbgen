@@ -16,7 +16,7 @@ from pytorch_lightning.strategies import DDPStrategy
 from T_perturb.Dataloaders.datamodule import CellGenDataModule
 from T_perturb.Model.trainer import CellGenTrainer, CountDecoderTrainer
 from T_perturb.src.utils import (
-    label_encoder,
+    condition_for_count_loss,
     randomised_split,
     read_dataset_files,
     str2bool,
@@ -252,50 +252,6 @@ def main() -> None:
     src_dataset = load_from_disk(args.src_dataset)
     src_adata = sc.read_h5ad(args.src_adata)
 
-    # # filter for cell type of interest
-    # if (args.imputation_obs) and (args.imputation_category):
-    #     tp_cell_type = []
-    #     pairing_index_list = []
-    #     pattern = r'tgt_h5ad_t(\d+)'
-    #     for file_name, tgt_adata in tgt_adatas.items():
-    #         if args.guided_gene_list_dir:
-    #             tp_cell_type.extend(
-    #                 tgt_adatas[file_name].obs['Donor'].unique().tolist()
-    #             )
-    #         # add row index to filter src
-    #         tgt_adata.obs['index'] = range(len(tgt_adata))
-    #         # only select specific timepoints
-    #         imputation_mask = tgt_adata.obs[
-    #             args.imputation_obs
-    #             ] != args.imputation_category
-    #         if sum(imputation_mask) == 0:
-    #             pass
-    #         else:
-    #             imputation_idx = tgt_adata.obs['cell_pairing_index'][imputation_mask]
-    #             imputation_idx = imputation_idx.tolist()
-    #             pairing_index = tgt_adata[imputation_mask].obs['index'].tolist()
-
-    #             pairing_index_list.extend(pairing_index)
-    #             tgt_adatas[file_name].obs.drop('index', axis=1, inplace=True)
-
-    #     if len(pairing_index) > 0:
-    #         src_adata = src_adata[pairing_index]
-    #         src_dataset = src_dataset.select(pairing_index)
-    #         for file_name, tgt_adata in tgt_adatas.items():
-    #             re_file_name = re.search(pattern, file_name)
-    #             if re_file_name:
-    #                 time_step = int(re_file_name.group(1))
-    #                 tgt_datasets[f'tgt_dataset_t{time_step}'] = tgt_datasets[
-    #                     f'tgt_dataset_t{time_step}'
-    #                 ].select(pairing_index)
-    #                 tgt_adatas[file_name] = tgt_adata[pairing_index]
-    #     # print number of dropped samples
-    #     print(
-    #         f'Number of samples excluded for '
-    #         f'imputation: {len(src_adata) - len(pairing_index)}'
-    #     )
-    # raise
-
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
     tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.time_steps[0]}']
@@ -360,66 +316,16 @@ def main() -> None:
 
     # ZINB count loss preprocessing
     # ----------------------------------------------------------------------------------
-
-    if args.condition_keys is None:
-        args.condition_keys = 'tmp_batch'
-        # create a mock vector if there are no batch effect
-        tgt_adata_tmp.obs[args.condition_keys] = 1
-
-    if isinstance(args.condition_keys, str):
-        condition_keys_ = [args.condition_keys]
-    else:
-        condition_keys_ = args.condition_keys
-
-    if args.conditions is None:
-        if args.condition_keys is not None:
-            conditions_ = {}
-            for cond in condition_keys_:
-                conditions_[cond] = tgt_adata_tmp.obs[cond].unique().tolist()
-        else:
-            conditions_ = {}
-    else:
-        conditions_ = args.conditions
-
-    if args.conditions_combined is None:
-        if len(condition_keys_) > 1:
-            tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[
-                args.condition_keys
-            ].apply(lambda x: '_'.join(x), axis=1)
-        else:
-            tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[
-                args.condition_keys
-            ]
-        conditions_combined_ = (
-            tgt_adata_tmp.obs['conditions_combined'].unique().tolist()
-        )
-    else:
-        conditions_combined_ = args.conditions_combined
-
-    condition_encodings = {
-        cond: {k: v for k, v in zip(conditions_[cond], range(len(conditions_[cond])))}
-        for cond in conditions_.keys()
-    }
-    conditions_combined_encodings = {
-        k: v for k, v in zip(conditions_combined_, range(len(conditions_combined_)))
-    }
-
-    if (condition_encodings is not None) and (condition_keys_ is not None):
-        conditions = [
-            label_encoder(
-                tgt_adata_tmp,
-                encoder=condition_encodings[condition_keys_[i]],
-                condition_key=condition_keys_[i],
-            )
-            for i in range(len(condition_encodings))
-        ]
-        conditions = torch.tensor(conditions, dtype=torch.long).T
-        conditions_combined = label_encoder(
-            tgt_adata_tmp,
-            encoder=conditions_combined_encodings,
-            condition_key='conditions_combined',
-        )
-        conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
+    (
+        conditions,
+        condition_encodings,
+        conditions_combined,
+        conditions_,
+        condition_keys_,
+        conditions_combined_,
+    ) = condition_for_count_loss(
+        args.condition_keys, args.conditions, args.conditions_combined, tgt_adata_tmp
+    )
 
     print('Data loaded and preprocessed.')
     # count number of unique timepoints
