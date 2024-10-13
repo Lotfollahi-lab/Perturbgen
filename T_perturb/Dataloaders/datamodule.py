@@ -200,11 +200,13 @@ class CellGenDataModule(LightningDataModule):
                 self.test_dataset = CellGenDataset(**dataset_args)
 
     def train_dataloader(self):
+        self.dataloader_args['dataset'] = self.train_dataset
         self.dataloader_args['collate_fn'] = self.collate
         data = DataLoader(**self.dataloader_args)
         return data
 
     def val_dataloader(self):
+        self.dataloader_args['dataset'] = self.val_dataset
         self.dataloader_args['shuffle'] = False
         self.dataloader_args['collate_fn'] = self.collate
         if self.split:
@@ -214,6 +216,7 @@ class CellGenDataModule(LightningDataModule):
             return []
 
     def test_dataloader(self):
+        self.dataloader_args['dataset'] = self.test_dataset
         self.dataloader_args['collate_fn'] = self.collate
         data = DataLoader(**self.dataloader_args)
         return data
