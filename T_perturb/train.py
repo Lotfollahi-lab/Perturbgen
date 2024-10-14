@@ -178,12 +178,18 @@ def get_args():
         '--conditions_combined', type=list, default=None, help='conditions combined'
     )
     parser.add_argument(
-        '--time_steps',
-        # type=list,
+        '--pred_tps',
         nargs='+',
         type=int,
         default=[1, 2, 3],
-        help='time steps to include during training',
+        help='time steps which are predicted',
+    )
+    parser.add_argument(
+        '--context_tps',
+        nargs='+',
+        type=int,
+        default=None,
+        help='context time steps in cross-attn',
     )
     parser.add_argument(
         '--var_list',
@@ -254,7 +260,7 @@ def main() -> None:
 
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
-    tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.time_steps[0]}']
+    tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.pred_tps[0]}']
     if args.split:
         if args.splitting_mode == 'stratified':
             # start preprocessing to avoid loading anndata into datamodule
@@ -294,12 +300,12 @@ def main() -> None:
         train_indices = list(range(len(src_dataset)))
         val_indices = None
         test_indices = list(
-            range(len(tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}']))
+            range(len(tgt_datasets[f'tgt_dataset_t{args.pred_tps[0]}']))
         )
     # check if the train indices are the same for both adata and dataset
     subset_adata = tgt_adata_tmp[train_indices]
 
-    subset_dataset = tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}'].select(
+    subset_dataset = tgt_datasets[f'tgt_dataset_t{args.pred_tps[0]}'].select(
         train_indices
     )
     assert (
@@ -328,75 +334,47 @@ def main() -> None:
     )
 
     print('Data loaded and preprocessed.')
-    # count number of unique timepoints
-    n_total_timepoints = len(tgt_adatas)
+    n_total_tps = len(tgt_adatas)
 
     # Initialize model module
     # ----------------------------------------------------------------------------------
+    trainer_kwargs = {
+        'tgt_vocab_size': args.tgt_vocab_size,
+        'd_model': 512,
+        'num_heads': 8,
+        'num_layers': args.num_layers,
+        'd_ff': args.d_ff,
+        'max_seq_length': args.max_len + 100,
+        'dropout': args.cellgen_dropout,
+        'weight_decay': args.cellgen_wd,
+        'mask_scheduler': args.mask_scheduler,
+        'pred_tps': args.pred_tps,
+        'context_tps': args.context_tps,
+        'n_total_tps': n_total_tps,
+        'mode': args.mode,
+        'output_dir': args.output_dir,
+        'context_mode': args.context_mode,
+        'positional_encoding': args.positional_encoding,
+    }
     if args.train_mode == 'masking':
-        pretrained_module = CellGenTrainer(
-            # tgt_vocab_size=1820,  # 704 for degs, 1820 for tokenised
-            tgt_vocab_size=args.tgt_vocab_size,  # max token id + 1 for padding
-            d_model=512,
-            num_heads=8,
-            num_layers=args.num_layers,
-            d_ff=args.d_ff,
-            max_seq_length=args.max_len + 100,
-            dropout=args.cellgen_dropout,
-            mlm_probability=args.mlm_prob,
-            weight_decay=args.cellgen_wd,
-            end_lr=args.cellgen_lr,
-            mask_scheduler=args.mask_scheduler,
-            # lr_scheduler_patience=5.0,
-            # lr_scheduler_factor=0.8,
-            time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
-            mapping_dict_path=args.mapping_dict_path,
-            output_dir=args.output_dir,
-            mode=args.mode,
-            context_mode=args.context_mode,
-            positional_encoding=args.positional_encoding,
-        )
+        trainer_kwargs['mlm_probability'] = args.mlm_prob
+        trainer_kwargs['end_lr'] = args.cellgen_lr
+        pretrained_module = CellGenTrainer(**trainer_kwargs)
     elif args.train_mode == 'count':
-        decoder_module = CountDecoderTrainer(
-            ckpt_masking_path=args.ckpt_masking_path,
-            ckpt_count_path=None,
-            tgt_vocab_size=args.tgt_vocab_size,
-            d_model=512,
-            num_heads=8,
-            num_layers=args.num_layers,
-            d_ff=args.d_ff,
-            max_seq_length=args.max_len + 100,
-            loss_mode=args.loss_mode,
-            lr=args.count_lr,
-            weight_decay=args.count_wd,
-            # lr_scheduler_patience=5.0,
-            # lr_scheduler_factor=0.8,
-            conditions=conditions_,
-            conditions_combined=conditions_combined_,
-            dropout=args.count_dropout,
-            tgt_adata=tgt_adatas,
-            time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
-            temperature=args.temperature,
-            iterations=args.iterations,
-            mask_scheduler=args.mask_scheduler,
-            output_dir=args.output_dir,
-            mode=args.mode,
-            seed=args.seed,
-            n_genes=src_adata.shape[1],
-            context_mode=args.context_mode,
-            positional_encoding=args.positional_encoding,
-        )
+        trainer_kwargs['ckpt_masking_path'] = args.ckpt_masking_path
+        trainer_kwargs['loss_mode'] = args.loss_mode
+        trainer_kwargs['lr'] = args.count_lr
+        trainer_kwargs['conditions'] = conditions_
+        trainer_kwargs['conditions_combined'] = conditions_combined_
+        trainer_kwargs['temperature'] = args.temperature
+        trainer_kwargs['iterations'] = args.iterations
+        trainer_kwargs['seed'] = args.seed
+        trainer_kwargs['n_genes'] = (src_adata.shape[1],)
+        decoder_module = CountDecoderTrainer(**trainer_kwargs)
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
     # Initialize data module
     # ----------------------------------------------------------------------------------
-
-    # While there is a wide variety of different augmentation strategies, we simply
-    # resort to the supposedly optimal AutoAugment policy.
-    # change dataloader and input
-    # create count dictionnary
     tgt_counts_dict = {}
     for keys, tgt_adata in tgt_adatas.items():
         tgt_counts_dict[keys] = tgt_adata.X
@@ -404,47 +382,33 @@ def main() -> None:
     # determine global batch size to account for multiple GPUs
     gpu_number = max(torch.cuda.device_count(), 1)
     per_gpu_batch_size = args.batch_size // gpu_number
+    data_module_kwargs = {
+        'src_dataset': src_dataset,
+        'tgt_datasets': tgt_datasets,
+        'src_counts': src_counts,
+        'tgt_counts_dict': tgt_counts_dict,
+        'batch_size': per_gpu_batch_size,
+        'num_workers': args.n_workers,
+        'shuffle': args.shuffle,
+        'max_len': args.max_len,
+        'split': args.split,
+        'train_indices': train_indices,
+        'val_indices': val_indices,
+        'test_indices': test_indices,
+        'pred_tps': args.pred_tps,
+        'context_tps': args.context_tps,
+        'n_total_tps': n_total_tps,
+        'var_list': args.var_list,
+    }
     if args.train_mode == 'masking':
-        data_module = CellGenDataModule(
-            src_dataset=src_dataset,
-            tgt_datasets=tgt_datasets,
-            src_counts=src_counts,  # TODO: do not pass counts in datamodule
-            tgt_counts_dict=tgt_counts_dict,
-            batch_size=per_gpu_batch_size,
-            num_workers=args.n_workers,
-            shuffle=args.shuffle,
-            max_len=args.max_len,
-            split=args.split,
-            train_indices=train_indices,
-            val_indices=val_indices,
-            test_indices=test_indices,
-            time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
-            var_list=args.var_list,
-        )
-
+        data_module = CellGenDataModule(**data_module_kwargs)
     elif args.train_mode == 'count':
-        data_module = CellGenDataModule(
-            src_dataset=src_dataset,
-            tgt_datasets=tgt_datasets,
-            src_counts=src_counts,
-            tgt_counts_dict=tgt_counts_dict,
-            batch_size=per_gpu_batch_size,
-            num_workers=args.n_workers,
-            shuffle=args.shuffle,
-            max_len=args.max_len,
-            condition_keys=condition_keys_,
-            condition_encodings=condition_encodings,
-            conditions=conditions,
-            conditions_combined=conditions_combined,
-            split=args.split,
-            train_indices=train_indices,
-            val_indices=val_indices,
-            test_indices=test_indices,
-            time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
-            var_list=args.var_list,
-        )
+        data_module_kwargs['condition_keys'] = condition_keys_
+        data_module_kwargs['condition_encodings'] = condition_encodings
+        data_module_kwargs['conditions'] = conditions
+        data_module_kwargs['conditions_combined'] = conditions_combined
+
+        data_module = CellGenDataModule(**data_module_kwargs)
     # Setup trainer
     # ----------------------------------------------------------------------------------
     run_id = datetime.now().strftime('%Y%m%d_%H%M_cellgen')
@@ -454,7 +418,7 @@ def main() -> None:
     # Define Callbacks
     # This callback always keeps a checkpoint of the best model according to
     # validation accuracy.
-    time_steps_str_ = [str(i) for i in args.time_steps]
+    time_steps_str_ = [str(i) for i in args.pred_tps]
     time_steps_str = '-'.join(time_steps_str_)
     if args.train_mode == 'masking':
         filename = (
@@ -487,7 +451,7 @@ def main() -> None:
         dirpath=checkpoint_path,
         filename=f'{filename}-' + '{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=1,
+        every_n_epochs=10,
         verbose=True,
         monitor=monitor_metric,
         mode=mode,

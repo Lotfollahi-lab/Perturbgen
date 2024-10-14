@@ -69,8 +69,8 @@ def dummy_dataset(
 class CellGenTestTrainingCase(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super(CellGenTestTrainingCase, self).__init__(*args, **kwargs)
-        self.time_step = [1, 2]
-        self.total_time_steps = 2
+        self.pred_tps = [1, 2]
+        self.n_total_tps = 2
         self.max_seq_length = 50
         self.tgt_vocab_size = 101  # +1 for padding token
         self.batch_size = 4
@@ -92,8 +92,8 @@ class CellGenTestTrainingCase(unittest.TestCase):
             mlm_probability=0.15,
             weight_decay=0.0,
             end_lr=1e-3,
-            time_steps=self.time_step,
-            total_time_steps=self.total_time_steps,
+            pred_tps=self.pred_tps,
+            n_total_tps=self.n_total_tps,
             mode='Transformer_encoder',
             mapping_dict_path=(
                 './T_perturb/T_perturb/pp/res/'
@@ -112,7 +112,7 @@ class CellGenTestTrainingCase(unittest.TestCase):
             max_len=self.max_seq_length,
             vocab_size=self.tgt_vocab_size,
             num_samples=100,
-            total_time_steps=self.total_time_steps,
+            total_time_steps=self.n_total_tps,
         )
 
         # Load the data module
@@ -121,8 +121,8 @@ class CellGenTestTrainingCase(unittest.TestCase):
             tgt_datasets=tgt_datasets,
             batch_size=self.batch_size,
             num_workers=1,
-            time_steps=[1, 2],
-            total_time_steps=self.total_time_steps,
+            pred_tps=self.pred_tps,
+            n_total_tps=self.n_total_tps,
             max_len=self.max_seq_length,
             train_indices=np.random.choice(100, 80, replace=False),
         )

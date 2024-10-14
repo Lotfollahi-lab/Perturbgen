@@ -191,15 +191,22 @@ def get_args():
         default='cosine',
         help='mask scheduler [cosine, exp, pow]',
     )
-    parser.add_argument('--temperature', type=float, default=1.0, help='temperature')
-    parser.add_argument('--sequence_length', type=int, default=300, help='iterations')
+    parser.add_argument('--temperature', type=float, default=0.5, help='temperature')
+    parser.add_argument('--sequence_length', type=int, default=150, help='iterations')
     parser.add_argument('--iterations', type=int, default=20, help='iterations')
     parser.add_argument('--conditions', type=dict, default=None, help='conditions')
     parser.add_argument(
         '--conditions_combined', type=list, default=None, help='conditions combined'
     )
     parser.add_argument(
-        '--time_steps',
+        '--pred_tps',
+        type=int,
+        nargs='+',
+        default=[1, 2, 3],
+        help='time steps to include during training',
+    )
+    parser.add_argument(
+        '--context_tps',
         type=int,
         nargs='+',
         default=[1, 2, 3],
@@ -367,7 +374,7 @@ def main() -> None:
 
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
-    tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.time_steps[0]}'].copy()
+    tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.pred_tps[0]}'].copy()
     if args.split:
         if args.splitting_mode == 'stratified':
             # start preprocessing to avoid loading anndata into datamodule
@@ -407,11 +414,11 @@ def main() -> None:
         train_indices = list(range(len(src_dataset)))
         val_indices = None
         test_indices = list(
-            range(len(tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}']))
+            range(len(tgt_datasets[f'tgt_dataset_t{args.pred_tps[0]}']))
         )
     # check if the train indices are the same for both adata and dataset
     subset_adata = tgt_adata_tmp[train_indices]
-    subset_dataset = tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}'].select(
+    subset_dataset = tgt_datasets[f'tgt_dataset_t{args.pred_tps[0]}'].select(
         train_indices
     )
     assert (
@@ -440,71 +447,51 @@ def main() -> None:
         args.condition_keys, args.conditions, args.conditions_combined, tgt_adata_tmp
     )
     n_total_timepoints = len(tgt_adatas)
+    trainer_kwargs = {
+        'tgt_vocab_size': args.tgt_vocab_size,
+        'd_model': 512,
+        'num_heads': 8,
+        'num_layers': args.num_layers,
+        'd_ff': args.d_ff,
+        'max_seq_length': args.max_len + 100,
+        'dropout': 0,
+        'generate': args.generate,
+        'context_tps': args.context_tps,
+        'pred_tps': args.pred_tps,
+        'n_total_tps': n_total_timepoints,
+        'mask_scheduler': args.mask_scheduler,
+        'positional_encoding': args.positional_encoding,
+        'output_dir': args.output_dir,
+        'mode': args.mode,
+        'context_mode': args.context_mode,
+        'var_list': args.var_list,
+    }
 
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.test_mode == 'masking':
+        trainer_kwargs['return_embeddings'] = args.return_embeddings
+        trainer_kwargs['mapping_dict_path'] = args.mapping_dict_path
+        trainer_kwargs['gene_names'] = tgt_adata_tmp.var['gene_name']
         pretrained_module = CellGenTrainer(
-            tgt_vocab_size=args.tgt_vocab_size,
-            d_model=512,
-            num_heads=8,
-            num_layers=args.num_layers,
-            d_ff=args.d_ff,
-            max_seq_length=args.max_len + 100,
-            dropout=args.cellgen_dropout,
-            weight_decay=args.cellgen_wd,
-            end_lr=args.cellgen_lr,
-            mask_scheduler=args.mask_scheduler,
-            # lr_scheduler_patience=5.0,
-            # lr_scheduler_factor=0.8,
-            return_embeddings=args.return_embeddings,
-            generate=args.generate,
-            time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
-            mapping_dict_path=args.mapping_dict_path,
-            positional_encoding=args.positional_encoding,
-            gene_names=tgt_adata_tmp.var['gene_name'],
-            output_dir=args.output_dir,
-            var_list=args.var_list,
-            mode=args.mode,
-            context_mode=args.context_mode,
+            **trainer_kwargs,
         )
     elif args.test_mode == 'count':
+        trainer_kwargs['ckpt_count_path'] = args.ckpt_count_path
+        trainer_kwargs['conditions'] = conditions_
+        trainer_kwargs['conditions_combined'] = conditions_combined_
+        trainer_kwargs['tgt_adata'] = tgt_adatas
+        trainer_kwargs['temperature'] = args.temperature
+        trainer_kwargs['iterations'] = args.iterations
+        trainer_kwargs['mask_scheduler'] = args.mask_scheduler
+        trainer_kwargs['sequence_length'] = args.sequence_length
+        trainer_kwargs['n_samples'] = 3
+        trainer_kwargs['seed'] = args.seed
+        trainer_kwargs['n_genes'] = tgt_adata_tmp.X.shape[1]
+        trainer_kwargs['unique_gene_list'] = unique_token_dict
+        trainer_kwargs['shared_gene_list'] = shared_token_dict
         decoder_module = CountDecoderTrainer(
-            ckpt_masking_path=args.ckpt_masking_path,
-            ckpt_count_path=args.ckpt_count_path,
-            tgt_vocab_size=args.tgt_vocab_size,
-            d_model=512,
-            num_heads=8,
-            num_layers=args.num_layers,
-            d_ff=args.d_ff,
-            max_seq_length=args.max_len + 100,
-            loss_mode=args.loss_mode,
-            lr=args.count_lr,
-            weight_decay=args.count_wd,
-            # lr_scheduler_patience=5.0,
-            # lr_scheduler_factor=0.8,
-            conditions=conditions_,
-            conditions_combined=conditions_combined_,
-            dropout=args.count_dropout,
-            generate=args.generate,
-            tgt_adata=tgt_adatas,
-            time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
-            temperature=args.temperature,
-            iterations=args.iterations,
-            mask_scheduler=args.mask_scheduler,
-            output_dir=args.output_dir,
-            var_list=args.var_list,
-            n_samples=3,
-            mode=args.mode,
-            seed=args.seed,
-            positional_encoding=args.positional_encoding,
-            sequence_length=args.sequence_length,
-            context_mode=args.context_mode,
-            n_genes=tgt_adata_tmp.X.shape[1],
-            unique_gene_list=unique_token_dict,
-            shared_gene_list=shared_token_dict,
+            **trainer_kwargs,
         )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')
@@ -537,8 +524,9 @@ def main() -> None:
         train_indices=None,
         val_indices=None,
         test_indices=test_indices,
-        time_steps=args.time_steps,
-        total_time_steps=n_total_timepoints,
+        pred_tps=args.pred_tps,
+        context_tps=args.context_tps,
+        n_total_tps=n_total_timepoints,
         var_list=args.var_list,
     )
 

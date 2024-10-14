@@ -97,8 +97,9 @@ class CellGenDataModule(LightningDataModule):
         shuffle: bool = False,
         max_len: int = 2048,
         split: bool = False,
-        time_steps: list = [1, 2],
-        total_time_steps: int = 4,
+        pred_tps: list = [1, 2],
+        context_tps: list = [1, 2],
+        n_total_tps: int = 4,
         src_counts: Optional[np.ndarray] = None,
         tgt_counts_dict: Optional[np.ndarray] = None,
         condition_keys: Optional[list] = None,
@@ -121,7 +122,7 @@ class CellGenDataModule(LightningDataModule):
         self.tgt_datasets = tgt_datasets
         self.src_counts = src_counts
         self.tgt_counts_dict = tgt_counts_dict
-        self.dataloader_args = {
+        self.dataloader_kwargs = {
             'batch_size': batch_size,
             'shuffle': shuffle,
             'num_workers': num_workers,
@@ -142,83 +143,87 @@ class CellGenDataModule(LightningDataModule):
         self.train_indices = train_indices
         self.val_indices = val_indices
         self.test_indices = test_indices
-        self.time_steps = time_steps
-        self.total_time_steps = total_time_steps
+        self.pred_tps = pred_tps
+        self.context_tps = context_tps
+        self.total_tps = list(range(1, n_total_tps + 1))
         self.var_list = var_list
         # create condition encoder for categorical variables in
         # form of dictionary with key: value pairs based on condition_keys
 
     def setup(self, stage=None):
-        dataset_args = {
+        if self.context_tps is not None:
+            all_modelling_tps = self.pred_tps + self.context_tps
+            self.all_modelling_tps = list(set(all_modelling_tps))
+        else:
+            self.all_modelling_tps = self.pred_tps
+        dataset_kwargs = {
             'src_dataset': self.src_dataset,
             'tgt_datasets': self.tgt_datasets,
             'src_counts': self.src_counts,
             'tgt_counts_dict': self.tgt_counts_dict,
-            'time_steps': self.time_steps,
+            'time_steps': self.all_modelling_tps,
         }
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
             if self.condition_encodings is not None:
-                dataset_args['split_indices'] = self.train_indices
-                dataset_args['conditions'] = (
+                dataset_kwargs['split_indices'] = self.train_indices
+                dataset_kwargs['conditions'] = (
                     self.conditions if self.condition_keys is not None else None
                 )
-                dataset_args['conditions_combined'] = (
+                dataset_kwargs['conditions_combined'] = (
                     self.conditions_combined
                     if self.condition_keys is not None
                     else None
                 )
-                self.train_dataset = CellGenDataset(**dataset_args)
+                self.train_dataset = CellGenDataset(**dataset_kwargs)
                 if self.val_indices is not None:
-                    dataset_args['split_indices'] = self.val_indices
-                    self.val_dataset = CellGenDataset(**dataset_args)
+                    dataset_kwargs['split_indices'] = self.val_indices
+                    self.val_dataset = CellGenDataset(**dataset_kwargs)
                 else:
                     self.val_dataset = None
             else:
-                dataset_args['split_indices'] = self.train_indices
-                self.train_dataset = CellGenDataset(**dataset_args)
+                dataset_kwargs['split_indices'] = self.train_indices
+                self.train_dataset = CellGenDataset(**dataset_kwargs)
                 if self.val_indices is not None:
-                    dataset_args['split_indices'] = self.val_indices
-                    self.val_dataset = CellGenDataset(**dataset_args)
+                    dataset_kwargs['split_indices'] = self.val_indices
+                    self.val_dataset = CellGenDataset(**dataset_kwargs)
                 else:
                     self.val_dataset = None
         if stage == 'test' or stage is None:
-            # use all time steps to provide as context
-            dataset_args['time_steps'] = list(range(1, self.total_time_steps + 1))
-            dataset_args['split_indices'] = self.test_indices
+            dataset_kwargs['split_indices'] = self.test_indices
             if self.condition_encodings is not None:
-                dataset_args['conditions'] = (
+                dataset_kwargs['conditions'] = (
                     self.conditions if self.condition_keys is not None else None
                 )
-                dataset_args['conditions_combined'] = (
+                dataset_kwargs['conditions_combined'] = (
                     self.conditions_combined
                     if self.condition_keys is not None
                     else None
                 )
-                self.test_dataset = CellGenDataset(**dataset_args)
+                self.test_dataset = CellGenDataset(**dataset_kwargs)
             else:
-                self.test_dataset = CellGenDataset(**dataset_args)
+                self.test_dataset = CellGenDataset(**dataset_kwargs)
 
     def train_dataloader(self):
-        self.dataloader_args['dataset'] = self.train_dataset
-        self.dataloader_args['collate_fn'] = self.collate
-        data = DataLoader(**self.dataloader_args)
+        self.dataloader_kwargs['dataset'] = self.train_dataset
+        self.dataloader_kwargs['collate_fn'] = self.collate
+        data = DataLoader(**self.dataloader_kwargs)
         return data
 
     def val_dataloader(self):
-        self.dataloader_args['dataset'] = self.val_dataset
-        self.dataloader_args['shuffle'] = False
-        self.dataloader_args['collate_fn'] = self.collate
+        self.dataloader_kwargs['dataset'] = self.val_dataset
+        self.dataloader_kwargs['shuffle'] = False
+        self.dataloader_kwargs['collate_fn'] = self.collate
         if self.split:
-            data = DataLoader(**self.dataloader_args)
+            data = DataLoader(**self.dataloader_kwargs)
             return data
         else:
             return []
 
     def test_dataloader(self):
-        self.dataloader_args['dataset'] = self.test_dataset
-        self.dataloader_args['collate_fn'] = self.collate
-        data = DataLoader(**self.dataloader_args)
+        self.dataloader_kwargs['dataset'] = self.test_dataset
+        self.dataloader_kwargs['collate_fn'] = self.collate
+        data = DataLoader(**self.dataloader_kwargs)
         return data
 
     def collate(self, batch):
@@ -254,7 +259,7 @@ class CellGenDataModule(LightningDataModule):
             'combined_batch': condition_combined,
         }
 
-        for time_step in self.time_steps:
+        for time_step in self.all_modelling_tps:
             if batch[0]['tgt_counts_t1'] is not None:
                 if isinstance(batch[0][f'tgt_counts_t{time_step}'], csr_matrix):
                     tgt_counts = [

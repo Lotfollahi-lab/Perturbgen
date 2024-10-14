@@ -141,7 +141,11 @@ def condition_for_count_loss(
         condition_keys = 'tmp_batch'
         # create a mock vector if there are no batch effect
         tgt_adata_tmp.obs[condition_keys] = 1
-    condition_keys_ = [condition_keys]
+
+    if isinstance(condition_keys, str):
+        condition_keys_ = [condition_keys]
+    else:
+        condition_keys_ = condition_keys
 
     if conditions is None:
         if condition_keys is not None:

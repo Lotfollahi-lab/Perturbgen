@@ -56,7 +56,8 @@ python3 $cwd/val.py \
 --d_ff 32 \
 --loss_mode zinb \
 --n_workers 16 \
---time_steps 3 \
+--pred_tps 3 \
+--context_tps 1 2 \
 --var_list Time_point \
 --mode GF_frozen \
 --positional_encoding sin_learnt \

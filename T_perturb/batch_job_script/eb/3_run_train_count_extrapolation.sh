@@ -59,7 +59,7 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --num_layers 3 \
 --d_ff 32 \
 --loss_mode zinb \
---time_steps 1 2 \
+--pred_tps 1 2 \
 --seed 100 \
 --var_list Time_point \
 --mode GF_frozen \

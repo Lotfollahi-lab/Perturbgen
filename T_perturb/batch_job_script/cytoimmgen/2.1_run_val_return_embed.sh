@@ -57,7 +57,7 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --num_layers 6 \
 --n_workers 16 \
 --condition_keys Cell_culture_batch \
---time_steps 1 \
+--pred_tps 1 \
 --var_list Cell_population Cell_type Time_point Donor \
 --mode GF_frozen \
 --context_mode True \
