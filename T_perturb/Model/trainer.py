@@ -177,7 +177,7 @@ class CellGenTrainer(LightningModule):
 
     def forward(self, batch):
         tgt_input_id_dict = {}
-        for i in self.total_tps:
+        for i in self.pred_tps:
             tgt_input_id_ = torch.cat(
                 (
                     getattr(self, f'cls_token_{str(i)}').expand(

@@ -355,6 +355,7 @@ def main() -> None:
         'output_dir': args.output_dir,
         'context_mode': args.context_mode,
         'positional_encoding': args.positional_encoding,
+        'mapping_dict_path': args.mapping_dict_path,
     }
     if args.train_mode == 'masking':
         trainer_kwargs['mlm_probability'] = args.mlm_prob
