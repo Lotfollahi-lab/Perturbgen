@@ -1133,6 +1133,8 @@ class CountHead(nn.Module):
         if self.loss_mode == 'mse':
             self.relu_output = nn.Sequential(nn.Linear(d_model, n_genes), nn.ReLU())
         elif self.loss_mode == 'zinb':
+            print('model size', d_model)
+            print('number of genes', n_genes)
             self.linear_output = nn.Linear(d_model, n_genes)
             self.softmax_output = nn.Sequential(
                 nn.Linear(d_model, n_genes), nn.Softmax(dim=-1)

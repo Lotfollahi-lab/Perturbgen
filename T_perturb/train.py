@@ -370,7 +370,7 @@ def main() -> None:
         trainer_kwargs['temperature'] = args.temperature
         trainer_kwargs['iterations'] = args.iterations
         trainer_kwargs['seed'] = args.seed
-        trainer_kwargs['n_genes'] = (src_adata.shape[1],)
+        trainer_kwargs['n_genes'] = src_adata.shape[1]
         decoder_module = CountDecoderTrainer(**trainer_kwargs)
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')

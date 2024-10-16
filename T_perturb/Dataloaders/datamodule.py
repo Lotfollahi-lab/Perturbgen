@@ -151,21 +151,23 @@ class CellGenDataModule(LightningDataModule):
         # form of dictionary with key: value pairs based on condition_keys
 
     def setup(self, stage=None):
-        if self.context_tps is not None:
-            all_modelling_tps = self.pred_tps + self.context_tps
-            self.all_modelling_tps = list(set(all_modelling_tps))
-        else:
-            self.all_modelling_tps = self.pred_tps
         dataset_kwargs = {
             'src_dataset': self.src_dataset,
             'tgt_datasets': self.tgt_datasets,
             'src_counts': self.src_counts,
             'tgt_counts_dict': self.tgt_counts_dict,
-            'time_steps': self.all_modelling_tps,
         }
+
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
+            if self.context_tps is not None:
+                all_modelling_tps = self.pred_tps + self.context_tps
+                self.all_modelling_tps = list(set(all_modelling_tps))
+            else:
+                self.all_modelling_tps = self.pred_tps
+
             if self.condition_encodings is not None:
+                dataset_kwargs['time_steps'] = self.all_modelling_tps
                 dataset_kwargs['split_indices'] = self.train_indices
                 dataset_kwargs['conditions'] = (
                     self.conditions if self.condition_keys is not None else None
@@ -190,6 +192,8 @@ class CellGenDataModule(LightningDataModule):
                 else:
                     self.val_dataset = None
         if stage == 'test' or stage is None:
+            self.all_modelling_tps = self.total_tps
+            dataset_kwargs['time_steps'] = self.all_modelling_tps
             dataset_kwargs['split_indices'] = self.test_indices
             if self.condition_encodings is not None:
                 dataset_kwargs['conditions'] = (
