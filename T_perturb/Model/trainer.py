@@ -885,7 +885,7 @@ class CountDecoderTrainer(LightningModule):
             )
             tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
         if self.generate:
-            decoder_args = {
+            decoder_kwargs = {
                 'src_input_id': batch['src_input_ids'],
                 'tgt_input_id_dict': tgt_input_id_dict,
                 'mask_scheduler': self.mask_scheduler,
@@ -898,14 +898,14 @@ class CountDecoderTrainer(LightningModule):
             if (self.unique_gene_list is not None) or (
                 self.shared_gene_list is not None
             ):
-                decoder_args['unique_gene_list'] = self.unique_gene_list
-                decoder_args['shared_gene_list'] = self.shared_gene_list
+                decoder_kwargs['unique_gene_list'] = self.unique_gene_list
+                decoder_kwargs['shared_gene_list'] = self.shared_gene_list
                 outputs, pred_ids_dict = self.decoder.guided_generate(
-                    **decoder_args,
+                    **decoder_kwargs,
                 )
             else:
                 outputs, pred_ids_dict = self.decoder.generate(
-                    **decoder_args,
+                    **decoder_kwargs,
                 )
             # print(pred_ids_dict)
             for time_step in pred_ids_dict.keys():

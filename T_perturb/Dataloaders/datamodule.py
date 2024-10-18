@@ -121,7 +121,7 @@ class CellGenDataModule(LightningDataModule):
         self.tgt_datasets = tgt_datasets
         self.src_counts = src_counts
         self.tgt_counts_dict = tgt_counts_dict
-        self.dataloader_args = {
+        self.dataloader_kwargs = {
             'batch_size': batch_size,
             'shuffle': shuffle,
             'num_workers': num_workers,
@@ -200,25 +200,25 @@ class CellGenDataModule(LightningDataModule):
                 self.test_dataset = CellGenDataset(**dataset_args)
 
     def train_dataloader(self):
-        self.dataloader_args['dataset'] = self.train_dataset
-        self.dataloader_args['collate_fn'] = self.collate
-        data = DataLoader(**self.dataloader_args)
+        self.dataloader_kwargs['dataset'] = self.train_dataset
+        self.dataloader_kwargs['collate_fn'] = self.collate
+        data = DataLoader(**self.dataloader_kwargs)
         return data
 
     def val_dataloader(self):
-        self.dataloader_args['dataset'] = self.val_dataset
-        self.dataloader_args['shuffle'] = False
-        self.dataloader_args['collate_fn'] = self.collate
+        self.dataloader_kwargs['dataset'] = self.val_dataset
+        self.dataloader_kwargs['shuffle'] = False
+        self.dataloader_kwargs['collate_fn'] = self.collate
         if self.split:
-            data = DataLoader(**self.dataloader_args)
+            data = DataLoader(**self.dataloader_kwargs)
             return data
         else:
             return []
 
     def test_dataloader(self):
-        self.dataloader_args['dataset'] = self.test_dataset
-        self.dataloader_args['collate_fn'] = self.collate
-        data = DataLoader(**self.dataloader_args)
+        self.dataloader_kwargs['dataset'] = self.test_dataset
+        self.dataloader_kwargs['collate_fn'] = self.collate
+        data = DataLoader(**self.dataloader_kwargs)
         return data
 
     def collate(self, batch):
