@@ -1036,8 +1036,6 @@ class CellGen(nn.Module):
                     'tgt_input_id_dict or generate_id_dict must be provided'
                 )
             if context_mode:
-                print('contex tps', context_time_steps)
-
                 # distinction between selected time step and rest time steps
                 context_output, context_mask = self.generate_context(
                     enc_output=enc_output,
@@ -1318,9 +1316,8 @@ class CountDecoder(nn.Module):
             for k, v in tgt_input_id_dict.items()
             if int(k.split('_t')[-1]) in all_modelling_tps
         }
-        print('tgt_input_id_dict', tgt_input_id_dict.keys())
+
         for time_step in self.pred_tps:
-            print('pred_tps', time_step)
             tgt_input_id_dict_ = {k: v.clone() for k, v in tgt_input_id_dict.items()}
             tgt_pad_dict_ = {k: v.clone() for k, v in tgt_pad_dict.items()}
             # use max shape instead of genes you like to generate

@@ -150,8 +150,6 @@ class CellGenDataModule(LightningDataModule):
         # form of dictionary with key: value pairs based on condition_keys
 
     def setup(self, stage=None):
-        print('pred_tps', self.pred_tps)
-        print('context_tps', self.context_tps)
         if self.context_tps is not None:
             all_modelling_tps = self.pred_tps + self.context_tps
             self.all_modelling_tps = list(set(all_modelling_tps))
