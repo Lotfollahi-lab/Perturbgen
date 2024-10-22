@@ -44,8 +44,8 @@ def dummy_cell_gene_matrix(
 class CellGenTestTrainingCase(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super(CellGenTestTrainingCase, self).__init__(*args, **kwargs)
-        self.time_step = [1, 2]
-        self.total_time_steps = 2
+        self.pred_tps = [1, 2]
+        self.n_total_tps = 2
         self.max_seq_length = 50
         self.tgt_vocab_size = 101  # +1 for padding token
         self.num_genes = self.tgt_vocab_size - 1
@@ -78,12 +78,12 @@ class CellGenTestTrainingCase(unittest.TestCase):
             max_len=self.max_seq_length,
             vocab_size=self.tgt_vocab_size,
             num_samples=100,
-            total_time_steps=self.total_time_steps,
+            total_time_steps=self.n_total_tps,
         )
         tgt_counts_dict = dummy_cell_gene_matrix(
             num_cells=self.num_samples,
             num_genes=self.num_genes,
-            total_time_steps=self.total_time_steps,
+            total_time_steps=self.n_total_tps,
         )
 
         if condition_keys is None:
@@ -170,8 +170,8 @@ class CellGenTestTrainingCase(unittest.TestCase):
             conditions=conditions_,
             conditions_combined=conditions_combined_,
             dropout=0.0,
-            time_steps=self.time_step,
-            total_time_steps=2,
+            pred_tps=self.pred_tps,
+            n_total_tps=self.n_total_tps,
             temperature=1.5,
             iterations=19,
             precision='high',
@@ -190,8 +190,8 @@ class CellGenTestTrainingCase(unittest.TestCase):
             src_counts=src_counts,
             tgt_counts_dict=tgt_counts_dict,
             num_workers=1,
-            time_steps=[1, 2],
-            total_time_steps=2,
+            pred_tps=self.pred_tps,
+            n_total_tps=self.n_total_tps,
             max_len=self.max_seq_length,
             train_indices=np.random.choice(100, 80, replace=False),
             condition_keys=condition_keys_,
@@ -211,7 +211,7 @@ class CellGenTestTrainingCase(unittest.TestCase):
         output = self.decoder_module(batch)
         self.assertEqual(
             len(output.keys()),
-            self.total_time_steps,
+            self.n_total_tps,
             'Output should contain the same number of keys as time steps',
         )
         self.assertEqual(

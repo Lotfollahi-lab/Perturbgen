@@ -97,8 +97,8 @@ class CellGenDataModule(LightningDataModule):
         shuffle: bool = False,
         max_len: int = 2048,
         split: bool = False,
-        time_steps: list = [1, 2],
-        total_time_steps: int = 4,
+        pred_tps: list = [1, 2],
+        n_total_tps: int = 4,
         src_counts: Optional[np.ndarray] = None,
         tgt_counts_dict: Optional[np.ndarray] = None,
         condition_keys: Optional[list] = None,
@@ -109,6 +109,7 @@ class CellGenDataModule(LightningDataModule):
         val_indices: Optional[list[int]] = None,
         test_indices: Optional[list[int]] = None,
         var_list: Optional[list] = None,
+        context_tps: Optional[list] = None,
     ):
         """
         Description:
@@ -141,19 +142,27 @@ class CellGenDataModule(LightningDataModule):
         self.train_indices = train_indices
         self.val_indices = val_indices
         self.test_indices = test_indices
-        self.time_steps = time_steps
-        self.total_time_steps = total_time_steps
+        self.pred_tps = pred_tps
+        self.context_tps = context_tps
+        self.total_tps = list(range(1, n_total_tps + 1))
         self.var_list = var_list
         # create condition encoder for categorical variables in
         # form of dictionary with key: value pairs based on condition_keys
 
     def setup(self, stage=None):
+        print('pred_tps', self.pred_tps)
+        print('context_tps', self.context_tps)
+        if self.context_tps is not None:
+            all_modelling_tps = self.pred_tps + self.context_tps
+            self.all_modelling_tps = list(set(all_modelling_tps))
+        else:
+            self.all_modelling_tps = self.pred_tps
         dataset_args = {
             'src_dataset': self.src_dataset,
             'tgt_datasets': self.tgt_datasets,
             'src_counts': self.src_counts,
             'tgt_counts_dict': self.tgt_counts_dict,
-            'time_steps': self.time_steps,
+            'time_steps': self.all_modelling_tps,
         }
         # Assign train/val datasets for use in dataloaders
         # Assign train/val datasets for use in dataloaders
@@ -184,7 +193,8 @@ class CellGenDataModule(LightningDataModule):
                     self.val_dataset = None
         if stage == 'test' or stage is None:
             # use all time steps to provide as context
-            dataset_args['time_steps'] = list(range(1, self.total_time_steps + 1))
+            self.all_modelling_tps = self.total_tps
+            dataset_args['time_steps'] = self.all_modelling_tps
             dataset_args['split_indices'] = self.test_indices
             if self.condition_encodings is not None:
                 dataset_args['conditions'] = (
@@ -254,7 +264,7 @@ class CellGenDataModule(LightningDataModule):
             'combined_batch': condition_combined,
         }
 
-        for time_step in self.time_steps:
+        for time_step in self.all_modelling_tps:
             if batch[0]['tgt_counts_t1'] is not None:
                 if isinstance(batch[0][f'tgt_counts_t{time_step}'], csr_matrix):
                     tgt_counts = [

@@ -33,7 +33,8 @@ from T_perturb.src.metric import (
     evaluate_mmd,
     lin_reg_summary,
 )
-from T_perturb.src.utils import (  # WarmupScheduler,
+from T_perturb.src.utils import (
+    WarmupScheduler,
     compute_cos_similarity,
     modify_ckpt_state_dict,
     pearson,
@@ -73,8 +74,8 @@ class CellGenTrainer(LightningModule):
         end_lr: float = 1e-3,
         return_embeddings: bool = False,
         generate: bool = False,
-        time_steps: list = [1, 2],
-        total_time_steps: int = 3,
+        pred_tps: list = [1, 2],
+        n_total_tps: int = 3,
         num_epochs: int = 5,
         warmup_epochs: int = 1,
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
@@ -88,12 +89,15 @@ class CellGenTrainer(LightningModule):
         var_list: Optional[List[str]] = None,
         gene_names: Optional[List[str]] = None,
         mapping_dict_path: Optional[str] = None,
+        context_tps: Optional[List[int]] = None,
         *args,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
         self.save_hyperparameters()
         set_matmul_precision_for_device(precision)
+        if context_tps is None:
+            context_tps = pred_tps
         self.transformer = CellGen(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
@@ -103,8 +107,9 @@ class CellGenTrainer(LightningModule):
             max_seq_length=max_seq_length,
             dropout=dropout,
             mlm_probability=mlm_probability,
-            time_steps=time_steps,
-            total_time_steps=total_time_steps,
+            pred_tps=pred_tps,
+            context_tps=context_tps,
+            n_total_tps=n_total_tps,
             mode=mode,
             mask_scheduler=mask_scheduler,
             position_embedding=positional_encoding,
@@ -130,7 +135,7 @@ class CellGenTrainer(LightningModule):
         self.return_embeddings = return_embeddings
         self.generate = generate
         self.tgt_vocab_size = tgt_vocab_size
-        self.time_steps = time_steps
+        self.pred_tps = pred_tps
         self.context_mode = context_mode
 
         self.test_dict: Dict[str, List[Any]] = {
@@ -153,7 +158,8 @@ class CellGenTrainer(LightningModule):
         total_vocab_size = tgt_vocab_size
         # register buffer for CLS
         # initialize cls token for all time steps
-        for i in range(1, total_time_steps + 1):
+        self.total_tps = list(range(1, n_total_tps + 1))
+        for i in self.total_tps:
             # i-1, as first token is tgt_vocab_size
             self.register_buffer(
                 f'cls_token_{str(i)}',
@@ -171,7 +177,7 @@ class CellGenTrainer(LightningModule):
 
     def forward(self, batch):
         tgt_input_id_dict = {}
-        for i in self.time_steps:
+        for i in self.pred_tps:
             tgt_input_id_ = torch.cat(
                 (
                     getattr(self, f'cls_token_{str(i)}').expand(
@@ -193,23 +199,23 @@ class CellGenTrainer(LightningModule):
     def configure_optimizers(self):
         parameters = [{'params': self.transformer.parameters(), 'lr': self.end_lr}]
         optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
-        # number_of_batches_per_epoch = len(self.trainer.datamodule.train_dataloader())
+        number_of_batches_per_epoch = len(self.trainer.datamodule.train_dataloader())
         # total_steps = self.num_epochs * number_of_batches_per_epoch
-        # warmup_steps = self.warmup_epochs * number_of_batches_per_epoch
-        # scheduler = WarmupScheduler(
-        #     optimizer,
-        #     warmup_steps=warmup_steps,
-        #     initial_lr=self.initial_lr,
-        #     end_lr=self.end_lr,
-        # )
+        warmup_steps = self.warmup_epochs * number_of_batches_per_epoch
+        scheduler = WarmupScheduler(
+            optimizer,
+            warmup_steps=warmup_steps,
+            initial_lr=self.initial_lr,
+            end_lr=self.end_lr,
+        )
         # optimizer = FusedAdam(
         #     self.transformer.parameters(), lr=self.lr, weight_decay=self.weight_decay
         # )
         return {
             'optimizer': optimizer,
             'monitor': 'train/masking_loss',
-            # 'interval': 'step',
-            # 'lr_scheduler': scheduler,
+            'interval': 'step',
+            'lr_scheduler': scheduler,
         }
 
     def training_step(self, batch, *args, **kwargs):
@@ -284,7 +290,7 @@ class CellGenTrainer(LightningModule):
     def test_step(self, batch, *args, **kwargs):
         if self.return_embeddings:
             outputs = self.forward(batch)
-            for time_step in self.time_steps:
+            for time_step in self.pred_tps:
                 token_ids = batch[f'tgt_input_ids_t{time_step}']
                 (
                     cos_similarity,
@@ -408,8 +414,8 @@ class CountDecoderTrainer(LightningModule):
         dropout: float = 0.0,
         generate: bool = False,
         var_list: List[str] = ['Time_point'],
-        time_steps: list = [1, 2],
-        total_time_steps: int = 3,
+        pred_tps: list = [1, 2],
+        n_total_tps: int = 3,
         temperature: float = 2.0,
         iterations: int = 18,
         n_samples: int = 1,
@@ -435,6 +441,7 @@ class CountDecoderTrainer(LightningModule):
         conditions_combined: Optional[List[Any]] = None,
         unique_gene_list: Optional[Dict[Any, Any]] = None,
         shared_gene_list: Optional[Dict[Any, Any]] = None,
+        context_tps: Optional[List[int]] = None,
         *args,
         **kwargs,
     ):
@@ -456,8 +463,9 @@ class CountDecoderTrainer(LightningModule):
             num_layers=num_layers,
             d_ff=d_ff,
             max_seq_length=max_seq_length,
-            time_steps=time_steps,
-            total_time_steps=total_time_steps,
+            pred_tps=pred_tps,
+            context_tps=context_tps,
+            n_total_tps=n_total_tps,
             mode=mode,
             position_embedding=positional_encoding,
         )
@@ -478,8 +486,8 @@ class CountDecoderTrainer(LightningModule):
             loss_mode=loss_mode,
             d_model=d_model,
             dropout=dropout,
-            time_steps=time_steps,
-            total_time_steps=total_time_steps,
+            pred_tps=pred_tps,
+            context_tps=context_tps,
             context_mode=context_mode,
             n_genes=n_genes,
         )
@@ -509,9 +517,9 @@ class CountDecoderTrainer(LightningModule):
 
         self.mse = MeanSquaredError()
         total_vocab_size = tgt_vocab_size
-        self.time_steps = time_steps
-        self.total_time_steps = total_time_steps  # for generation
-        for i in range(1, total_time_steps + 1):
+        self.pred_tps = pred_tps
+        self.total_tps = list(range(1, n_total_tps + 1))
+        for i in self.total_tps:
             self.register_buffer(
                 f'cls_token_{str(i)}',
                 torch.tensor(
@@ -565,7 +573,7 @@ class CountDecoderTrainer(LightningModule):
 
     def forward(self, batch):
         tgt_input_id_dict = {}
-        for i in self.time_steps:
+        for i in self.pred_tps:
             tgt_input_id_ = torch.cat(
                 (
                     getattr(self, f'cls_token_{str(i)}').expand(
@@ -645,7 +653,7 @@ class CountDecoderTrainer(LightningModule):
             self.compute_dispersion(batch) if self.loss_mode in ['zinb', 'nb'] else None
         )
         total_loss = 0
-        for time_step in self.time_steps:
+        for time_step in self.pred_tps:
             count_ouput = outputs[f'count_output_t{time_step}']
             true_values = batch[f'tgt_counts_t{time_step}']
             batch_size_factor = batch[f'tgt_size_factor_t{time_step}'].unsqueeze(1)
@@ -675,8 +683,10 @@ class CountDecoderTrainer(LightningModule):
                     if n_samples == 1:
                         count_dict[time_step] = dec_mean
                     else:
+                        print('sampling from zinb')
                         # sample from distribution
                         x_pred = zinb_distribution.sample((n_samples,))
+                        print('x_pred', x_pred)
                         count_dict[time_step] = x_pred.mean(dim=0)
 
                 elif self.loss_mode == 'nb':
@@ -786,7 +796,7 @@ class CountDecoderTrainer(LightningModule):
         )
         with torch.no_grad():
             mean_mse, res_dict = self.compute_mse_metric(
-                pred_counts_dict, batch, 'tgt_counts', self.time_steps, self.train_dict
+                pred_counts_dict, batch, 'tgt_counts', self.pred_tps, self.train_dict
             )
             self.train_dict = res_dict
             self.log(
@@ -841,7 +851,7 @@ class CountDecoderTrainer(LightningModule):
             pred_counts_dict,
             batch,
             'tgt_counts',
-            self.time_steps,
+            self.pred_tps,
             self.val_dict,
         )
         self.val_dict = res_dict
@@ -873,7 +883,7 @@ class CountDecoderTrainer(LightningModule):
 
     def test_step(self, batch, *args, **kwargs):
         tgt_input_id_dict = {}
-        for i in range(1, self.total_time_steps + 1):
+        for i in self.total_tps:
             tgt_input_id_ = torch.cat(
                 (
                     getattr(self, f'cls_token_{str(i)}').expand(
@@ -943,13 +953,13 @@ class CountDecoderTrainer(LightningModule):
                 on_epoch=True,
                 prog_bar=True,
                 logger=True,
-                batch_size=batch[f'tgt_input_ids_t{self.time_steps[0]}'].shape[0],
+                batch_size=batch[f'tgt_input_ids_t{self.pred_tps[0]}'].shape[0],
             )
             mean_mse, res_dict = self.compute_mse_metric(
                 pred_counts_dict,
                 batch,
                 'tgt_counts',
-                self.time_steps,
+                self.pred_tps,
                 self.test_dict,
                 save_to_cpu=True,
             )
@@ -963,7 +973,7 @@ class CountDecoderTrainer(LightningModule):
                 logger=True,
                 sync_dist=True,
             )
-            for time_step in self.time_steps:
+            for time_step in self.pred_tps:
                 self.test_dict['cell_idx'].append(batch[f'tgt_cell_idx_t{time_step}'])
                 if len(self.var_list) > 0:
                     for var in self.var_list:
@@ -986,7 +996,7 @@ class CountDecoderTrainer(LightningModule):
                 logger=True,
                 batch_size=batch['src_input_ids'].shape[0],
             )
-            for time_step in self.time_steps:
+            for time_step in self.pred_tps:
                 self.test_dict['pred_counts'].append(pred_count[time_step])
                 self.test_dict['true_counts'].append(batch[f'tgt_counts_t{time_step}'])
                 if len(self.var_list) > 0:
@@ -1003,7 +1013,7 @@ class CountDecoderTrainer(LightningModule):
                 output_dir=self.output_dir,
                 file_name=(
                     f'{self.date}_generate_adata_'
-                    f't{self.time_steps}_{self.mode}_s{self.seed}_'
+                    f't{self.pred_tps}_{self.mode}_s{self.seed}_'
                     f'l{self.loss_mode}_n{self.n_samples}'
                     f'_p{self.positional_encoding}_'
                     f'm{self.mask_scheduler}_s{self.sequence_length}.h5ad'

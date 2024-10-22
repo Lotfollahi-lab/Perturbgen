@@ -199,11 +199,17 @@ def get_args():
         '--conditions_combined', type=list, default=None, help='conditions combined'
     )
     parser.add_argument(
-        '--time_steps',
+        '--pred_tps',
         type=int,
         nargs='+',
         default=[1, 2, 3],
         help='time steps to include during training',
+    )
+    parser.add_argument(
+        '--context_tps',
+        type=int,
+        nargs='+',
+        default=None,
     )
     parser.add_argument(
         '--var_list',
@@ -367,7 +373,7 @@ def main() -> None:
 
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
-    tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.time_steps[0]}'].copy()
+    tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.pred_tps[0]}'].copy()
     if args.split:
         if args.splitting_mode == 'stratified':
             # start preprocessing to avoid loading anndata into datamodule
@@ -407,11 +413,11 @@ def main() -> None:
         train_indices = list(range(len(src_dataset)))
         val_indices = None
         test_indices = list(
-            range(len(tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}']))
+            range(len(tgt_datasets[f'tgt_dataset_t{args.pred_tps[0]}']))
         )
     # check if the train indices are the same for both adata and dataset
     subset_adata = tgt_adata_tmp[train_indices]
-    subset_dataset = tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}'].select(
+    subset_dataset = tgt_datasets[f'tgt_dataset_t{args.pred_tps[0]}'].select(
         train_indices
     )
     assert (
@@ -441,7 +447,7 @@ def main() -> None:
     )
     print('Data loaded and preprocessed.')
     # count number of unique timepoints
-    n_total_timepoints = len(tgt_adatas)
+    n_total_tps = len(tgt_adatas)
 
     # Initialize model module
     # ----------------------------------------------------------------------------------
@@ -461,8 +467,8 @@ def main() -> None:
             # lr_scheduler_factor=0.8,
             return_embeddings=args.return_embeddings,
             generate=args.generate,
-            time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
+            pred_tps=args.pred_tps,
+            n_total_tps=n_total_tps,
             mapping_dict_path=args.mapping_dict_path,
             positional_encoding=args.positional_encoding,
             gene_names=tgt_adata_tmp.var['gene_name'],
@@ -470,6 +476,7 @@ def main() -> None:
             var_list=args.var_list,
             mode=args.mode,
             context_mode=args.context_mode,
+            context_tps=args.context_tps,
         )
     elif args.test_mode == 'count':
         decoder_module = CountDecoderTrainer(
@@ -491,8 +498,8 @@ def main() -> None:
             dropout=args.count_dropout,
             generate=args.generate,
             tgt_adata=tgt_adatas,
-            time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
+            pred_tps=args.pred_tps,
+            n_total_tps=n_total_tps,
             temperature=args.temperature,
             iterations=args.iterations,
             mask_scheduler=args.mask_scheduler,
@@ -507,6 +514,7 @@ def main() -> None:
             n_genes=tgt_adata_tmp.X.shape[1],
             unique_gene_list=unique_token_dict,
             shared_gene_list=shared_token_dict,
+            context_tps=args.context_tps,
         )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')
@@ -539,8 +547,9 @@ def main() -> None:
         train_indices=None,
         val_indices=None,
         test_indices=test_indices,
-        time_steps=args.time_steps,
-        total_time_steps=n_total_timepoints,
+        pred_tps=args.pred_tps,
+        context_tps=args.context_tps,
+        n_total_tps=n_total_tps,
         var_list=args.var_list,
     )
 

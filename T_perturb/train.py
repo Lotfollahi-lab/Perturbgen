@@ -178,12 +178,18 @@ def get_args():
         '--conditions_combined', type=list, default=None, help='conditions combined'
     )
     parser.add_argument(
-        '--time_steps',
-        # type=list,
+        '--pred_tps',
         nargs='+',
         type=int,
         default=[1, 2, 3],
-        help='time steps to include during training',
+        help='time steps which are predicted',
+    )
+    parser.add_argument(
+        '--context_tps',
+        nargs='+',
+        type=int,
+        default=None,
+        help='context time steps in cross-attn',
     )
     parser.add_argument(
         '--var_list',
@@ -257,7 +263,7 @@ def main() -> None:
 
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
-    tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.time_steps[0]}']
+    tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.pred_tps[0]}']
     if args.split:
         if args.splitting_mode == 'stratified':
             # start preprocessing to avoid loading anndata into datamodule
@@ -297,12 +303,12 @@ def main() -> None:
         train_indices = list(range(len(src_dataset)))
         val_indices = None
         test_indices = list(
-            range(len(tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}']))
+            range(len(tgt_datasets[f'tgt_dataset_t{args.pred_tps[0]}']))
         )
     # check if the train indices are the same for both adata and dataset
     subset_adata = tgt_adata_tmp[train_indices]
 
-    subset_dataset = tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}'].select(
+    subset_dataset = tgt_datasets[f'tgt_dataset_t{args.pred_tps[0]}'].select(
         train_indices
     )
     assert (
@@ -332,7 +338,7 @@ def main() -> None:
 
     print('Data loaded and preprocessed.')
     # count number of unique timepoints
-    n_total_timepoints = len(tgt_adatas)
+    n_total_tps = len(tgt_adatas)
 
     # Initialize model module
     # ----------------------------------------------------------------------------------
@@ -352,13 +358,14 @@ def main() -> None:
             mask_scheduler=args.mask_scheduler,
             # lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
-            time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
+            pred_tps=args.pred_tps,
+            n_total_tps=n_total_tps,
             mapping_dict_path=args.mapping_dict_path,
             output_dir=args.output_dir,
             mode=args.mode,
             context_mode=args.context_mode,
             positional_encoding=args.positional_encoding,
+            context_tps=args.context_tps,
         )
     elif args.train_mode == 'count':
         decoder_module = CountDecoderTrainer(
@@ -379,8 +386,8 @@ def main() -> None:
             conditions_combined=conditions_combined_,
             dropout=args.count_dropout,
             tgt_adata=tgt_adatas,
-            time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
+            pred_tps=args.pred_tps,
+            n_total_tps=n_total_tps,
             temperature=args.temperature,
             iterations=args.iterations,
             mask_scheduler=args.mask_scheduler,
@@ -390,6 +397,7 @@ def main() -> None:
             n_genes=src_adata.shape[1],
             context_mode=args.context_mode,
             positional_encoding=args.positional_encoding,
+            context_tps=args.context_tps,
         )
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
@@ -421,8 +429,9 @@ def main() -> None:
             train_indices=train_indices,
             val_indices=val_indices,
             test_indices=test_indices,
-            time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
+            pred_tps=args.pred_tps,
+            n_total_tps=n_total_tps,
+            context_tps=args.context_tps,
             var_list=args.var_list,
         )
 
@@ -444,8 +453,9 @@ def main() -> None:
             train_indices=train_indices,
             val_indices=val_indices,
             test_indices=test_indices,
-            time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
+            pred_tps=args.pred_tps,
+            n_total_tps=n_total_tps,
+            context_tps=args.context_tps,
             var_list=args.var_list,
         )
     # Setup trainer
@@ -457,7 +467,7 @@ def main() -> None:
     # Define Callbacks
     # This callback always keeps a checkpoint of the best model according to
     # validation accuracy.
-    time_steps_str_ = [str(i) for i in args.time_steps]
+    time_steps_str_ = [str(i) for i in args.pred_tps]
     time_steps_str = '-'.join(time_steps_str_)
     if args.train_mode == 'masking':
         filename = (

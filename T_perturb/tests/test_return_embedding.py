@@ -21,8 +21,9 @@ if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
 class CellGenTestEmbeddingCase(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super(CellGenTestEmbeddingCase, self).__init__(*args, **kwargs)
-        self.time_step = [1, 2]
-        self.total_time_steps = 2
+        self.pred_tps = [1, 2]
+        self.context_tps = [1, 2]
+        self.n_total_tps = 2
         self.max_seq_length = 50
         self.tgt_vocab_size = 101  # +1 for padding token
         self.num_genes = self.tgt_vocab_size - 1
@@ -45,12 +46,12 @@ class CellGenTestEmbeddingCase(unittest.TestCase):
             max_len=self.max_seq_length,
             vocab_size=self.tgt_vocab_size,
             num_samples=100,
-            total_time_steps=self.total_time_steps,
+            total_time_steps=self.n_total_tps,
         )
         tgt_counts_dict = dummy_cell_gene_matrix(
             num_cells=self.num_samples,
             num_genes=self.num_genes,
-            total_time_steps=self.total_time_steps,
+            total_time_steps=self.n_total_tps,
         )
 
         if condition_keys is None:
@@ -132,8 +133,9 @@ class CellGenTestEmbeddingCase(unittest.TestCase):
             # lr_scheduler_factor=0.8,
             return_embeddings=True,
             dropout=0.0,
-            time_steps=self.time_step,
-            total_time_steps=2,
+            pred_tps=self.pred_tps,
+            context_tps=self.context_tps,
+            n_total_tps=2,
             mapping_dict_path='./T_perturb/T_perturb/pp/res/'
             'cytoimmgen/token_id_to_genename_hvg.pkl',
             output_dir='./T_perturb/T_perturb/tests/res',
@@ -148,8 +150,9 @@ class CellGenTestEmbeddingCase(unittest.TestCase):
             tgt_counts_dict=tgt_counts_dict,
             batch_size=self.batch_size,
             num_workers=1,
-            time_steps=[1, 2],
-            total_time_steps=self.total_time_steps,
+            pred_tps=self.pred_tps,
+            context_tps=self.context_tps,
+            n_total_tps=self.n_total_tps,
             max_len=self.max_seq_length,
             train_indices=None,
             test_indices=np.random.choice(100, 20, replace=False),

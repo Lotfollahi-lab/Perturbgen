@@ -622,17 +622,18 @@ class CellGen(nn.Module):
         max_seq_length: int = 2048,
         dropout: float = 0.0,
         mlm_probability: float = 0.3,
-        time_steps: List[int] = [
+        pred_tps: List[int] = [
             1,
             2,
             3,
         ],
+        n_total_tps: int = 3,
         mask_scheduler: str = 'cosine',
-        total_time_steps: int = 3,
         mode='GF_frozen',
         position_embedding: Literal[
             'time_pos_sin', 'comb_sin', 'sin_learnt'
         ] = 'time_pos_sin',
+        context_tps: Optional[List[int]] = None,
     ):
         '''
         Description:
@@ -657,13 +658,15 @@ class CellGen(nn.Module):
             Dropout rate.
         mlm_probability: `float`
             Fraction of tokens to mask.
-        time_steps: `list`
+        pre_tps: `list`
             List of time steps for training and testing.
+            the proportion of tokens to mask.
+        context_tps: `list`
+            List of context time steps.
+        n_total_tps: `int`
+            Total number of target time steps.
         mask_scheduler: `str`
             Masking scheduler defining
-            the proportion of tokens to mask.
-        total_time_steps: `int`
-            Total number of target time steps.
         mode: `str`
             Mode of the encoder.
             Options: ['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder']
@@ -685,7 +688,7 @@ class CellGen(nn.Module):
         if self.position_embedding == 'time_pos_sin':
             self.time_sin_pos_encoding = SepSinPositionalEncoding(
                 d_model=d_model,
-                length=total_time_steps,
+                length=n_total_tps,
             )
             self.pos_sin_pos_encoding = SepSinPositionalEncoding(
                 d_model=d_model,
@@ -694,7 +697,7 @@ class CellGen(nn.Module):
         elif self.position_embedding == 'sin_learnt':
             self.time_sin_pos_encoding = SepSinPositionalEncoding(
                 d_model=d_model,
-                length=total_time_steps,
+                length=n_total_tps,
                 mode=mode,
             )
             self.learnt_pos_encoding = LearntPositionalEncoding(
@@ -705,7 +708,7 @@ class CellGen(nn.Module):
             self.comb_pos_encoding = CombSinPositionalEncoding(
                 d_model=d_model,
                 max_seq_length=max_seq_length,
-                n_time_steps=total_time_steps,
+                n_time_steps=n_total_tps,
                 mode=mode,
             )
         self.num_features = self.embed_dim = d_model
@@ -717,11 +720,12 @@ class CellGen(nn.Module):
         self.d_ff = d_ff
         self.max_seq_length = max_seq_length
         self.dropout = dropout
-        self.time_steps = time_steps
-        self.total_time_steps = list(range(1, total_time_steps + 1))
+        self.pred_tps = pred_tps
+        self.context_tps = context_tps
+        self.total_tps = list(range(1, n_total_tps + 1))
         self.mask_token = 1
         # add number of CLS tokens to the vocab size
-        total_vocab_size = tgt_vocab_size + total_time_steps
+        total_vocab_size = tgt_vocab_size + n_total_tps
         # total_vocab_size = total_vocab_size + 1  # add one for padding token
         self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
         self.position_embedding = position_embedding
@@ -732,7 +736,7 @@ class CellGen(nn.Module):
             self.encoder_layers = Encoder(
                 total_vocab_size=tgt_vocab_size,
                 max_seq_length=max_seq_length,
-                n_time_steps=total_time_steps,
+                n_time_steps=n_total_tps,
                 d_model=d_model,
                 position_embedding=position_embedding,
             )
@@ -999,27 +1003,28 @@ class CellGen(nn.Module):
         if tgt_input_id_dict:
             tgt_pad_dict = self.call_padding(
                 tgt_input_id_dict,
-                self.time_steps,
+                self.pred_tps,
             )
-
         else:
             tgt_pad_dict = generate_pad_dict
         src_attention_mask = generate_pad(src_input_id)
         enc_output = self.call_encoder(src_input_id, src_attention_mask)
         if (not_masked) and (tgt_input_id_dict is not None):
             # not masked for count prediction and predicted embeddings
-            sorted_time_steps = sorted(self.time_steps)
+            sorted_time_steps = sorted(self.pred_tps)
             context_time_steps = sorted_time_steps
         elif not_masked is False:
+            if self.context_tps is not None:
+                context_time_steps = sorted(self.context_tps)
+            else:
+                context_time_steps = sorted(self.pred_tps)
             if tgt_time_step is None:
                 # randomly select a time step for training
-                sorted_time_steps = [np.random.choice(self.time_steps)]
-                context_time_steps = sorted(self.time_steps)
+                sorted_time_steps = [np.random.choice(self.pred_tps)]
             elif generate_id_dict is not None:
                 # MASKGIT generation
                 tgt_input_id_dict = generate_id_dict
                 sorted_time_steps = [tgt_time_step]
-                context_time_steps = sorted(self.total_time_steps)
         dec_embedding_dict = {}
         mean_embedding_dict = {}
         for tgt_time_step in sorted_time_steps:
@@ -1031,6 +1036,8 @@ class CellGen(nn.Module):
                     'tgt_input_id_dict or generate_id_dict must be provided'
                 )
             if context_mode:
+                print('contex tps', context_time_steps)
+
                 # distinction between selected time step and rest time steps
                 context_output, context_mask = self.generate_context(
                     enc_output=enc_output,
@@ -1156,10 +1163,11 @@ class CountDecoder(nn.Module):
         d_model: int = 128,
         add_mask_id: bool = True,
         dropout: float = 0.0,
-        time_steps: list = [1, 2],
-        total_time_steps: int = 3,
+        pred_tps: list = [1, 2],
+        n_total_tps: int = 3,
         context_mode: bool = True,
         n_genes: int = 25426,
+        context_tps: Optional[list[int]] = None,
     ):
         '''
         Description:
@@ -1179,7 +1187,15 @@ class CountDecoder(nn.Module):
             Whether to add mask token.
         dropout: `float`
             Dropout rate for the MLP.
-        n-genes: `int`
+        pred_tps: `list`
+            List of time steps for training and testing.
+        context_tps: `list`
+            List of context time steps.
+        n_total_tps: `int`
+            Total number of target time steps.
+        context_mode: `bool`
+            Whether to use context mode, where other time steps are used as context.
+        n_genes: `int`
             Number of genes which counts should be regressed.
         Returns:
         --------
@@ -1199,8 +1215,9 @@ class CountDecoder(nn.Module):
         if add_mask_id:
             self.mask_token = 1
 
-        self.time_steps = time_steps
-        self.total_time_steps = list(range(1, total_time_steps + 1))
+        self.pred_tps = pred_tps
+        self.context_tps = context_tps
+        self.total_tps = list(range(1, n_total_tps + 1))
         self.cls_embedding = None
         self.context_mode = context_mode
 
@@ -1220,7 +1237,7 @@ class CountDecoder(nn.Module):
             context_mode=self.context_mode,
         )
         count_outputs = {}
-        for _, t in enumerate(self.time_steps):
+        for _, t in enumerate(self.pred_tps):
             cls_embedding = outputs['mean_embedding'][t]
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
             count_outputs[f'count_output_t{t}'] = count_outputs_tmp
@@ -1287,10 +1304,23 @@ class CountDecoder(nn.Module):
         '''
         generate_id_dict: Dict[str, torch.Tensor] = {}
         count_outputs: Dict[str, torch.Tensor] = {}
+        if self.context_tps is not None:
+            all_modelling_tps = self.pred_tps + self.context_tps
+            all_modelling_tps = sorted(list(set(all_modelling_tps)))
+        else:
+            all_modelling_tps = sorted(self.pred_tps)
         tgt_pad_dict = self.call_padding(
-            src_input_id, tgt_input_id_dict, self.total_time_steps
+            src_input_id, tgt_input_id_dict, all_modelling_tps
         )
-        for time_step in self.time_steps:
+        # filter tgt_input_id_dict to include only all_modelling_tps
+        tgt_input_id_dict = {
+            k: v
+            for k, v in tgt_input_id_dict.items()
+            if int(k.split('_t')[-1]) in all_modelling_tps
+        }
+        print('tgt_input_id_dict', tgt_input_id_dict.keys())
+        for time_step in self.pred_tps:
+            print('pred_tps', time_step)
             tgt_input_id_dict_ = {k: v.clone() for k, v in tgt_input_id_dict.items()}
             tgt_pad_dict_ = {k: v.clone() for k, v in tgt_pad_dict.items()}
             # use max shape instead of genes you like to generate
@@ -1306,6 +1336,8 @@ class CountDecoder(nn.Module):
             ids = torch.full_like(tgt_input_id, self.mask_token, dtype=torch.long)
             # add cls token to the ids
             ids[:, 0] = tgt_input_id[:, 0]
+            # replace the rest of the tokens with pad token
+            ids[:, :sequence_length] = 0
             tgt_input_id_dict_[tgt_input_id_key] = ids
             # pad ids
             scores = torch.zeros_like(tgt_input_id, dtype=torch.float)
@@ -1378,9 +1410,9 @@ class CountDecoder(nn.Module):
         generate_id_dict: Dict[str, torch.Tensor] = {}
         count_outputs: Dict[str, torch.Tensor] = {}
         tgt_pad_dict = self.call_padding(
-            src_input_id, tgt_input_id_dict, self.total_time_steps
+            src_input_id, tgt_input_id_dict, self.total_tps
         )
-        for time_step in self.time_steps:
+        for time_step in self.pred_tps:
             tgt_input_id_dict_ = {k: v.clone() for k, v in tgt_input_id_dict.items()}
             tgt_pad_dict_ = {k: v.clone() for k, v in tgt_pad_dict.items()}
             pad_tensor = torch.ones_like(tgt_pad_dict_[f'tgt_pad_t{time_step}'])
@@ -1390,7 +1422,7 @@ class CountDecoder(nn.Module):
             ids = torch.full_like(tgt_input_id, self.mask_token, dtype=torch.long)
             # add cls token to the ids
             ids[:, 0] = tgt_input_id[:, 0]
-
+            ids[:, :sequence_length] = 0
             tgt_input_id_dict_[tgt_input_id_key] = ids
             # pad ids
             scores = torch.zeros_like(tgt_input_id, dtype=torch.float)
