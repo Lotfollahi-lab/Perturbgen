@@ -1,0 +1,58 @@
+# masking attention
+method: grid
+metric:
+  goal: minimize
+  name: val/perplexity_epoch
+name: tune_masking
+parameters:
+  train_mode:
+    value: 'masking'
+  split:
+    value: True
+  splitting_mode:
+    value: random
+  epochs:
+   value: 20
+  output_dir:
+    value: './T_perturb/T_perturb/plt/res/eb'
+  src_dataset:
+    value: './T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset'
+  tgt_dataset_folder:
+    value: './T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt'
+  src_adata:
+    value: './T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad'
+  tgt_adata_folder:
+    value: './T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt'
+  batch_size:
+    value: 32
+  max_len:
+    value: 263
+  tgt_vocab_size:
+    value: 2001
+  var_list:
+    value: 'Time_point'
+  petra_lr:
+    values: [0.001, 0.0001]
+  num_layers:
+    values: [1, 2]
+  d_ff:
+    values: [16, 32]
+  mlm_prob:
+    values: [0.15, 0.3, 0.45]
+  petra_wd:
+    values: [0.0001]
+
+  # petra_lr:
+  #   distribution: log_uniform
+  #   min: 0.00001
+  #   max: 0.001
+
+  petra_dropout:
+    values: [0.0, 0.1, 0.25]
+    # distribution: uniform
+    # low: 0.1
+    # high: 0.5
+  # batch_size:
+  #   value: 256
+program: /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/train.py
+project: ttransformer_sweep
