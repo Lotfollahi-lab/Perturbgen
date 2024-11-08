@@ -34,6 +34,7 @@ from T_perturb.src.metric import (
     lin_reg_summary,
 )
 from T_perturb.src.utils import (  # WarmupScheduler,; return_gene_embeddings,
+    aggregate_attn_weights,
     compute_cos_similarity,
     modify_ckpt_state_dict,
     pearson,
@@ -78,6 +79,7 @@ class CellGenTrainer(LightningModule):
         n_total_tps: int = 3,
         num_epochs: int = 5,
         warmup_epochs: int = 1,
+        pad_token_id: int = 0,
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         encoder: str = 'GF_fine_tuned',
         mask_scheduler: str = 'cosine',
@@ -145,11 +147,10 @@ class CellGenTrainer(LightningModule):
         self.generate = generate
         self.tgt_vocab_size = tgt_vocab_size
         self.pred_tps = pred_tps
+        self.n_total_tps = n_total_tps
         self.context_mode = context_mode
 
         self.test_dict: Dict[str, List[Any]] = {
-            'self_attn_weights': [],
-            'cross_attn_weights': [],
             'true_counts': [],
             'cls_embeddings': [],
             'cosine_similarities': [],
@@ -157,6 +158,10 @@ class CellGenTrainer(LightningModule):
             'cell_idx': [],
             'gene_embeddings': [],
         }
+        if return_attn:
+            for t in range(1, n_total_tps + 1):
+                self.test_dict[f'self_attn_weights_t{t}'] = []
+                self.test_dict[f'cross_attn_weights_t{t}'] = []
         if var_list is not None:
             self.var_list = var_list
             for var in self.var_list:
@@ -165,6 +170,7 @@ class CellGenTrainer(LightningModule):
             self.var_list = []
 
         self.marker_genes = None
+        self.pad_token_id = pad_token_id
         self.gene_names = gene_names
         total_vocab_size = tgt_vocab_size
         # register buffer for CLS
@@ -180,6 +186,8 @@ class CellGenTrainer(LightningModule):
                 ),
             )
             print(f'cls_token_{str(i)}', getattr(self, f'cls_token_{str(i)}'))
+            # update mapping_dict to include cls token
+            self.gene_to_rowid[f'cls_token_{str(i)}'] = total_vocab_size + (i - 1)
         self.output_dir = output_dir
         # create directory if not exist
         if not os.path.exists(self.output_dir):
@@ -187,7 +195,7 @@ class CellGenTrainer(LightningModule):
         self.date = datetime.now().strftime('%Y%m%d-%H:%M')
 
     def forward(self, batch):
-        tgt_input_id_dict = {}
+        self.tgt_input_id_dict = {}
         for i in self.pred_tps:
             tgt_input_id_ = torch.cat(
                 (
@@ -198,10 +206,10 @@ class CellGenTrainer(LightningModule):
                 ),
                 dim=1,
             )
-            tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
+            self.tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
         outputs = self.transformer(
             src_input_id=batch['src_input_ids'],
-            tgt_input_id_dict=tgt_input_id_dict,
+            tgt_input_id_dict=self.tgt_input_id_dict,
             not_masked=self.return_embeddings,
             context_mode=self.context_mode,
         )
@@ -315,12 +323,12 @@ class CellGenTrainer(LightningModule):
             outputs = self.forward(batch)
 
             for t in self.pred_tps:
-                token_ids = batch[f'tgt_input_ids_t{t}']
+                token_ids = self.tgt_input_id_dict[f'tgt_input_ids_t{t}']
                 context_tps = [tp for tp in self.context_tps if tp != t]
                 # extract context_ids
                 context_ids = [batch['src_input_ids']]
                 context_ids.extend(
-                    [batch[f'tgt_input_ids_t{tp}'] for tp in context_tps]
+                    [self.tgt_input_id_dict[f'tgt_input_ids_t{t}'] for t in context_tps]
                 )
                 # 1. compute cosine similarity
                 cos_similarity = compute_cos_similarity(outputs=outputs, time_step=t)
@@ -343,9 +351,9 @@ class CellGenTrainer(LightningModule):
                     src_mapping_dict=self.tokenid_to_rowid,
                     time_step=t,
                     token_ids=token_ids,
+                    pad_token_id=self.pad_token_id,
                     context_token_ids=context_ids,
                 )
-
                 self.marker_genes = marker_genes_dict
 
                 true_counts = batch[f'tgt_counts_t{t}'].detach().cpu()
@@ -353,22 +361,40 @@ class CellGenTrainer(LightningModule):
                 cos_similarity = marker_cos_similarity.detach().cpu()
                 # gene_embeddings = marker_gene_embeddings.detach().cpu()
                 combined_batch = batch['combined_batch'].detach().cpu()
-                self_attn_weights = self_attn_weights.detach().cpu()
-                cross_attn_weights = cross_attn_weights.detach().cpu()
+                self_attn_weights = self_attn_weights.mean(dim=0).detach().cpu()
+                cross_attn_weights = cross_attn_weights.mean(dim=0).detach().cpu()
                 self.test_dict['true_counts'].append(true_counts)
                 self.test_dict['cls_embeddings'].append(cls_embeddings)
                 self.test_dict['cosine_similarities'].append(cos_similarity)
                 # self.test_dict['gene_embeddings'].append(gene_embeddings)
                 self.test_dict['batch'].append(combined_batch)
-                self.test_dict['self_attn_weights'].append(self_attn_weights)
-                self.test_dict['cross_attn_weights'].append(cross_attn_weights)
+                self.test_dict[f'self_attn_weights_t{t}'].append(self_attn_weights)
+                self.test_dict[f'cross_attn_weights_t{t}'].append(cross_attn_weights)
                 self.test_dict['cell_idx'].append(batch[f'tgt_cell_idx_t{t}'])
                 if len(self.var_list) > 0:
                     for var in self.var_list:
                         self.test_dict[var].append(batch[f'{var}_t{t}'])
 
     def on_test_epoch_end(self):
-        # self_attn_weights = torch.cat(self.test_dict['self_attn_weights'])
+        for t in range(1, self.n_total_tps + 1):
+            self_attn_weights = torch.stack(self.test_dict[f'self_attn_weights_t{t}'])
+            cross_attn_weights = torch.stack(self.test_dict[f'cross_attn_weights_t{t}'])
+            # order genes based on ascending order of rowid
+            tgt_gene_order = sorted(self.gene_to_rowid, key=self.gene_to_rowid.get)
+            aggregate_attn_weights(
+                attn_weights=self_attn_weights,
+                tgt_gene_names=tgt_gene_order,
+                output_dir=self.output_dir,
+                file_name=f'{self.date}_self_attn_weights_t{t}',
+            )
+            aggregate_attn_weights(
+                attn_weights=cross_attn_weights,
+                tgt_gene_names=tgt_gene_order,
+                src_gene_names=tgt_gene_order[: -self.n_total_tps],  # exclude cls token
+                output_dir=self.output_dir,
+                file_name=f'{self.date}_cross_attn_weights_t{t}',
+            )
+
         if self.return_embeddings:
             obs_key = self.var_list if len(self.var_list) > 0 else []
             obs_key.extend(['batch', 'cell_idx'])

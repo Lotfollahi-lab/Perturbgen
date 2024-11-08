@@ -517,6 +517,7 @@ class Encoder(nn.Module):
         nlayers: int = 6,
         dropout: float = 0.02,
         d_ff: int = 512,
+        pad_token: int = 0,
         pos_encoding_mode: Literal[
             'time_pos_sin', 'comb_sin', 'sin_learnt', 'time_pos_learnt'
         ] = 'time_pos_sin',
@@ -542,7 +543,9 @@ class Encoder(nn.Module):
             num_layers=nlayers,
             norm=nn.LayerNorm(d_model),
         )
-        self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
+        self.token_embedding = nn.Embedding(
+            total_vocab_size, d_model, padding_idx=pad_token
+        )
         nn.init.xavier_uniform_(self.token_embedding.weight)
 
         self.d_model = d_model
@@ -599,6 +602,7 @@ class CellGen(nn.Module):
         ] = 'time_pos_sin',
         return_attn: bool = False,
         context_tps: Optional[List[int]] = None,
+        pad_token: int = 0,
     ):
         '''
         Description:
@@ -671,7 +675,9 @@ class CellGen(nn.Module):
         # add number of CLS tokens to the vocab size
         total_vocab_size = tgt_vocab_size + n_total_tps
         # total_vocab_size = total_vocab_size + 1  # add one for padding token
-        self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
+        self.token_embedding = nn.Embedding(
+            total_vocab_size, d_model, padding_idx=pad_token
+        )
         if encoder in ['GF_frozen', 'GF_fine_tuned']:
             self.encoder_layers = Geneformerwrapper(mode=encoder)
         elif encoder == 'Transformer_encoder':
@@ -681,6 +687,7 @@ class CellGen(nn.Module):
                 n_time_steps=n_total_tps,
                 d_model=d_model,
                 pos_encoding_mode=pos_encoding_mode,
+                pad_token=pad_token,
             )
         else:
             raise ValueError(f'Invalid encoder mode: {encoder}')
@@ -838,11 +845,19 @@ class CellGen(nn.Module):
                 tgt_mask=tgt_pad,
                 enc_output=enc_output,
             )
-            self_attn_list.append(self_attn_weights)
-            cross_attn_list.append(cross_attn_weights)
+            if self_attn_weights is not None:
+                self_attn_list.append(self_attn_weights)
+            if cross_attn_weights is not None:
+                cross_attn_list.append(cross_attn_weights)
         # also convert to float 16 for memory efficiency
-        self_attn_weights = torch.stack(self_attn_list).mean(dim=0).to(torch.float16)
-        cross_attn_weights = torch.stack(cross_attn_list).mean(dim=0).to(torch.float16)
+        if len(self_attn_list) > 0:
+            self_attn_weights = (
+                torch.stack(self_attn_list).mean(dim=0).to(torch.float16)
+            )
+        if len(cross_attn_list) > 0:
+            cross_attn_weights = (
+                torch.stack(cross_attn_list).mean(dim=0).to(torch.float16)
+            )
         # :TODO rewrite this part logits not needed for running the other timepoints
         decoder_logits = self.decoder_fc(dec_embedding)
         outputs = {

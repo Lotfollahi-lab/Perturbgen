@@ -298,6 +298,7 @@ def return_attn_weights(
     tgt_mapping_dict: Dict,
     time_step: int,
     token_ids: torch.tensor,
+    pad_token_id: List[str],
     marker_genes: Optional[List[str]] = None,
     context_token_ids: Optional[torch.tensor] = None,
 ):
@@ -318,6 +319,8 @@ def return_attn_weights(
         Tensor of token ids from target tensor.
     marker_genes: `List[str]`
         List of marker genes.
+    pad_token_id: int
+        exclude pad token from attention weights results.
 
     Returns:
     --------
@@ -330,19 +333,15 @@ def return_attn_weights(
     #         v: k for v, k in tgt_mapping_dict.items() if v in marker_genes
     #     }
     # else:
-    # exclude special tokens from marker genes
-    special_tokens = ['<cls>', '<mask>', '<pad>', '<eos>']
-    special_tokens_ids = torch.tensor(
-        [tgt_mapping_dict[token] for token in special_tokens],
-        device=token_ids.device,
-    )
+
     # map self attention weights
+    pad_token_id = torch.tensor(pad_token_id, device=token_ids.device)
     self_attn_weights = outputs['self_attn_weights'][time_step]
     self_attn_weights = _map_attn_weights(
         attn_weights=self_attn_weights,
         tgt_mapping_dict=tgt_mapping_dict,
         token_ids=token_ids,
-        special_tokens_ids=special_tokens_ids,
+        pad_token_id=pad_token_id,
     )
     # map cross attention weights
     cross_attn_weights = outputs['cross_attn_weights'][time_step]
@@ -351,7 +350,7 @@ def return_attn_weights(
         src_mapping_dict=src_mapping_dict,
         tgt_mapping_dict=tgt_mapping_dict,
         token_ids=token_ids,
-        special_tokens_ids=special_tokens_ids,
+        pad_token_id=pad_token_id,
         context_token_ids=context_token_ids,
     )
 
@@ -362,7 +361,7 @@ def _map_attn_weights(
     attn_weights: torch.tensor,
     tgt_mapping_dict: Dict,
     token_ids: torch.tensor,
-    special_tokens_ids: torch.tensor,
+    pad_token_id: torch.tensor,
     context_token_ids: Optional[torch.tensor] = None,
     src_mapping_dict: Optional[Dict] = None,
 ):
@@ -375,9 +374,13 @@ def _map_attn_weights(
         src_token_ids = torch.tensor(
             [src_mapping_dict[int(token)] for token in src_token_ids.flatten()],
             device=src_token_ids.device,
-        ).reshape(token_ids.shape)
+        ).reshape(src_token_ids.shape)
         context_token_ids[0] = src_token_ids
-        context_n_genes = len(context_token_ids) * len(src_mapping_dict.keys())
+        context_n_genes = len(src_mapping_dict.keys()) + len(
+            tgt_mapping_dict.keys()
+        ) * (
+            len(context_token_ids) - 1
+        )  # exlude src
     else:
         context_n_genes = tgt_n_genes
 
@@ -394,24 +397,24 @@ def _map_attn_weights(
         if context_token_ids is None:
             sorted_tokens, sorted_indices = torch.sort(token_idx)
             # remove special tokens from sorted tokens and indices
-            sorted_tokens_ = sorted_tokens[
-                ~torch.isin(sorted_tokens, special_tokens_ids)
-            ]
-            sorted_indices_ = sorted_indices[
-                ~torch.isin(sorted_tokens, special_tokens_ids)
-            ]
+            sorted_tokens_ = sorted_tokens[~torch.isin(sorted_tokens, pad_token_id)]
+            sorted_indices_ = sorted_indices[~torch.isin(sorted_tokens, pad_token_id)]
             sorted_attn_matrix = attn_weights_[sorted_indices_][:, sorted_indices_]
             attn_weights_res = attn_weights_res.clone()
-            attn_weights_res[
-                i, sorted_tokens_.unsqueeze(1), sorted_tokens_.unsqueeze(0)
-            ] = sorted_attn_matrix
+            tgt_indices_0 = sorted_tokens_.unsqueeze(1).expand(
+                -1, sorted_attn_matrix.shape[1]
+            )
+            tgt_indices_1 = sorted_tokens_.unsqueeze(0).expand(
+                sorted_attn_matrix.shape[0], -1
+            )
+            attn_weights_res[i, tgt_indices_0, tgt_indices_1] = sorted_attn_matrix
         else:
             sorted_tgt_tokens, sorted_tgt_indices = torch.sort(token_idx)
             sorted_tgt_tokens_ = sorted_tgt_tokens[
-                ~torch.isin(sorted_tgt_tokens, special_tokens_ids)
+                ~torch.isin(sorted_tgt_tokens, pad_token_id)
             ]
             sorted_tgt_indices_ = sorted_tgt_indices[
-                ~torch.isin(sorted_tgt_tokens, special_tokens_ids)
+                ~torch.isin(sorted_tgt_tokens, pad_token_id)
             ]
             src_seq_len = 0
             for context_token in context_token_ids:
@@ -420,22 +423,69 @@ def _map_attn_weights(
                     context_token_idx
                 )
                 sorted_context_tokens_ = sorted_context_tokens[
-                    ~torch.isin(sorted_context_tokens, special_tokens_ids)
+                    ~torch.isin(sorted_context_tokens, pad_token_id)
                 ]
                 sorted_context_indices_ = sorted_context_indices[
-                    ~torch.isin(sorted_context_tokens, special_tokens_ids)
+                    ~torch.isin(sorted_context_tokens, pad_token_id)
                 ]
                 sorted_attn_matrix = attn_weights_[sorted_tgt_indices_][
                     :, src_seq_len + sorted_context_indices_
                 ]
                 # adjust context token indices by src_seq_len
-                src_seq_len += len(context_token_idx)
+
+                tgt_indices = sorted_tgt_tokens_.unsqueeze(1).expand(
+                    -1, sorted_attn_matrix.shape[1]
+                )
+                adjusted_context_tokens = sorted_context_tokens_ + src_seq_len
+                context_indices = adjusted_context_tokens.unsqueeze(0).expand(
+                    sorted_attn_matrix.shape[0], -1
+                )
                 attn_weights_res[
                     i,
-                    sorted_tgt_tokens_.unsqueeze(1),
-                    sorted_context_tokens_.unsqueeze(0) + src_seq_len,
+                    tgt_indices,
+                    context_indices,
                 ] = sorted_attn_matrix
+                src_seq_len += len(context_token_idx)
         return attn_weights_res
+
+
+def aggregate_attn_weights(
+    attn_weights: torch.tensor,
+    tgt_gene_names: List[str],
+    output_dir: str,
+    file_name: str,
+    src_gene_names: Optional[List[str]] = None,
+):
+    """
+    attn_weights: `torch.tensor`
+        Tensor of attention weights.
+    output_dir: `str`
+        Directory to save files in
+    file_name: `str`
+        Filename for output file
+    """
+    # take the mean of attention weights
+    attn_weights_mean = attn_weights.mean(0).T
+    # create a dataframe of attention weights
+
+    if src_gene_names is not None:
+        tgt_len = attn_weights_mean.shape[0] - len(src_gene_names)
+        repeat_factor = tgt_len // len(tgt_gene_names)
+        context_gene_names = src_gene_names + tgt_gene_names * repeat_factor
+    else:
+        context_gene_names = tgt_gene_names
+
+    attn_weights_df = pd.DataFrame(
+        attn_weights_mean.cpu().numpy(),
+        index=context_gene_names,
+        columns=tgt_gene_names,
+    )
+    # remove all zero rows and columns
+    attn_weights_df = attn_weights_df.loc[
+        (attn_weights_df != 0).any(axis=1), (attn_weights_df != 0).any(axis=0)
+    ]
+    print(f'Saving attention weights to {output_dir}/{file_name} ...')
+    attn_weights_df.to_csv(os.path.join(output_dir, f'{file_name}.csv'))
 
 
 def return_gene_embeddings(
