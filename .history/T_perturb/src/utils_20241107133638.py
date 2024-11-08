@@ -708,7 +708,7 @@ def pairing_src_to_tgt_cells(
     np.random.seed(seed_no)
     # replace index by row number
     adata_subset_ = adata_subset.copy()
-    adata_subset_.obs = adata_subset_.obs.reset_index()
+    #adata_subset_.obs = adata_subset_.obs.reset_index()
     adata_dict = {}
     # initiate dict to store cell pairing
     cell_pairings: Dict[str, List[str]] = {}
@@ -743,11 +743,11 @@ def pairing_src_to_tgt_cells(
             # get the indices of the other time points for the same cell type and donor
             group = grouped.get_group((resting['cell_type_cellgen_harm']))
             indices_16h = group[group[pairing_obs] == '90m_LPS'].index
-            #indices_40h = group[group[pairing_obs] == '6h_LPS'].index
+            indices_40h = group[group[pairing_obs] == '6h_LPS'].index
             indices_5d = group[group[pairing_obs] == '10h_LPS'].index
             cell_pairings['normal'].append(idx)
             cell_pairings['90m_LPS'].append(np.random.choice(indices_16h))
-            #cell_pairings['6h_LPS'].append(np.random.choice(indices_40h))
+            cell_pairings['6h_LPS'].append(np.random.choice(indices_40h))
             cell_pairings['10h_LPS'].append(np.random.choice(indices_5d))
 
     elif pairing_mode == 'random':

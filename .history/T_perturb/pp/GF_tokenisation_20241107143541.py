@@ -102,7 +102,7 @@ def get_args():
         default=[
             'normal',
             '90m_LPS',
-            #'6h_LPS',
+            '6h_LPS',
             '10h_LPS',
         ],
         # default=[
@@ -189,7 +189,7 @@ token_to_genename = {
     v: genename_dict[k] for k, v in token_dict.items() if k in genename_dict
 }
 # save token_dict
-with open('./T_perturb/pp/res/token_id_to_genename_all.pkl', 'wb') as file:
+with open('./T_perturb/pp/res/eb/token_id_to_genename_all.pkl', 'wb') as file:
     pickle.dump(token_to_genename, file)
 
 
@@ -213,7 +213,7 @@ with open('./T_perturb/pp/res/token_id_to_genename_all.pkl', 'wb') as file:
 #     pickle.dump(row_id_to_gene_name, f)
 # make new directory to store h5ad files
 paired_h5ad_dir = (
-    f'./T_perturb/pp/res/{args.dataset}'
+    f'./T_perturb/T_perturb/pp/res/{args.dataset}'
     f'/h5ad_pairing_{args.gene_filtering_mode}'
 )
 if not os.path.exists(paired_h5ad_dir):
@@ -264,7 +264,7 @@ adata = sc.read_h5ad(
 )
 # create separate directory only for tokenisation
 output_tmp_dir = (
-    f'./T_perturb/pp/res/{args.dataset}'
+    f'./T_perturb/T_perturb/pp/res/{args.dataset}'
     f'/dataset_{args.gene_filtering_mode}_subsetted'
 )
 if not os.path.exists(output_tmp_dir):
@@ -285,12 +285,10 @@ var_to_keep: Dict[str, str] = {v: v for v in args.var_list}.copy()
 tk = TranscriptomeTokenizer(
     custom_attr_name_dict=var_to_keep,
     model_input_size=4096,
-    collapse_gene_ids=True,
+    collapse_gene_ids=False,
     special_token=True,
-    gene_median_file='/lustre/scratch126/cellgen/team205/ha11/Geneformer/geneformer/gene_median_dictionary_gc95M.pkl',
     token_dictionary_file='/lustre/scratch126/cellgen/team205/ha11/Geneformer/geneformer/token_dictionary_gc95M.pkl', 
-    gene_mapping_file='/lustre/scratch126/cellgen/team205/ha11/Geneformer/geneformer/ensembl_mapping_dict_gc95M_hesam.pkl',
-    )
+    ),
 
 # time it
 tk.tokenize_data(
@@ -314,7 +312,7 @@ adata_subset = sc.read_h5ad(
 cell_pairings = pairing_src_to_tgt_cells(
     adata_subset=adata_subset,
     pairing_mode=args.pairing_mode,
-    pairing_obs='time_after_LPS',
+    pairing_obs='Time_point',
     seed_no=seed_no,
 )
 paired_dataset_dir = (

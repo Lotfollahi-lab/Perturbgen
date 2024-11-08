@@ -102,7 +102,7 @@ def get_args():
         default=[
             'normal',
             '90m_LPS',
-            #'6h_LPS',
+            '6h_LPS',
             '10h_LPS',
         ],
         # default=[
@@ -213,7 +213,7 @@ with open('./T_perturb/pp/res/token_id_to_genename_all.pkl', 'wb') as file:
 #     pickle.dump(row_id_to_gene_name, f)
 # make new directory to store h5ad files
 paired_h5ad_dir = (
-    f'./T_perturb/pp/res/{args.dataset}'
+    f'./T_perturb/T_perturb/pp/res/{args.dataset}'
     f'/h5ad_pairing_{args.gene_filtering_mode}'
 )
 if not os.path.exists(paired_h5ad_dir):
@@ -264,7 +264,7 @@ adata = sc.read_h5ad(
 )
 # create separate directory only for tokenisation
 output_tmp_dir = (
-    f'./T_perturb/pp/res/{args.dataset}'
+    f'./T_perturb/T_perturb/pp/res/{args.dataset}'
     f'/dataset_{args.gene_filtering_mode}_subsetted'
 )
 if not os.path.exists(output_tmp_dir):
@@ -314,7 +314,7 @@ adata_subset = sc.read_h5ad(
 cell_pairings = pairing_src_to_tgt_cells(
     adata_subset=adata_subset,
     pairing_mode=args.pairing_mode,
-    pairing_obs='time_after_LPS',
+    pairing_obs='Time_point',
     seed_no=seed_no,
 )
 paired_dataset_dir = (

@@ -18,10 +18,10 @@ cwd=$(pwd)
 echo "--- Start tokenisation"
 
 python3 $cwd/T_perturb/pp/GF_tokenisation.py \
---h5ad_path '/lustre/scratch126/cellgen/team298/dv8/trace_paper/concatenated_lps_data_dv.h5ad' \
+--h5ad_path '/lustre/scratch126/cellgen/team298/dv8/trace_paper/concatenated_lps_data.h5ad' \
 --dataset 'lps' \
---gene_filtering_mode 'all' \
---var_list cell_type_cellgen_harm time_after_LPS donor_cellgen_harm \
-batch cell_pairing_index \
---pairing_mode stratified \
+--gene_filtering_mode 'hvg' \
+--var_list cell_type_cellgen_harm time_after_LPS donor_cellgen_harm\
+Sex batch \
+--pairing_mode random \
 --nproc 32 \

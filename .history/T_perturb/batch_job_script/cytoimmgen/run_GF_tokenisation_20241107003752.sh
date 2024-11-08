@@ -20,7 +20,7 @@ echo "--- Start tokenisation"
 python3 $cwd/T_perturb/pp/GF_tokenisation.py \
 --h5ad_path '/lustre/scratch126/cellgen/team298/dv8/trace_paper/concatenated_lps_data_dv.h5ad' \
 --dataset 'lps' \
---gene_filtering_mode 'all' \
+--gene_filtering_mode 'hvg' \
 --var_list cell_type_cellgen_harm time_after_LPS donor_cellgen_harm \
 batch cell_pairing_index \
 --pairing_mode stratified \

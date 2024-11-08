@@ -11,7 +11,7 @@ from datasets import load_from_disk
 from geneformer import TranscriptomeTokenizer
 from scipy.sparse import csr_matrix
 
-from T_perturb.src.utils import (  # tokenid_mapping,
+from T_perturb.src.utils import (
     map_ensembl_to_genename,
     map_input_ids_to_row_id,
     pairing_src_to_tgt_cells,
@@ -70,14 +70,13 @@ def get_args():
         ],
         # default=[
         #     'Time_point',
-        #     'cell_pairing_index',
         # ],
         help='List of variables to keep in the dataset',
     )
     parser.add_argument(
         '--pairing_mode',
         type=str,
-        default='stratified',
+        default='random',
         # default='random',
         choices=['stratified', 'random'],
         help='Cell pairing mode',
@@ -132,12 +131,12 @@ def get_args():
 
 
 # Preprocess adata
-# default='0h',
 # ----------------
 args = get_args()
 print('Start preprocessing adata...')
 adata = sc.read_h5ad(args.h5ad_path)
-# remove all duplicate genes
+# required columns for tokenisation:
+# adata.var['ensembl_id'] and adata.obs['n_counts']
 if 'ensembl_id' not in adata.var.columns:
     adata = map_ensembl_to_genename(
         adata,
@@ -150,15 +149,16 @@ else:
 # gene_filtering_mode = 'degs'
 if args.gene_filtering_mode == 'hvg':
     adata.layers['counts'] = adata.X.copy()
-    adata = adata[adata.obs['time_after_LPS'] != '6h_LPS', :]
     sc.pp.normalize_total(adata, target_sum=1e4)
     sc.pp.log1p(adata)
+    # Filter out '6h_LPS' time points
+    adata = adata[adata.obs['time_after_LPS'] != '6h_LPS', :]
     sc.pp.highly_variable_genes(adata, n_top_genes=5000, batch_key='time_after_LPS')
-    adata = adata[:, adata.var['highly_variable']].copy()
     adata.X = adata.layers['counts']  # need raw counts
-    # compute 100 PCs
+    adata = adata[:, adata.var['highly_variable']]
+    del adata.layers['counts']
 
-    # duplicate one gene in the anndata to test the deduplication
+
 elif args.gene_filtering_mode == 'degs':
     # Filter adata for only DEGs
     degs = pd.read_csv(
@@ -173,6 +173,11 @@ elif args.gene_filtering_mode == 'all':
 else:
     raise ValueError('Invalid gene filtering mode')
 
+(adata_subset, token_id_to_row_id_dict, row_id_to_gene_name) = tokenid_mapping(
+    adata,
+    '/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/token_dictionary_gc95M.pkl',
+    exclude_non_GF_genes=True,
+)
 # create gene mapping file
 with open('/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/token_dictionary_gc95M.pkl', 'rb') as f:
     token_dict = pickle.load(f)
@@ -188,80 +193,10 @@ genename_dict = {v: k for k, v in genename_dict.items()}
 token_to_genename = {
     v: genename_dict[k] for k, v in token_dict.items() if k in genename_dict
 }
+os.makedirs('./T_perturb/pp/res/', exist_ok=True)
 # save token_dict
-with open('./T_perturb/pp/res/token_id_to_genename_all.pkl', 'wb') as file:
+with open('./T_perturb/pp/res/lps/token_id_to_genename_all.pkl', 'wb') as file:
     pickle.dump(token_to_genename, file)
-
-
-# # ignore CLS token because of redudancy with time task token
-# if pd.NA in token_id_to_row_id_dict:
-#     del token_id_to_row_id_dict[pd.NA]
-
-# # save mapping dictionnary
-# with open(
-#     f'./T_perturb/T_perturb/pp/res/{args.dataset}/'
-#     f'tokenid_to_rowid_{args.gene_filtering_mode}.pkl',
-#     'wb',
-# ) as f:
-#     pickle.dump(token_id_to_row_id_dict, f)
-
-# with open(
-#     f'./T_perturb/T_perturb/pp/res/{args.dataset}'
-#     f'/token_id_to_genename_{args.gene_filtering_mode}.pkl',
-#     'wb',
-# ) as f:
-#     pickle.dump(row_id_to_gene_name, f)
-# make new directory to store h5ad files
-paired_h5ad_dir = (
-    f'./T_perturb/pp/res/{args.dataset}'
-    f'/h5ad_pairing_{args.gene_filtering_mode}'
-)
-if not os.path.exists(paired_h5ad_dir):
-    os.makedirs(paired_h5ad_dir)
-# add unique index to adata obs for cell pairing
-idx_column = 'cell_pairing_index'
-adata.obs[idx_column] = range(adata.shape[0])
-adata.obs.index = adata.obs[idx_column].astype(str)
-adata.obs.index.name = None
-# save filtered adata with DEGs
-
-# create sparse matrix if not already
-if not isinstance(adata.X, csr_matrix):
-    adata.X = csr_matrix(adata.X)
-adata.obs = adata.obs[args.var_list]
-adata.var = adata.var[['gene_name', 'ensembl_id']]
-adata.obs['n_counts'] = adata.X.sum(axis=1)
-
-
-# with open(
-#     './T_perturb/Geneformer/geneformer/ensembl_mapping_dict_gc95M.pkl', 'rb'
-# ) as f:
-#     gene_mapping_dict = pickle.load(f)
-# gene_ids_collapsed = [
-#     gene_mapping_dict.get(gene_id.upper()) for gene_id in adata.var.ensembl_id
-# ]
-# gene_ids_collapsed_in_dict = [
-#     gene for gene in gene_ids_collapsed if gene in token_dict.keys()
-# ]
-# adata_duplicated = adata.copy()
-# adata_duplicated.var['ensembl_id_collapsed'] = gene_ids_collapsed
-# adata_duplicated.var_names = gene_ids_collapsed
-# adata = adata[:, ~adata_duplicated.var.index.isna()]
-
-adata.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}_{args.gene_filtering_mode}.h5ad')
-
-# load adata
-adata = sc.read_h5ad(
-    f'{paired_h5ad_dir}/{args.dataset}_{args.gene_filtering_mode}.h5ad'
-)
-
-# subset adata to only genes in the token dictionary
-# filter adata for only genes occuring in the token dictionary
-(adata_subset, token_id_to_row_id_dict, row_id_to_gene_name) = tokenid_mapping(
-    adata,
-    '/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/token_dictionary_gc95M.pkl',
-    exclude_non_GF_genes=True,
-)
 # create separate directory only for tokenisation
 output_tmp_dir = (
     f'./T_perturb/pp/res/{args.dataset}'
@@ -272,6 +207,35 @@ if not os.path.exists(output_tmp_dir):
 adata_subset.write_h5ad(
     f'{output_tmp_dir}/{args.dataset}_{args.gene_filtering_mode}.h5ad'
 )
+adata_subset.layers['counts'] = adata_subset.X.copy()
+# make new directory to store h5ad files
+paired_h5ad_dir = (
+    f'.T_perturb/pp/res/{args.dataset}'
+    f'/h5ad_pairing_{args.gene_filtering_mode}'
+)
+if not os.path.exists(paired_h5ad_dir):
+    os.makedirs(paired_h5ad_dir)
+# add unique index to adata obs for cell pairing
+idx_column = 'cell_pairing_index'
+adata_subset.obs[idx_column] = range(adata_subset.shape[0])
+args.var_list = args.var_list + [idx_column]
+#adata_subset.obs.index = adata_subset.obs[idx_column].astype(str)
+#adata_subset.obs['cell_pairing_index'] = adata_subset.obs.index.astype(str)
+# save filtered adata with DEGs
+adata_subset.obs['n_counts'] = adata_subset.X.sum(axis=1)
+# create sparse matrix if not already
+if not isinstance(adata_subset.X, csr_matrix):
+    adata_subset.X = csr_matrix(adata_subset.X)
+#adata_subset.obs = adata_subset.obs[args.var_list]
+#adata_subset.var = adata_subset.var[['gene_name', 'ensembl_id']]
+#adata_subset.obs['n_counts'] = adata_subset.X.sum(axis=1)
+#adata_subset.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}_{args.gene_filtering_mode}.h5ad')
+# subset adata to only genes in the token dictionary
+# filter adata for only genes occuring in the token dictionary
+
+#     f'{paired_h5ad_dir}/{args.dataset}_{args.gene_filtering_mode}.h5ad'
+# )
+
 print('Finished preprocessing adata.')
 print('Start tokenisation of adata...')
 input_dir = paired_h5ad_dir
@@ -280,12 +244,13 @@ output_dir = (
     f'./T_perturb/pp/res/{args.dataset}'
     f'/dataset_{args.gene_filtering_mode}_subsetted'
 )
+print('output_tmp', output_tmp_dir)
+print('output_directory',output_dir)
 var_to_keep: Dict[str, str] = {v: v for v in args.var_list}.copy()
 
 tk = TranscriptomeTokenizer(
     custom_attr_name_dict=var_to_keep,
     model_input_size=4096,
-    collapse_gene_ids=True,
     special_token=True,
     gene_median_file='/lustre/scratch126/cellgen/team205/ha11/Geneformer/geneformer/gene_median_dictionary_gc95M.pkl',
     token_dictionary_file='/lustre/scratch126/cellgen/team205/ha11/Geneformer/geneformer/token_dictionary_gc95M.pkl', 

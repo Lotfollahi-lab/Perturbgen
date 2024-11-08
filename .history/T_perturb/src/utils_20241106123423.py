@@ -2,13 +2,8 @@ import argparse
 import math
 import os
 import pickle
-import re
 from pathlib import Path
-from typing import (
-    Dict,
-    List,
-    Optional,
-)
+from typing import Dict, List
 
 import anndata as ad
 import geneformer.perturber_utils as pu
@@ -22,44 +17,13 @@ from geneformer import EmbExtractor
 from geneformer.emb_extractor import get_embs, label_cell_embs
 from scipy.sparse import csr_matrix
 from torch.nn.functional import cosine_similarity
-from torch.optim import Optimizer
 from torch.utils.data import Subset
 from torchmetrics import PearsonCorrCoef
 from torch.optim import Optimizer
 
-class WarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
-    def __init__(
-        self,
-        optimizer: Optimizer,
-        warmup_steps: int,
-        initial_lr: float,
-        end_lr: float,
-        last_epoch: int = -1,
-    ):
-        self.warmup_steps = warmup_steps
-        self.initial_lr = initial_lr
-        self.end_lr = end_lr
-        super(WarmupScheduler, self).__init__(optimizer, last_epoch)
-
-    def get_lr(self):
-        current_step = self.last_epoch + 1
-        if current_step < self.warmup_steps:
-            # Linear warmup phase: increase from initial_lr to end_lr
-            warmup_lr = [
-                self.initial_lr
-                + (self.end_lr - self.initial_lr) * (current_step / self.warmup_steps)
-                for _ in self.base_lrs
-            ]
-            return warmup_lr
-        else:
-            # After warmup, maintain the end_lr (constant LR)
-            return [self.end_lr for _ in self.base_lrs]
-
-
 def read_dataset_files(directory, file_type):
     dataset_dict = {}
     for filename in os.listdir(directory):
-        print(f'Loading {filename}...')
         if filename.endswith(f'.{file_type}'):
             filename_ = os.path.join(directory, filename)
             if file_type == 'dataset':
@@ -67,11 +31,9 @@ def read_dataset_files(directory, file_type):
                     filename_
                 )  # Removing the '.dataset' extension from the key
             elif file_type == 'h5ad':
-                adata = sc.read_h5ad(
+                dataset_dict[f'tgt_{file_type}_t{filename[0]}'] = sc.read_h5ad(
                     filename_
                 )
-                adata.X = adata.X.A 
-                dataset_dict[f'tgt_{file_type}_t{filename[0]}'] = adata
     return dataset_dict
 
 
@@ -105,6 +67,7 @@ def map_ensembl_to_genename(
 def compute_cos_similarity(
     outputs: dict,
     time_step: int,
+    all_time_steps: list[int],
 ):
     """
     Description:
@@ -127,7 +90,7 @@ def compute_cos_similarity(
     """
     # get cls position and dec_embedding (index = time_step-1)
     dec_embedding = outputs['dec_embedding'][time_step]
-    cls_embeddings = outputs['mean_embedding'][time_step]
+    cls_embeddings = dec_embedding[:, 0, :]
     # exclude cls token from gene embeddings
     gene_embeddings = dec_embedding[:, 1:, :]
     cos_similarity = []
@@ -145,21 +108,20 @@ def compute_cos_similarity(
 
 
 def return_cos_similarity(
+    marker_genes: List[str],
     cos_similarity: torch.tensor,
     gene_embeddings: torch.tensor,
     mapping_dict: Dict,
     token_ids: torch.tensor,
-    marker_genes: Optional[List[str]] = None,
-
 ) -> torch.tensor:
     """
     Description:
     ------------
-    This function returns cosine similarity for all genes.
+    This function returns cosine similarity for marker genes.
     Parameters:
     -----------
-    all_genes: `List[str]`
-        List of all genes.
+    marker_genes: `List[str]`
+        List of marker genes.
     cos_similarity: `torch.tensor`
         Tensor of cosine similarity between cls and gene embeddings.
     gene_embeddings: `torch.tensor`
@@ -173,20 +135,7 @@ def return_cos_similarity(
     marker_genes_dict: `Dict`
     """
     # filter for marker genes and swap key value
-    if marker_genes is not None:
-        marker_genes_ids = {v: k for k, v in mapping_dict.items() if v in marker_genes}
-    else:
-        # exclude special tokens from marker genes
-        special_tokens = ['<cls>', '<mask>', '<pad>', '<eos>']
-        marker_genes_ids = {
-            v: k for k, v in mapping_dict.items() if v not in special_tokens
-        }
-    cos_similarity_res = torch.zeros(
-        cos_similarity.shape[0],
-        len(marker_genes_ids.keys()),
-        device=gene_embeddings.device,
-    )
-    marker_genes_dict = {}
+    marker_genes_ids = {v: k for k, v in mapping_dict.items() if v in marker_genes}
     cos_similarity_res = torch.zeros(
         cos_similarity.shape[0],
         len(marker_genes_ids.keys()),
@@ -248,130 +197,6 @@ def return_gene_embeddings(
         ]
         marker_genes_dict[gene] = i
     return gene_embeddings_res
-
-def return_prediction_adata(
-    test_dict: dict,
-    obs_key: list,
-    marker_genes: dict,
-    output_dir: str,
-    file_name: str,
-    #gene_names: list,
-    gene_names: list = None,  # Hardcoded or provided gene names
-):
-    """
-    Description:
-    ------------
-    This function returns anndata object with predicted counts.
-    Parameters:
-    -----------
-    test_dict: `dict`
-        Dictionary containing test data.
-    obs_key: `list`
-        List of keys to include in adata.obs.
-    marker_genes: `dict`
-        List of marker genes.
-    output_dir: `str`
-        Directory to save files in
-    file_name: `str`
-        Filename for output file
-    gene_names: `list`
-        Name of var_names for adata.var.
-    Returns:
-    --------
-    adata: `~anndata.AnnData` \n
-        Annotated data matrix with predicted counts. \n
-        - adata.X: `~numpy.ndarray`
-            Array of predicted counts.
-        - adata.obs: `~pandas.DataFrame`
-            DataFrame of obs_key.
-        - adata.var: `~pandas.DataFrame`
-            DataFrame of gene names.
-        - adata.obsm: `dict`
-            'cls_embeddings': `~numpy.ndarray`
-                Array of cls embeddings.
-            'gene_embeddings': `~numpy.ndarray`
-                Array of gene embeddings.
-            'cosine_similarity': `~pandas.DataFrame`
-                DataFrame of cosine similarities.
-    """
-    print('---Start saving embeddings')
-    # adata.X
-    true_counts = torch.cat(test_dict['true_counts'], dim=0).numpy()
-    # adata.obsm
-    cls_embeddings = torch.cat(test_dict['cls_embeddings'], dim=0).numpy()
-    gene_embeddings = torch.cat(test_dict['gene_embeddings'], dim=0).numpy()
-    ##cos_similarity = torch.cat(test_dict['cosine_similarities'], dim=0).numpy()
-    #print('cos_similarity shape', cos_similarity.shape[0])
-    ##cell_idx = torch.cat(test_dict['cell_idx'], dim=0).numpy()  # Concatenate cell_idx values
-    #print('cell_idx shape', cell_idx.shape[0])
-    ##cos_similarity_df = pd.DataFrame(cos_similarity, columns=marker_genes.keys())
-    ##cos_similarity_df.index = cell_idx  # Set cell_idx as index for cos_similarity_df
-    #print('cos_similarity_df before removing', cos_similarity_df)
-    # remove all non-expressed genes
-    ##cos_similarity_df = cos_similarity_df.loc[:, (cos_similarity_df != 0).any(axis=0)]
-    #print('cos_similarity_df after removing', cos_similarity_df)
-    
-    # Save cosine similarity DataFrame to a separate file
-    ##cos_similarity_csv_path = os.path.join(output_dir, 'cos_similarity_df_time_10h_cell_ind_e19_top500.csv')
-    ##cos_similarity_df.to_csv(cos_similarity_csv_path, index=True)
-    #print(f'Saved cos_similarity_df to {cos_similarity_csv_path}')
-
-    # add condition from additional obs_key
-    # to cos_similarity_df to rank cosine similarity
-    # cos_similarity_df_ = cos_similarity_df.replace(0, np.nan)
-    # print(cos_similarity_df_)
-    # cos_similarity_df_['diff_state'] = np.concatenate(test_dict['diff_state'])
-
-    # # group by diff_state and calculate non-zero mean cosine similarity
-    # cos_similarity_df_mean = cos_similarity_df_.groupby(
-    #     'diff_state'
-    #     ).mean(numeric_only=True)
-
-    # print(cos_similarity_df_mean)
-    # raise
-    # adata.obs
-    # Filter gene_names to include only non-zero genes in cos_similarity_df
-    #non_zero_genes = cos_similarity_df.columns.tolist()
-    #gene_names = [gene for gene in gene_names if gene in non_zero_genes]
-    #print('Number of non-zero expressed genes_names:', len(gene_names))
-
-
-    obs_dict = {obs: np.concatenate(test_dict[obs]) for obs in obs_key}
-    test_obs = pd.DataFrame(obs_dict)
-    #print('obs', test_obs)
-    #print('gene_names', gene_names)
-    # adata.var
-    if gene_names is not None:
-        test_var = pd.DataFrame(gene_names, columns=['gene_name'])
-        print('gene_name', test_var)
-    
-    #print('true_counts', true_counts)
-    #print('test_obs', test_obs)
-    #print('var',test_var if gene_names is not None else None)
-    #print('cls', cls_embeddings)
-    #print('marker_genes', marker_genes)
-
-    adata = ad.AnnData(
-        X=true_counts,
-        obs=test_obs,
-        var=test_var if gene_names is not None else None,
-        obsm={
-            'cls_embeddings': cls_embeddings,
-            'gene_embeddings': gene_embeddings,
-        },
-        uns={
-            'marker_genes': marker_genes,
-        },
-    )
-    #print('adata', adata)
-    #if gene_names is not None:
-    if gene_names is not None:
-        adata.var_names = adata.var['gene_name']
-        adata.var = adata.var.drop(columns=['gene_name'])
-    ##cos_similarity_df.index = adata.obs.index
-    ##adata.obsm['cosine_similarity'] = cos_similarity_df
-    adata.write_h5ad(os.path.join(output_dir, file_name))
-    print('End saving embeddings---')
 
 
 def modify_ckpt_state_dict(
@@ -505,20 +330,9 @@ def tokenid_mapping(
         print(f'Number of genes dropped: {adata.n_vars - adata_subset.n_vars}')
     else:
         adata_subset = adata.copy()
-    # keep special tokens and do not assign row_id
-    pattern = re.compile(r'<[a-zA-Z]+>')
-    special_tokens = [s for s in token_id_dict.keys() if pattern.match(s)]
-    special_tokens_dict = {
-        key: value for key, value in token_id_dict.items() if key in special_tokens
-    }
-    # create row_id for special tokens and exclude special tokens from row_id
-    row_id = np.arange(adata_subset.n_vars + len(special_tokens))
-    map_special_tokens = dict(
-        zip(special_tokens_dict.values(), special_tokens_dict.values())
-    )
-    row_id = row_id[~np.isin(row_id, list(special_tokens_dict.values()))]
-    print(row_id)
-    adata_subset.var['row_id'] = row_id
+    # print number of genes dropped
+    print(f'Number of genes dropped: {adata.n_vars - adata_subset.n_vars}')
+    adata_subset.var['row_id'] = np.arange(adata_subset.n_vars) + 1
     # create dictionary to map token_id to row_id
     token_id_to_row_id_dict = dict(
         zip(
@@ -526,29 +340,18 @@ def tokenid_mapping(
             adata_subset.var['row_id'].values,
         )
     )
-    # add token_id_row_id_dict for special tokens
-    token_id_to_row_id_dict.update(map_special_tokens)
+    token_id_to_row_id_dict[0] = 0
     # create dictionary to map row_id to gene_name
     row_id_to_gene_name = dict(
         zip(adata_subset.var['row_id'], adata_subset.var['gene_name'])
     )
-    special_tokens_dict = {value: key for key, value in special_tokens_dict.items()}
-    row_id_to_gene_name.update(special_tokens_dict)
     return (adata_subset, token_id_to_row_id_dict, row_id_to_gene_name)
 
 
 # use dictionary to map token_id to input_ids
-def map_input_ids_to_row_id(
-    dataset: DatasetDict,
-    token_id_to_row_id_dict: Dict,
-    ignore_tokens: Optional[List] = None,
-):
-    if ignore_tokens is None:
-        ignore_tokens = []
+def map_input_ids_to_row_id(dataset, token_id_to_row_id_dict):
     dataset['input_ids'] = [
-        token_id_to_row_id_dict.get(item, item)
-        for item in dataset['input_ids']
-        if item not in ignore_tokens
+        token_id_to_row_id_dict.get(item, item) for item in dataset['input_ids']
     ]
     return dataset
 
@@ -558,20 +361,14 @@ def subset_adata(adata, cell_pairings):
     # check if obs index is not range index
     if adata_.obs.index.dtype != 'int64':
         adata_.obs = adata_.obs.reset_index()
-    df = pd.DataFrame(
-        adata_.X.toarray(), index=adata_.obs.index, columns=adata_.var.index
-    )
+    df = pd.DataFrame(adata_.X.A, index=adata_.obs.index, columns=adata_.var.index)
     # use row index instead of index
     df.reset_index(drop=True, inplace=True)
     subset_df = df.loc[cell_pairings]
     adata_obs_subsetted = adata_.obs.loc[cell_pairings]
     obs = adata_obs_subsetted
     var = adata_.var.loc[df.columns]
-    adata_subsetted = ad.AnnData(
-        X=subset_df.values,
-        obs=obs,
-        var=var,
-    )
+    adata_subsetted = ad.AnnData(X=subset_df.values, obs=obs, var=var)
     adata_subsetted.obs_names.name = None
     adata_subsetted.X = csr_matrix(adata_subsetted.X)
     return adata_subsetted
@@ -726,29 +523,29 @@ def pairing_src_to_tgt_cells(
     if pairing_mode == 'stratified':
         # drop Donor if they do not have Cell_type, Donor in all the Time_points
         adata_grouped = adata_subset_.obs[
-            adata_subset_.obs.groupby(['cell_type_cellgen_harm'])[pairing_obs].transform(
+            adata_subset_.obs.groupby(['Donor', 'Cell_type'])[pairing_obs].transform(
                 'nunique'
             )
             == 4
         ]
-        # dropped_donors = (
-        #     adata_subset.obs['Donor'].nunique() - adata_grouped['Donor'].nunique()
-        # )
-        # print(f'dropped {dropped_donors} donors')
-        resting_cells = adata_grouped.loc[adata_grouped[pairing_obs] == 'normal', :]
-        grouped = adata_grouped.groupby(['cell_type_cellgen_harm'])
+        dropped_donors = (
+            adata_subset.obs['Donor'].nunique() - adata_grouped['Donor'].nunique()
+        )
+        print(f'dropped {dropped_donors} donors')
+        resting_cells = adata_grouped.loc[adata_grouped[pairing_obs] == '0h', :]
+        grouped = adata_grouped.groupby(['Donor', 'Cell_type'])
         for idx, resting in tqdm.tqdm(
             resting_cells.iterrows(), total=resting_cells.shape[0]
         ):
             # get the indices of the other time points for the same cell type and donor
-            group = grouped.get_group((resting['cell_type_cellgen_harm']))
-            indices_16h = group[group[pairing_obs] == '90m_LPS'].index
-            #indices_40h = group[group[pairing_obs] == '6h_LPS'].index
-            indices_5d = group[group[pairing_obs] == '10h_LPS'].index
-            cell_pairings['normal'].append(idx)
-            cell_pairings['90m_LPS'].append(np.random.choice(indices_16h))
-            #cell_pairings['6h_LPS'].append(np.random.choice(indices_40h))
-            cell_pairings['10h_LPS'].append(np.random.choice(indices_5d))
+            group = grouped.get_group((resting['Donor'], resting['Cell_type']))
+            indices_16h = group[group[pairing_obs] == '16h'].index
+            indices_40h = group[group[pairing_obs] == '40h'].index
+            indices_5d = group[group[pairing_obs] == '5d'].index
+            cell_pairings['0h'].append(idx)
+            cell_pairings['16h'].append(np.random.choice(indices_16h))
+            cell_pairings['40h'].append(np.random.choice(indices_40h))
+            cell_pairings['5d'].append(np.random.choice(indices_5d))
 
     elif pairing_mode == 'random':
         if max_reference_time is not None:

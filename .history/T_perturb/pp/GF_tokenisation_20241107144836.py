@@ -102,7 +102,7 @@ def get_args():
         default=[
             'normal',
             '90m_LPS',
-            #'6h_LPS',
+            '6h_LPS',
             '10h_LPS',
         ],
         # default=[
