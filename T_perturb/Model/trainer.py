@@ -323,8 +323,10 @@ class CellGenTrainer(LightningModule):
             outputs = self.forward(batch)
 
             for t in self.pred_tps:
+                print(f'Processing time step {t}')
                 token_ids = self.tgt_input_id_dict[f'tgt_input_ids_t{t}']
                 context_tps = [tp for tp in self.context_tps if tp != t]
+                print(f'Context time points: {context_tps}')
                 # extract context_ids
                 context_ids = [batch['src_input_ids']]
                 context_ids.extend(
@@ -374,6 +376,7 @@ class CellGenTrainer(LightningModule):
                 if len(self.var_list) > 0:
                     for var in self.var_list:
                         self.test_dict[var].append(batch[f'{var}_t{t}'])
+        raise
 
     def on_test_epoch_end(self):
         for t in range(1, self.n_total_tps + 1):
@@ -394,7 +397,6 @@ class CellGenTrainer(LightningModule):
                 output_dir=self.output_dir,
                 file_name=f'{self.date}_cross_attn_weights_t{t}',
             )
-
         if self.return_embeddings:
             obs_key = self.var_list if len(self.var_list) > 0 else []
             obs_key.extend(['batch', 'cell_idx'])

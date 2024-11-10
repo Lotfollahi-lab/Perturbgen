@@ -416,7 +416,10 @@ def _map_attn_weights(
             sorted_tgt_indices_ = sorted_tgt_indices[
                 ~torch.isin(sorted_tgt_tokens, pad_token_id)
             ]
-            src_seq_len = 0
+            # adjust for second cross attention provided as context
+            context_seq_len = 0
+            # adjust to fill in at correct location in attn_weights_res
+            context_vocab_size = 0
             for context_token in context_token_ids:
                 context_token_idx = context_token[i]
                 sorted_context_tokens, sorted_context_indices = torch.sort(
@@ -429,14 +432,14 @@ def _map_attn_weights(
                     ~torch.isin(sorted_context_tokens, pad_token_id)
                 ]
                 sorted_attn_matrix = attn_weights_[sorted_tgt_indices_][
-                    :, src_seq_len + sorted_context_indices_
+                    :, context_seq_len + sorted_context_indices_
                 ]
-                # adjust context token indices by src_seq_len
+                # adjust context token indices by context_seq_len
 
                 tgt_indices = sorted_tgt_tokens_.unsqueeze(1).expand(
                     -1, sorted_attn_matrix.shape[1]
                 )
-                adjusted_context_tokens = sorted_context_tokens_ + src_seq_len
+                adjusted_context_tokens = sorted_context_tokens_ + context_vocab_size
                 context_indices = adjusted_context_tokens.unsqueeze(0).expand(
                     sorted_attn_matrix.shape[0], -1
                 )
@@ -445,7 +448,12 @@ def _map_attn_weights(
                     tgt_indices,
                     context_indices,
                 ] = sorted_attn_matrix
-                src_seq_len += len(context_token_idx)
+                context_seq_len += len(context_token_idx)
+                if (context_vocab_size == 0) and (src_mapping_dict is not None):
+                    # add src mapping dict fist
+                    context_vocab_size += len(src_mapping_dict.keys())
+                else:
+                    context_vocab_size += len(tgt_mapping_dict.keys())
         return attn_weights_res
 
 
