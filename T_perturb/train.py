@@ -25,7 +25,7 @@ from T_perturb.src.utils import (
 
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/')
+    os.chdir('/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb')
     print('Changed working directory to root of repository')
 
 
@@ -67,7 +67,6 @@ def get_args():
         default=None,
         help='path to checkpoint',
     )
-
     parser.add_argument(
         '--src_dataset',
         type=str,
@@ -218,6 +217,13 @@ def get_args():
         help='mode of encoder',
     )
     parser.add_argument(
+        '--positional_encoding',
+        type=str,
+        default='time_pos_sin',
+        choices=['time_pos_sin', 'comb_sin', 'sin_learnt'],
+        help='positional encoding',
+    )
+    parser.add_argument(
         '--seed',
         type=int,
         default=42,
@@ -296,6 +302,7 @@ def main() -> None:
         )
     # check if the train indices are the same for both adata and dataset
     subset_adata = tgt_adata_tmp[train_indices]
+
     subset_dataset = tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}'].select(
         train_indices
     )
@@ -377,13 +384,14 @@ def main() -> None:
     print('Data loaded and preprocessed.')
     # count number of unique timepoints
     n_total_timepoints = len(tgt_adatas)
+
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.train_mode == 'masking':
         pretrained_module = CellGenTrainer(
             # tgt_vocab_size=1820,  # 704 for degs, 1820 for tokenised
             tgt_vocab_size=args.tgt_vocab_size,  # max token id + 1 for padding
-            d_model=256,
+            d_model=512,
             num_heads=8,
             num_layers=args.num_layers,
             d_ff=args.d_ff,
@@ -391,7 +399,8 @@ def main() -> None:
             dropout=args.cellgen_dropout,
             mlm_probability=args.mlm_prob,
             weight_decay=args.cellgen_wd,
-            lr=args.cellgen_lr,
+            end_lr=args.cellgen_lr,
+            mask_scheduler=args.mask_scheduler,
             # lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             time_steps=args.time_steps,
@@ -400,13 +409,14 @@ def main() -> None:
             output_dir=args.output_dir,
             mode=args.mode,
             context_mode=args.context_mode,
+            positional_encoding=args.positional_encoding,
         )
     elif args.train_mode == 'count':
         decoder_module = CountDecoderTrainer(
             ckpt_masking_path=args.ckpt_masking_path,
             ckpt_count_path=None,
             tgt_vocab_size=args.tgt_vocab_size,
-            d_model=256,
+            d_model=512,
             num_heads=8,
             num_layers=args.num_layers,
             d_ff=args.d_ff,
@@ -428,7 +438,9 @@ def main() -> None:
             output_dir=args.output_dir,
             mode=args.mode,
             seed=args.seed,
+            n_genes=src_adata.shape[1],
             context_mode=args.context_mode,
+            positional_encoding=args.positional_encoding,
         )
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
@@ -443,14 +455,16 @@ def main() -> None:
     for keys, tgt_adata in tgt_adatas.items():
         tgt_counts_dict[keys] = tgt_adata.X
     src_counts = src_adata.X
-
+    # determine global batch size to account for multiple GPUs
+    gpu_number = max(torch.cuda.device_count(), 1)
+    per_gpu_batch_size = args.batch_size // gpu_number
     if args.train_mode == 'masking':
         data_module = CellGenDataModule(
             src_dataset=src_dataset,
             tgt_datasets=tgt_datasets,
             src_counts=src_counts,  # TODO: do not pass counts in datamodule
             tgt_counts_dict=tgt_counts_dict,
-            batch_size=args.batch_size,
+            batch_size=per_gpu_batch_size,
             num_workers=args.n_workers,
             shuffle=args.shuffle,
             max_len=args.max_len,
@@ -462,13 +476,14 @@ def main() -> None:
             total_time_steps=n_total_timepoints,
             var_list=args.var_list,
         )
+
     elif args.train_mode == 'count':
         data_module = CellGenDataModule(
             src_dataset=src_dataset,
             tgt_datasets=tgt_datasets,
             src_counts=src_counts,
             tgt_counts_dict=tgt_counts_dict,
-            batch_size=args.batch_size,
+            batch_size=per_gpu_batch_size,
             num_workers=args.n_workers,
             shuffle=args.shuffle,
             max_len=args.max_len,
@@ -499,7 +514,8 @@ def main() -> None:
         filename = (
             f'{run_id}_train_{args.train_mode}_lr_{args.cellgen_lr}'
             f'_wd_{args.cellgen_wd}_batch_{args.batch_size}_'
-            f'mlmp_{args.mlm_prob}_tp_{time_steps_str}_s_{args.seed}'
+            f'p{args.positional_encoding}_m_{args.mask_scheduler}'
+            f'_tp_{time_steps_str}_s_{args.seed}'
         )
         if args.split:
             monitor_metric = 'val/perplexity'
@@ -510,7 +526,8 @@ def main() -> None:
         filename = (
             f'{run_id}_train_{args.train_mode}_lr_{args.count_lr}_wd_{args.count_wd}_'
             f'batch_{args.batch_size}_'
-            f'{args.loss_mode}_tp_{time_steps_str}_s_{args.seed}'
+            f'{args.loss_mode}_tp_{time_steps_str}_s_'
+            f'{args.seed}_pos_{args.positional_encoding}_m_{args.mask_scheduler}'
         )
         if args.split:
             monitor_metric = 'val/mse'
@@ -519,12 +536,12 @@ def main() -> None:
             monitor_metric = 'train/mse'
             mode = 'min'
 
-    checkpoint_path = './T_perturb/T_perturb/Model/checkpoints'
+    checkpoint_path = os.path.join(args.output_dir, 'checkpoints')
     checkpoint_callback = ModelCheckpoint(
         dirpath=checkpoint_path,
         filename=f'{filename}-' + '{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=10,
+        every_n_epochs=1,
         verbose=True,
         monitor=monitor_metric,
         mode=mode,
@@ -536,14 +553,14 @@ def main() -> None:
             project='ttransformer',
             name=f'{run_id}_{str(uuid.uuid4())[:6]}',
             save_dir=args.log_dir,
-            log_model='all',
+            log_model='True',
         )  # noqa
     else:
         wandb_logger = WandbLogger(
             project='ttransformer',
             name=f'{run_id}',
             save_dir=args.log_dir,
-            log_model='all',
+            log_model='True',
         )  # noqa
 
     # In this simple example we just check if a GPU is available.
@@ -567,6 +584,15 @@ def main() -> None:
     # deepspeed_strategy = DeepSpeedStrategy(
     #     stage=2,
     # )
+    # if torch.cuda.is_available():
+    #     cuda_device_name = torch.cuda.get_device_name()
+    # if ('A100' in cuda_device_name) or ('NVIDIA H100 80GB HBM' in cuda_device_name):
+    #     print(f'Using {cuda_device_name} for training')
+    #     precision = 'bf16-mixed'
+    # else:
+    #     precision = '16-mixed'
+
+    # If the device is an A100, set the precision for matrix multiplication
     ddp_strategy = DDPStrategy(find_unused_parameters=True)
     trainer = pl.Trainer(
         logger=wandb_logger,
@@ -581,13 +607,10 @@ def main() -> None:
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
     )
     print('Starting training...')
-    if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
-        # set working directory to root of repository
-        os.chdir(
-            '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-            't_generative/T_perturb/T_perturb/'
-        )
-        print('Changed working directory to root of repository')
+    if os.getcwd().split('/')[-1] != 'T_perturb':  # Change to match your directory name
+        # set working directory to your new path
+        os.chdir('/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb')
+        print('Changed working directory to T_perturb')
 
     if args.train_mode == 'masking':
         # Finally, kick of the training process.

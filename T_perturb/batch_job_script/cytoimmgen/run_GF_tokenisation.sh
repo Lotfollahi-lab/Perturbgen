@@ -1,8 +1,7 @@
 #make a date directory if it does not exist
 #!/bin/bash
-#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu "mode=shared:num=1" # request for exclusive access to gpu
-#BSUB -n 32 # number of cores
+#BSUB -q normal # run CPU job
+#BSUB -n 8 # number of cores
 #BSUB -G team298 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb 
 #BSUB -o T_perturb/log/random_pairing_GF_tokenisation_%J.out # output file
@@ -19,8 +18,8 @@ echo "--- Start tokenisation"
 
 python3 $cwd/T_perturb/pp/GF_tokenisation.py \
 --h5ad_path '/lustre/scratch126/cellgen/team298/dv8/trace_paper/concatenated_lps_data_dv.h5ad' \
---dataset 'lps' \
---gene_filtering_mode 'all' \
+--dataset 'lps_10k' \
+--gene_filtering_mode 'hvg' \
 --var_list cell_type_cellgen_harm time_after_LPS donor_cellgen_harm \
 batch cell_pairing_index \
 --pairing_mode stratified \

@@ -43,7 +43,7 @@ def get_args():
         type=str,
         default='cytoimmgen',
         # default='eb',
-        choices=['cytoimmgen', 'eb', 'lps'],
+        choices=['cytoimmgen', 'eb', 'lps', 'lps_1','lps_random','lps_10k'],
     )
     parser.add_argument(
         '--gene_filtering_mode',
@@ -102,7 +102,7 @@ def get_args():
         default=[
             'normal',
             '90m_LPS',
-            #'6h_LPS',
+            '6h_LPS',
             '10h_LPS',
         ],
         # default=[
@@ -149,14 +149,32 @@ else:
 
 # gene_filtering_mode = 'degs'
 if args.gene_filtering_mode == 'hvg':
-    adata.layers['counts'] = adata.X.copy()
-    adata = adata[adata.obs['time_after_LPS'] != '6h_LPS', :]
-    sc.pp.normalize_total(adata, target_sum=1e4)
-    sc.pp.log1p(adata)
-    sc.pp.highly_variable_genes(adata, n_top_genes=5000, batch_key='time_after_LPS')
-    adata = adata[:, adata.var['highly_variable']].copy()
-    adata.X = adata.layers['counts']  # need raw counts
+    ##adata.layers['counts'] = adata.X.copy()
+    ##adata = adata[adata.obs['time_after_LPS'] != '6h_LPS', :]
+    ##sc.pp.normalize_total(adata, target_sum=1e4)
+    ##sc.pp.log1p(adata)
+    ##sc.pp.highly_variable_genes(adata, n_top_genes=5000, batch_key='time_after_LPS')
+    ##adata = adata[:, adata.var['highly_variable']].copy()
+    ##adata.X = adata.layers['counts']  # need raw counts
     # compute 100 PCs
+    # Step 1: Copy the raw counts to layers
+    adata.layers['counts'] = adata.X.copy()
+    # Step 2: Remove the '6h_LPS' time point temporarily
+    adata_no_6h = adata[adata.obs['time_after_LPS'] != '6h_LPS', :]
+    # Step 3: Normalize and log-transform the data (for the non-6h_LPS part)
+    sc.pp.normalize_total(adata_no_6h, target_sum=1e4)
+    sc.pp.log1p(adata_no_6h)
+    # Step 4: Calculate highly variable genes (HVGs) for the remaining data
+    sc.pp.highly_variable_genes(adata_no_6h, n_top_genes=10000, batch_key='time_after_LPS')
+    # Step 5: Subset the data to only include the highly variable genes
+    adata_no_6h = adata_no_6h[:, adata_no_6h.var['highly_variable']].copy()
+    # Step 6: Restore the raw counts to the subsetted data (before re-adding 6h_LPS)
+    adata_no_6h.X = adata_no_6h.layers['counts']
+    #Step 7: Filter the '6h_LPS' time point data to match the HVG set
+    adata_6h_LPS = adata[adata.obs['time_after_LPS'] == '6h_LPS', :]
+    adata_6h_LPS = adata_6h_LPS[:, adata_no_6h.var_names].copy()  # Keep only HVGs in '6h_LPS'
+    # Step 8: Concatenate the processed data (without '6h_LPS') with the '6h_LPS' data
+    adata = adata_no_6h.concatenate(adata_6h_LPS, join='inner')
 
     # duplicate one gene in the anndata to test the deduplication
 elif args.gene_filtering_mode == 'degs':
@@ -189,7 +207,7 @@ token_to_genename = {
     v: genename_dict[k] for k, v in token_dict.items() if k in genename_dict
 }
 # save token_dict
-with open('./T_perturb/pp/res/token_id_to_genename_all.pkl', 'wb') as file:
+with open('./T_perturb/pp/res/token_id_to_genename_hvg.pkl', 'wb') as file:
     pickle.dump(token_to_genename, file)
 
 
