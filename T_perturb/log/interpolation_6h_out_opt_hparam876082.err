@@ -1,0 +1,139 @@
+Seed set to 42
+/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/anndata/_core/anndata.py:1754: UserWarning: Observation names are not unique. To make them unique, call `.obs_names_make_unique`.
+  utils.warn_names_duplicates("obs")
+/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/anndata/_core/anndata.py:1754: UserWarning: Observation names are not unique. To make them unique, call `.obs_names_make_unique`.
+  utils.warn_names_duplicates("obs")
+/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/anndata/_core/anndata.py:1754: UserWarning: Observation names are not unique. To make them unique, call `.obs_names_make_unique`.
+  utils.warn_names_duplicates("obs")
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+IPU available: False, using: 0 IPUs
+HPU available: False, using: 0 HPUs
+[rank: 0] Seed set to 42
+Initializing distributed: GLOBAL_RANK: 0, MEMBER: 1/3
+[rank: 1] Seed set to 42
+[rank: 2] Seed set to 42
+/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/anndata/_core/anndata.py:1754: UserWarning: Observation names are not unique. To make them unique, call `.obs_names_make_unique`.
+  utils.warn_names_duplicates("obs")
+/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/anndata/_core/anndata.py:1754: UserWarning: Observation names are not unique. To make them unique, call `.obs_names_make_unique`.
+  utils.warn_names_duplicates("obs")
+/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/anndata/_core/anndata.py:1754: UserWarning: Observation names are not unique. To make them unique, call `.obs_names_make_unique`.
+  utils.warn_names_duplicates("obs")
+/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/anndata/_core/anndata.py:1754: UserWarning: Observation names are not unique. To make them unique, call `.obs_names_make_unique`.
+  utils.warn_names_duplicates("obs")
+/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/anndata/_core/anndata.py:1754: UserWarning: Observation names are not unique. To make them unique, call `.obs_names_make_unique`.
+  utils.warn_names_duplicates("obs")
+/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/anndata/_core/anndata.py:1754: UserWarning: Observation names are not unique. To make them unique, call `.obs_names_make_unique`.
+  utils.warn_names_duplicates("obs")
+[rank: 1] Seed set to 42
+[rank: 2] Seed set to 42
+Initializing distributed: GLOBAL_RANK: 1, MEMBER: 2/3
+Initializing distributed: GLOBAL_RANK: 2, MEMBER: 3/3
+----------------------------------------------------------------------------------------------------
+distributed_backend=nccl
+All distributed processes registered. Starting with 3 processes
+----------------------------------------------------------------------------------------------------
+
+wandb: Currently logged in as: dv8 (lotfollahi). Use `wandb login --relogin` to force relogin
+wandb: wandb version 0.18.6 is available!  To upgrade, please run:
+wandb:  $ pip install wandb --upgrade
+wandb: Tracking run with wandb version 0.16.4
+wandb: Run data is saved locally in logs/wandb/run-20241109_205147-um254wrs
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run 20241109_2051_cellgen_46842d
+wandb: ⭐️ View project at https://wandb.ai/lotfollahi/ttransformer
+wandb: 🚀 View run at https://wandb.ai/lotfollahi/ttransformer/runs/um254wrs
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0,2,1]
+LOCAL_RANK: 2 - CUDA_VISIBLE_DEVICES: [0,2,1]
+LOCAL_RANK: 1 - CUDA_VISIBLE_DEVICES: [0,2,1]
+/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/pytorch_lightning/core/optimizer.py:376: Found unsupported keys in the optimizer configuration: {'interval'}
+
+  | Name           | Type             | Params
+----------------------------------------------------
+0 | transformer    | CellGen          | 68.2 M
+1 | masking_loss   | CrossEntropyLoss | 0     
+2 | timepoint_loss | CrossEntropyLoss | 0     
+3 | perplexity     | Perplexity       | 0     
+4 | mse            | MeanSquaredError | 0     
+----------------------------------------------------
+30.3 M    Trainable params
+38.0 M    Non-trainable params
+68.2 M    Total params
+272.991   Total estimated model params size (MB)
+/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/pytorch_lightning/utilities/data.py:104: Total length of `list` across ranks is zero. Please make sure this was your intention.
+[rank1]:[W1109 20:52:07.051548791 reducer.cpp:1400] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[rank0]:[W1109 20:52:07.051636822 reducer.cpp:1400] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[rank2]:[W1109 20:52:07.051690071 reducer.cpp:1400] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+Epoch 0, global step 2329: 'train/perplexity' reached 1887.78979 (best 1887.78979), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=00.ckpt' as top 1
+Epoch 1, global step 4658: 'train/perplexity' reached 785.41797 (best 785.41797), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=01.ckpt' as top 2
+Epoch 2, global step 6987: 'train/perplexity' reached 647.28058 (best 647.28058), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=02.ckpt' as top 3
+Epoch 3, global step 9316: 'train/perplexity' reached 569.70770 (best 569.70770), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=03.ckpt' as top 4
+Epoch 4, global step 11645: 'train/perplexity' reached 510.03406 (best 510.03406), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=04.ckpt' as top 5
+Epoch 5, global step 13974: 'train/perplexity' reached 464.57037 (best 464.57037), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=05.ckpt' as top 6
+Epoch 6, global step 16303: 'train/perplexity' reached 424.36038 (best 424.36038), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=06.ckpt' as top 7
+Epoch 7, global step 18632: 'train/perplexity' reached 379.46252 (best 379.46252), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=07.ckpt' as top 8
+Epoch 8, global step 20961: 'train/perplexity' reached 344.46704 (best 344.46704), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=08.ckpt' as top 9
+Epoch 9, global step 23290: 'train/perplexity' reached 315.54352 (best 315.54352), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=09.ckpt' as top 10
+Epoch 10, global step 25619: 'train/perplexity' reached 290.40598 (best 290.40598), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=10.ckpt' as top 11
+Epoch 11, global step 27948: 'train/perplexity' reached 269.27448 (best 269.27448), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=11.ckpt' as top 12
+Epoch 12, global step 30277: 'train/perplexity' reached 247.71292 (best 247.71292), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=12.ckpt' as top 13
+Epoch 13, global step 32606: 'train/perplexity' reached 231.20357 (best 231.20357), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=13.ckpt' as top 14
+Epoch 14, global step 34935: 'train/perplexity' reached 212.39368 (best 212.39368), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=14.ckpt' as top 15
+Epoch 15, global step 37264: 'train/perplexity' reached 202.89732 (best 202.89732), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=15.ckpt' as top 16
+Epoch 16, global step 39593: 'train/perplexity' reached 191.44980 (best 191.44980), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=16.ckpt' as top 17
+Epoch 17, global step 41922: 'train/perplexity' reached 183.97685 (best 183.97685), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=17.ckpt' as top 18
+Epoch 18, global step 44251: 'train/perplexity' reached 176.71017 (best 176.71017), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=18.ckpt' as top 19
+Epoch 19, global step 46580: 'train/perplexity' reached 172.99898 (best 172.99898), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=19.ckpt' as top 20
+Epoch 20, global step 48909: 'train/perplexity' reached 166.14476 (best 166.14476), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=20.ckpt' as top 21
+Epoch 21, global step 51238: 'train/perplexity' reached 163.06039 (best 163.06039), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=21.ckpt' as top 22
+Epoch 22, global step 53567: 'train/perplexity' reached 157.16753 (best 157.16753), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=22.ckpt' as top 23
+Epoch 23, global step 55896: 'train/perplexity' reached 153.60219 (best 153.60219), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=23.ckpt' as top 24
+Epoch 24, global step 58225: 'train/perplexity' reached 149.87000 (best 149.87000), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=24.ckpt' as top 25
+Epoch 25, global step 60554: 'train/perplexity' reached 148.32893 (best 148.32893), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=25.ckpt' as top 26
+Epoch 26, global step 62883: 'train/perplexity' reached 144.29231 (best 144.29231), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=26.ckpt' as top 27
+Epoch 27, global step 65212: 'train/perplexity' reached 143.13972 (best 143.13972), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=27.ckpt' as top 28
+Epoch 28, global step 67541: 'train/perplexity' reached 142.41830 (best 142.41830), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=28.ckpt' as top 29
+Epoch 29, global step 69870: 'train/perplexity' reached 140.91231 (best 140.91231), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=29.ckpt' as top 30
+Epoch 30, global step 72199: 'train/perplexity' reached 137.47394 (best 137.47394), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=30.ckpt' as top 31
+Epoch 31, global step 74528: 'train/perplexity' reached 137.39053 (best 137.39053), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=31.ckpt' as top 32
+Epoch 32, global step 76857: 'train/perplexity' reached 135.28113 (best 135.28113), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=32.ckpt' as top 33
+Epoch 33, global step 79186: 'train/perplexity' reached 134.24690 (best 134.24690), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=33.ckpt' as top 34
+Epoch 34, global step 81515: 'train/perplexity' reached 134.17488 (best 134.17488), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=34.ckpt' as top 35
+Epoch 35, global step 83844: 'train/perplexity' reached 132.13033 (best 132.13033), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=35.ckpt' as top 36
+Epoch 36, global step 86173: 'train/perplexity' reached 130.43881 (best 130.43881), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=36.ckpt' as top 37
+Epoch 37, global step 88502: 'train/perplexity' reached 130.27025 (best 130.27025), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=37.ckpt' as top 38
+Epoch 38, global step 90831: 'train/perplexity' reached 128.98413 (best 128.98413), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=38.ckpt' as top 39
+Epoch 39, global step 93160: 'train/perplexity' reached 128.23447 (best 128.23447), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=39.ckpt' as top 40
+Epoch 40, global step 95489: 'train/perplexity' reached 127.79546 (best 127.79546), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=40.ckpt' as top 41
+Epoch 41, global step 97818: 'train/perplexity' reached 126.65977 (best 126.65977), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=41.ckpt' as top 42
+Epoch 42, global step 100147: 'train/perplexity' reached 125.87663 (best 125.87663), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=42.ckpt' as top 43
+Epoch 43, global step 102476: 'train/perplexity' reached 125.45618 (best 125.45618), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=43.ckpt' as top 44
+Epoch 44, global step 104805: 'train/perplexity' reached 123.83980 (best 123.83980), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=44.ckpt' as top 45
+Epoch 45, global step 107134: 'train/perplexity' reached 124.10542 (best 123.83980), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=45.ckpt' as top 46
+Epoch 46, global step 109463: 'train/perplexity' reached 123.02613 (best 123.02613), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=46.ckpt' as top 47
+Epoch 47, global step 111792: 'train/perplexity' reached 121.67496 (best 121.67496), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=47.ckpt' as top 48
+Epoch 48, global step 114121: 'train/perplexity' reached 123.06850 (best 121.67496), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=48.ckpt' as top 49
+Epoch 49, global step 116450: 'train/perplexity' reached 122.31708 (best 121.67496), saving model to '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/nature/LPS/interpolation_6h_out_opt_hparam/res/checkpoints/20241109_2051_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-3_s_42-epoch=49.ckpt' as top 50
+`Trainer.fit` stopped: `max_epochs=50` reached.
+wandb: - 0.154 MB of 0.154 MB uploadedwandb: \ 0.154 MB of 0.154 MB uploadedwandb: | 0.154 MB of 0.154 MB uploadedwandb: / 0.272 MB of 0.296 MB uploaded (0.114 MB deduped)wandb: - 0.272 MB of 0.296 MB uploaded (0.114 MB deduped)wandb: \ 0.296 MB of 0.296 MB uploaded (0.114 MB deduped)wandb: 
+wandb: Run history:
+wandb:                    epoch ▁▁▁▂▂▂▂▂▂▃▃▃▃▃▄▄▄▄▄▄▅▅▅▅▅▅▆▆▆▆▆▇▇▇▇▇▇███
+wandb: train/masking_loss_epoch █▆▆▅▅▄▄▄▃▃▃▃▂▂▂▂▂▂▂▂▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:  train/masking_loss_step █▇▆▆▅▄▄▄▄▅▄▄▃▂▄▃▃▄▂▃▂▂▃▃▃▂▂▂▂▃▂▂▁▄▃▃▃▁▂▂
+wandb:   train/perplexity_epoch █▄▃▃▂▂▂▂▂▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:    train/perplexity_step █▆▄▄▃▂▂▂▂▂▂▂▁▁▂▂▂▂▁▂▁▁▁▁▁▁▁▁▁▁▁▁▁▂▁▂▂▁▁▁
+wandb:      trainer/global_step ▁▁▁▁▂▂▂▂▂▃▃▃▃▃▃▄▄▄▄▄▅▅▅▅▅▅▆▆▆▆▆▇▇▇▇▇▇███
+wandb: 
+wandb: Run summary:
+wandb:                    epoch 49
+wandb: train/masking_loss_epoch 4.77341
+wandb:  train/masking_loss_step 4.69439
+wandb:   train/perplexity_epoch 122.31708
+wandb:    train/perplexity_step 109.3326
+wandb:      trainer/global_step 116449
+wandb: 
+wandb: 🚀 View run 20241109_2051_cellgen_46842d at: https://wandb.ai/lotfollahi/ttransformer/runs/um254wrs
+wandb: ️⚡ View job at https://wandb.ai/lotfollahi/ttransformer/jobs/QXJ0aWZhY3RDb2xsZWN0aW9uOjM5MDg2MDMwOA==/version_details/v12
+wandb: Synced 6 W&B file(s), 0 media file(s), 3 artifact file(s) and 1 other file(s)
+wandb: Find logs at: logs/wandb/run-20241109_205147-um254wrs/logs
+[rank0]:[W1110 01:11:38.337073893 ProcessGroupNCCL.cpp:1250] Warning: WARNING: process group has NOT been destroyed before we destruct ProcessGroupNCCL. On normal program exit, the application should call destroy_process_group to ensure that any pending NCCL operations have finished in this process. In rare cases this process can exit before this point and block the progress of another member of the process group. This constraint has always been present,  but this warning has only been added since PyTorch 2.4 (function operator())
