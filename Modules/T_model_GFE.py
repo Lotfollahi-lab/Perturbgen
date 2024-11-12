@@ -316,7 +316,7 @@ class FeedForward(nn.Module):
 
 
 class SoftGatingMoE(nn.Module):
-    '''
+    """
     Description:
     ------------
     Soft gating mechanism for feed forward network layers of transformers.
@@ -340,7 +340,7 @@ class SoftGatingMoE(nn.Module):
         Output tensor.
     moe_embs_dict: `dict`
         Dictionary of expert embeddings aggregated by mean non-padding tokens.
-    '''
+    """
 
     def __init__(
         self,
@@ -349,9 +349,7 @@ class SoftGatingMoE(nn.Module):
         num_classes: int,
         top_k: int,
         hidden_size: int = 64,
-        moe_type: Literal['moe_attention', 'none', 'moe_ffn'] = 'none',
         num_heads: int = 8,
-        # d_ff: int = 1024,
         d_ff: int = 128,
         dropout: float = 0.0,
     ):
@@ -359,31 +357,17 @@ class SoftGatingMoE(nn.Module):
         self.top_k = top_k
         self.num_classes = num_classes
         self.num_experts = num_experts
-        self.moe_type = moe_type
         # Initialize experts
-        if moe_type == 'moe_ffn':
-            self.experts = nn.ModuleList(
-                [
-                    FeedForward(
-                        dim=dim,
-                        hidden_dim=hidden_size,
-                    )
-                    for _ in range(num_experts)
-                ]
-            )
-        elif moe_type == 'moe_attention':
-            self.experts = nn.ModuleList(
-                [
-                    CrossAttention(
-                        query_dim=dim,
-                        num_heads=num_heads,
-                        dim_head=d_ff,
-                        dropout=dropout,
-                        context_dim=None,
-                    )
-                    for _ in range(num_experts)
-                ]
-            )
+        self.experts = nn.ModuleList(
+            [
+                FeedForward(
+                    dim=dim,
+                    hidden_dim=hidden_size,
+                )
+                for _ in range(num_experts)
+            ]
+        )
+
         self.classifier = nn.Linear(dim, 1)
         self.jitter_noise = 0.0
         # learn gate weights one on batch and one on token level
@@ -397,19 +381,17 @@ class SoftGatingMoE(nn.Module):
         task_categories=None,
         tgt_mask_id_bool=None,
     ):
-        '''
+        """
         Adapted from the Mistral huggingface repository:
         URL:
         https://github.com/huggingface/transformers/blob/66bc4def9505fa7c7fe4aa7a248c34a026bb552b/src/transformers/models/mixtral/modeling_mixtral.py#L681 # noqa
         Accessed: 2024-09-07
-        '''
+        """
         batch_size, sequence_length, hidden_dim = x.shape
         temperature = 1.0
         # Filter to keep only the top-k experts active
         if self.training and self.jitter_noise > 0:
-            x *= torch.empty_like(x).uniform_(
-                1.0 - self.jitter_noise, 1.0 + self.jitter_noise
-            )
+            x *= torch.empty_like(x).uniform_(1.0 - self.jitter_noise, 1.0 + self.jitter_noise)
         # keep track of CLS token for each batch
         cls_mask = torch.zeros_like(tgt_pad, dtype=torch.bool)
         cls_mask[:, 0] = True
@@ -432,31 +414,21 @@ class SoftGatingMoE(nn.Module):
 
         routing_weights = F.softmax(gate_logits, dim=1, dtype=torch.float)
         # save routing weights for visualization
-        routing_weights_ = routing_weights.view(
-            batch_size, sequence_length, self.num_experts
-        )
-        routing_weights, selected_experts = torch.topk(
-            routing_weights, self.top_k, dim=-1
-        )
+        routing_weights_ = routing_weights.view(batch_size, sequence_length, self.num_experts)
+        routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
         routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
         # print('top k values', routing_weights[:20,:])
         # print(routing_weights.shape)
         # we cast back to the input dtype
         routing_weights = routing_weights.to(x.dtype)
         # Store logits for each expert separately in a list
-        expert_logits_list = [
-            torch.zeros(x.size(0), 1, device=x.device) for _ in range(self.num_experts)
-        ]
+        expert_logits_list = [torch.zeros(x.size(0), 1, device=x.device) for _ in range(self.num_experts)]
 
-        final_hidden_states = torch.zeros(
-            (batch_size * sequence_length, hidden_dim), dtype=x.dtype, device=x.device
-        )
+        final_hidden_states = torch.zeros((batch_size * sequence_length, hidden_dim), dtype=x.dtype, device=x.device)
 
         # One hot encode the selected experts to create an expert mask
         # this will be used to easily index which expert is going to be sollicitated
-        expert_mask = torch.nn.functional.one_hot(
-            selected_experts, num_classes=self.num_classes
-        ).permute(
+        expert_mask = torch.nn.functional.one_hot(selected_experts, num_classes=self.num_classes).permute(
             2, 1, 0
         )  # 🔍 for compatibility of different gate size
         # print(expert_mask.shape)
@@ -470,28 +442,15 @@ class SoftGatingMoE(nn.Module):
             # the current expert. We need to make sure to multiply the output hidden
             # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
             current_state = x[None, top_x].reshape(-1, hidden_dim)
-            if self.moe_type == 'moe_ffn':
-                current_hidden_states = (
-                    expert_layer(current_state) * routing_weights[top_x, idx, None]
-                )
-            else:
-                current_hidden_states = (
-                    expert_layer(current_state, mask=tgt_pad)
-                    * routing_weights[top_x, idx, None]
-                )
+            current_hidden_states = expert_layer(current_state) * routing_weights[top_x, idx, None]
             # However `index_add_` only support torch tensors for indexing so we'll use
             # the `top_x` tensor here.
             final_hidden_states.index_add_(0, top_x, current_hidden_states.to(x.dtype))
-            weighted_output = final_hidden_states.reshape(
-                batch_size, sequence_length, hidden_dim
-            )
-            expert_logits_list[expert_idx] = self.classifier(
-                weighted_output[:, 0, :].clone()
-            )
-        final_hidden_states = final_hidden_states.reshape(
-            batch_size, sequence_length, hidden_dim
-        )
+            weighted_output = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
+            expert_logits_list[expert_idx] = self.classifier(weighted_output[:, 0, :].clone())
+        final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
         return (final_hidden_states, gate_logits, expert_logits_list, routing_weights_)
+
 
 
 class Block(nn.Module):
@@ -508,9 +467,8 @@ class Block(nn.Module):
         num_experts: int = 2,
         num_classes: int = 2,
         top_k: int = 2,
-        mode: Literal['moe_attention', 'none', 'moe_ffn'] = 'none',
     ):
-        '''
+        """
         Description:
         ------------
         Transformer block with self attention and cross attention.
@@ -539,30 +497,17 @@ class Block(nn.Module):
         --------
         x: `torch.Tensor`
             Output tensor.
-        '''
+        """
         super().__init__()
-        self.mode = mode
         self.norm1 = norm_layer(dim)
 
-        if self.mode == 'moe_attention':
-            self.moe_attn = SoftGatingMoE(
-                dim=dim,
-                num_experts=num_experts,
-                num_classes=num_classes,
-                num_heads=num_heads,
-                d_ff=d_ff,
-                top_k=top_k,
-                dropout=dropout,
-                moe_type=mode,
-            )
-        else:
-            self.self_attn = CrossAttention(
-                query_dim=dim,
-                context_dim=None,
-                num_heads=num_heads,
-                dim_head=d_ff,
-                dropout=dropout,
-            )
+        self.self_attn = CrossAttention(
+            query_dim=dim,
+            context_dim=None,
+            num_heads=num_heads,
+            dim_head=d_ff,
+            dropout=dropout,
+        )
         self.norm2 = norm_layer(dim)
         self.cross_attn = CrossAttention(
             query_dim=dim,
@@ -572,19 +517,13 @@ class Block(nn.Module):
             dropout=dropout,
         )
         self.norm3 = norm_layer(dim)
-        if self.mode == 'moe_ffn':
-            self.moe_feed_forward = SoftGatingMoE(
-                dim=dim,
-                num_experts=num_experts,
-                num_classes=num_classes,
-                top_k=top_k,
-                hidden_size=hidden_size,
-                moe_type=mode,
-            )
-        else:
-            self.feed_forward = Mlp(
-                in_features=dim, hidden_features=hidden_size, act_layer=act_layer
-            )  # add hidden size
+        self.moe_feed_forward = SoftGatingMoE(
+            dim=dim,
+            num_experts=num_experts,
+            num_classes=num_classes,
+            top_k=top_k,
+            hidden_size=hidden_size,
+        )
         self.dropout = nn.Dropout(dropout)
 
     def forward(
@@ -596,33 +535,20 @@ class Block(nn.Module):
         task_categories=None,
         tgt_mask_id_bool=None,
     ):
-        if self.mode == 'moe_attention':
-            outputs = self.moe_attn(
-                x,
-                tgt_mask,
-                task_categories,
-                tgt_mask_id_bool,
-            )
-        else:
-            attn_output = self.self_attn(x, mask=tgt_mask)
+        attn_output = self.self_attn(x, mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
         attn_output = self.cross_attn(x, context=enc_output, mask=src_mask)
         x = self.norm2(x + self.dropout(attn_output))
-        if self.mode == 'moe_ffn':
-            outputs = self.moe_feed_forward(
-                x,
-                tgt_mask,
-                task_categories,
-                tgt_mask_id_bool,
-            )
-            ff_output = outputs[0]
-        else:
-            ff_output = self.feed_forward(x)
+        outputs = self.moe_feed_forward(
+            x,
+            tgt_mask,
+            task_categories,
+            tgt_mask_id_bool,
+        )
+        ff_output = outputs[0]
         x = self.norm3(x + self.dropout(ff_output))
-        if self.mode == 'none':
-            return x
-        else:
-            return x, outputs[1], outputs[2], outputs[3]
+
+        return x, outputs[1], outputs[2], outputs[3]
 
 
 
@@ -855,13 +781,31 @@ class CellGen(nn.Module):
         self.d_ff = d_ff
         self.max_seq_length = max_seq_length
         self.dropout = dropout
-        self.num_perturbations = num_perturbations
         total_vocab_size = (
             tgt_vocab_size + 2
         )  # add one for each cls token
         self.mask_token = 1  # as defined in Geneformer
         self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
-        
+        self.encoder_type = encoder_type
+
+
+
+        # Set encoder output dimension
+        if self.encoder_type in ['GF_frozen', 'GF_fine_tuned']:
+            # Assuming Geneformer outputs embeddings of size self.d_model
+            self.encoder_output_dim = self.d_model  # or set to actual Geneformer output dimension
+        elif self.encoder_type == 'Transformer_encoder':
+            self.encoder_output_dim = self.d_model
+        else:
+            raise ValueError(f'Invalid encoder type: {self.encoder_type}')
+
+        self.num_perturbations = num_perturbations
+        if num_perturbations is not None:
+            # Define the perturbation projection layer
+            self.perturbation_projection = nn.Linear(num_perturbations, self.encoder_output_dim)
+        else:
+            self.perturbation_projection = None
+
         
         self.position_embedding = position_embedding
         if position_embedding == 'sinusoidal':
@@ -900,7 +844,6 @@ class CellGen(nn.Module):
                     top_k=2,
                     num_experts=num_experts,
                     num_classes=num_classes,
-                    mode=moe_type,
                 )
                 for _ in range(num_layers)
             ]
@@ -910,13 +853,21 @@ class CellGen(nn.Module):
         self.moe_type = moe_type
         self.tokenid_to_genename_dict = tokenid_to_genename_dict # Store the tokenid_to_genename_dict
         
-        if self.num_perturbations is not None:
-            self.perturbation_embedding_layer = nn.Linear(
-                self.num_perturbations, self.d_model
-            )
-        else:
-            self.perturbation_embedding_layer = None
+        # # Define the perturbation projection layer if needed
+        # self.perturbation_embedding_dim = 512  # Assuming Geneformer embeddings have dimension 512
+        # if self.encoder_type in ['GF_frozen', 'GF_fine_tuned']:
+        #     self.encoder_output_dim = self.perturbation_embedding_dim  # Geneformer output dimension
+        # else:
+        #     self.encoder_output_dim = d_model  # For Transformer encoder
 
+
+
+    #     # TODO: remove init weight
+    #     self.init_weights()
+
+    # def init_weights(self) -> None:
+    #     initrange = 0.1
+    #     self.token_embedding.weight.data.uniform_(-initrange, initrange)
 
     def generate_mask(
         self, tgt_input_id, tgt_pad, mlm_probability=0.15, mask_mode='MASKGIT'
@@ -1013,6 +964,79 @@ class CellGen(nn.Module):
         
         return enc_output
 
+#     def call_decoder(
+#         self,
+#         enc_output,
+#         src_attention_mask,
+#         dec_embedding,
+#         tgt_pad,
+#         generate=False,
+#         labels=None,
+#         cls_positions=None,
+#         task_categories=None,
+#         tgt_mask_id_bool=None,
+#     ):
+#         for dec_layer in self.decoder_block:
+#             if self.moe_type == 'none':
+#                 dec_embedding = dec_layer(
+#                     x=dec_embedding,
+#                     src_mask=src_attention_mask,
+#                     tgt_mask=tgt_pad,
+#                     enc_output=enc_output,
+#                 )
+#                 gate_logits = None
+#                 expert_logits_list = None
+#                 router_probs = None
+#             else:
+#                 # see if concatenation of cls embedding
+#                 (
+#                     dec_embedding,
+#                     gate_logits,
+#                     expert_logits_list,
+#                     router_probs,
+#                 ) = dec_layer(
+#                     x=dec_embedding,
+#                     src_mask=src_attention_mask,
+#                     tgt_mask=tgt_pad,
+#                     enc_output=enc_output,
+#                     task_categories=task_categories,
+#                     tgt_mask_id_bool=tgt_mask_id_bool,
+#                 )
+
+#         # Updated with CGPT 01
+#         outputs = {
+#             'cls_embedding': dec_embedding[:, 0, :],
+#             'mean_embedding': mean_nonpadding_embs(dec_embedding, tgt_pad),
+#         }
+        
+#         decoder_logits = self.decoder_fc(dec_embedding)
+#         if labels is not None:
+#             outputs['dec_logits'] = decoder_logits
+#             outputs['labels'] = labels
+
+#         if generate is True:
+#             outputs['dec_logits'] = decoder_logits
+#             outputs['router_probs'] = router_probs
+#             outputs['dec_embedding'] = dec_embedding
+#         else:
+#             outputs['dec_embedding'] = dec_embedding
+#             outputs['mean_embedding'] = mean_nonpadding_embs(
+#                 embs=dec_embedding,
+#                 pad=tgt_pad,
+#             )
+#             outputs['cls_embedding'] = dec_embedding[:, 0, :]
+#             outputs['gate_logits'] = gate_logits
+#             outputs['expert_logits_list'] = expert_logits_list
+#             outputs['router_probs'] = router_probs
+#         if cls_positions is not None:
+#             outputs['cls_positions'] = cls_positions
+#         return outputs
+    
+    
+    
+    
+    # FROM MAIN BRANCH
+
     def call_decoder(
         self,
         enc_output,
@@ -1026,47 +1050,29 @@ class CellGen(nn.Module):
         tgt_mask_id_bool=None,
     ):
         for dec_layer in self.decoder_block:
-            if self.moe_type == 'none':
-                dec_embedding = dec_layer(
-                    x=dec_embedding,
-                    src_mask=src_attention_mask,
-                    tgt_mask=tgt_pad,
-                    enc_output=enc_output,
-                )
-                gate_logits = None
-                expert_logits_list = None
-                router_probs = None
-            else:
-                # see if concatenation of cls embedding
-                (
-                    dec_embedding,
-                    gate_logits,
-                    expert_logits_list,
-                    router_probs,
-                ) = dec_layer(
-                    x=dec_embedding,
-                    src_mask=src_attention_mask,
-                    tgt_mask=tgt_pad,
-                    enc_output=enc_output,
-                    task_categories=task_categories,
-                    tgt_mask_id_bool=tgt_mask_id_bool,
-                )
+            # see if concatenation of cls embedding
+            (dec_embedding, gate_logits, expert_logits_list, router_probs,) = dec_layer(
+                x=dec_embedding,
+                src_mask=src_attention_mask,
+                tgt_mask=tgt_pad,
+                enc_output=enc_output,
+                task_categories=task_categories,
+                tgt_mask_id_bool=tgt_mask_id_bool,
+            )
 
-        # Updated with CGPT 01
-        outputs = {
-            'cls_embedding': dec_embedding[:, 0, :],
-            'mean_embedding': mean_nonpadding_embs(dec_embedding, tgt_pad),
-        }
-        
+        # :TODO rewrite this part logits not needed for running the other timepoints
+        outputs = {}
         decoder_logits = self.decoder_fc(dec_embedding)
+        
+        outputs['dec_logits'] = decoder_logits
+        
         if labels is not None:
             outputs['dec_logits'] = decoder_logits
             outputs['labels'] = labels
 
         if generate is True:
-            outputs['dec_logits'] = decoder_logits
+            outputs['dec_logits'] = decoder_logits[:, 1:, :]
             outputs['router_probs'] = router_probs
-            outputs['dec_embedding'] = dec_embedding
         else:
             outputs['dec_embedding'] = dec_embedding
             outputs['mean_embedding'] = mean_nonpadding_embs(
@@ -1080,6 +1086,8 @@ class CellGen(nn.Module):
         if cls_positions is not None:
             outputs['cls_positions'] = cls_positions
         return outputs
+
+
     
     def gene_to_id(gene_list, gene_id_dictionary):
         '''
@@ -1142,8 +1150,8 @@ class CellGen(nn.Module):
         generate_pad: Optional[dict] = None,
         perturbation: Optional[list] = None, # PERTURBATION PASSED HERE
         nperts: Optional[int] = None, # PERTURBATION NUMBER PASSED HERE
+        perturbation_one_hot: Optional[torch.Tensor] = None,
         generate: Optional[bool] = False,
-        perturbation_vectors: Optional[torch.Tensor] = None,
     ):
         '''
         Description:
@@ -1176,54 +1184,169 @@ class CellGen(nn.Module):
         print(f"CELLGEN FWD tgt_input_id: {tgt_input_id}")
         
         src_attention_mask = generate_padding(src_input_id)
+        tgt_pad = generate_padding(tgt_input_id)
+
         # tgt_attention_mask = generate_padding(tgt_input_id)
         
-
-        # only extract context for all the ones before the selected time step
-        # rest will be padded
-        tgt_embedding = self.token_embedding(tgt_input_id)
+        # Original encoder encoding
+        enc_output = self.call_encoder(src_input_id, src_attention_mask) # enc_output shape: (batch_size, seq_len, encoder_output_dim)
         
-        print(f'DEBUGGING shape of tgt_embedding: {tgt_embedding.shape}')
+        if apply_attn_mask:
+            tgt_pad = generate_padding(tgt_input_id)
+            tgt_input_id, labels = self.generate_mask(
+                tgt_input_id,
+                tgt_pad,
+                self.mlm_probability,
+            )
+            generate = False
+
+        else:
+            if (generate_id is not None) and (generate_pad is not None):
+                tgt_input_id = generate_id
+                tgt_pad = generate_pad
+                generate = True
+                labels = None
+            elif tgt_input_id is not None:
+                tgt_pad = generate_padding(tgt_input_id)
+                generate = False
+                labels = None
+
+
         
-        if self.position_embedding == 'sinusoidal':
-            tgt_embedding = self.positional_encoding(tgt_embedding)
-        elif self.position_embedding == 'learnt':
-            tgt_embedding = self.positional_encoding(tgt_embedding)
+#         if perturbed_embeddings is not None:
+#             # Ensure dimensions are aligned for concatenation
+#             if perturbed_embeddings.shape[1] != enc_output.shape[1]:
+#                 # Calculate the difference in sequence length between enc_output and perturbed_embeddings
+#                 max_len = max(perturbed_embeddings.shape[1], enc_output.shape[1])
+
+#                 # Pad the tensors to match the longer sequence length without trimming any data
+#                 if perturbed_embeddings.shape[1] < max_len:
+#                     # Pad perturbed_embeddings to match enc_output length
+#                     pad_size = max_len - perturbed_embeddings.shape[1]
+#                     perturbed_embeddings = F.pad(
+#                         perturbed_embeddings, 
+#                         (0, 0, 0, pad_size),  # Pad on the second dimension (sequence length)
+#                         value=0  # Or another value that represents padding in your context
+#                     )
+#                 elif enc_output.shape[1] < max_len:
+#                     # Pad enc_output to match perturbed_embeddings length
+#                     pad_size = max_len - enc_output.shape[1]
+#                     enc_output = F.pad(
+#                         enc_output, 
+#                         (0, 0, 0, pad_size),  # Pad on the second dimension (sequence length)
+#                         value=0  # Or another value that represents padding in your context
+#                     )
+
+#             # Concatenate gene embeddings with the encoder output along the last dimension
+#             combined_enc_output = torch.cat((enc_output, perturbed_embeddings), dim=-1)
+#         else:
+#             # If no perturbation information, use normal encoder output
+#             combined_enc_output = enc_output
+            
+    
+    
+        # ## PERTURBATION EMBEDDINGS OCCUR HERE
+        
+        # if perturbed_embeddings is not None:
+        #     batch_size = perturbed_embeddings.size(0)
+        #     seq_len_enc = enc_output.size(1)
+        #     seq_len_pert = perturbed_embeddings.size(1)
+
+        #     # Project perturbation embeddings if necessary
+        #     if self.perturbation_projection is not None:
+        #         perturbed_embeddings = self.perturbation_projection(perturbed_embeddings)
+
+        #     # Generate position IDs for perturbation embeddings
+        #     position_ids_pert = torch.arange(seq_len_pert, dtype=torch.long, device=enc_output.device)
+        #     position_ids_pert = position_ids_pert + seq_len_enc  # Continue positions from encoder output
+        #     position_ids_pert = position_ids_pert.unsqueeze(0).expand(batch_size, -1)
+
+        #     # Apply positional encodings to perturbation embeddings
+        #     if self.position_embedding == 'sinusoidal':
+        #         perturbed_embeddings = self.positional_encoding(perturbed_embeddings)
+        #     elif self.position_embedding == 'learnt':
+        #         perturbed_embeddings = self.positional_encoding(perturbed_embeddings)
+            
+        #     print(f'DEBUGGING shape of perturbed_embeddings: {perturbed_embeddings.shape}')
+
+        #     # Now concatenate
+        #     combined_enc_output = torch.cat([enc_output, perturbed_embeddings], dim=1)
+        #     # Adjust src_attention_mask
+        #     perturbed_mask = torch.zeros((batch_size, seq_len_pert), dtype=torch.bool).to(enc_output.device)
+        #     combined_src_attention_mask = torch.cat([src_attention_mask, perturbed_mask], dim=1)
+        # else:
+        #     combined_enc_output = enc_output
+        #     combined_src_attention_mask = src_attention_mask
+
+            
+        # if apply_attn_mask:
+        #     tgt_pad = generate_padding(tgt_input_id)
+        #     tgt_input_id, labels = self.generate_mask(
+        #         tgt_input_id,
+        #         tgt_pad,
+        #         self.mlm_probability,
+        #     )
+        #     generate = False
+            
+        # elif generate:
+        #     tgt_pad = generate_padding(tgt_input_id)
+        #     labels = None
+        # else:
+        #     if tgt_input_id is not None:
+        #         tgt_pad = generate_padding(tgt_input_id)
+        #         labels = None
+        #     else:
+        #         raise ValueError("tgt_input_id must be provided.")
+
+        # # only extract context for all the ones before the selected time step
+        # # rest will be padded
+        # tgt_embedding = self.token_embedding(tgt_input_id)
+        
+        # print(f'DEBUGGING shape of tgt_embedding: {tgt_embedding.shape}')
+        
+        # if self.position_embedding == 'sinusoidal':
+        #     tgt_embedding = self.positional_encoding(tgt_embedding)
+        # elif self.position_embedding == 'learnt':
+        #     tgt_embedding = self.positional_encoding(tgt_embedding)
+                    
 
 
-            # Call the encoder to get encoder outputs
+
+
+        # ONE HOT ENCODING PERTURBATION
+
+
+        batch_size = perturbation_one_hot.size(0)
+
         enc_output = self.call_encoder(src_input_id, src_attention_mask)
 
-        # Process perturbation_vectors
-        if perturbation_vectors is not None and self.perturbation_embedding_layer is not None:
-            # Embed perturbation_vectors
-            perturbation_embeddings = self.perturbation_embedding_layer(perturbation_vectors)
-            # Shape: (batch_size, d_model)
+        if perturbation_one_hot is not None:
+            # Project the one-hot vectors to embeddings
+            perturbation_embeddings = self.perturbation_projection(perturbation_one_hot)  # [batch_size, embed_dim]
 
-            # Expand to match encoder output dimensions
-            perturbation_embeddings = perturbation_embeddings.unsqueeze(1)  # Shape: (batch_size, 1, d_model)
+            # Unsqueeze to add a sequence dimension
+            perturbation_embeddings = perturbation_embeddings.unsqueeze(1)  # [batch_size, 1, embed_dim]
 
-            # Add positional encoding if necessary
-            if self.position_embedding == 'sinusoidal':
-                perturbation_embeddings = self.positional_encoding(perturbation_embeddings)
-            elif self.position_embedding == 'learnt':
-                perturbation_embeddings = self.positional_encoding(perturbation_embeddings)
+            # Concatenate the perturbation embeddings with encoder outputs
+            combined_enc_output = torch.cat([enc_output, perturbation_embeddings], dim=1)  # [batch_size, seq_len + 1, embed_dim]
 
-            # Concatenate perturbation embeddings with encoder outputs
-            combined_enc_output = torch.cat([enc_output, perturbation_embeddings], dim=1)
-
-            # Update the attention mask to include perturbations
-            perturbation_mask = torch.zeros(
-                (enc_output.size(0), 1), dtype=torch.bool, device=enc_output.device
-            )
-            combined_src_attention_mask = torch.cat(
-                [src_attention_mask, perturbation_mask], dim=1
-            )
+            # Update the attention mask
+            perturbation_mask = torch.zeros((batch_size, 1), dtype=torch.bool).to(enc_output.device)
+            combined_src_attention_mask = torch.cat([src_attention_mask, perturbation_mask], dim=1)
         else:
             combined_enc_output = enc_output
             combined_src_attention_mask = src_attention_mask
 
-        # Proceed with decoding using combined_enc_output
+
+
+
+
+
+
+        tgt_embedding = self.token_embedding(tgt_input_id)
+
+        # create mask for the mask token for the MoE
+        tgt_mask_id_bool = tgt_input_id == self.mask_token
         outputs = self.call_decoder(
             enc_output=combined_enc_output,
             src_attention_mask=combined_src_attention_mask,
@@ -1232,6 +1355,8 @@ class CellGen(nn.Module):
             generate=generate,
             cls_positions=cls_positions,
             task_categories=task_categories,
+            tgt_mask_id_bool=tgt_mask_id_bool,
+            labels=labels,
         )
         return outputs
 

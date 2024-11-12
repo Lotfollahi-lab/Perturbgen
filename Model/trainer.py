@@ -138,6 +138,7 @@ def load_balancing_loss_func(
 class CellGenTrainer(LightningModule):
     def __init__(
         self,
+        num_perturbations: int,
         tgt_vocab_size: int = 25000,
         d_model: int = 512,
         num_heads: int = 8,
@@ -189,6 +190,7 @@ class CellGenTrainer(LightningModule):
             n_task_conditions=n_task_conditions,
             num_experts=num_experts,
             num_classes=num_classes,
+            num_perturbations=num_perturbations,
             tokenid_to_genename_dict=tokenid_to_genename_dict,
         )
         # if ckpt_masking_path is not None:
@@ -277,8 +279,8 @@ class CellGenTrainer(LightningModule):
             tgt_input_id=batch['tgt_input_ids'],
             apply_attn_mask=self.apply_attn_mask,
             # task_categories=batch['moe_categories'],
-            perturbation=batch['perturbation'],  # Retrieve information from batch
-            nperts=batch['nperts'],  # Retrieve information from batch
+            perturbation_one_hot=batch['perturbation_one_hot'],  # Retrieve information from batch
+            # nperts=batch['nperts'],  # Retrieve information from batch
         )
         # print('Loaded checkpoint of masking model')
         # pattern = re.compile(r'decoder_fc.weight')

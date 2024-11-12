@@ -53,124 +53,6 @@ class DummyDataset(torch.utils.data.Dataset):
         }
 
 
-    
-# ### GENEFORMER EMBEDDINGS ###
-# class CellGenDataset(Dataset):
-#     def __init__(
-#         self,
-#         src_dataset: DatasetDict,
-#         tgt_dataset: DatasetDict,
-#         src_counts: np.ndarray,
-#         tgt_counts_dict: Dict[str, np.ndarray],
-#         tgt_adata: ad.AnnData,
-#         split_indices: List,
-#     ):
-#         super().__init__()
-#         self.src_dataset = src_dataset
-#         # self.pairing_metadata = pairing_metadata
-#         # subset tgt dataset based on split indices
-#         self.tgt_dataset = tgt_dataset.select(indices=split_indices)
-#         # # Get the indices from the datasets
-#         # src_indices = list(range(len(src_dataset)))
-#         # tgt_indices = list(range(len(tgt_dataset)))
-#         # src_len = len(self.src_dataset)
-#         self.tgt_len = len(self.tgt_dataset)
-#         self.tgt_adata = tgt_adata
-
-#     def __getitem__(self, ind):
-#         # tmp_dataset_id = self.tgt_dataset[ind]['dataset_id']
-#         # subset src dataset based on tgt dataset
-#         # tmp_src_indices = self.pairing_metadata[tmp_dataset_id]
-#         # sample from tmp_src_id
-#         tmp_src_ind = np.random.randint(len(self.src_dataset))
-        
-
-#         # Extract perturbation metadata
-#         perturbation_info = self.tgt_dataset[ind].get('perturbation', [])
-#         nperts_info = self.tgt_dataset[ind].get('nperts', 0)
-        
-        
-#         cell_pairing_index = self.tgt_dataset[ind]['cell_pairing_index']
-        
-#         # Use cell_pairing_index to get counts from adata.X
-#         true_counts = self.tgt_adata.X[cell_pairing_index]
-
-#         # Convert counts to tensor
-#         true_counts = torch.tensor(true_counts.toarray()).squeeze(0)  # Assuming sparse matrix
-
-        
-#         # Process perturbation_info to ensure it's a list of gene names
-#         if perturbation_info:
-#             if isinstance(perturbation_info, str):
-#                 perturbation_info = perturbation_info.split('+')  # Split by '+'
-#             elif isinstance(perturbation_info, list):
-#                 # Ensure splitting for each element
-#                 perturbation_info = [gene for genes in perturbation_info for gene in genes.split('+')]
-#         else:
-#             perturbation_info = []
-            
-#         # Initialize gene_embeddings tensor of shape (2, embedding_dim)
-#         embedding_dim = 512  # Assuming Geneformer embedding dimension is 512
-#         max_nperts = 2
-#         gene_embeddings = torch.zeros((max_nperts, embedding_dim))
-
-                
-#         ## ADDING PERTURBATION EMBEDDINGS
-        
-#         if nperts_info > 0:
-            
-#             ## NORMAL LOADING GENEFORMER ###
-#             # Load Geneformer wrapper in frozen mode
-#             geneformer_frozen = Geneformerwrapper(
-#                 output_attentions=False,
-#                 output_hidden_states=True,  # Ensure hidden states are returned
-#                 mode='GF_frozen'  # Mode to use frozen embeddings
-#             )
-
-#             # Load the token-to-gene dictionary
-#             with open('/lustre/scratch126/cellgen/team205/bair/perturbench/perturbench_data/norman/token_id_to_genename_hvg.pkl', 'rb') as file:
-#                 token_to_gene_dict = pickle.load(file)
-
-#             # Extract gene embeddings for the perturbed genes
-#             embeddings = extract_gene_embeddings(perturbation_info, token_to_gene_dict, geneformer_frozen)
-#             # embeddings shape: (1, nperts, embedding_dim)
-
-#             embeddings = embeddings.squeeze(0)  # Shape: (nperts, embedding_dim)
-
-#             # Pad embeddings to shape (max_nperts, embedding_dim)
-#             nperts = embeddings.shape[0]
-#             if nperts < max_nperts:
-#                 # Pad with zeros
-#                 padding = torch.zeros((max_nperts - nperts, embedding_dim))
-                
-#                 # print(f"embeddings shape: {embeddings.shape}")
-#                 # print(f"padding shape: {padding.shape}")
-                
-#                 embeddings = torch.cat([embeddings, padding], dim=0)
-#             elif nperts > max_nperts:
-#                 # If more than max_nperts perturbations, truncate
-#                 embeddings = embeddings[:max_nperts, :]
-
-#             gene_embeddings = embeddings  # Shape: (max_nperts, embedding_dim)
-#         else:
-#             pass # No perturbations
-        
-#         # print(f'self.tgt_dataset: {self.tgt_dataset[ind]}')
-        
-#         out = {
-#             'src_dataset': self.src_dataset[int(tmp_src_ind)],
-#             'tgt_dataset': self.tgt_dataset[ind],
-#             'perturbation': perturbation_info,  # List of perturbed genes
-#             'nperts': nperts_info,  # Number of perturbations
-#             'perturbed_embeddings': gene_embeddings,  # Gene embeddings of shape (max_nperts, embedding_dim)
-#             'tgt_counts': true_counts,  # Include true counts
-#         }
-#         return out
-
-#     def __len__(self):
-#         return self.tgt_len
-
-
 
 def get_symbol_to_ensembl_mapping(gene_symbols):
     mg = mygene.MyGeneInfo()
@@ -212,42 +94,39 @@ class CellGenDataset(Dataset):
         self.num_perturbations = num_perturbations
 
 
-
+    # o1 block
     def __getitem__(self, ind):
         tmp_src_ind = np.random.randint(len(self.src_dataset))
-        
-        # Extract perturbation information
-        perturbation_info = self.tgt_dataset[ind].get('perturbation', [])
-        nperts_info = self.tgt_dataset[ind].get('nperts', 0)
 
-        # Process perturbation_info into a list
+        cell_pairing_index = self.tgt_dataset[ind]['cell_pairing_index']
+        true_counts = self.tgt_adata.X[cell_pairing_index]
+        true_counts = torch.tensor(true_counts.toarray()).squeeze(0)  
+
+        perturbation_info = self.tgt_dataset[ind].get('perturbation', [])
         if perturbation_info:
             if isinstance(perturbation_info, str):
-                perturbation_info = perturbation_info.split('+')
+                perturbation_str = perturbation_info
             elif isinstance(perturbation_info, list):
-                perturbation_info = [
-                    gene for genes in perturbation_info for gene in genes.split('+')
-                ]
+                perturbation_str = '+'.join(sorted(perturbation_info))
         else:
-            perturbation_info = []
+            perturbation_str = 'no_perturbation'  # For controls or unperturbed samples
 
-        # Initialize one-hot perturbation vector
-        perturbation_vector = torch.zeros(self.num_perturbations)
-        if nperts_info > 0:
-            for perturbation in perturbation_info:
-                idx = self.perturbation_to_index.get(perturbation)
-                if idx is not None:
-                    perturbation_vector[idx] = 1
+        # Get the index of the perturbation
+        perturbation_idx = self.perturbation_to_index.get(perturbation_str)
+
+        # Create a one-hot encoding vector
+        perturbation_one_hot = torch.zeros(self.num_perturbations)
+        perturbation_one_hot[perturbation_idx] = 1
 
         # Prepare the output dictionary
         out = {
             'src_dataset': self.src_dataset[int(tmp_src_ind)],
             'tgt_dataset': self.tgt_dataset[ind],
-            'perturbation_vector': perturbation_vector,  # One-hot encoded vector
-            'nperts': nperts_info,  # Number of perturbations
+            'perturbation_one_hot': perturbation_one_hot,
+            'tgt_counts': true_counts,
         }
         return out
-
+    
     def __len__(self):
         return self.tgt_len
     
@@ -352,6 +231,8 @@ class CellGenDataModule(LightningDataModule):
         val_indices: Optional[list[int]] = None,
         test_indices: Optional[list[int]] = None,
         var_list: Optional[list] = None,
+        perturbation_to_index=None,
+        num_perturbations=None, 
         # tokenid_to_genename_dict: Optional[Dict[int, str]] = None,  # Add this parameter
 
 
@@ -420,32 +301,28 @@ class CellGenDataModule(LightningDataModule):
         # self.tokenid_to_genename_dict = tokenid_to_genename_dict
         # self.symbol_to_ensembl = get_symbol_to_ensembl_mapping(list(self.tokenid_to_genename_dict.values()))
 
-
-        self.perturbation_to_index = None
-        self.num_perturbations = 0
-
+        self.perturbation_to_index = perturbation_to_index
+        self.num_perturbations = num_perturbations
 
     def setup(self, stage=None):
 
+#         perturbations = set()
+#         for sample in self.tgt_dataset:
+#             perturbation_info = sample.get('perturbation', [])
+#             if perturbation_info:
+#                 if isinstance(perturbation_info, str):
+#                     perturbation_list = perturbation_info.split('+')
+#                 elif isinstance(perturbation_info, list):
+#                     perturbation_list = [
+#                         gene for genes in perturbation_info for gene in genes.split('+')
+#                     ]
+#                 perturbations.update(perturbation_list)
 
-
-        perturbations = set()
-        for sample in self.tgt_dataset:
-            perturbation_info = sample.get('perturbation', [])
-            if perturbation_info:
-                if isinstance(perturbation_info, str):
-                    perturbation_list = perturbation_info.split('+')
-                elif isinstance(perturbation_info, list):
-                    perturbation_list = [
-                        gene for genes in perturbation_info for gene in genes.split('+')
-                    ]
-                perturbations.update(perturbation_list)
-
-        self.perturbation_list = sorted(list(perturbations))
-        self.perturbation_to_index = {
-            p: i for i, p in enumerate(self.perturbation_list)
-        }
-        self.num_perturbations = len(self.perturbation_list)
+#         self.perturbation_list = sorted(list(perturbations))
+#         self.perturbation_to_index = {
+#             p: i for i, p in enumerate(self.perturbation_list)
+#         }
+#         self.num_perturbations = len(self.perturbation_list)
 
 
 
@@ -530,10 +407,6 @@ class CellGenDataModule(LightningDataModule):
         )
         tgt_cell_idx = [d['tgt_dataset']['cell_pairing_index'] for d in batch]
 
-        # Gather perturbation embeddings
-        perturbed_embeddings_list = [d['perturbed_embeddings'] for d in batch]
-        perturbed_embeddings = torch.stack(perturbed_embeddings_list, dim=0)
-
         # Collect tgt_counts and compute size factors
         if batch[0]['tgt_counts'] is not None:
             if isinstance(batch[0]['tgt_counts'], csr_matrix):
@@ -555,21 +428,21 @@ class CellGenDataModule(LightningDataModule):
 
             # Verify shapes
             print("tgt_counts shape:", tgt_counts.shape)
-            assert tgt_counts.shape[1] == self.num_genes, "Mismatch in gene count dimensions"
         else:
             tgt_counts = None
             tgt_size_factor = None
 
-        perturbation_vectors = torch.stack([d['perturbation_vector'] for d in batch], dim=0)
+        perturbation_one_hot_list = [d['perturbation_one_hot'] for d in batch]
+        perturbation_one_hot = torch.stack(perturbation_one_hot_list, dim=0)
 
         out = {
             'src_input_ids': src_input_ids,
             'src_length': src_length,
             'tgt_input_ids': tgt_input_ids,
             'tgt_length': tgt_length,
-            'perturbation_vectors': perturbation_vectors,  # Include in the batch
-            'perturbation': [d['perturbation'] for d in batch],
-            'nperts': [d['nperts'] for d in batch],
+            'perturbation_one_hot': perturbation_one_hot,
+            # 'perturbation': [d['perturbation'] for d in batch],
+            # 'nperts': [d['nperts'] for d in batch],
             'tgt_counts_t1': tgt_counts,  # Now a tensor
             'tgt_size_factor_t1': tgt_size_factor,  # Now a tensor
         }

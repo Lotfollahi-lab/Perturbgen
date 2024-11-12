@@ -262,10 +262,6 @@ def main() -> None:
     torch.manual_seed(args.seed)
     # Load and preprocess data
     # ----------------------------------------------------------------------------------
-
-    with open(args.mapping_dict_path, 'rb') as f:
-        tokenid_to_genename_dict = pickle.load(f)
-    
     print('Loading and preprocessing data...')
 
     tgt_dataset = load_from_disk(args.tgt_dataset)
@@ -273,6 +269,33 @@ def main() -> None:
     # with open(args.pairing_metadata, 'rb') as f:
     #     pairing_metadata = pickle.load(f)
     # Preprocessing adata for cell pairing
+
+
+
+    # o1
+    # Initialize the perturbation-to-index mapping
+    perturbation_to_index = {}
+    current_index = 0
+
+    for sample in tgt_dataset:
+        perturbation_info = sample.get('perturbation', [])
+        if perturbation_info:
+            if isinstance(perturbation_info, str):
+                perturbation_str = perturbation_info
+            elif isinstance(perturbation_info, list):
+                perturbation_str = '+'.join(sorted(perturbation_info))
+        else:
+            perturbation_str = 'no_perturbation'  # For controls or unperturbed samples
+
+        if perturbation_str not in perturbation_to_index:
+            perturbation_to_index[perturbation_str] = current_index
+            current_index += 1
+
+    num_perturbations = current_index
+
+
+
+
     if args.train_mode == 'masking':
         
         tgt_adatas = read_dataset_files(args.tgt_adata_path, 'h5ad')
@@ -418,8 +441,6 @@ def main() -> None:
     print('Data loaded and preprocessed.')
     # Initialize model module
     # ----------------------------------------------------------------------------------
-
-
     if args.train_mode == 'masking':
         pretrained_module = CellGenTrainer(
             # tgt_vocab_size=1820,  # 704 for degs, 1820 for tokenised
@@ -476,14 +497,6 @@ def main() -> None:
         
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
-    
-
-
-    data_module.setup(stage='fit')  # Manually call setup to initialize attributes
-
-    # Now we can access num_perturbations
-    num_perturbations = data_module.num_perturbations
-
     # Initialize data module
     # ----------------------------------------------------------------------------------
 
@@ -504,7 +517,8 @@ def main() -> None:
             val_indices=val_indices,
             test_indices=test_indices,
             var_list=args.var_list,
-            num_perturbations=num_perturbations,
+            perturbation_to_index=perturbation_to_index,  # Pass the mapping
+            num_perturbations=num_perturbations,          # Pass the count
         )
         
     elif args.train_mode == 'count':
@@ -530,7 +544,6 @@ def main() -> None:
             # val_dict=val_dict,
             # test_dict=test_dict,
             var_list=args.var_list,
-            tokenid_to_genename_dict=tokenid_to_genename_dict,
         )
         
     # Setup trainer
