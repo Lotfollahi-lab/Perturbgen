@@ -14,6 +14,8 @@ import numpy as np
 import torch
 from einops import rearrange, repeat
 from torch import einsum, nn
+
+# from torch.amp import autocast
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from torch.nn.attention import SDPBackend, sdpa_kernel
 from torch.nn.functional import scaled_dot_product_attention
@@ -286,7 +288,10 @@ class CrossAttention(nn.Module):
             mask = ~mask
         if return_attn & (identity is not None):
             identity = identity.expand(q.size(0), self.num_heads, -1, -1)
-        with sdpa_kernel(backends=[SDPBackend.EFFICIENT_ATTENTION, SDPBackend.MATH]):
+        # with autocast(device_type='cuda'):
+        with sdpa_kernel(
+            backends=[SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION]
+        ):
             out_ = scaled_dot_product_attention(
                 query=q,
                 key=k,

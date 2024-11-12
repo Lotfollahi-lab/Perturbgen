@@ -441,6 +441,7 @@ def main() -> None:
 
     # ZINB and NB count loss preprocessing
     # ----------------------------------------------------------------------------------
+
     (
         conditions,
         condition_encodings,
@@ -517,29 +518,32 @@ def main() -> None:
     for keys, tgt_adata in tgt_adatas.items():
         tgt_counts_dict[keys] = tgt_adata.X
     src_counts = src_adata.X
-    data_module = CellGenDataModule(
-        src_dataset=src_dataset,
-        tgt_datasets=tgt_datasets,
-        src_counts=src_counts,
-        tgt_counts_dict=tgt_counts_dict,
-        batch_size=args.batch_size,
-        num_workers=args.n_workers,
-        shuffle=args.shuffle,
-        max_len=args.max_len,
-        condition_keys=condition_keys_,
-        condition_encodings=condition_encodings,
-        conditions=conditions,
-        conditions_combined=conditions_combined,
-        split=args.split,
-        train_indices=None,
-        val_indices=None,
-        test_indices=test_indices,
-        pred_tps=args.pred_tps,
-        context_tps=args.context_tps,
-        n_total_tps=n_total_tps,
-        var_list=args.var_list,
-    )
+    data_module_kwargs = {
+        'src_dataset': src_dataset,
+        'tgt_datasets': tgt_datasets,
+        'batch_size': args.batch_size,
+        'num_workers': args.n_workers,
+        'shuffle': args.shuffle,
+        'max_len': args.max_len,
+        'split': args.split,
+        'src_counts': src_counts,
+        'tgt_counts_dict': tgt_counts_dict,
+        'train_indices': train_indices,
+        'val_indices': val_indices,
+        'test_indices': test_indices,
+        'pred_tps': args.pred_tps,
+        'context_tps': args.context_tps,
+        'n_total_tps': n_total_tps,
+        'var_list': args.var_list,
+        'condition_keys': condition_keys_,
+        'condition_encodings': condition_encodings,
+        'conditions': conditions,
+        'conditions_combined': conditions_combined,
+    }
 
+    data_module = CellGenDataModule(
+        **data_module_kwargs,
+    )
     # Setup trainer
     # ----------------------------------------------------------------------------------
     run_id = datetime.now().strftime('%Y%m%d_%H%M_cellgen')
@@ -593,7 +597,6 @@ def main() -> None:
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
         devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
-        limit_test_batches=10.0,
     )
     # Finally, kick of the training process.
     if args.test_mode == 'masking':

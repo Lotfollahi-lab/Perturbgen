@@ -1,6 +1,6 @@
 #!/bin/bash
-#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu "mode=exclusive_process:num=1" # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
+#BSUB -q gpu-basement # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -gpu "mode=exclusive_process:num=2:gmodel=NVIDIAA100_SXM4_80GB" # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
 #BSUB -n 8 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
@@ -24,13 +24,13 @@ echo "--- Start computing model"
 # ----------------- Create folder to save results and copy the script -----------------
 RES_DIR="/lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb/plt/res"
 RES_NAME="hspc/embeddings/"
-# # if directory does not exist, create it with the name $RES_NAME
-# mkdir -p $RES_DIR/$RES_NAME
-# # Get the current timestamp
-# TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-# # copy the current script to the result directory
-# cp $0 $RES_DIR/$RES_NAME/2.1_run_val_return_embed.sh_$TIMESTAMP.sh
-# echo "Copying script to $RES_DIR/$RES_NAME/2.1_run_val_return_embed.sh_$TIMESTAMP.sh"
+# if directory does not exist, create it with the name $RES_NAME
+mkdir -p $RES_DIR/$RES_NAME
+# Get the current timestamp
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+# copy the current script to the result directory
+cp $0 $RES_DIR/$RES_NAME/2.1_run_val_return_embed.sh_$TIMESTAMP.sh
+echo "Copying script to $RES_DIR/$RES_NAME/2.1_run_val_return_embed.sh_$TIMESTAMP.sh"
 
 # # Run python script for rna
 # python3 $cwd/val.py \
@@ -39,20 +39,20 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --split False \
 --splitting_mode stratified \
 --return_embed True \
---return_attn True \
+--return_attn False \
 --generate False \
---ckpt_masking_path "./T_perturb/T_perturb/plt/res/hspc/embeddings/res/checkpoints/20241104_2209_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_learnt_m_cosine_tp_1-2_s_42-epoch=09.ckpt" \
+--ckpt_masking_path "./T_perturb/T_perturb/plt/res/hspc/embeddings/res/checkpoints/20241111_0916_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_learnt_m_cosine_tp_1-2_s_42-epoch=09.ckpt" \
 --output_dir $RES_DIR/$RES_NAME/res \
---src_dataset "./T_perturb/T_perturb/pp/res/hspc/dataset_hvg_src/stem.dataset" \
---tgt_dataset_folder "./T_perturb/T_perturb/pp/res/hspc/dataset_hvg_tgt" \
---src_adata "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_hvg_src/stem.h5ad" \
---tgt_adata_folder "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_hvg_tgt" \
---mapping_dict_path "T_perturb/T_perturb/pp/res/hspc/token_id_to_genename_hvg.pkl" \
---batch_size 256 \
---max_len 450 \
---tgt_vocab_size 1187 \
---cellgen_lr 0.0001 \
---cellgen_wd 0.0001 \
+--src_dataset "./T_perturb/T_perturb/pp/res/hspc/dataset_5000_hvg_src/stem.dataset" \
+--tgt_dataset_folder "./T_perturb/T_perturb/pp/res/hspc/dataset_5000_hvg_tgt" \
+--src_adata "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_5000_hvg_src/stem.h5ad" \
+--tgt_adata_folder "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_5000_hvg_tgt" \
+--mapping_dict_path  "./T_perturb/T_perturb/pp/res/hspc/token_id_to_genename_5000_hvg.pkl" \
+--batch_size 128 \
+--max_len 1040 \
+--tgt_vocab_size 3015 \
+--cellgen_lr 0.00001 \
+--cellgen_wd 0.00001 \
 --count_lr 0.00005 \
 --count_wd 0.01 \
 --d_ff 64 \
@@ -65,3 +65,17 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --mask_scheduler 'cosine' \
 --pos_encoding_mode 'time_pos_learnt'
 echo "--- Finished computing model"
+
+# 2k hvgs
+# --src_dataset "./T_perturb/T_perturb/pp/res/hspc/dataset_hvg_src/stem.dataset" \
+# --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/hspc/dataset_hvg_tgt" \
+# --src_adata "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_hvg_src/stem.h5ad" \
+# --tgt_adata_folder "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_hvg_tgt" \
+# --mapping_dict_path  "./T_perturb/T_perturb/pp/res/hspc/token_id_to_genename_hvg.pkl" \
+
+# --max_len 450 \
+# --tgt_vocab_size 1187 \
+
+# 5k hvgs
+# --max_len 1040 \
+# --tgt_vocab_size 3015 \

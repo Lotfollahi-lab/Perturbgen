@@ -268,13 +268,13 @@ adata.obs['n_counts'] = adata.X.sum(axis=1)
 # adata_duplicated.var['ensembl_id_collapsed'] = gene_ids_collapsed
 # adata_duplicated.var_names = gene_ids_collapsed
 # adata = adata[:, ~adata_duplicated.var.index.isna()]
+if args.exclude_non_GF_genes is False:
+    adata.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
 
-adata.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}_{args.gene_filtering_mode}.h5ad')
-
-# load adata
-adata = sc.read_h5ad(
-    f'{paired_h5ad_dir}/{args.dataset}_{args.gene_filtering_mode}.h5ad'
-)
+# # load adata
+# adata = sc.read_h5ad(
+#     f'{paired_h5ad_dir}/{args.dataset}.h5ad'
+# )
 
 # subset adata to only genes in the token dictionary
 # filter adata for only genes occuring in the token dictionary
@@ -300,7 +300,8 @@ with open(
 ) as file:
     pickle.dump(token_id_to_row_id_dict, file)
 
-adata_subset.write_h5ad(f'{paired_h5ad_dir}/{args.datasexst}.h5ad')
+if args.exclude_non_GF_genes is True:
+    adata_subset.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
 print('Finished preprocessing adata.')
 print('Start tokenisation of adata...')
 input_dir = paired_h5ad_dir
@@ -341,9 +342,7 @@ print('Finished tokenisation.')
 dataset = load_from_disk(f'{output_dir}/{file_name}.dataset')
 # load csv
 mapping_df = pd.read_csv('T_perturb/T_perturb/pp/res/hspc/cd34_pos_mapping.csv')
-adata_subset = sc.read_h5ad(
-    f'{paired_h5ad_dir}/{args.dataset}_{args.gene_filtering_mode}.h5ad'
-)
+adata_subset = sc.read_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
 
 # # Pairing resting to activated cells and tokenise individual datasets
 cell_pairings = pairing_src_to_tgt_cells(

@@ -21,10 +21,13 @@ python3 $cwd/pp/GF_tokenisation.py \
 --dataset hspc \
 --gene_filtering_mode hvg \
 --var_list assignment_id sex tissue phase\
-celltype_v2 donor_tissue diff_state dataset\
+ celltype_v2 donor_tissue diff_state dataset\
  cell_pairing_index \
 --pairing_mode mapping \
 --pairing_obs 'diff_state' \
 --nproc 16 \
 --reference_time stem \
 --time_point_order stem intermediate terminal \
+--n_hvg 10000
+
+echo "--- Finished tokenisation"

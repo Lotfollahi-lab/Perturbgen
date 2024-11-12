@@ -11,7 +11,7 @@ import torch
 from datasets import load_from_disk
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.strategies import DDPStrategy
+from pytorch_lightning.strategies import DeepSpeedStrategy  # , DDPStrategy,
 
 from T_perturb.Dataloaders.datamodule import CellGenDataModule
 from T_perturb.Model.trainer import CellGenTrainer, CountDecoderTrainer
@@ -325,16 +325,20 @@ def main() -> None:
 
     # ZINB count loss preprocessing
     # ----------------------------------------------------------------------------------
-    (
-        conditions,
-        condition_encodings,
-        conditions_combined,
-        conditions_,
-        condition_keys_,
-        conditions_combined_,
-    ) = condition_for_count_loss(
-        args.condition_keys, args.conditions, args.conditions_combined, tgt_adata_tmp
-    )
+    if args.train_mode == 'count':
+        (
+            conditions,
+            condition_encodings,
+            conditions_combined,
+            conditions_,
+            condition_keys_,
+            conditions_combined_,
+        ) = condition_for_count_loss(
+            args.condition_keys,
+            args.conditions,
+            args.conditions_combined,
+            tgt_adata_tmp,
+        )
 
     print('Data loaded and preprocessed.')
     # count number of unique timepoints
@@ -398,8 +402,6 @@ def main() -> None:
     data_module_kwargs = {
         'src_dataset': src_dataset,
         'tgt_datasets': tgt_datasets,
-        'src_counts': src_counts,
-        'tgt_counts_dict': tgt_counts_dict,
         'batch_size': per_gpu_batch_size,
         'num_workers': args.n_workers,
         'shuffle': args.shuffle,
@@ -418,6 +420,8 @@ def main() -> None:
         data_module = CellGenDataModule(**data_module_kwargs)
 
     elif args.train_mode == 'count':
+        data_module_kwargs['src_counts'] = src_counts
+        data_module_kwargs['tgt_counts_dict'] = tgt_counts_dict
         data_module_kwargs['condition_keys'] = condition_keys_
         data_module_kwargs['condition_encodings'] = condition_encodings
         data_module_kwargs['conditions'] = conditions
@@ -505,19 +509,21 @@ def main() -> None:
     )
     accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
     print('Using device {}.'.format(accelerator))
-    # deepspeed_strategy = DeepSpeedStrategy(
-    #     stage=2,
-    # )
-    # if torch.cuda.is_available():
-    #     cuda_device_name = torch.cuda.get_device_name()
-    # if ('A100' in cuda_device_name) or ('NVIDIA H100 80GB HBM' in cuda_device_name):
-    #     print(f'Using {cuda_device_name} for training')
-    #     precision = 'bf16-mixed'
-    # else:
-    #     precision = '16-mixed'
+    deepspeed_strategy = DeepSpeedStrategy(
+        stage=2,
+        offload_optimizer=True,
+        offload_parameters=True,
+    )
+    if torch.cuda.is_available():
+        cuda_device_name = torch.cuda.get_device_name()
+    if ('A100' in cuda_device_name) or ('NVIDIA H100 80GB HBM' in cuda_device_name):
+        print(f'Using {cuda_device_name} for training')
+        precision = 'bf16-mixed'
+    else:
+        precision = '16-mixed'
 
     # If the device is an A100, set the precision for matrix multiplication
-    ddp_strategy = DDPStrategy(find_unused_parameters=True)
+    # ddp_strategy = DDPStrategy(find_unused_parameters=True)
     trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=[
@@ -527,8 +533,9 @@ def main() -> None:
         ],
         max_epochs=args.epochs,
         accelerator='auto',
+        precision=precision,
         devices=-1 if torch.cuda.is_available() else 0,
-        strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
+        strategy=deepspeed_strategy if torch.cuda.device_count() > 1 else 'auto',
     )
     print('Starting training...')
 

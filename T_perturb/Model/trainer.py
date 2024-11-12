@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from deepspeed.ops.adam import FusedAdam
 
 # from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningModule
@@ -44,8 +45,6 @@ from T_perturb.src.utils import (  # WarmupScheduler,; return_gene_embeddings,
     return_prediction_adata,
     scale_pca,
 )
-
-# from deepspeed.ops.adam import FusedAdam
 
 
 def set_matmul_precision_for_device(precision: Literal['high', 'medium'] = 'high'):
@@ -193,6 +192,7 @@ class CellGenTrainer(LightningModule):
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
         self.date = datetime.now().strftime('%Y%m%d-%H:%M')
+        self.return_attn = return_attn
 
     def forward(self, batch):
         self.tgt_input_id_dict = {}
@@ -216,8 +216,11 @@ class CellGenTrainer(LightningModule):
         return outputs
 
     def configure_optimizers(self):
-        parameters = [{'params': self.transformer.parameters(), 'lr': self.initial_lr}]
-        optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
+        # parameters = [
+        #     {'params': self.transformer.parameters(),
+        #      'lr': self.initial_lr
+        #      }]
+        # optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
         # number_of_batches_per_epoch = len(self.trainer.datamodule.train_dataloader())
         # total_steps = self.num_epochs * number_of_batches_per_epoch
         # warmup_steps = self.warmup_epochs * number_of_batches_per_epoch
@@ -227,9 +230,11 @@ class CellGenTrainer(LightningModule):
         #     initial_lr=self.initial_lr,
         #     end_lr=self.end_lr,
         # )
-        # optimizer = FusedAdam(
-        #     self.transformer.parameters(), lr=self.lr, weight_decay=self.weight_decay
-        # )
+        optimizer = FusedAdam(
+            self.transformer.parameters(),
+            lr=self.initial_lr,
+            weight_decay=self.weight_decay,
+        )
         return {
             'optimizer': optimizer,
             'monitor': 'train/masking_loss',
@@ -323,10 +328,8 @@ class CellGenTrainer(LightningModule):
             outputs = self.forward(batch)
 
             for t in self.pred_tps:
-                print(f'Processing time step {t}')
                 token_ids = self.tgt_input_id_dict[f'tgt_input_ids_t{t}']
                 context_tps = [tp for tp in self.context_tps if tp != t]
-                print(f'Context time points: {context_tps}')
                 # extract context_ids
                 context_ids = [batch['src_input_ids']]
                 context_ids.extend(
@@ -347,15 +350,26 @@ class CellGenTrainer(LightningModule):
                 #     mapping_dict=self.gene_to_rowid,
                 #     token_ids=token_ids,
                 # )
-                self_attn_weights, cross_attn_weights = return_attn_weights(
-                    outputs=outputs,
-                    tgt_mapping_dict=self.gene_to_rowid,
-                    src_mapping_dict=self.tokenid_to_rowid,
-                    time_step=t,
-                    token_ids=token_ids,
-                    pad_token_id=self.pad_token_id,
-                    context_token_ids=context_ids,
-                )
+                if self.return_attn:
+                    self_attn_weights, cross_attn_weights = return_attn_weights(
+                        outputs=outputs,
+                        tgt_mapping_dict=self.gene_to_rowid,
+                        src_mapping_dict=self.tokenid_to_rowid,
+                        time_step=t,
+                        token_ids=token_ids,
+                        pad_token_id=self.pad_token_id,
+                        context_token_ids=context_ids,
+                    )
+                    self_attn_weights = self_attn_weights.mean(dim=0).detach().cpu()
+                    cross_attn_weights = cross_attn_weights.mean(dim=0).detach().cpu()
+                    self.test_dict[f'self_attn_weights_t{t}'].append(self_attn_weights)
+                    self.test_dict[f'cross_attn_weights_t{t}'].append(
+                        cross_attn_weights
+                    )
+                    self.test_dict[f'self_attn_weights_t{t}'].append(self_attn_weights)
+                    self.test_dict[f'cross_attn_weights_t{t}'].append(
+                        cross_attn_weights
+                    )
                 self.marker_genes = marker_genes_dict
 
                 true_counts = batch[f'tgt_counts_t{t}'].detach().cpu()
@@ -363,40 +377,42 @@ class CellGenTrainer(LightningModule):
                 cos_similarity = marker_cos_similarity.detach().cpu()
                 # gene_embeddings = marker_gene_embeddings.detach().cpu()
                 combined_batch = batch['combined_batch'].detach().cpu()
-                self_attn_weights = self_attn_weights.mean(dim=0).detach().cpu()
-                cross_attn_weights = cross_attn_weights.mean(dim=0).detach().cpu()
                 self.test_dict['true_counts'].append(true_counts)
                 self.test_dict['cls_embeddings'].append(cls_embeddings)
                 self.test_dict['cosine_similarities'].append(cos_similarity)
                 # self.test_dict['gene_embeddings'].append(gene_embeddings)
                 self.test_dict['batch'].append(combined_batch)
-                self.test_dict[f'self_attn_weights_t{t}'].append(self_attn_weights)
-                self.test_dict[f'cross_attn_weights_t{t}'].append(cross_attn_weights)
                 self.test_dict['cell_idx'].append(batch[f'tgt_cell_idx_t{t}'])
                 if len(self.var_list) > 0:
                     for var in self.var_list:
                         self.test_dict[var].append(batch[f'{var}_t{t}'])
-        raise
 
     def on_test_epoch_end(self):
-        for t in range(1, self.n_total_tps + 1):
-            self_attn_weights = torch.stack(self.test_dict[f'self_attn_weights_t{t}'])
-            cross_attn_weights = torch.stack(self.test_dict[f'cross_attn_weights_t{t}'])
-            # order genes based on ascending order of rowid
-            tgt_gene_order = sorted(self.gene_to_rowid, key=self.gene_to_rowid.get)
-            aggregate_attn_weights(
-                attn_weights=self_attn_weights,
-                tgt_gene_names=tgt_gene_order,
-                output_dir=self.output_dir,
-                file_name=f'{self.date}_self_attn_weights_t{t}',
-            )
-            aggregate_attn_weights(
-                attn_weights=cross_attn_weights,
-                tgt_gene_names=tgt_gene_order,
-                src_gene_names=tgt_gene_order[: -self.n_total_tps],  # exclude cls token
-                output_dir=self.output_dir,
-                file_name=f'{self.date}_cross_attn_weights_t{t}',
-            )
+        if self.return_attn:
+            for t in range(1, self.n_total_tps + 1):
+                self_attn_weights = torch.stack(
+                    self.test_dict[f'self_attn_weights_t{t}']
+                )
+                cross_attn_weights = torch.stack(
+                    self.test_dict[f'cross_attn_weights_t{t}']
+                )
+                # order genes based on ascending order of rowid
+                tgt_gene_order = sorted(self.gene_to_rowid, key=self.gene_to_rowid.get)
+                aggregate_attn_weights(
+                    attn_weights=self_attn_weights,
+                    tgt_gene_names=tgt_gene_order,
+                    output_dir=self.output_dir,
+                    file_name=f'{self.date}_self_attn_weights_t{t}',
+                )
+                aggregate_attn_weights(
+                    attn_weights=cross_attn_weights,
+                    tgt_gene_names=tgt_gene_order,
+                    src_gene_names=tgt_gene_order[
+                        : -self.n_total_tps
+                    ],  # exclude cls token
+                    output_dir=self.output_dir,
+                    file_name=f'{self.date}_cross_attn_weights_t{t}',
+                )
         if self.return_embeddings:
             obs_key = self.var_list if len(self.var_list) > 0 else []
             obs_key.extend(['batch', 'cell_idx'])
