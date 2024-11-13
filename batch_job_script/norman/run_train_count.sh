@@ -68,7 +68,7 @@ python3 /lustre/scratch126/cellgen/team361/chang/CellGen/T_perturb/train.py \
 --split False \
 --splitting_mode random \
 --output_dir '/lustre/scratch126/cellgen/team361/chang/CellGen/T_perturb/plt/res/norman/' \
---ckpt_masking_path '/lustre/scratch126/cellgen/team361/chang/CellGen/T_perturb/Model/checkpoints/20241029_1236_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_16_mlmp_0.15_ntask_2_s_100-epoch=19.ckpt' \
+--ckpt_masking_path '/lustre/scratch126/cellgen/team361/chang/CellGen/T_perturb/Model/checkpoints/20241108_1031_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_16_mlmp_0.15_ntask_2_s_100-epoch=19.ckpt' \
 --src_dataset '/lustre/scratch126/cellgen/team361/chang/CellGen/perturbench/perturbench_data/norman/dataset_hvg_src_random_pairing/control.dataset' \
 --tgt_dataset '/lustre/scratch126/cellgen/team361/chang/CellGen/perturbench/perturbench_data/norman/dataset_hvg_tgt_random_pairing/perturbation.dataset' \
 --src_adata '/lustre/scratch126/cellgen/team361/chang/CellGen/perturbench/perturbench_data/norman/h5ad_pairing_hvg_src_random_pairing/control.h5ad' \

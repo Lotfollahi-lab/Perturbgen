@@ -480,6 +480,7 @@ def main() -> None:
             lr=args.count_lr,
             weight_decay=args.count_wd,
             # lr_scheduler_patience=5.0,
+            mapping_dict_path=args.mapping_dict_path,
             # lr_scheduler_factor=0.8,
             conditions=conditions_,
             conditions_combined=conditions_combined_,

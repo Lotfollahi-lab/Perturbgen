@@ -118,12 +118,17 @@ class CellGenDataset(Dataset):
         perturbation_one_hot = torch.zeros(self.num_perturbations)
         perturbation_one_hot[perturbation_idx] = 1
 
+
+        combined_batch = self.tgt_adata.obs['batch'].iloc[cell_pairing_index]
+        combined_batch = int(combined_batch)  # Ensure it's an integer
+
         # Prepare the output dictionary
         out = {
             'src_dataset': self.src_dataset[int(tmp_src_ind)],
             'tgt_dataset': self.tgt_dataset[ind],
             'perturbation_one_hot': perturbation_one_hot,
             'tgt_counts': true_counts,
+            'combined_batch': combined_batch,
         }
         return out
     
@@ -247,7 +252,7 @@ class CellGenDataModule(LightningDataModule):
         # max_len: int = 2048,
         # split: bool = False,
         # # condition_keys: Optional[list] = None,
-        # # condition_encodings: Optional[dict] = None,
+        condition_encodings: Optional[dict] = None,
         # # conditions: Optional[torch.Tensor] = None,
         # # conditions_combined: Optional[torch.Tensor] = None,
         # train_indices: Optional[list[int]] = None,
@@ -281,7 +286,7 @@ class CellGenDataModule(LightningDataModule):
         self.max_len = max_len
         self.dataset = None
         # self.condition_keys = condition_keys
-        # self.condition_encodings = condition_encodings
+        self.condition_encodings = condition_encodings
         # self.conditions = conditions
         # self.conditions_combined = conditions_combined
         # train test split
@@ -304,25 +309,33 @@ class CellGenDataModule(LightningDataModule):
         self.perturbation_to_index = perturbation_to_index
         self.num_perturbations = num_perturbations
 
+        if 'batch' not in self.tgt_adata.obs:
+            self.tgt_adata.obs['batch'] = 0  # just changed to fix ValueError: Max index 1 >= n_cls 1
+        
+        if condition_encodings is None:
+            self.condition_encodings = {'batch': {1: 0}}
+        else:
+            self.condition_encodings = condition_encodings
+
     def setup(self, stage=None):
 
-#         perturbations = set()
-#         for sample in self.tgt_dataset:
-#             perturbation_info = sample.get('perturbation', [])
-#             if perturbation_info:
-#                 if isinstance(perturbation_info, str):
-#                     perturbation_list = perturbation_info.split('+')
-#                 elif isinstance(perturbation_info, list):
-#                     perturbation_list = [
-#                         gene for genes in perturbation_info for gene in genes.split('+')
-#                     ]
-#                 perturbations.update(perturbation_list)
+        perturbations = set()
+        for sample in self.tgt_dataset:
+            perturbation_info = sample.get('perturbation', [])
+            if perturbation_info:
+                if isinstance(perturbation_info, str):
+                    perturbation_list = perturbation_info.split('+')
+                elif isinstance(perturbation_info, list):
+                    perturbation_list = [
+                        gene for genes in perturbation_info for gene in genes.split('+')
+                    ]
+                perturbations.update(perturbation_list)
 
-#         self.perturbation_list = sorted(list(perturbations))
-#         self.perturbation_to_index = {
-#             p: i for i, p in enumerate(self.perturbation_list)
-#         }
-#         self.num_perturbations = len(self.perturbation_list)
+        self.perturbation_list = sorted(list(perturbations))
+        self.perturbation_to_index = {
+            p: i for i, p in enumerate(self.perturbation_list)
+        }
+        self.num_perturbations = len(self.perturbation_list)
 
 
 
@@ -435,6 +448,15 @@ class CellGenDataModule(LightningDataModule):
         perturbation_one_hot_list = [d['perturbation_one_hot'] for d in batch]
         perturbation_one_hot = torch.stack(perturbation_one_hot_list, dim=0)
 
+        # if self.condition_encodings:
+        #     condition = [d['conditions'] for d in batch]
+        #     condition_combined = torch.stack([d['conditions_combined'] for d in batch])
+        # else:
+        #     condition = None
+        #     condition_combined = torch.zeros(len(batch), dtype=torch.long)
+
+        combined_batch = torch.tensor([d['combined_batch'] for d in batch], dtype=torch.long)
+
         out = {
             'src_input_ids': src_input_ids,
             'src_length': src_length,
@@ -445,11 +467,17 @@ class CellGenDataModule(LightningDataModule):
             # 'nperts': [d['nperts'] for d in batch],
             'tgt_counts_t1': tgt_counts,  # Now a tensor
             'tgt_size_factor_t1': tgt_size_factor,  # Now a tensor
+            'combined_batch': combined_batch,
         }
         
         out[f'tgt_counts'] = tgt_counts
 
         return out
+
+
+
+
+
     # ORIGINAL
 #     def collate(self, batch):
 #         # src

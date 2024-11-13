@@ -880,6 +880,7 @@ class CountDecoderTrainer(LightningModule):
         ] = 'GF_frozen',
         moe_type: Literal['moe_attention', 'none', 'moe_ffn'] = 'none',
         seed: int = 42,
+        tokenid_to_genename_dict: Optional[str] = None,
         n_task_conditions: int = 1,
         mapping_dict_path: Optional[str] = None,
         *args,
@@ -908,15 +909,18 @@ class CountDecoderTrainer(LightningModule):
                 param.requires_grad = False
 
         self.tgt_vocab_size = tgt_vocab_size
-
-
+        self.tokenid_to_genename_dict = tokenid_to_genename_dict
 
         if mapping_dict_path is not None:
             with open(mapping_dict_path, 'rb') as f:
                 self.tokenid_to_genename_dict = pickle.load(f)
             num_genes_used = len(self.tokenid_to_genename_dict)
+            print("Number of genes in mapping_dict:", num_genes_used)
         else:
             num_genes_used = self.tgt_vocab_size - 1
+            print("NO MAPPING DICT PATH")
+
+        
 
 
         self.decoder = CountDecoder(
@@ -945,18 +949,18 @@ class CountDecoderTrainer(LightningModule):
 
 
         # Initialize self.theta with the correct shape
-        if (
-            (self.loss_mode in ['nb', 'zinb'])
-            and (conditions is not None)
-            and (conditions_combined is not None)
-        ):
-            self.n_conditions_combined = len(conditions_combined)
+        if self.loss_mode in ['nb', 'zinb']:
+            if conditions_combined is not None:
+                self.n_conditions_combined = len(conditions_combined)
+            else:
+                # Default to 1 if no conditions provided
+                self.n_conditions_combined = 1
+            # num_genes_used = self.tgt_vocab_size - 1
             self.theta = torch.nn.Parameter(
                 torch.randn(num_genes_used, self.n_conditions_combined)
             )
         else:
             self.theta = None
-
         # if (
         #     (self.loss_mode in ['nb', 'zinb'])
         #     and (conditions is not None)
@@ -1022,8 +1026,8 @@ class CountDecoderTrainer(LightningModule):
             #     ),
             #     dim=1,
             # )
-            tgt_input_id_ = batch[f'tgt_input_ids_t{i}']
-            tgt_input_id_dict[f'tgt_input_id_t{i}'] = tgt_input_id_
+            tgt_input_id_ = batch[f'tgt_input_ids']
+            tgt_input_id_dict[f'tgt_input_id'] = tgt_input_id_
 
         outputs = self.decoder(
             src_input_id=batch['src_input_ids'],
@@ -1032,23 +1036,35 @@ class CountDecoderTrainer(LightningModule):
 
         return outputs
 
-    def one_hot_encoder(
-        self,
-        idx,
-        n_cls,
-        dtype,
-    ):
-        assert torch.max(idx) < n_cls
+    # def one_hot_encoder(
+    #     self,
+    #     idx,
+    #     n_cls,
+    #     dtype,
+    # ):
+    #     assert torch.max(idx) < n_cls
 
+    #     if idx.dim() == 1:
+    #         idx = idx.unsqueeze(1)
+    #     self.register_buffer(
+    #         'onehot', torch.zeros(idx.size(0), n_cls, dtype=dtype, device=idx.device)
+    #     )
+    #     # change idx dtype to onehot dtype
+    #     idx = idx.type(self.onehot.dtype)
+    #     self.onehot.scatter_(1, idx.long(), 1)
+    #     return self.onehot
+
+    def one_hot_encoder(self, idx, n_cls, dtype):
+        if idx is None:
+            raise ValueError("Index 'idx' for one_hot_encoder is None.")
+        if torch.max(idx) >= n_cls:
+            raise ValueError(f"Max index {torch.max(idx)} >= n_cls {n_cls}")
         if idx.dim() == 1:
             idx = idx.unsqueeze(1)
-        self.register_buffer(
-            'onehot', torch.zeros(idx.size(0), n_cls, dtype=dtype, device=idx.device)
-        )
-        # change idx dtype to onehot dtype
-        idx = idx.type(self.onehot.dtype)
-        self.onehot.scatter_(1, idx.long(), 1)
-        return self.onehot
+        onehot = torch.zeros(idx.size(0), n_cls, dtype=dtype, device=idx.device)
+        idx = idx.type(onehot.dtype)
+        onehot.scatter_(1, idx.long(), 1)
+        return onehot
 
     # def compute_dispersion(self, batch):
     #     dispersions = F.linear(
@@ -1062,18 +1078,19 @@ class CountDecoderTrainer(LightningModule):
     #     return torch.exp(dispersions)
     
     def compute_dispersion(self, batch):
-        one_hot_combined_batch = self.one_hot_encoder(
-            batch['combined_batch'],
-            self.n_conditions_combined,
-            self.theta.dtype,
+        idx = batch.get('combined_batch', None)
+        if idx is None:
+            idx = torch.zeros(batch['tgt_counts_t1'].shape[0], dtype=torch.long, device=self.device)
+        dispersions = F.linear(
+            self.one_hot_encoder(
+                idx,
+                self.n_conditions_combined,
+                self.theta.dtype,
+            ),
+            self.theta,
         )
-
-        print("one_hot_combined_batch shape:", one_hot_combined_batch.shape)
-        print("self.theta shape:", self.theta.shape)
-
-        dispersions = F.linear(one_hot_combined_batch, self.theta)
         return torch.exp(dispersions)
-
+    
     def compute_count_loss(
         self,
         outputs: Dict[str, torch.Tensor],
@@ -1172,7 +1189,7 @@ class CountDecoderTrainer(LightningModule):
             on_epoch=True,
             prog_bar=True,
             logger=True,
-            batch_size=batch['tgt_input_ids_t1'].shape[0],
+            batch_size=batch['tgt_input_ids'].shape[0],
             sync_dist=True,
         )
 
@@ -1233,7 +1250,7 @@ class CountDecoderTrainer(LightningModule):
             on_epoch=True,
             prog_bar=True,
             logger=True,
-            batch_size=batch['tgt_input_ids_t1'].shape[0],
+            batch_size=batch['tgt_input_ids'].shape[0],
             sync_dist=True,
         )
         # MSE
@@ -1285,7 +1302,7 @@ class CountDecoderTrainer(LightningModule):
     def test_step(self, batch, *args, **kwargs):
         tgt_input_id_dict = {}
         for i in range(1):
-            tgt_input_id_dict[f'tgt_input_id_t{i}'] = batch[f'tgt_input_ids_t{i}']
+            tgt_input_id_dict[f'tgt_input_id'] = batch[f'tgt_input_ids']
 
         if self.generate:
             outputs = self.decoder.generate(
@@ -1311,7 +1328,7 @@ class CountDecoderTrainer(LightningModule):
                 on_epoch=True,
                 prog_bar=True,
                 logger=True,
-                batch_size=batch[f'tgt_input_ids_t{self.time_steps[0]}'].shape[0],
+                batch_size=batch[f'tgt_input_ids'].shape[0],
             )
             mse_all = []
             for time_step in self.time_steps:

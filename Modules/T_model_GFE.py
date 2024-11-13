@@ -1316,24 +1316,22 @@ class CellGen(nn.Module):
         # ONE HOT ENCODING PERTURBATION
 
 
-        batch_size = perturbation_one_hot.size(0)
 
         enc_output = self.call_encoder(src_input_id, src_attention_mask)
 
         if perturbation_one_hot is not None:
+            batch_size = perturbation_one_hot.size(0)
             # Project the one-hot vectors to embeddings
             perturbation_embeddings = self.perturbation_projection(perturbation_one_hot)  # [batch_size, embed_dim]
-
             # Unsqueeze to add a sequence dimension
             perturbation_embeddings = perturbation_embeddings.unsqueeze(1)  # [batch_size, 1, embed_dim]
-
             # Concatenate the perturbation embeddings with encoder outputs
             combined_enc_output = torch.cat([enc_output, perturbation_embeddings], dim=1)  # [batch_size, seq_len + 1, embed_dim]
-
             # Update the attention mask
             perturbation_mask = torch.zeros((batch_size, 1), dtype=torch.bool).to(enc_output.device)
             combined_src_attention_mask = torch.cat([src_attention_mask, perturbation_mask], dim=1)
         else:
+            batch_size = src_input_id.size(0)
             combined_enc_output = enc_output
             combined_src_attention_mask = src_attention_mask
 
@@ -1508,7 +1506,7 @@ class CountDecoder(nn.Module):
     ):
         outputs = self.pretrained_model(
             src_input_id=src_input_id,
-            tgt_input_id=tgt_input_id_dict['tgt_input_id_t1'],
+            tgt_input_id=tgt_input_id_dict['tgt_input_id'],
             apply_attn_mask=False,
         )
 
@@ -1525,7 +1523,7 @@ class CountDecoder(nn.Module):
         tgt_pad_dict = {}
         tgt_pad_dict['src_pad'] = generate_padding(src_input_id)
         for time_step in time_steps:
-            tgt_input_id = tgt_input_id_dict[f'tgt_input_id_t{time_step}']
+            tgt_input_id = tgt_input_id_dict[f'tgt_input_id']
             tgt_pad_dict[f'tgt_pad_t{time_step}'] = generate_padding(tgt_input_id)
         return tgt_pad_dict
     
