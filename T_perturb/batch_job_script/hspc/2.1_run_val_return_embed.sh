@@ -1,13 +1,13 @@
 #!/bin/bash
-#BSUB -q gpu-basement # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu "mode=exclusive_process:num=2:gmodel=NVIDIAA100_SXM4_80GB" # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
+#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -gpu "mode=exclusive_process:num=1" # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
 #BSUB -n 8 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
 #BSUB -o logs/return_embed_%J.out # output file
 #BSUB -e logs/return_embed_%J.err # error file
-#BSUB -M 100000  # RAM memory part 2. Default: 100MB
-#BSUB -R "select[mem>100000] rusage[mem=100000]" # RAM memory part 1. Default: 100MB
+#BSUB -M 150000  # RAM memory part 2. Default: 100MB
+#BSUB -R "select[mem>150000] rusage[mem=150000]" # RAM memory part 1. Default: 100MB
 #BSUB -J return_embed # job name
 
 # load cuda
@@ -24,13 +24,13 @@ echo "--- Start computing model"
 # ----------------- Create folder to save results and copy the script -----------------
 RES_DIR="/lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb/plt/res"
 RES_NAME="hspc/embeddings/"
-# # if directory does not exist, create it with the name $RES_NAME
-# mkdir -p $RES_DIR/$RES_NAME
-# # Get the current timestamp
-# TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-# # copy the current script to the result directory
-# cp $0 $RES_DIR/$RES_NAME/2.1_run_val_return_embed.sh_$TIMESTAMP.sh
-# echo "Copying script to $RES_DIR/$RES_NAME/2.1_run_val_return_embed.sh_$TIMESTAMP.sh"
+# if directory does not exist, create it with the name $RES_NAME
+mkdir -p $RES_DIR/$RES_NAME
+# Get the current timestamp
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+# copy the current script to the result directory
+cp $0 $RES_DIR/$RES_NAME/2.1_run_val_return_embed.sh_$TIMESTAMP.sh
+echo "Copying script to $RES_DIR/$RES_NAME/2.1_run_val_return_embed.sh_$TIMESTAMP.sh"
 
 # # Run python script for rna
 # python3 $cwd/val.py \
@@ -41,7 +41,7 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --return_embed True \
 --return_attn False \
 --generate False \
---ckpt_masking_path "./T_perturb/T_perturb/plt/res/hspc/embeddings/res/checkpoints/20241111_0916_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_learnt_m_cosine_tp_1-2_s_42-epoch=09.ckpt" \
+--ckpt_masking_path "./T_perturb/T_perturb/plt/res/hspc/embeddings/res/checkpoints/20241114_1146_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_learnt_m_cosine_tp_1-2_s_42-epoch=09.ckpt" \
 --output_dir $RES_DIR/$RES_NAME/res \
 --src_dataset "./T_perturb/T_perturb/pp/res/hspc/dataset_10000_hvg_src/stem.dataset" \
 --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/hspc/dataset_10000_hvg_tgt" \

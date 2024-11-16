@@ -14,8 +14,6 @@ import numpy as np
 import torch
 from einops import rearrange, repeat
 from torch import einsum, nn
-
-# from torch.amp import autocast
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from torch.nn.attention import SDPBackend, sdpa_kernel
 from torch.nn.functional import scaled_dot_product_attention
@@ -459,12 +457,14 @@ class Geneformerwrapper(nn.Module):
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
             )
-        self.mode = mode
-        if self.mode == 'GF_frozen':
+        if mode == 'GF_frozen':
             for param in self.model.parameters():
                 param.requires_grad = False
+        self.mode = mode
+        self.model = self.model
 
     def forward(self, src_input_id, src_attention_mask):
+        # reduce precision for memory efficiency
         if self.mode == 'GF_frozen':
             with torch.no_grad():
                 outputs = self.model.forward(

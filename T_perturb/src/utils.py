@@ -604,10 +604,6 @@ def return_prediction_adata(
     true_counts = torch.cat(test_dict['true_counts'], dim=0).numpy()
     # adata.obsm
     cls_embeddings = torch.cat(test_dict['cls_embeddings'], dim=0).numpy()
-    cos_similarity = torch.cat(test_dict['cosine_similarities'], dim=0).numpy()
-    cos_similarity_df = pd.DataFrame(cos_similarity, columns=marker_genes.keys())
-    # remove all non-expressed genes
-    cos_similarity_df = cos_similarity_df.loc[:, cos_similarity_df.sum() != 0]
     # adata.obs
     obs_dict = {obs: np.concatenate(test_dict[obs]) for obs in obs_key}
     test_obs = pd.DataFrame(obs_dict)
@@ -637,9 +633,19 @@ def return_prediction_adata(
     if gene_names is not None:
         adata.var_names = adata.var['gene_name']
         adata.var = adata.var.drop(columns=['gene_name'])
+    adata.write_h5ad(os.path.join(output_dir, 'f{file_name}.h5ad'))
+    # save cosine similarity separately due to large size
+    cos_similarity = torch.cat(test_dict['cosine_similarities'], dim=0).numpy()
+    cos_similarity_df = pd.DataFrame(cos_similarity, columns=marker_genes.keys())
+    # remove all non-expressed genes
+    cos_similarity_df = cos_similarity_df.loc[:, cos_similarity_df.sum() != 0]
+    # save as csv file for downstream analysis
     cos_similarity_df.index = adata.obs.index
-    adata.obsm['cosine_similarity'] = cos_similarity_df
-    adata.write_h5ad(os.path.join(output_dir, file_name))
+    cos_similarity_df.to_csv(
+        os.path.join(output_dir, f'{file_name}_cosine_similarity.csv')
+    )
+    # adata.obsm['cosine_similarity'] = cos_similarity_df
+
     print('End saving embeddings---')
 
 

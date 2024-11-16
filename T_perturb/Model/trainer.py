@@ -46,6 +46,8 @@ from T_perturb.src.utils import (  # WarmupScheduler,;
     scale_pca,
 )
 
+# from deepspeed.ops.adam import FusedAdam
+
 
 def set_matmul_precision_for_device(precision: Literal['high', 'medium'] = 'high'):
     if torch.cuda.is_available():
@@ -217,11 +219,8 @@ class CellGenTrainer(LightningModule):
         return outputs
 
     def configure_optimizers(self):
-        # parameters = [
-        #     {'params': self.transformer.parameters(),
-        #      'lr': self.initial_lr
-        #      }]
-        # optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
+        parameters = [{'params': self.transformer.parameters(), 'lr': self.initial_lr}]
+        optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
         # number_of_batches_per_epoch = len(self.trainer.datamodule.train_dataloader())
         # total_steps = self.num_epochs * number_of_batches_per_epoch
         # warmup_steps = self.warmup_epochs * number_of_batches_per_epoch
@@ -231,14 +230,13 @@ class CellGenTrainer(LightningModule):
         #     initial_lr=self.initial_lr,
         #     end_lr=self.end_lr,
         # )
-        from deepspeed.ops.adam import FusedAdam
 
-        optimizer = FusedAdam(
-            self.transformer.parameters(),
-            lr=self.initial_lr,
-            weight_decay=self.weight_decay,
-            adam_w_mode=False,
-        )
+        # optimizer = FusedAdam(
+        #     self.transformer.parameters(),
+        #     lr=self.initial_lr,
+        #     weight_decay=self.weight_decay,
+        #     adam_w_mode=False,
+        # )
         return {
             'optimizer': optimizer,
             'monitor': 'train/masking_loss',
@@ -1051,7 +1049,7 @@ class CountDecoderTrainer(LightningModule):
                     f't{self.pred_tps}_{self.encoder}_s{self.seed}_'
                     f'l{self.loss_mode}_n{self.n_samples}'
                     f'_p{self.pos_encoding_mode}_'
-                    f'm{self.mask_scheduler}_s{self.sequence_length}.h5ad'
+                    f'm{self.mask_scheduler}_s{self.sequence_length}'
                 ),
             )
             # save metrics

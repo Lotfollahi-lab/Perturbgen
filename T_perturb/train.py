@@ -13,7 +13,7 @@ from datasets import load_from_disk
 # from pytorch_lightning import Callback
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.strategies import DeepSpeedStrategy  # , DDPStrategy,
+from pytorch_lightning.strategies import DDPStrategy  # ,DeepSpeedStrategy
 
 from T_perturb.Dataloaders.datamodule import CellGenDataModule
 from T_perturb.Model.trainer import CellGenTrainer, CountDecoderTrainer
@@ -66,7 +66,13 @@ def get_args():
         choices=['random', 'stratified', 'unseen_cond'],
         help='splitting mode',
     )
-    parser.add_argument('--split_obs', type=str, default='Donor')
+    parser.add_argument(
+        '--split_obs',
+        type=str,
+        nargs='+',
+        # default=['Donor', 'Cell_type'],
+        default=['celltype_v2'],
+    )
     parser.add_argument('--split_value', type=str, default='D351')
     parser.add_argument(
         '--ckpt_masking_path',
@@ -157,7 +163,7 @@ def get_args():
 
     parser.add_argument('--mlm_prob', type=float, default=0.15, help='mlm probability')
     parser.add_argument(
-        '--n_workers', type=int, default=32, help='number of workers'
+        '--n_workers', type=int, default=8, help='number of workers'
     )  # 64
     parser.add_argument(
         '--loss_mode', type=str, default='zinb', help='loss mode [zinb, nb, mse]'
@@ -204,7 +210,8 @@ def get_args():
         nargs='+',
         type=str,
         # default=['Time_point'],
-        default=['Cell_population', 'Cell_type', 'Time_point', 'Donor'],
+        # default=['Cell_population', 'Cell_type', 'Time_point', 'Donor'],
+        default=['celltype_v2', 'sex', 'phase', 'tissue', 'diff_state'],
         help='List of variables to keep in the dataset',
     )
     parser.add_argument(
@@ -215,7 +222,7 @@ def get_args():
     parser.add_argument(
         '--test_prop',
         type=float,
-        default=0.2,
+        default=0.1,
     )
     parser.add_argument(
         '--encoder',
@@ -278,10 +285,9 @@ def main() -> None:
                 tgt_adata=tgt_adata_tmp,
                 train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
                 test_prop=args.test_prop,
-                groups=['Cell_type', 'Donor'],
+                groups=args.split_obs,
                 seed=args.seed,
             )
-
             # check that indices are unique to avoid data leakage
             assert len(set(train_indices).intersection(val_indices)) == 0
             assert len(set(train_indices).intersection(test_indices)) == 0
@@ -305,6 +311,7 @@ def main() -> None:
             f'Number of samples in val set: {len(val_indices)}\n'
             f'Number of samples in test set: {len(test_indices)}'
         )
+        raise
     else:
         # return all the indices
         train_indices = list(range(len(src_dataset)))
@@ -476,7 +483,7 @@ def main() -> None:
         dirpath=checkpoint_path,
         filename=f'{filename}-' + '{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=1,
+        every_n_epochs=10,
         verbose=True,
         monitor=monitor_metric,
         mode=mode,
@@ -508,11 +515,11 @@ def main() -> None:
     )
     accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
     print('Using device {}.'.format(accelerator))
-    deepspeed_strategy = DeepSpeedStrategy(
-        stage=2,
-        # offload_optimizer=True,
-        # offload_parameters=True,
-    )
+    # deepspeed_strategy = DeepSpeedStrategy(
+    #     stage=2,
+    #     # offload_optimizer=True,
+    #     # offload_parameters=True,
+    # )
 
     # if torch.cuda.is_available():
     #     cuda_device_name = torch.cuda.get_device_name()
@@ -567,7 +574,7 @@ def main() -> None:
     #     checkpoint_path=checkpoint_path, filename=filename
     # )
     # If the device is an A100, set the precision for matrix multiplication
-    # ddp_strategy = DDPStrategy(find_unused_parameters=True)
+    ddp_strategy = DDPStrategy(find_unused_parameters=True)
     trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=[
@@ -577,11 +584,10 @@ def main() -> None:
         ],
         max_epochs=args.epochs,
         accelerator=accelerator,
-        # precision=precision,
+        # precision=16,
         devices=-1 if torch.cuda.is_available() else 0,
-        strategy=deepspeed_strategy if torch.cuda.device_count() > 1 else 'auto',
+        strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
     )
-    # trainer.strategy.config["zero_force_ds_cpu_optimizer"] = False
     print('Starting training...')
 
     if args.train_mode == 'masking':
