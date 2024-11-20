@@ -23,10 +23,8 @@ from T_perturb.src.utils import (
     # stratified_split,
 )
 
-if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
-    # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team205/bair/diseaseCG/')
-    print('Changed working directory to root of repository')
+os.chdir('/lustre/scratch126/cellgen/team361/chang/CellGen/')
+print('Changed working directory to root of repository')
 
 print(os.getcwd())
 
@@ -37,9 +35,7 @@ def get_args():
     parser.add_argument(
         '--tgt_dataset',
         type=str,
-        default='./T_perturb/pp/res/eb/dataset_hvg_tgt',
-        # default='./T_perturb/pp/res/eb/dataset_all_tgt',
-        # default='./T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt',
+        default= None,
         help='path to tokenised activated data',
     )
     parser.add_argument(
@@ -116,8 +112,7 @@ def get_args():
     parser.add_argument(
         '--tgt_dataset_folder',
         type=str,
-        # default='./T_perturb/pp/res/eb/dataset_hvg_tgt',
-        default='./T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt/',
+        default= None,
         help='path to tokenised activated data',
     )
     parser.add_argument(
@@ -359,7 +354,7 @@ def main() -> None:
         # return all the indices
         train_indices = list(range(len(src_dataset)))
         val_indices = None
-        # print(f'tgt_datasets keys: {tgt_datasets.keys()}')
+        print(f'tgt_datasets keys: {tgt_datasets.keys()}')
         test_indices = list(
             range(len(tgt_datasets[f'tgt_dataset_tp']))
         )

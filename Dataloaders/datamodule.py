@@ -103,20 +103,18 @@ class CellGenDataset(Dataset):
         true_counts = torch.tensor(true_counts.toarray()).squeeze(0)  
 
         perturbation_info = self.tgt_dataset[ind].get('perturbation', [])
+        genes = []
         if perturbation_info:
             if isinstance(perturbation_info, str):
-                perturbation_str = perturbation_info
+                genes = perturbation_info.split('+')  # Split into individual genes
             elif isinstance(perturbation_info, list):
-                perturbation_str = '+'.join(sorted(perturbation_info))
-        else:
-            perturbation_str = 'no_perturbation'  # For controls or unperturbed samples
+                genes = [gene for combo in perturbation_info for gene in combo.split('+')]
 
-        # Get the index of the perturbation
-        perturbation_idx = self.perturbation_to_index.get(perturbation_str)
-
-        # Create a one-hot encoding vector
+        # Create a multi-hot vector for the perturbation
         perturbation_one_hot = torch.zeros(self.num_perturbations)
-        perturbation_one_hot[perturbation_idx] = 1
+        for gene in genes:
+            if gene in self.perturbation_to_index:
+                perturbation_one_hot[self.perturbation_to_index[gene]] = 1
 
 
         combined_batch = self.tgt_adata.obs['batch'].iloc[cell_pairing_index]
@@ -337,6 +335,8 @@ class CellGenDataModule(LightningDataModule):
         }
         self.num_perturbations = len(self.perturbation_list)
 
+        print(f"Perturbations in datamodule.py: {self.perturbation_list}")
+
 
 
         dataset_params = {
@@ -432,7 +432,7 @@ class CellGenDataModule(LightningDataModule):
                 # Handle dense tensor case
                 tgt_counts_list = [d['tgt_counts'].squeeze() for d in batch]
                 tgt_size_factor_list = [
-                    torch.tensor(d['tgt_counts'].sum()).unsqueeze(0) for d in batch
+                    d['tgt_counts'].sum().clone().detach().unsqueeze(0) for d in batch
                 ]
 
             # Stack counts and size factors into tensors

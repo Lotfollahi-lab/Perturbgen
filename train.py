@@ -5,6 +5,7 @@ import os
 import pickle
 import uuid
 from datetime import datetime
+import random
 
 import pytorch_lightning as pl
 
@@ -24,10 +25,8 @@ from T_perturb.src.utils import read_dataset_files
 # randomised_split,; read_dataset_files,
 from T_perturb.src.utils import dataset_split, str2bool
 
-if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
-    # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team361/chang/CellGen/')
-    print('Changed working directory to root of repository')
+os.chdir('/lustre/scratch126/cellgen/team361/chang/CellGen/')
+print('Changed working directory to root of repository')
 
 
 def get_args():
@@ -272,28 +271,55 @@ def main() -> None:
 
 
 
+
+
+
+    # SUBSETTING ON DATASET TO MAKE TRAINING FASTER SUBSET XYZ
+
+
+    random.seed(42)
+    subset_size = 5000
+    total_samples = len(tgt_dataset)
+
+    # Generate random indices
+    subset_indices = random.sample(range(total_samples), subset_size)
+
+    # Use the same indices for both datasets
+    src_subset_indices = subset_indices
+    tgt_subset_indices = subset_indices
+
+    src_dataset_subset = src_dataset.select(src_subset_indices)
+    tgt_dataset_subset = tgt_dataset.select(tgt_subset_indices)
+
+
+
+
+
     # o1
-    # Initialize the perturbation-to-index mapping
+    # Build the perturbation_to_index mapping from the subset
     perturbation_to_index = {}
     current_index = 0
 
-    for sample in tgt_dataset:
+    for sample in tgt_dataset_subset:  # Use the subset here
         perturbation_info = sample.get('perturbation', [])
+        perturbations = []
         if perturbation_info:
             if isinstance(perturbation_info, str):
-                perturbation_str = perturbation_info
+                perturbations = perturbation_info.split('+')
             elif isinstance(perturbation_info, list):
-                perturbation_str = '+'.join(sorted(perturbation_info))
-        else:
-            perturbation_str = 'no_perturbation'  # For controls or unperturbed samples
+                perturbations = [gene for combo in perturbation_info for gene in combo.split('+')]
 
-        if perturbation_str not in perturbation_to_index:
-            perturbation_to_index[perturbation_str] = current_index
-            current_index += 1
+        for perturbation in perturbations:
+            if perturbation not in perturbation_to_index:
+                perturbation_to_index[perturbation] = current_index
+                current_index += 1
+
 
     num_perturbations = current_index
 
-
+    print(f"Length of tgt_dataset_subset: {tgt_dataset_subset}")
+    print(f'Number of perturbations: {num_perturbations}')
+    print(f"Perturbations in train.py: {list(perturbation_to_index.keys())}")
 
 
     if args.train_mode == 'masking':
@@ -415,8 +441,8 @@ def main() -> None:
     # where the metadata and information is shared across timepoints
     if args.split:
         train_indices, val_indices, test_indices = dataset_split(
-            tgt_dataset=tgt_dataset,
-            # condition_keys=['disease', 'dataset_id'],
+            # tgt_dataset=tgt_dataset, SUBSET XYZ
+            tgt_dataset=tgt_dataset_subset,
             train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
             test_prop=args.test_prop,
             seed=args.seed,
@@ -424,9 +450,9 @@ def main() -> None:
         )
     else:
         # return all the indices
-        train_indices = list(range(len(tgt_dataset)))
+        train_indices = list(range(len(tgt_dataset_subset)))
         val_indices = None
-        test_indices = list(range(len(tgt_dataset)))
+        test_indices = list(range(len(tgt_dataset_subset)))
         # # check if the train indices are the same for both adata and dataset
         # if tgt_adata_tmp:
         #     subset_adata = tgt_adata_tmp[train_indices]
@@ -503,8 +529,8 @@ def main() -> None:
 
     if args.train_mode == 'masking':
         data_module = CellGenDataModule(
-            src_dataset=src_dataset,
-            tgt_dataset=tgt_dataset,
+            src_dataset=src_dataset_subset,
+            tgt_dataset=tgt_dataset_subset,
             # pairing_metadata=pairing_metadata,
             src_counts=src_counts,  # TODO: do not pass counts in datamodule
             tgt_counts_dict=tgt_counts_dict,
@@ -524,8 +550,8 @@ def main() -> None:
         
     elif args.train_mode == 'count':
         data_module = CellGenDataModule(
-            src_dataset=src_dataset,
-            tgt_dataset=tgt_dataset,
+            src_dataset=src_dataset_subset,
+            tgt_dataset=tgt_dataset_subset,
             tgt_adata=tgt_adata,
             src_counts=src_counts,
             tgt_counts_dict=tgt_counts_dict,

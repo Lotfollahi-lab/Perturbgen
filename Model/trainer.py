@@ -883,11 +883,11 @@ class CountDecoderTrainer(LightningModule):
         tokenid_to_genename_dict: Optional[str] = None,
         n_task_conditions: int = 1,
         mapping_dict_path: Optional[str] = None,
-        *args,
-        **kwargs,
+        n_genes: Optional[int] = None,  # Define n_genes explicitly
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__()
         self.save_hyperparameters()
+
         # Load pretrained masking transformer
         pretrained_model = CellGen(
             tgt_vocab_size=tgt_vocab_size,

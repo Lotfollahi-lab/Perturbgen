@@ -802,7 +802,11 @@ class CellGen(nn.Module):
         self.num_perturbations = num_perturbations
         if num_perturbations is not None:
             # Define the perturbation projection layer
-            self.perturbation_projection = nn.Linear(num_perturbations, self.encoder_output_dim)
+            # self.perturbation_projection = nn.Linear(num_perturbations, self.encoder_output_dim) SUBSET XYZ
+            self.perturbation_projection = nn.Linear(num_perturbations, d_model)
+
+            print(f'line 808 T_model_GFE. num_perturbations: {num_perturbations}, d_model: {d_model}')
+
         else:
             self.perturbation_projection = None
 
@@ -1321,6 +1325,9 @@ class CellGen(nn.Module):
 
         if perturbation_one_hot is not None:
             batch_size = perturbation_one_hot.size(0)
+
+            print(f'line 1329 T_model_GFE. batch_size: {batch_size}')
+
             # Project the one-hot vectors to embeddings
             perturbation_embeddings = self.perturbation_projection(perturbation_one_hot)  # [batch_size, embed_dim]
             # Unsqueeze to add a sequence dimension
@@ -1395,7 +1402,7 @@ class CountHead(nn.Module):
         '''
         super(CountHead, self).__init__()
         self.loss_mode = loss_mode
-        self.n_genes = n_genes
+        self.n_genes = tgt_vocab_size
         
         self.mlp = Mlp(
             in_features=d_model,
@@ -1584,24 +1591,63 @@ class CountDecoder(nn.Module):
         
         return count_outputs
 
+
+    ## FOR PERTURBATION
     
     def generate_sequence(
         self,
         generate_id: torch.Tensor,
         generate_pad: torch.Tensor,
         src_input_id: torch.Tensor,
-        perturbed_embeddings: Optional[torch.Tensor],
+        demask_fn: nn.Module,
         scores: torch.Tensor,
-        mask_scheduler: str,
+        perturbation_one_hot: Optional[torch.Tensor] = None,
+        mask_scheduler: str = 'cosine',
         can_remask_prev_masked: bool = False,
         topk_filter_thres: float = 0.9,
         starting_temperature: float = 2.0,
         iterations: int = 18,
-        perturbation: Optional[list] = None,
     ):
+        '''
+        Description:
+        ------------
+        Generate sequences for perturbation prediction using the pretrained model.
+        Parameters:
+        -----------
+        generate_id: `torch.Tensor`
+            Target token inputs for generation (initially masked).
+        generate_pad: `torch.Tensor`
+            Padding mask for the target tokens.
+        src_input_id: `torch.Tensor`
+            Source token inputs.
+        demask_fn: `nn.Module`
+            Pretrained model for demasking (CellGen).
+        scores: `torch.Tensor`
+            Initial scores for token prediction confidence.
+        perturbation_one_hot: `Optional[torch.Tensor]`
+            One-hot encoded perturbation information.
+        mask_scheduler: `str`
+            Mask scheduler function ('cosine' by default).
+        can_remask_prev_masked: `bool`
+            Whether to remask previously masked tokens.
+        topk_filter_thres: `float`
+            Top-k filter threshold based on the logits.
+        starting_temperature: `float`
+            Initial temperature for sampling.
+        iterations: `int`
+            Number of iterations for the generation loop.
+        Returns:
+        --------
+        outputs: `dict`
+            Output dictionary containing generation results.
+        tmp_ids: `torch.Tensor`
+            Generated target token inputs.
+        '''
         max_neg_value = -torch.finfo(scores.dtype).max
-        # scores[:, 0] = max_neg_value  # Exclude CLS token from being masked
+        # Exclude CLS token from being masked
+        scores[:, 0] = max_neg_value
 
+        # Clone the initial masked target ids
         tmp_ids = generate_id.clone()
         ids_to_keep = torch.zeros_like(tmp_ids, dtype=torch.long)
 
@@ -1609,93 +1655,199 @@ class CountDecoder(nn.Module):
             torch.linspace(0, 1, iterations),
             reversed(range(iterations)),
         ):
+            # Determine the masking probability based on the schedule
             rand_mask_prob = noise_schedule(
                 ratio=iteration,
                 total_tokens=tmp_ids.shape[1],
                 method=mask_scheduler,
             )
-            batch_size, _ = scores.shape
+
+            batch_size, seq_len = tmp_ids.shape
             unmasked = (scores != max_neg_value).sum(dim=1)
             num_tokens_to_mask = (unmasked.float() * rand_mask_prob).long()
+
+            # Create a mask for tokens to be masked
             mask = torch.zeros_like(scores, dtype=torch.bool)
             indices_to_mask = torch.topk(
                 scores, num_tokens_to_mask.max(), dim=-1
             ).indices
 
+            # Apply masking per sample
             for i in range(batch_size):
                 mask[i, indices_to_mask[i, : num_tokens_to_mask[i]]] = True
+
+            # Mask the tokens in tmp_ids
             tmp_ids = tmp_ids.masked_fill(mask, self.mask_token)
 
+            # Keep track of tokens that are not masked
             ids_to_keep = torch.where(
                 mask,
                 torch.tensor(0, dtype=tmp_ids.dtype, device=tmp_ids.device),
                 tmp_ids,
             )
 
-            # Forward pass through the pretrained model
-            outputs = self.pretrained_model(
+            # Call the pretrained model with perturbation information
+            outputs = demask_fn.forward(
                 src_input_id=src_input_id,
                 tgt_input_id=tmp_ids,
-                perturbed_embeddings=perturbed_embeddings,
-                perturbation = perturbation,
-                generate_id=tmp_ids,
+                perturbation_one_hot=perturbation_one_hot,
                 generate_pad=generate_pad,
-                apply_attn_mask=False,
                 generate=True,
             )
 
-            logits = outputs['dec_logits']  # Exclude CLS token
-            
-            # dec_log = outputs['dec_logits']
-            
-            # print(f'SHAPE OF outputs[dec_logits]: {dec_log.shape}')
-            
-            ## logits shape: batch * seq_length * n_tokens
-            ## find the gene in the logits and then turn that to -inf
-            
-            
+            logits = outputs['dec_logits']  # Shape: [batch_size, seq_len, vocab_size]
 
-#             tmp_ids_ = tmp_ids[:, 1:].clone()
-            
-            
-#             scores_ = scores[:, 1:].clone()
-#             ids_to_keep_ = ids_to_keep[:, 1:].clone()
-            
-            
-            # Removing id in question
+            # Exclude CLS token
+            tmp_ids_ = tmp_ids[:, 1:].clone()
+            scores_ = scores[:, 1:].clone()
+            ids_to_keep_ = ids_to_keep[:, 1:].clone()
+
+            # Mask already predicted tokens in logits
             for sample in range(logits.shape[0]):
-                unique_ids = torch.unique(ids_to_keep[sample])
+                unique_ids = torch.unique(ids_to_keep_[sample])
                 logits[sample, :, unique_ids] = -float('inf')
-            filtered_logits = top_k(logits.clone(), topk_filter_thres)
-            
-            
-            print(f'filtered_logits shape: {filtered_logits.shape}')
-            
-            
-            temperature = starting_temperature * (
-                steps_until_x0 / iteration
+
+            # Apply top-k filtering
+            filtered_logits = top_k(logits[:, 1:, :].clone(), topk_filter_thres)
+
+            # Anneal temperature
+            temperature = starting_temperature * (steps_until_x0 / iteration)
+
+            # Sample predicted ids using Gumbel softmax
+            pred_ids = gumbel_sample(
+                filtered_logits, temperature=temperature, dim=-1
             )
-            pred_ids = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
 
-            is_mask = tmp_ids == self.mask_token
-            
-            print(f'pred_ids shape: {pred_ids.shape}')
-            print(f'tmp_ids_ shape: {tmp_ids.shape}')
-            
-            
-            tmp_ids = torch.where(is_mask, pred_ids, tmp_ids)
-            probs_without_temperature = logits.softmax(dim=-1)
+            # Identify positions to update
+            is_mask = tmp_ids_ == self.mask_token
+            tmp_ids_ = torch.where(is_mask, pred_ids, tmp_ids_)
 
-            scores = 1 - probs_without_temperature.gather(2, pred_ids[..., None]).squeeze(-1)
+            # Update probabilities
+            probs_without_temperature = logits[:, 1:, :].softmax(dim=-1)
+            scores_ = 1 - probs_without_temperature.gather(2, pred_ids.unsqueeze(-1)).squeeze(-1)
 
             if not can_remask_prev_masked:
-                scores = scores.masked_fill(~is_mask, max_neg_value)
+                scores_ = scores_.masked_fill(~is_mask, max_neg_value)
 
-            # scores[:, 1:] = scores
-            # tmp_ids[:, 1:] = tmp_ids
+            # Update scores and tmp_ids
+            scores[:, 1:] = scores_
+            tmp_ids[:, 1:] = tmp_ids_
 
-        outputs['dec_embedding'] = outputs['dec_embedding']
-        return outputs, tmp_ids
+        return outputs, tmp_ids    
+
+### ORIGINAL GENERATE SEQUENCE
+
+#     def generate_sequence(
+#         self,
+#         generate_id: torch.Tensor,
+#         generate_pad: torch.Tensor,
+#         src_input_id: torch.Tensor,
+#         perturbed_embeddings: Optional[torch.Tensor],
+#         scores: torch.Tensor,
+#         mask_scheduler: str,
+#         can_remask_prev_masked: bool = False,
+#         topk_filter_thres: float = 0.9,
+#         starting_temperature: float = 2.0,
+#         iterations: int = 18,
+#         perturbation: Optional[list] = None,
+#     ):
+#         max_neg_value = -torch.finfo(scores.dtype).max
+#         # scores[:, 0] = max_neg_value  # Exclude CLS token from being masked
+
+#         tmp_ids = generate_id.clone()
+#         ids_to_keep = torch.zeros_like(tmp_ids, dtype=torch.long)
+
+#         for iteration, steps_until_x0 in zip(
+#             torch.linspace(0, 1, iterations),
+#             reversed(range(iterations)),
+#         ):
+#             rand_mask_prob = noise_schedule(
+#                 ratio=iteration,
+#                 total_tokens=tmp_ids.shape[1],
+#                 method=mask_scheduler,
+#             )
+#             batch_size, _ = scores.shape
+#             unmasked = (scores != max_neg_value).sum(dim=1)
+#             num_tokens_to_mask = (unmasked.float() * rand_mask_prob).long()
+#             mask = torch.zeros_like(scores, dtype=torch.bool)
+#             indices_to_mask = torch.topk(
+#                 scores, num_tokens_to_mask.max(), dim=-1
+#             ).indices
+
+#             for i in range(batch_size):
+#                 mask[i, indices_to_mask[i, : num_tokens_to_mask[i]]] = True
+#             tmp_ids = tmp_ids.masked_fill(mask, self.mask_token)
+
+#             ids_to_keep = torch.where(
+#                 mask,
+#                 torch.tensor(0, dtype=tmp_ids.dtype, device=tmp_ids.device),
+#                 tmp_ids,
+#             )
+
+#             # Forward pass through the pretrained model
+#             outputs = self.pretrained_model(
+#                 src_input_id=src_input_id,
+#                 tgt_input_id=tmp_ids,
+#                 perturbed_embeddings=perturbed_embeddings,
+#                 perturbation = perturbation,
+#                 generate_id=tmp_ids,
+#                 generate_pad=generate_pad,
+#                 apply_attn_mask=False,
+#                 generate=True,
+#             )
+
+#             logits = outputs['dec_logits']  # Exclude CLS token
+            
+#             # dec_log = outputs['dec_logits']
+            
+#             # print(f'SHAPE OF outputs[dec_logits]: {dec_log.shape}')
+            
+#             ## logits shape: batch * seq_length * n_tokens
+#             ## find the gene in the logits and then turn that to -inf
+            
+            
+
+# #             tmp_ids_ = tmp_ids[:, 1:].clone()
+            
+            
+# #             scores_ = scores[:, 1:].clone()
+# #             ids_to_keep_ = ids_to_keep[:, 1:].clone()
+            
+            
+#             # Removing id in question
+#             for sample in range(logits.shape[0]):
+#                 unique_ids = torch.unique(ids_to_keep[sample])
+#                 logits[sample, :, unique_ids] = -float('inf')
+#             filtered_logits = top_k(logits.clone(), topk_filter_thres)
+            
+            
+#             print(f'filtered_logits shape: {filtered_logits.shape}')
+            
+            
+#             temperature = starting_temperature * (
+#                 steps_until_x0 / iteration
+#             )
+#             pred_ids = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
+
+#             is_mask = tmp_ids == self.mask_token
+            
+#             print(f'pred_ids shape: {pred_ids.shape}')
+#             print(f'tmp_ids_ shape: {tmp_ids.shape}')
+            
+            
+#             tmp_ids = torch.where(is_mask, pred_ids, tmp_ids)
+#             probs_without_temperature = logits.softmax(dim=-1)
+
+#             scores = 1 - probs_without_temperature.gather(2, pred_ids[..., None]).squeeze(-1)
+
+#             if not can_remask_prev_masked:
+#                 scores = scores.masked_fill(~is_mask, max_neg_value)
+
+#             # scores[:, 1:] = scores
+#             # tmp_ids[:, 1:] = tmp_ids
+
+#         outputs['dec_embedding'] = outputs['dec_embedding']
+#         return outputs, tmp_ids
 
 
 if __name__ == '__main__':
