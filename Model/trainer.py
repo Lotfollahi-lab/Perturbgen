@@ -1307,7 +1307,7 @@ class CountDecoderTrainer(LightningModule):
         if self.generate:
             outputs = self.decoder.generate(
                 src_input_id=batch['src_input_ids'],
-                tgt_input_id_dict=tgt_input_id_dict,
+                tgt_input_id=batch['tgt_input_ids'],
                 max_len=self.max_seq_length,
                 mask_scheduler=self.mask_scheduler,
                 can_remask_prev_masked=False,
