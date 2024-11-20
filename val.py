@@ -51,6 +51,14 @@ def get_args():
         help='split data for extrapolation',
     )
     parser.add_argument(
+        '--mapping_dict_path',
+        type=str,
+        # default='./T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl',
+        # default='./T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
+        default='/lustre/scratch126/cellgen/team361/chang/CellGen/perturbench/perturbench_data/norman/token_id_to_genename_hvg.pkl',
+    )
+
+    parser.add_argument(
         '--output_dir',
         type=str,
         default='./T_perturb/plt/res/cytoimmgen',
@@ -501,6 +509,7 @@ def main() -> None:
             output_dir=args.output_dir,
             var_list=args.var_list,
             n_samples=3,
+            mapping_dict_path=args.mapping_dict_path,
             # mode=args.mode,
             seed=args.seed,
         )

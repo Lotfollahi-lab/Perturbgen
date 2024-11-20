@@ -28,7 +28,7 @@ python3 $cwd/val.py \
 --split False \
 --splitting_mode random \
 --generate True \
---ckpt_count_path '/lustre/scratch126/cellgen/team361/chang/CellGen/T_perturb/Model/checkpoints/20241113_1140_cellgen_train_count_lr_0.0001_wd_0.0001_batch_32_zinb_ntask_1_s_42-epoch=09.ckpt' \
+--ckpt_count_path '/lustre/scratch126/cellgen/team361/chang/CellGen/T_perturb/Model/checkpoints/20241120_1536_cellgen_train_count_lr_0.0001_wd_0.0001_batch_32_zinb_ntask_1_s_42-epoch=19.ckpt' \
 --output_dir '/lustre/scratch126/cellgen/team361/chang/CellGen/T_perturb/plt/res/norman' \
 --src_dataset '/lustre/scratch126/cellgen/team361/chang/CellGen/perturbench/perturbench_data/norman/dataset_hvg_src_random_pairing/control.dataset' \
 --src_adata '/lustre/scratch126/cellgen/team361/chang/CellGen/perturbench/perturbench_data/norman/h5ad_pairing_hvg_src_random_pairing/control.h5ad' \
@@ -37,6 +37,7 @@ python3 $cwd/val.py \
 --tokenid_to_genename_dict '/lustre/scratch126/cellgen/team361/chang/CellGen/perturbench/perturbench_data/norman/token_id_to_genename_hvg.pkl' \
 --tgt_adata_folder '/lustre/scratch126/cellgen/team361/chang/CellGen/perturbench/perturbench_data/norman/h5ad_pairing_hvg_tgt_random_pairing' \
 --tgt_dataset_folder '/lustre/scratch126/cellgen/team361/chang/CellGen/perturbench/perturbench_data/norman/dataset_hvg_tgt_random_pairing' \
+--mapping_dict_path  '/lustre/scratch126/cellgen/team361/chang/CellGen/perturbench/perturbench_data/norman/token_id_to_genename_hvg.pkl' \
 --batch_size 32 \
 --max_len 4000 \
 --tgt_vocab_size 25426 \
@@ -45,7 +46,7 @@ python3 $cwd/val.py \
 --count_lr 0.0001 \
 --count_wd 0.0001 \
 --num_layers 2 \
---d_ff 16 \
+--d_ff 128 \
 --loss_mode zinb \
 --n_workers 16 \
 --var_list Time_point

@@ -1402,7 +1402,7 @@ class CountHead(nn.Module):
         '''
         super(CountHead, self).__init__()
         self.loss_mode = loss_mode
-        self.n_genes = tgt_vocab_size
+        self.n_genes = n_genes
         
         self.mlp = Mlp(
             in_features=d_model,
