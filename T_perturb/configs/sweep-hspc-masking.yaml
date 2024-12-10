@@ -14,7 +14,7 @@ parameters:
   split_obs:
     value: celltype_v2
   epochs:
-   value: 3
+   value: 5
   output_dir:
     value: './T_perturb/T_perturb/plt/res/hspc'
   src_dataset:
@@ -30,21 +30,21 @@ parameters:
   max_len:
     value: 2200
   tgt_vocab_size:
-    value: 22044
+    value: 5805
   mask_scheduler:
     value: 'cosine'
-  positional_encoding:
+  pos_encoding_mode:
     value: 'time_pos_learnt'
   num_layers:
-    value: [4,6]
+    values: [5, 6]
   batch_size:
-    values: [64]
+    value: 64
   cellgen_lr:
-    values: [0.0001, 0.00001, 0.001]
+    values: [0.0001, 0.00005]
   d_ff:
-    values: [64]
+    values: [32, 64]
   cellgen_wd:
-    values: [0.0001, 0.00001, 0.001]
+    values: [0.00005, 0.00001]
 
   # petra_lr:
   #   distribution: log_uniform
@@ -57,5 +57,5 @@ parameters:
   #   high: 0.5
   # batch_size:
   #   value: 256
-program: /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/train.py
+program: /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb/train.py
 project: ttransformer_sweep

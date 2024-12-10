@@ -181,7 +181,7 @@ def get_args():
     parser.add_argument(
         '--mask_scheduler',
         type=str,
-        default='pow',
+        default='cosine',
         help='mask scheduler [cosine, exp, pow]',
     )
     parser.add_argument('--temperature', type=float, default=1.5, help='temperature')
@@ -194,7 +194,7 @@ def get_args():
         '--pred_tps',
         nargs='+',
         type=int,
-        default=[1, 2, 3],
+        default=[1, 2],
         help='time steps which are predicted',
     )
     parser.add_argument(
@@ -238,7 +238,7 @@ def get_args():
     parser.add_argument(
         '--pos_encoding_mode',
         type=str,
-        default='time_pos_sin',
+        default='time_pos_learnt',
         choices=['time_pos_sin', 'comb_sin', 'sin_learnt', 'time_pos_learnt'],
         help='positional encoding',
     )
@@ -311,7 +311,6 @@ def main() -> None:
             f'Number of samples in val set: {len(val_indices)}\n'
             f'Number of samples in test set: {len(test_indices)}'
         )
-        raise
     else:
         # return all the indices
         train_indices = list(range(len(src_dataset)))

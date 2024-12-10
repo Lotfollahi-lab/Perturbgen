@@ -112,6 +112,11 @@ def get_args():
         default='./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl',
     )
     parser.add_argument(
+        '--marker_genes_path',
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
         '--src_dataset',
         type=str,
         # default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset',
@@ -482,6 +487,7 @@ def main() -> None:
         test_kwargs['end_lr'] = args.cellgen_lr
         test_kwargs['return_embeddings'] = args.return_embeddings
         test_kwargs['mapping_dict_path'] = args.mapping_dict_path
+        test_kwargs['marker_genes_path'] = args.marker_genes_path
         test_kwargs['gene_names'] = tgt_adata_tmp.var['gene_name']
         test_kwargs['return_attn'] = args.return_attn
         pretrained_module = CellGenTrainer(**test_kwargs)

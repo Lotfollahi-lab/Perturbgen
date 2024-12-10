@@ -21,5 +21,6 @@ export WANDB_DIR=$cwd/wandb
 # run sweep
 echo "--- Start sweep"
 #paste wandb with sweep id
-wandb agent lotfollahi/ttransformer_sweep/bs4j9qse
+wandb online
+wandb agent lotfollahi/ttransformer_sweep/6pr9lngy
 echo "--- Finished sweep"

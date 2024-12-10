@@ -1,6 +1,6 @@
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=2:block=yes' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
+#BSUB -gpu 'mode=exclusive_process:num=4:block=yes' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
 #BSUB -n 16 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
@@ -38,7 +38,7 @@ mkdir -p $RES_DIR/$RES_NAME
 # python3 $cwd/train.py \
 python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb/train.py \
 --train_mode masking \
---split True \
+--split False \
 --splitting_mode stratified \
 --split_obs celltype_v2 \
 --output_dir $RES_DIR/$RES_NAME/res \
@@ -49,13 +49,13 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --mapping_dict_path  "./T_perturb/T_perturb/pp/res/hspc/token_id_to_genename_10000_hvg.pkl" \
 --batch_size 64 \
 --max_len 2200 \
---epochs 10 \
---tgt_vocab_size 22044 \
---cellgen_lr 0.00001 \
+--epochs 50 \
+--tgt_vocab_size 5805 \
+--cellgen_lr 0.0001 \
 --cellgen_wd 0.00001 \
 --mlm_prob 0.15 \
 --n_workers 16 \
---d_ff 64 \
+--d_ff 32 \
 --num_layers 6 \
 --pred_tps 1 2 \
 --var_list sex phase tissue celltype_v2 diff_state \
@@ -64,6 +64,11 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --mask_scheduler 'cosine' \
 --pos_encoding_mode 'time_pos_learnt'
 echo "--- Finished computing model"
+
+
+# new hyperparameters
+# --cellgen_lr 0.0001 \
+# --cellgen_wd 0.00005 \
 
 # 2k hvgs
 # --src_dataset "./T_perturb/T_perturb/pp/res/hspc/dataset_hvg_src/stem.dataset" \
