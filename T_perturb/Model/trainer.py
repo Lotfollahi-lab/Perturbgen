@@ -467,7 +467,6 @@ class CountDecoderTrainer(LightningModule):
         weight_decay: float = 0.0,
         dropout: float = 0.0,
         generate: bool = False,
-        var_list: List[str] = ['Time_point'],
         pred_tps: list = [1, 2],
         n_total_tps: int = 3,
         temperature: float = 2.0,
@@ -488,6 +487,8 @@ class CountDecoderTrainer(LightningModule):
         mask_scheduler: Optional[str] = 'cosine',
         sequence_length: int = 2048,
         return_rouge_score=True,
+        perturbation: bool = False,
+        var_list: Optional[List[str]] = None,
         tgt_adata: Optional[ad.AnnData] = None,
         ckpt_masking_path: Optional[str] = None,
         ckpt_count_path: Optional[str] = None,
@@ -496,6 +497,9 @@ class CountDecoderTrainer(LightningModule):
         unique_gene_list: Optional[Dict[Any, Any]] = None,
         shared_gene_list: Optional[Dict[Any, Any]] = None,
         context_tps: Optional[List[int]] = None,
+        genes_to_perturb: Optional[List[int]] = None,
+        perturbation_token: Optional[int] = None,
+        cell_type_to_perturb: Optional[str] = None,
         *args,
         **kwargs,
     ):
@@ -626,6 +630,11 @@ class CountDecoderTrainer(LightningModule):
 
         self.unique_gene_list = unique_gene_list
         self.shared_gene_list = shared_gene_list
+
+        if perturbation:
+            self.perturbation = perturbation
+            self.genes_to_perturb = genes_to_perturb
+            self.perturbation_token = perturbation_token
 
     def forward(self, batch):
         tgt_input_id_dict = {}
@@ -948,6 +957,11 @@ class CountDecoderTrainer(LightningModule):
                 dim=1,
             )
             tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
+            if self.perturbation:
+                # replace gene token with perturbation token
+                mask = torch.isin(batch['src_input_ids'], self.genes_to_perturb)
+                batch['src_input_ids'][mask] = self.perturbation_token
+                print(batch['src_input_ids'])
         if self.generate:
             decoder_kwargs = {
                 'src_input_id': batch['src_input_ids'],
