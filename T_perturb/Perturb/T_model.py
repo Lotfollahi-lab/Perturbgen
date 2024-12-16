@@ -241,6 +241,9 @@ class PerturberGeneration(CountDecoder):
             if genes_to_perturb is not None:
                 # exclude genes_to_perturb from the option to be selected
                 logits[:, :, genes_to_perturb] = max_neg_value
+                # print the shape and then check genes_to_perturb
+                print(logits.shape)
+                print('genes_to_perturb', logits[0, 0, genes_to_perturb])
             # exclude cls token
             tmp_ids_ = tmp_ids[:, prompt_length:].clone()
             scores_ = scores[:, prompt_length:].clone()

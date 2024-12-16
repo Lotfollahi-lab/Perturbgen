@@ -138,14 +138,18 @@ class CellGenTrainer(LightningModule):
                 'rb',
             ) as f:
                 gene_to_rowid = pickle.load(f)
+                # swarp key and value
+                self.gene_to_rowid: Dict[Any, Any] | None = {
+                    v: k for k, v in gene_to_rowid.items()
+                }
+        else:
+            self.gene_to_rowid = None
         with open(
             './T_perturb/T_perturb/pp/res/hspc/tokenid_to_rowid_hvg.pkl',
             'rb',
         ) as f:
             tokenid_to_rowid = pickle.load(f)
         self.tokenid_to_rowid = tokenid_to_rowid
-        # swarp key and value
-        self.gene_to_rowid = {v: k for k, v in gene_to_rowid.items()}
         self.return_embeddings = return_embeddings
         self.generate = generate
         self.tgt_vocab_size = tgt_vocab_size
@@ -191,7 +195,8 @@ class CellGenTrainer(LightningModule):
             )
             print(f'cls_token_{str(i)}', getattr(self, f'cls_token_{str(i)}'))
             # update mapping_dict to include cls token
-            self.gene_to_rowid[f'cls_token_{str(i)}'] = total_vocab_size + (i - 1)
+            if self.gene_to_rowid is not None:
+                self.gene_to_rowid[f'cls_token_{str(i)}'] = total_vocab_size + (i - 1)
         self.output_dir = output_dir
         # create directory if not exist
         if not os.path.exists(self.output_dir):
@@ -356,7 +361,9 @@ class CellGenTrainer(LightningModule):
                 # 2. map cosine similarity to corresponding genes
                 marker_cos_similarity, marker_genes_dict = return_cos_similarity(
                     cos_similarity=cos_similarity,
-                    mapping_dict=self.gene_to_rowid,
+                    mapping_dict=(
+                        self.gene_to_rowid if self.gene_to_rowid is not None else None
+                    ),
                     token_ids=token_ids,
                     marker_genes=marker_genes_all,
                 )
@@ -364,7 +371,9 @@ class CellGenTrainer(LightningModule):
                 gene_embeddings = return_gene_embeddings(
                     # marker_genes=marker_genes,
                     gene_embeddings=outputs['dec_embedding'][t][:, 1:, :],
-                    mapping_dict=self.gene_to_rowid,
+                    mapping_dict=(
+                        self.gene_to_rowid if self.gene_to_rowid is not None else None
+                    ),
                     token_ids=token_ids,
                     marker_genes=marker_genes_all,
                 )
@@ -380,7 +389,11 @@ class CellGenTrainer(LightningModule):
                     )
                     self_attn_weights, cross_attn_weights = return_attn_weights(
                         outputs=outputs,
-                        tgt_mapping_dict=self.gene_to_rowid,
+                        tgt_mapping_dict=(
+                            self.gene_to_rowid
+                            if self.gene_to_rowid is not None
+                            else None
+                        ),
                         src_mapping_dict=self.tokenid_to_rowid,
                         time_step=t,
                         token_ids=token_ids,
@@ -422,8 +435,13 @@ class CellGenTrainer(LightningModule):
                 cross_attn_weights = torch.stack(
                     self.test_dict[f'cross_attn_weights_t{t}']
                 )
-                # order genes based on ascending order of  rowid
-                tgt_gene_order = sorted(self.gene_to_rowid, key=self.gene_to_rowid.get)
+                if self.gene_to_rowid is not None:
+                    # order genes based on ascending order of  rowid
+                    tgt_gene_order = sorted(
+                        self.gene_to_rowid, key=self.gene_to_rowid.get
+                    )
+                else:
+                    tgt_gene_order = self.gene_names
                 aggregate_attn_weights(
                     attn_weights=self_attn_weights,
                     tgt_gene_names=tgt_gene_order,
@@ -484,18 +502,18 @@ class CountDecoderTrainer(LightningModule):
         pos_encoding_mode: Literal[
             'time_pos_sin', 'comb_sin', 'sin_learnt'
         ] = 'time_pos_sin',
-        mask_scheduler: Optional[str] = 'cosine',
+        mask_scheduler: str = 'cosine',
         sequence_length: int = 2048,
         return_rouge_score=True,
         var_list: List[str] | None = None,
-        tgt_adata: Optional[ad.AnnData] = None,
-        ckpt_masking_path: Optional[str] = None,
-        ckpt_count_path: Optional[str] = None,
-        conditions: Optional[Dict[Any, Any]] = None,
-        conditions_combined: Optional[List[Any]] = None,
-        unique_gene_list: Optional[Dict[Any, Any]] = None,
-        shared_gene_list: Optional[Dict[Any, Any]] = None,
-        context_tps: Optional[List[int]] = None,
+        tgt_adata: ad.AnnData | None = None,
+        ckpt_masking_path: str | None = None,
+        ckpt_count_path: str | None = None,
+        conditions: Dict[Any, Any] | None = None,
+        conditions_combined: List[Any] | None = None,
+        unique_gene_list: Dict[Any, Any] | None = None,
+        shared_gene_list: Dict[Any, Any] | None = None,
+        context_tps: List[int] | None = None,
         *args,
         **kwargs,
     ):
@@ -512,7 +530,7 @@ class CountDecoderTrainer(LightningModule):
                 ensembl_to_token_id = pickle.load(f)
         # change to token_id to gene name
         self.token_id_to_ensembl = {v: k for k, v in ensembl_to_token_id.items()}
-        pretrained_model = CellGen(
+        self.pretrained_model = CellGen(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
             num_heads=num_heads,
@@ -530,15 +548,15 @@ class CountDecoderTrainer(LightningModule):
         if ckpt_masking_path is not None:
             checkpoint = torch.load(ckpt_masking_path, map_location='cpu')
             state_dict_ = modify_ckpt_state_dict(checkpoint, 'transformer.')
-            pretrained_model.load_state_dict(state_dict_, strict=False)
+            self.pretrained_model.load_state_dict(state_dict_, strict=False)
             # set parameters to not trainable
-            for param in pretrained_model.parameters():
+            for param in self.pretrained_model.parameters():
                 param.requires_grad = False
         self.return_rouge_score = return_rouge_score
         if self.return_rouge_score:
             self.rouge = evaluate.load('rouge')
         self.decoder = CountDecoder(
-            pretrained_model=pretrained_model,
+            pretrained_model=self.pretrained_model,
             loss_mode=loss_mode,
             d_model=d_model,
             dropout=dropout,

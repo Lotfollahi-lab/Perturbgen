@@ -709,12 +709,13 @@ def return_generation_adata(
     return adata
 
 
-def return_pert_generation_adata(
+def return_perturbation_adata(
     test_dict: dict,
     obs_key: list,
     output_dir: str,
     file_name: str,
-):
+    mode: Literal['inference', 'generation'],
+) -> ad.AnnData:
     """
     Description:
     ------------
@@ -751,32 +752,35 @@ def return_pert_generation_adata(
 
     # adata.obsm
     cls_embeddings = torch.cat(test_dict['cls_embeddings']).numpy()
-    pert_dict = {}
-    pert_dict['cls_cosine_similarity'] = torch.cat(
-        test_dict['cls_cosine_similarity']
-    ).numpy()
-    pert_dict['mean_cosine_similarity'] = torch.cat(
-        test_dict['mean_cosine_similarity']
-    ).numpy()
+    cls_cos_similarity = torch.cat(test_dict['cls_cosine_similarity']).numpy()
+    mean_cos_similarity = torch.cat(test_dict['mean_cosine_similarity']).numpy()
     # create dataframe to store perturbation results
+    obsm_dict = {
+        'cls_embeddings': cls_embeddings,
+        'cls_cos_similarity': cls_cos_similarity,
+        'mean_cos_similarity': mean_cos_similarity,
+    }
+    if mode == 'generation':
+        rouge_dict = {
+            key: np.concatenate(test_dict[key])
+            for key in test_dict.keys()
+            if key.startswith('rouge')
+        }
+        obsm_dict.update(rouge_dict)
+    elif mode == 'inference':
+        pass
+    else:
+        raise ValueError(
+            f'Invalid mode: {mode}.' 'Must be either generation or inference.'
+        )
 
-    # find all keys starting with rouge
-    for key in test_dict.keys():
-        if key.startswith('rouge'):
-            print(key)
-            print(test_dict[key])
-            pert_dict[key] = test_dict[key]
-
-    pert_df = pd.DataFrame(pert_dict)
-    print('perturbation dataframe', pert_df.head(10))
-    raise
     # adata.obs
     obs_dict = {obs: np.concatenate(test_dict[obs]) for obs in obs_key}
     test_obs = pd.DataFrame(obs_dict)
     # create adata
     adata = ad.AnnData(
         obs=test_obs,
-        obsm={'cls_embeddings': cls_embeddings},
+        obsm=obsm_dict,
     )
     adata.write_h5ad(os.path.join(output_dir, file_name))
     print('anndata generation completed---')

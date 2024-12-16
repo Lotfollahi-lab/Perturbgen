@@ -1,16 +1,109 @@
-from typing import List
+from typing import Any, List
 
-import scanpy as sc
 import torch
 
 # from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from torch.nn.functional import cosine_similarity
 
-from T_perturb.Model.trainer import CountDecoderTrainer
-from T_perturb.src.utils import (  # WarmupScheduler,;
-    return_pert_generation_adata,
-    scale_pca,
-)
+from T_perturb.Model.trainer import CellGenTrainer, CountDecoderTrainer
+from T_perturb.Perturb.T_model import PerturberGeneration
+from T_perturb.src.utils import return_perturbation_adata  # WarmupScheduler,;
+
+
+class PerturberInferenceTrainer(CellGenTrainer):
+    def __init__(
+        self,
+        genes_to_perturb: List[int] | None = None,
+        perturbation_token: int | None = 0,
+        cell_type_to_perturb: str | None = None,
+        perturbation_mode: List[str] | None = None,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        print('test kwargs', kwargs)
+
+        if perturbation_mode is not None:
+            self.perturbation_mode = perturbation_mode
+            self.genes_to_perturb = torch.tensor(genes_to_perturb, dtype=torch.long)
+            self.perturbation_token = torch.tensor(perturbation_token, dtype=torch.long)
+        else:
+            self.perturbation_mode = []
+        self.test_dict['cls_cosine_similarity'] = []
+        self.test_dict['mean_cosine_similarity'] = []
+
+    def forward(
+        self,
+        batch: Any,
+        perturbation: bool = False,
+    ):
+        self.tgt_input_id_dict = {}
+        for i in self.pred_tps:
+            tgt_input_id_ = torch.cat(
+                (
+                    getattr(self, f'cls_token_{str(i)}').expand(
+                        batch[f'tgt_input_ids_t{i}'].shape[0], -1
+                    ),
+                    batch[f'tgt_input_ids_t{i}'],
+                ),
+                dim=1,
+            )
+            if len(self.perturbation_mode) > 0 and perturbation:
+                if 'tgt' in self.perturbation_mode:
+                    print('perturbating tgt')
+                    perturbed_tgt = tgt_input_id_.clone()
+                    mask = torch.isin(tgt_input_id_, self.genes_to_perturb)
+                    perturbed_tgt[mask] = self.perturbation_token
+                self.tgt_input_id_dict[f'tgt_input_ids_t{i}'] = perturbed_tgt
+            else:
+                self.tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
+        if len(self.perturbation_mode) > 0 and perturbation:
+            if 'src' in self.perturbation_mode:
+                print('perturbating src')
+                perturbed_src = batch['src_input_ids'].clone()
+                mask = torch.isin(batch['src_input_ids'], self.genes_to_perturb)
+                perturbed_src[mask] = self.perturbation_token
+        outputs = self.transformer(
+            src_input_id=batch['src_input_ids'],
+            tgt_input_id_dict=self.tgt_input_id_dict,
+            not_masked=self.return_embeddings,
+            context_mode=self.context_mode,
+        )
+        return outputs
+
+    def test_step(self, batch, *args, **kwargs):
+        if self.return_embeddings:
+            true_outputs = self.forward(batch, perturbation=False)
+
+            perturbed_outputs = self.forward(batch, perturbation=True)
+            print('true', true_outputs.keys())
+            print('true', true_outputs)
+            print('perturbed', perturbed_outputs.keys())
+
+            for t in self.pred_tps:
+                print('t', t)
+                print('true', true_outputs['dec_embedding'][t].shape)
+                true_cls = true_outputs['dec_embedding'][t][:, 0, :]
+                true_mean_cls = true_outputs['mean_embedding'][t]
+                perturbed_cls = perturbed_outputs['dec_embedding'][t][:, 0, :]
+                perturbed_mean_cls = perturbed_outputs['mean_embedding'][t]
+
+                if len(self.perturbation_mode) > 0:
+                    cls_cos_sim = cosine_similarity(
+                        perturbed_cls,
+                        true_cls,
+                    )
+                    print('cls_cos_sim', cls_cos_sim)
+                    mean_agg_cos_sim = cosine_similarity(
+                        perturbed_mean_cls,
+                        true_mean_cls,
+                    )
+                    print('mean_agg_cos_sim', mean_agg_cos_sim)
+                    self.test_dict['cls_cosine_similarity'].append(cls_cos_sim)
+                    self.test_dict['mean_cosine_similarity'].append(mean_agg_cos_sim)
+
+    def on_test_epoch_end(self):
+        pass
 
 
 class PerturberGenerationTrainer(CountDecoderTrainer):
@@ -24,6 +117,18 @@ class PerturberGenerationTrainer(CountDecoderTrainer):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
+        print('test kwargs', kwargs)
+
+        self.decoder = PerturberGeneration(
+            pretrained_model=self.pretrained_model,
+            loss_mode=kwargs['loss_mode'],
+            d_model=kwargs['d_model'],
+            dropout=kwargs['dropout'],
+            pred_tps=kwargs['pred_tps'],
+            context_tps=kwargs['context_tps'],
+            context_mode=kwargs['context_mode'],
+            n_genes=kwargs['n_genes'],
+        )
         if perturbation_mode is not None:
             self.perturbation_mode = perturbation_mode
             self.genes_to_perturb = torch.tensor(genes_to_perturb, dtype=torch.long)
@@ -75,14 +180,13 @@ class PerturberGenerationTrainer(CountDecoderTrainer):
             if len(self.perturbation_mode) > 0:
                 true_outputs, true_ids_dict = self.decoder.generate(
                     src_input_id=batch['src_input_ids'],
+                    genes_to_perturb=self.genes_to_perturb,
                     **decoder_kwargs,
                 )
                 perturbed_outputs, perturbed_ids_dict = self.decoder.generate(
                     src_input_id=perturbed_src,
                     **decoder_kwargs,
                 )
-                print('true', true_ids_dict)
-                print('perturbed', perturbed_ids_dict)
 
             else:
                 true_outputs, true_ids_dict = self.decoder.generate(
@@ -90,12 +194,12 @@ class PerturberGenerationTrainer(CountDecoderTrainer):
                     **decoder_kwargs,
                 )
 
-            for i, time_step in enumerate(true_ids_dict.keys()):
+            for t, time_step in enumerate(true_ids_dict.keys()):
                 if len(self.perturbation_mode) > 0:
                     pred_ids = perturbed_ids_dict[time_step].detach().cpu().numpy()
                     tgt_ids = true_ids_dict[time_step].detach().cpu().numpy()
                     # compute cosine similarity between perturbed and true
-                    t = i + 1
+                    # t = i + 1
                     print(perturbed_outputs[f'cls_embedding_t{t}'].shape)
                     cls_cos_sim = cosine_similarity(
                         perturbed_outputs[f'cls_embedding_t{t}'],
@@ -145,7 +249,7 @@ class PerturberGenerationTrainer(CountDecoderTrainer):
         if self.generate:
             obs_key = self.var_list if len(self.var_list) > 0 else []
             obs_key.extend(['cell_idx'])
-            pred_adata = return_pert_generation_adata(
+            return_perturbation_adata(
                 test_dict=self.test_dict,
                 obs_key=obs_key,
                 output_dir=self.output_dir,
@@ -157,22 +261,3 @@ class PerturberGenerationTrainer(CountDecoderTrainer):
                     f'm{self.mask_scheduler}_s{self.sequence_length}'
                 ),
             )
-            # true counts are stored in the 'counts' layer
-            true_adata = pred_adata.copy()
-            true_adata.X = true_adata.layers['counts']
-            # log norm and compute PCA
-            pred_adata = scale_pca(pred_adata)
-            true_adata = scale_pca(true_adata)
-            # scale pca
-            coords = true_adata.obsm['X_pca']
-            coords = (coords - coords.mean(axis=0)) / coords.std(axis=0)
-            true_adata.obsm['X_pca_scaled'] = coords
-            coords = pred_adata.obsm['X_pca']
-            coords = (coords - coords.mean(axis=0)) / coords.std(axis=0)
-            pred_adata.obsm['X_pca_scaled'] = coords
-
-            # subsample 25k cells
-            if pred_adata.shape[0] > 10000:
-                sc.pp.subsample(pred_adata, n_obs=10000, copy=False)
-                # use obs index to subsample true counts
-                true_adata = true_adata[pred_adata.obs.index]
