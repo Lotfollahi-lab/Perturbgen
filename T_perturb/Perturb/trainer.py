@@ -20,15 +20,17 @@ from T_perturb.src.utils import compute_rouge_score, return_perturbation_adata
 class PerturberTrainer(CellGenTrainer):
     def __init__(
         self,
-        genes_to_perturb: List[int],
-        perturbation_mode: Literal['inference', 'generate'] = 'inference',
-        perturbation_sequence: Literal['src', 'tgt'] = 'src',
-        perturbation_token: int = 0,
         generate: bool = False,
         sequence_length: int = 2048,
         temperature: float = 2.0,
         iterations: int = 18,
         mapping_dict_path: str | None = None,
+        genes_to_perturb: List[int] | None = None,
+        perturbation_mode: Literal['inference', 'generate'] | None = None,
+        perturbation_sequence: Literal['src', 'tgt'] | None = None,
+        perturbation_token: int | None = None,
+        condition_dict: dict | None = None,
+        batch_size: int | None = None,
         *args,
         **kwargs,
     ):
@@ -48,28 +50,37 @@ class PerturberTrainer(CellGenTrainer):
             pos_encoding_mode=kwargs['pos_encoding_mode'],
             return_attn=kwargs['return_attn'],
         )
-        if mapping_dict_path is not None:
-            with open(
-                mapping_dict_path,
-                'rb',
-            ) as f:
-                tokenid_to_gene = pickle.load(f)
-        gene_to_token_id = {v: k for k, v in tokenid_to_gene.items()}
         self.perturbation_mode = perturbation_mode
-        self.perturbation_sequence = perturbation_sequence
-        self.genes_to_perturb = genes_to_perturb
-        tokens_to_perturb = [gene_to_token_id[gene] for gene in self.genes_to_perturb]
-        self.tokens_to_perturb = torch.tensor(tokens_to_perturb, dtype=torch.long)
-        self.perturbation_token = torch.tensor(
-            perturbation_token, dtype=torch.long, device=self.device
-        )
-        print(
-            f'Start perturbation ...\n'
-            f'- Perturbation mode: {self.perturbation_mode}\n'
-            f'- Perturbation sequence: {self.perturbation_sequence}\n'
-            f'- Perturbing genes: {genes_to_perturb}\n'
-            f'- Replace with token: {perturbation_token}\n'
-        )
+        if perturbation_mode is not None and genes_to_perturb is not None:
+            self.perturbation_sequence = perturbation_sequence
+            self.genes_to_perturb = genes_to_perturb
+            if mapping_dict_path is not None:
+                with open(
+                    mapping_dict_path,
+                    'rb',
+                ) as f:
+                    tokenid_to_gene = pickle.load(f)
+                gene_to_token_id = {v: k for k, v in tokenid_to_gene.items()}
+                tokens_to_perturb = [
+                    gene_to_token_id[gene] for gene in self.genes_to_perturb
+                ]
+                self.tokens_to_perturb = torch.tensor(
+                    tokens_to_perturb, dtype=torch.long
+                )
+            else:
+                self.tokens_to_perturb = torch.tensor(
+                    genes_to_perturb, dtype=torch.long
+                )
+            self.perturbation_token = torch.tensor(
+                perturbation_token, dtype=torch.long, device=self.device
+            )
+            print(
+                f'Start perturbation ...\n'
+                f'- Perturbation mode: {self.perturbation_mode}\n'
+                f'- Perturbation sequence: {self.perturbation_sequence}\n'
+                f'- Perturbing genes: {genes_to_perturb}\n'
+                f'- Replace with token: {perturbation_token}\n'
+            )
 
         self.generate = generate
         self.sequence_length = sequence_length
@@ -89,6 +100,15 @@ class PerturberTrainer(CellGenTrainer):
         self.pos_encoding_mode = kwargs['pos_encoding_mode']
         self.mask_scheduler = kwargs['mask_scheduler']
 
+        self.condition_dict = condition_dict
+        if self.condition_dict is not None:
+            self.condition_ids = torch.zeros(
+                batch_size,
+                len(self.condition_dict),
+                dtype=torch.long,
+            )
+            print(f'condition_ids: {self.condition_ids.shape}')
+
     # def quantize_model(self, model):
     #     return torch.ao.quantization.quantize_dynamic(
     #         model,
@@ -100,12 +120,25 @@ class PerturberTrainer(CellGenTrainer):
         self,
         batch: Any,
         perturbation: bool = False,
+        condition: bool = False,
     ):
         if perturbation:
             self.tokens_to_perturb = self.tokens_to_perturb.to(self.device)
             self.perturbation_token = self.perturbation_token.to(self.device)
         tgt_input_id_dict = {}
         for i in self.pred_tps:
+            # create metadata tokens for cfg
+            if condition and self.condition_dict is not None:
+                for j, condition in enumerate(self.condition_dict.keys()):
+                    condition_ids = batch[f'{condition}_t{i}']
+                    condition_tokens = [
+                        self.condition_dict[condition][id] for id in condition_ids
+                    ]
+
+                    self.condition_ids[:, j] = torch.tensor(
+                        condition_tokens, dtype=torch.long
+                    )
+
             tgt_input_id_ = torch.cat(
                 (
                     getattr(self, f'cls_token_{str(i)}').expand(
@@ -116,7 +149,10 @@ class PerturberTrainer(CellGenTrainer):
                 dim=1,
             )
             if perturbation:
-                if 'tgt' in self.perturbation_sequence:
+                if (
+                    self.perturbation_sequence is not None
+                    and 'tgt' in self.perturbation_sequence
+                ):
                     perturbed_tgt = tgt_input_id_.clone()
                     mask = torch.isin(tgt_input_id_, self.tokens_to_perturb)
 
@@ -127,7 +163,10 @@ class PerturberTrainer(CellGenTrainer):
             else:
                 tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
         if perturbation:
-            if 'src' in self.perturbation_sequence:
+            if (
+                self.perturbation_sequence is not None
+                and 'src' in self.perturbation_sequence
+            ):
                 perturbed_src = batch['src_input_ids'].clone()
                 mask = torch.isin(batch['src_input_ids'], self.tokens_to_perturb)
                 perturbed_src[mask] = self.perturbation_token
@@ -136,8 +175,14 @@ class PerturberTrainer(CellGenTrainer):
                 perturbed_src = batch['src_input_ids']
         else:
             perturbed_src = batch['src_input_ids']
-        if self.perturbation_mode == 'inference':
-            # self.transformer = self.quantize_model(self.transformer)
+
+        if self.perturbation_mode is None:
+            outputs = self.transformer(
+                src_input_id=batch['src_input_ids'],
+                tgt_input_id_dict=tgt_input_id_dict,
+                not_masked=self.return_embeddings,
+            )
+        elif self.perturbation_mode == 'inference':
             outputs = self.transformer(
                 src_input_id=perturbed_src,
                 tgt_input_id_dict=tgt_input_id_dict,
@@ -147,6 +192,40 @@ class PerturberTrainer(CellGenTrainer):
             outputs = None
 
         return outputs, perturbed_src, tgt_input_id_dict
+
+    def training_step(self, batch, *args, **kwargs):
+        outputs, _, _ = self.forward(batch, perturbation=False, condition=True)
+        for t in outputs.keys():
+            dec_logits = outputs[t]['dec_logits']
+            labels = outputs[t]['labels']
+            with torch.no_grad():
+                perp = self.perplexity(dec_logits, labels)
+                self.log(
+                    'train/perplexity',
+                    perp,
+                    on_step=True,
+                    on_epoch=True,
+                    prog_bar=True,
+                    logger=True,
+                    batch_size=batch['tgt_input_ids_t1'].shape[0],
+                    rank_zero_only=True,
+                    sync_dist=True,
+                )
+            dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
+            labels = labels.contiguous().view(-1)
+            masking_loss = self.masking_loss(dec_logits, labels)
+            self.log(
+                'train/masking_loss',
+                masking_loss,
+                on_step=True,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+                batch_size=batch['tgt_input_ids_t1'].shape[0],
+                rank_zero_only=True,
+                sync_dist=True,
+            )
+            return masking_loss
 
     def test_step(self, batch, *args, **kwargs):
         if self.perturbation_mode == 'inference':
@@ -222,10 +301,10 @@ class PerturberTrainer(CellGenTrainer):
                 perturbed_mean_cls,
                 true_mean_cls,
             )
-            delta_cls_cos_sim = delta_cls_cos_sim.detach().cpu()
-            delta_mean_cos_sim = delta_mean_cos_sim.detach().cpu()
-            cls_embeddings = true_cls.detach().cpu()
-            delta_probs = delta_probs.detach().cpu()
+            delta_cls_cos_sim = delta_cls_cos_sim.detach().cpu().to(torch.float16)
+            delta_mean_cos_sim = delta_mean_cos_sim.detach().cpu().to(torch.float16)
+            cls_embeddings = true_cls.detach().cpu().to(torch.float16)
+            delta_probs = delta_probs.detach().cpu().to(torch.float16)
             self.test_dict['cls_cosine_similarity'].append(delta_cls_cos_sim)
             self.test_dict['mean_cosine_similarity'].append(delta_mean_cos_sim)
             self.test_dict['cls_embeddings'].append(cls_embeddings)

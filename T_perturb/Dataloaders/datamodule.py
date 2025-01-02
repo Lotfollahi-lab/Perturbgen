@@ -157,7 +157,6 @@ class CellGenDataModule(LightningDataModule):
             'tgt_counts_dict': self.tgt_counts_dict,
         }
         # Assign train/val datasets for use in dataloaders
-        # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
             self.all_modelling_tps = self.pred_tps
             dataset_args['time_steps'] = self.pred_tps

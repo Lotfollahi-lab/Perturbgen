@@ -417,7 +417,7 @@ class Block(nn.Module):
         attn_out, cross_attn_weights = self.cross_attn(
             x, context=enc_output, mask=src_mask
         )
-        x = self.norm2(x + self.dropout(attn_out))  # disabled residual connection
+        x = self.norm2(x + self.dropout(attn_out))
         ff_output = self.feed_forward(x)
         x = self.norm3(x + self.dropout(ff_output))
         return x, self_attn_weigths, cross_attn_weights

@@ -62,11 +62,6 @@ class PerturberDataModule(CellGenDataModule):
         return dataset_filtered, dataset_filtered['index']
 
     def setup(self, stage=None):
-        if self.context_tps is not None:
-            all_modelling_tps = self.pred_tps + self.context_tps
-            self.all_modelling_tps = list(set(all_modelling_tps))
-        else:
-            self.all_modelling_tps = self.pred_tps
         # filter the dataset
         if self.condition_to_perturb is not None:
             tgt_dataset_filtered, filter_idx = self.filter_dataset(
@@ -97,8 +92,36 @@ class PerturberDataModule(CellGenDataModule):
             'tgt_datasets': tgt_dataset_filtered,
             'src_counts': self.src_counts,
             'tgt_counts_dict': self.tgt_counts_dict,
-            'time_steps': self.all_modelling_tps,
         }
+
+        if stage == 'fit' or stage is None:
+            self.all_modelling_tps = self.pred_tps
+            dataset_args['time_steps'] = self.pred_tps
+            if self.condition_encodings is not None:
+                dataset_args['split_indices'] = self.train_indices
+                dataset_args['conditions'] = (
+                    self.conditions if self.condition_keys is not None else None
+                )
+                dataset_args['conditions_combined'] = (
+                    self.conditions_combined
+                    if self.condition_keys is not None
+                    else None
+                )
+                self.train_dataset = CellGenDataset(**dataset_args)
+                if self.val_indices is not None:
+                    dataset_args['split_indices'] = self.val_indices
+                    self.val_dataset = CellGenDataset(**dataset_args)
+                else:
+                    self.val_dataset = None
+            else:
+                dataset_args['split_indices'] = self.train_indices
+                self.train_dataset = CellGenDataset(**dataset_args)
+                if self.val_indices is not None:
+                    dataset_args['split_indices'] = self.val_indices
+                    self.val_dataset = CellGenDataset(**dataset_args)
+                else:
+                    self.val_dataset = None
+
         if stage == 'test' or stage is None:
             # use all time steps to provide as context
             self.all_modelling_tps = self.total_tps
