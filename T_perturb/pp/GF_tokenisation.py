@@ -48,7 +48,7 @@ def get_args():
     parser.add_argument(
         '--gene_filtering_mode',
         type=str,
-        default='hvg',
+        default='all',
         choices=['hvg', 'degs', 'all'],
         help='Gene filtering mode: hvg or degs',
     )
@@ -142,10 +142,9 @@ def get_args():
     parser.add_argument(
         '--n_hvg',
         type=int,
-        default=5000,
+        default=10000,
         help='Number of highly variable genes to keep',
     )
-
     args = parser.parse_args()
     return args
 
@@ -202,6 +201,7 @@ with open('./T_perturb/Geneformer/geneformer/token_dictionary_gc95M.pkl', 'rb') 
 with open('./T_perturb/Geneformer/geneformer/gene_name_id_dict_gc95M.pkl', 'rb') as f:
     genename_dict = pickle.load(f)
 
+
 # exclude special tokens
 special_tokens = [0, 1, 2, 3]
 token_dict = {k: v for k, v in token_dict.items() if v not in special_tokens}
@@ -250,7 +250,6 @@ adata.obs.index.name = None
 if not (issparse(adata.X)):
     adata.X = csr_matrix(adata.X)
 # adata.obs = adata.obs[args.var_list]
-
 adata.var = adata.var[['gene_name', 'ensembl_id']]
 adata.obs['n_counts'] = adata.X.sum(axis=1)
 
@@ -278,30 +277,34 @@ if args.exclude_non_GF_genes is False:
 
 # subset adata to only genes in the token dictionary
 # filter adata for only genes occuring in the token dictionary
-(adata_subset, token_id_to_row_id_dict, row_id_to_gene_name) = tokenid_mapping(
-    adata,
-    './T_perturb/Geneformer/geneformer/token_dictionary_gc95M.pkl',
-    exclude_non_GF_genes=True,
-)
-# save row id to gene name mapping
-with open(
-    f'./T_perturb/T_perturb/pp/res/{args.dataset}'
-    f'/token_id_to_genename_{args.n_hvg}_'
-    f'{args.gene_filtering_mode}.pkl',
-    'wb',
-) as file:
-    pickle.dump(row_id_to_gene_name, file)
-# save token id to row id mapping
-with open(
-    f'./T_perturb/T_perturb/pp/res/{args.dataset}/'
-    f'tokenid_to_rowid_{args.n_hvg}_'
-    f'{args.gene_filtering_mode}.pkl',
-    'wb',
-) as file:
-    pickle.dump(token_id_to_row_id_dict, file)
-
-if args.exclude_non_GF_genes is True:
-    adata_subset.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
+if args.gene_filtering_mode == 'all':
+    adata_subset = adata
+else:
+    (adata_subset, token_id_to_row_id_dict, row_id_to_gene_name) = tokenid_mapping(
+        adata,
+        # './T_perturb/Geneformer/geneformer/token_dictionary_gc95M.pkl',
+        '/lustre/scratch126/cellgen//team361/am74/Adib/TRACE/Loom_cohort/'
+        'tdigest/2nd_run/Dictionaries/trace_token.pkl',
+        exclude_non_GF_genes=True,
+    )
+    # save row id to gene name mapping
+    with open(
+        f'./T_perturb/T_perturb/pp/res/{args.dataset}'
+        f'/token_id_to_genename_{args.n_hvg}_'
+        f'{args.gene_filtering_mode}.pkl',
+        'wb',
+    ) as file:
+        pickle.dump(row_id_to_gene_name, file)
+    # save token id to row id mapping
+    with open(
+        f'./T_perturb/T_perturb/pp/res/{args.dataset}/'
+        f'tokenid_to_rowid_{args.n_hvg}_'
+        f'{args.gene_filtering_mode}.pkl',
+        'wb',
+    ) as file:
+        pickle.dump(token_id_to_row_id_dict, file)
+    if args.exclude_non_GF_genes is True:
+        adata_subset.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
 print('Finished preprocessing adata.')
 print('Start tokenisation of adata...')
 input_dir = paired_h5ad_dir
@@ -320,8 +323,20 @@ tk = TranscriptomeTokenizer(
     model_input_size=4096,
     collapse_gene_ids=True,
     special_token=True,
+    gene_median_file=(
+        '/lustre/scratch126/cellgen/team361/am74/'
+        'Adib/TRACE/Loom_cohort/tdigest/2nd_run/'
+        'Dictionaries/trace_median.pkl'
+    ),
     token_dictionary_file=(
-        './T_perturb/Geneformer/' 'geneformer/token_dictionary_gc95M.pkl'
+        '/lustre/scratch126/cellgen/team361/am74/'
+        'Adib/TRACE/Loom_cohort/tdigest/2nd_run/'
+        'Dictionaries/trace_token.pkl'
+    ),
+    gene_mapping_file=(
+        '/lustre/scratch126/cellgen/team361/am74/'
+        'Adib/TRACE/Loom_cohort/tdigest/2nd_run/'
+        'Dictionaries/trace_gene_mapping.pkl'
     ),
 )
 # time it
@@ -334,7 +349,6 @@ tk.tokenize_data(
     file_format='h5ad',  # format [loom, h5ad]
     use_generator=False,
 )
-
 
 print('Finished tokenisation.')
 # ---------------- Cell pairing and save adata/dataset by time point ----------------

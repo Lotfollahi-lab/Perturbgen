@@ -44,7 +44,7 @@ class PerturberTrainer(CellGenTrainer):
             max_seq_length=kwargs['max_seq_length'],
             dropout=kwargs['dropout'],
             pred_tps=kwargs['pred_tps'],
-            context_tps=kwargs['context_tps'],
+            context_tps=kwargs['context_tps'] if 'context_tps' in kwargs else None,
             n_total_tps=kwargs['n_total_tps'],
             encoder=kwargs['encoder'],
             mask_scheduler=kwargs['mask_scheduler'],
@@ -68,11 +68,11 @@ class PerturberTrainer(CellGenTrainer):
                     gene_to_token_id[gene] for gene in self.genes_to_perturb
                 ]
                 self.tokens_to_perturb = torch.tensor(
-                    tokens_to_perturb, dtype=torch.long
+                    tokens_to_perturb, dtype=torch.long, device=self.device
                 )
             else:
                 self.tokens_to_perturb = torch.tensor(
-                    genes_to_perturb, dtype=torch.long
+                    genes_to_perturb, dtype=torch.long, device=self.device
                 )
             self.perturbation_token = torch.tensor(
                 perturbation_token, dtype=torch.long, device=self.device
@@ -105,14 +105,6 @@ class PerturberTrainer(CellGenTrainer):
 
         self.condition = condition
         self.condition_dict = condition_dict
-        if self.condition and self.condition_dict is not None:
-            self.condition_ids = torch.zeros(
-                batch_size,
-                len(self.condition_dict),
-                dtype=torch.long,
-            )
-        else:
-            self.condition_ids = None
 
     # def quantize_model(self, model):
     #     return torch.ao.quantization.quantize_dynamic(
@@ -127,6 +119,7 @@ class PerturberTrainer(CellGenTrainer):
         perturbation: bool = False,
         condition: bool = False,
     ):
+        batch_size, _ = batch['src_input_ids'].shape
         if perturbation:
             self.tokens_to_perturb = self.tokens_to_perturb.to(self.device)
             self.perturbation_token = self.perturbation_token.to(self.device)
@@ -134,12 +127,18 @@ class PerturberTrainer(CellGenTrainer):
         for i in self.pred_tps:
             if condition and self.condition_dict is not None:
                 for j, condition in enumerate(self.condition_dict.keys()):
+                    self.condition_ids = torch.zeros(
+                        batch_size,
+                        len(self.condition_dict),
+                        dtype=torch.long,
+                        device=self.device,
+                    )
                     if condition == 'timepoint':
                         time_token = torch.tensor(
                             self.condition_dict['timepoint'][f't_{i}'], dtype=torch.long
                         )
                         self.condition_ids[:, j] = torch.tensor(
-                            time_token, dtype=torch.long
+                            time_token, dtype=torch.long, device=self.device
                         )
                     else:
                         condition_ids = batch[f'{condition}_t{i}']
@@ -148,7 +147,7 @@ class PerturberTrainer(CellGenTrainer):
                         ]
                         # j+1 to skip time token
                         self.condition_ids[:, j] = torch.tensor(
-                            condition_tokens, dtype=torch.long
+                            condition_tokens, dtype=torch.long, device=self.device
                         )
 
             tgt_input_id = batch[f'tgt_input_ids_t{i}']
@@ -190,40 +189,68 @@ class PerturberTrainer(CellGenTrainer):
             perturbed_src = batch['src_input_ids']
 
         if self.condition:
-            print()
-            outputs = self.transformer.forward_with_cond_scale(
-                src_input_id=batch['src_input_ids'],
-                tgt_input_id_dict=tgt_input_id_dict,
-                not_masked=self.return_embeddings,
-                condition_ids=self.condition_ids,
-            )
+            if self.condition_ids is not None:
+                outputs = self.transformer.forward_with_cond_scale(
+                    src_input_id=batch['src_input_ids'],
+                    tgt_input_id_dict=tgt_input_id_dict,
+                    not_masked=self.return_embeddings,
+                    condition_ids=self.condition_ids,
+                )
+            else:
+                raise ValueError('Provide condition ids to Trainer')
         elif self.perturbation_mode == 'inference':
             outputs = self.transformer(
                 src_input_id=perturbed_src,
                 tgt_input_id_dict=tgt_input_id_dict,
                 not_masked=True,
-                condition_ids=self.condition_ids,
             )
         else:
-            outputs = None
+            outputs = self.transformer.forward(
+                src_input_id=batch['src_input_ids'],
+                tgt_input_id_dict=tgt_input_id_dict,
+                not_masked=self.return_embeddings,
+            )
 
         return outputs, perturbed_src, tgt_input_id_dict
 
     def training_step(self, batch, *args, **kwargs):
-        torch.autograd.set_detect_anomaly(True)
-        outputs, _, _ = self.forward(
-            batch, perturbation=False, condition=self.condition
-        )
-        for t in outputs.keys():
-            dec_logits = outputs[t]['dec_logits']
-            print(dec_logits.shape)
-            labels = outputs[t]['labels']
-            print(labels.shape)
-            with torch.no_grad():
-                perp = self.perplexity(dec_logits, labels)
+        from torch.autograd import detect_anomaly
+
+        with detect_anomaly():
+            outputs, _, _ = self.forward(
+                batch, perturbation=False, condition=self.condition
+            )
+            for t in outputs.keys():
+                dec_logits = outputs[t]['dec_logits']
+                # print('dec_logits', dec_logits)
+                labels = outputs[t]['labels']
+                # print number of non -100 labels
+                # print('non masked labels',(labels != -100).sum())
+                # print(labels[:,:30])
+                # print('dec_logits', dec_logits[:,-30:,0])
+                with torch.no_grad():
+                    perp = self.perplexity(dec_logits, labels)
+                    # # raise if perp is nan
+                    # if torch.isnan(perp):
+
+                    #     raise ValueError('Perplexity is NaN')
+                    self.log(
+                        'train/perplexity',
+                        perp,
+                        on_step=True,
+                        on_epoch=True,
+                        prog_bar=True,
+                        logger=True,
+                        batch_size=batch['tgt_input_ids_t1'].shape[0],
+                        rank_zero_only=True,
+                        sync_dist=True,
+                    )
+                dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
+                labels = labels.contiguous().view(-1)
+                masking_loss = self.masking_loss(dec_logits, labels)
                 self.log(
-                    'train/perplexity',
-                    perp,
+                    'train/masking_loss',
+                    masking_loss,
                     on_step=True,
                     on_epoch=True,
                     prog_bar=True,
@@ -232,21 +259,15 @@ class PerturberTrainer(CellGenTrainer):
                     rank_zero_only=True,
                     sync_dist=True,
                 )
-            dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
-            labels = labels.contiguous().view(-1)
-            masking_loss = self.masking_loss(dec_logits, labels)
-            self.log(
-                'train/masking_loss',
-                masking_loss,
-                on_step=True,
-                on_epoch=True,
-                prog_bar=True,
-                logger=True,
-                batch_size=batch['tgt_input_ids_t1'].shape[0],
-                rank_zero_only=True,
-                sync_dist=True,
-            )
             return masking_loss
+
+    def on_after_backward(self):
+        # Check gradients after backpropagation
+        for name, param in self.named_parameters():
+            if param.grad is not None and (
+                torch.isnan(param.grad).any() or torch.isinf(param.grad).any()
+            ):
+                raise RuntimeError(f'NaN or Inf in gradients of {name}')
 
     def test_step(self, batch, *args, **kwargs):
         if self.perturbation_mode == 'inference':

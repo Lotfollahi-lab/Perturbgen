@@ -73,7 +73,6 @@ class PerturberMasking(CellGen):
         device = tgt_input_id.device
         labels = tgt_input_id.clone()
         batch, seq_len = tgt_input_id.shape
-
         sample_length = torch.sum(~tgt_pad, dim=1)
         rand_time = uniform((batch,), device=device)
         rand_mask_probs = noise_schedule(
@@ -84,6 +83,8 @@ class PerturberMasking(CellGen):
         num_token_masked = (
             (torch.mul(sample_length, rand_mask_probs)).round().clamp(min=1)
         )
+
+        print('number of unmasked tokens', num_token_masked)
         rand_int = torch.rand((batch, seq_len), device=device)
         # exclude CLS token and set pad token to >1 to exclude from masking
         rand_int[tgt_pad] = 2
@@ -94,7 +95,7 @@ class PerturberMasking(CellGen):
         labels[~mask] = -100
         return tgt_input_id, labels
 
-    def forward_with_cond_scale(self, cond_scale=3.0, *args, **kwargs):
+    def forward_with_cond_scale(self, cond_scale=0.0, *args, **kwargs):
         # ---classifier-free guidance---
         # run two fwd passes with the same time step
         # one with conditional and one unconditional
@@ -193,11 +194,15 @@ class PerturberMasking(CellGen):
                 cond_token_emb = self.cond_embedding(condition_ids)
                 cond_len = cond_token_emb.shape[1]
                 tgt_embedding = torch.cat([cond_token_emb, tgt_embedding], dim=1)
-                cond_pad = prob_mask_like(condition_ids.shape, cond_drop_prob)
+                cond_pad = prob_mask_like(
+                    condition_ids.shape, cond_drop_prob, device=condition_ids.device
+                )
                 tgt_pad = torch.cat([cond_pad, tgt_pad], dim=1)
                 if labels is not None:
                     # add -100 to ignore condition tokens in CE loss
                     labels = F.pad(labels, (cond_len, 0), value=-100)
+                    print('cond', cond_len)
+                    print('labels', labels.shape)
 
             tgt_embedding = self.pos_embedding(tgt_embedding, tgt_time_step)
             # does not include any context
