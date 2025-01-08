@@ -21,8 +21,7 @@ trainer:
   pos_encoding_mode: 'time_pos_learnt'
   return_attn: false
   genes_to_perturb:
-    - 'CD79A'
-    - 'CD79B'
+    - 'FLT3'
   perturbation_token: 1
   perturbation_mode: 'inference'
   perturbation_sequence:

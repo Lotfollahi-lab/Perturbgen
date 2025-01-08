@@ -4,11 +4,11 @@
 #BSUB -n 8 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
-#BSUB -o logs/hspc_perturb_fp32%J.out # output file
-#BSUB -e logs/hspc_perturb_fp32%J.err # error file
-#BSUB -M 50000  # RAM memory part 2. Default: 100MB
-#BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
-#BSUB -J hspc_perturb_generate_fp32 # job name
+#BSUB -o logs/hspc_perturb_CD79B%J.out # output file
+#BSUB -e logs/hspc_perturb_CD79B%J.err # error file
+#BSUB -M 300000  # RAM memory part 2. Default: 100MB
+#BSUB -R 'select[mem>300000] rusage[mem=300000]' # RAM memory part 1. Default: 100MB
+#BSUB -J hspc_perturb_CD79B # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -23,4 +23,4 @@ echo "--- Start computing model"
 
 # python3 $cwd/train.py \
 python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb/Perturb/val.py \
---config T_perturb/T_perturb/configs/eval/HSPC/perturbation/mask_inference_perturbation.yaml
+--config T_perturb/T_perturb/configs/eval/HSPC/mask_inference_perturbation.yaml

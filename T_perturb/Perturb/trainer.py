@@ -13,7 +13,11 @@ from torch.nn.functional import cosine_similarity
 
 from T_perturb.Model.trainer import CellGenTrainer
 from T_perturb.Perturb.T_model import PerturberMasking
-from T_perturb.src.utils import compute_rouge_score, return_perturbation_adata
+from T_perturb.src.utils import (
+    compute_rouge_score,
+    map_results_to_genes,
+    return_perturbation_adata,
+)
 
 
 class PerturberTrainer(CellGenTrainer):
@@ -60,6 +64,12 @@ class PerturberTrainer(CellGenTrainer):
                 ) as f:
                     tokenid_to_gene = pickle.load(f)
                 gene_to_token_id = {v: k for k, v in tokenid_to_gene.items()}
+                self.gene_to_tokenid = gene_to_token_id
+                # find corresponding special for dictionary keys '<>'
+                special_tokens = [
+                    k for k, v in tokenid_to_gene.items() if v.startswith('<')
+                ]
+                self.special_tokens = special_tokens
                 tokens_to_perturb = [
                     gene_to_token_id[gene] for gene in self.genes_to_perturb
                 ]
@@ -87,8 +97,12 @@ class PerturberTrainer(CellGenTrainer):
         self.iterations = iterations
 
         self.test_dict['cls_cosine_similarity'] = []
-        self.test_dict['mean_cosine_similarity'] = []
+        self.test_dict['gene_cosine_similarity'] = []
         self.test_dict['delta_probs'] = []
+        self.test_dict['delta_gene_probs'] = []
+        self.test_dict['wasserstein_distance'] = []
+        self.test_dict['true_cls'] = []
+        self.test_dict['perturbed_cls'] = []
 
         self.rouge = evaluate.load('rouge')
         self.rouge_seq_len_list = [25, 100, kwargs['max_seq_length']]
@@ -213,36 +227,70 @@ class PerturberTrainer(CellGenTrainer):
                 f'Choose between "inference" or "generate"'
             )
         for t in self.pred_tps:
-            true_cls = true_outputs[t]['dec_embedding'][:, 0, :]
-            true_mean_cls = true_outputs[t]['mean_embedding']
+            # create a mask for special tokens to exlude
+            # them from the cosine similarity & logits and probs
 
-            true_logits = true_outputs[t]['dec_logits']
-            true_probs = torch.softmax(true_logits, dim=-1)
-            true_probs = true_probs.sum(dim=1)
+            true_cls = true_outputs[t]['dec_embedding'][:, 0, :]
+            true_gene = true_outputs[t]['dec_embedding'][:, 1:, :]
+            # true_logits = true_outputs[t]['dec_logits'][:, 1:, :]
 
             perturbed_cls = perturbed_outputs[t]['dec_embedding'][:, 0, :]
-            perturbed_mean_cls = perturbed_outputs[t]['mean_embedding']
-            perturbed_logits = perturbed_outputs[t]['dec_logits']
+            perturbed_gene = perturbed_outputs[t]['dec_embedding'][:, 1:, :]
+            # perturbed_logits = perturbed_outputs[t]['dec_logits'][:, 1:, :]
 
-            perturbed_probs = torch.softmax(perturbed_logits, dim=-1)
-            perturbed_probs = perturbed_probs.sum(dim=1)
-            delta_probs = perturbed_probs - true_probs
+            # true_probs = torch.softmax(true_logits, dim=-1)
+            # perturbed_probs = torch.softmax(perturbed_logits, dim=-1)
+            # delta_probs = torch.abs(true_probs - perturbed_probs)
+            # token_probs_change = delta_probs.sum(dim=-1)
+            # delta_gene_probs, self.marker_genes = map_results_to_genes(
+            #     token_probs_change,
+            #     mapping_dict=self.gene_to_tokenid,
+            #     token_ids=batch[f'tgt_input_ids_t{t}'],
+            # )
+
+            gene_cos_sim = cosine_similarity(
+                true_gene,
+                perturbed_gene,
+                dim=-1,
+            )
+            gene_cos_sim, self.marker_genes = map_results_to_genes(
+                gene_cos_sim,
+                mapping_dict=self.gene_to_tokenid,
+                token_ids=batch[f'tgt_input_ids_t{t}'],
+            )
+
             delta_cls_cos_sim = cosine_similarity(
                 perturbed_cls,
                 true_cls,
             )
-            delta_mean_cos_sim = cosine_similarity(
-                perturbed_mean_cls,
-                true_mean_cls,
-            )
+            # delta_mean_cos_sim = cosine_similarity(
+            #     perturbed_mean_cls,
+            #     true_mean_cls,
+            # )
+            # # iterate over the batch and compute the wasserstein distance
+            # wd = []
+            # for i in range(true_cls.shape[0]):
+            #     print(true_cls[i].shape)
+            #     wd.append(wasserstein(
+            #         true_cls[i],
+            #         perturbed_cls[i],
+            #         power=1
+            #     ))
+
             delta_cls_cos_sim = delta_cls_cos_sim.detach().cpu().to(torch.float16)
-            delta_mean_cos_sim = delta_mean_cos_sim.detach().cpu().to(torch.float16)
-            cls_embeddings = true_cls.detach().cpu().to(torch.float16)
-            delta_probs = delta_probs.detach().cpu().to(torch.float16)
+            gene_cos_sim = gene_cos_sim.detach().cpu().to(torch.float16)
+            true_cls = true_cls.detach().cpu().to(torch.float16)
+            perturbed_cls = perturbed_cls.detach().cpu().to(torch.float16)
+            # token_probs_change = token_probs_change.detach().cpu().to(torch.float16)
+            # delta_probs = delta_probs.detach().cpu().to(torch.float16)
+            # delta_gene_probs = delta_gene_probs.detach().cpu().to(torch.float16)
             self.test_dict['cls_cosine_similarity'].append(delta_cls_cos_sim)
-            self.test_dict['mean_cosine_similarity'].append(delta_mean_cos_sim)
-            self.test_dict['cls_embeddings'].append(cls_embeddings)
-            self.test_dict['delta_probs'].append(delta_probs)
+            self.test_dict['gene_cosine_similarity'].append(gene_cos_sim)
+            self.test_dict['true_cls'].append(true_cls)
+            self.test_dict['perturbed_cls'].append(perturbed_cls)
+            # self.test_dict['delta_probs'].append(delta_probs)
+            # self.test_dict['delta_gene_probs'].append(delta_gene_probs)
+            # self.test_dict['wasserstein_distance'].append(wd)
 
             # return obs_key
             self.test_dict['cell_idx'].append(batch[f'tgt_cell_idx_t{t}'])
@@ -253,14 +301,17 @@ class PerturberTrainer(CellGenTrainer):
     def on_test_epoch_end(self):
         obs_key = self.var_list if len(self.var_list) > 0 else []
         obs_key.extend(['cell_idx'])
+        genes_to_perturb = '_'.join(self.genes_to_perturb)
+        perturbation_sequence = '_'.join(self.perturbation_sequence)
         return_perturbation_adata(
             test_dict=self.test_dict,
             obs_key=obs_key,
             output_dir=self.output_dir,
+            marker_genes=self.marker_genes,
             file_name=(
                 f'{self.date}_m{self.perturbation_mode}_adata'
-                f'_g{self.genes_to_perturb}'
-                f'_s{self.perturbation_sequence}'
+                f'_g{genes_to_perturb}'
+                f'_s{perturbation_sequence}'
                 f'_t{self.perturbation_token}.h5ad'
             ),
             mode=self.perturbation_mode,

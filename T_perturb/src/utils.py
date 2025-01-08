@@ -299,11 +299,11 @@ def compute_cos_similarity(
     return cos_similarity
 
 
-def return_cos_similarity(
-    cos_similarity: torch.tensor,
+def map_results_to_genes(
+    res: torch.tensor,
     mapping_dict: Dict,
     token_ids: torch.tensor,
-    marker_genes: Optional[List[str]] = None,
+    marker_genes: List[str] | None = None,
 ) -> torch.tensor:
     """
     Description:
@@ -313,15 +313,16 @@ def return_cos_similarity(
     -----------
     marker_genes: `List[str]`
         List of marker genes.
-    cos_similarity: `torch.tensor`
-        Tensor of cosine similarity between cls and gene embeddings.
+    res: `torch.tensor`
+        Tensor containing results ordered by token ids.
     mapping_dict: `Dict`
         Dictionary mapping gene names to token ids.
     Returns:
     --------
-    cos_similarity_res: `torch.tensor`
-        Tensor of cosine similarity for marker genes.
+    res_: `torch.tensor`
+        Tensor reordered by gene names.
     marker_genes_dict: `Dict`
+        Dictionary of marker genes -> {gene: index}
     """
     # filter for marker genes and swap key value
     if marker_genes is not None:
@@ -332,10 +333,10 @@ def return_cos_similarity(
         marker_genes_ids = {
             v: k for v, k in mapping_dict.items() if v not in special_tokens
         }
-    cos_similarity_res = torch.zeros(
-        cos_similarity.shape[0],
+    res_ = torch.zeros(
+        res.shape[0],
         len(marker_genes_ids.keys()),
-        device=cos_similarity.device,
+        device=res.device,
     )
     marker_genes_dict = {}
     for i, gene in enumerate(marker_genes_ids.keys()):
@@ -343,11 +344,9 @@ def return_cos_similarity(
         # ---------------------
         cond_embs_to_fill = (token_ids == marker_genes_ids[gene]).sum(1) > 0
         cond_select_markers = torch.where(token_ids == marker_genes_ids[gene])
-        cos_similarity_res[cond_embs_to_fill, i] = cos_similarity[
-            cond_select_markers[0], cond_select_markers[1]
-        ]
+        res_[cond_embs_to_fill, i] = res[cond_select_markers[0], cond_select_markers[1]]
         marker_genes_dict[gene] = i
-    return cos_similarity_res, marker_genes_dict
+    return res_, marker_genes_dict
 
 
 def return_attn_weights(
@@ -771,6 +770,7 @@ def return_perturbation_adata(
     test_dict: dict,
     obs_key: list,
     output_dir: str,
+    marker_genes: dict,
     file_name: str,
     mode: Literal['inference', 'generate'],
 ) -> ad.AnnData:
@@ -794,8 +794,8 @@ def return_perturbation_adata(
     --------
     adata: `~anndata.AnnData` \n
         Annotated data matrix with predicted counts. \n
-        - adata.X: `~numpy.ndarray`
-            Array of predicted counts.
+        - adata.X: `~pd.DataFrame`
+            pd.DataFrame of cosine similarities between true and predicted embeddings.
         - adata.obs: `~pandas.DataFrame`
             DataFrame of obs_key.
         - adata.var: `~pandas.DataFrame`
@@ -810,17 +810,34 @@ def return_perturbation_adata(
     """
     print('---Generating anndata')
     # adata.obsm
-    cls_embeddings = torch.cat(test_dict['cls_embeddings']).numpy()
+    true_cls = torch.cat(test_dict['true_cls']).numpy()
+    perturbed_cls = torch.cat(test_dict['perturbed_cls']).numpy()
     cls_cos_similarity = torch.cat(test_dict['cls_cosine_similarity']).numpy()
-    mean_cos_similarity = torch.cat(test_dict['mean_cosine_similarity']).numpy()
-    delta_probs = torch.cat(test_dict['delta_probs']).numpy()
+    # delta_probs = torch.cat(test_dict['delta_probs']).numpy()
+    # wasserstein_distance = np.concatenate(test_dict['wasserstein_distance'])
+
+    # adata.varm
+    gene_cos_similarity = torch.cat(test_dict['gene_cosine_similarity'], dim=0).numpy()
+    cos_similarity_df = pd.DataFrame(gene_cos_similarity, columns=marker_genes.keys())
+    # cos_similarity_df = cos_similarity_df.T
+    # cos_similarity_df.columns = cos_similarity_df.columns.astype(str)
+    # delta_gene_probs = torch.cat(test_dict['delta_gene_probs'], dim=0).numpy()
+    # delta_gene_probs_df = pd.DataFrame(
+    #     delta_gene_probs, columns=marker_genes.keys()
+    # )
+
     # create dataframe to store perturbation results
     obsm_dict = {
-        'cls_embeddings': cls_embeddings,
+        'true_cls': true_cls,
+        'perturbed_cls': perturbed_cls,
         'cls_cos_similarity': cls_cos_similarity,
-        'mean_cos_similarity': mean_cos_similarity,
-        'delta_probs': delta_probs,
+        # 'delta_probs': delta_probs,
     }
+    # varm_dict = {
+    #     'gene_cos_similarity': cos_similarity_df,
+    #     # 'delta_gene_probs': delta_gene_probs_df.T,
+    # }
+
     if mode == 'generate':
         rouge_dict = {
             key: np.concatenate(test_dict[key])
@@ -836,7 +853,10 @@ def return_perturbation_adata(
     adata = ad.AnnData(
         obs=test_obs,
         obsm=obsm_dict,
+        var=pd.DataFrame(marker_genes.keys(), columns=['gene_name']),
     )
+    adata.var_names = adata.var['gene_name']
+    adata.X = cos_similarity_df
     adata.write_h5ad(os.path.join(output_dir, file_name))
     print('anndata generation completed---')
     return adata

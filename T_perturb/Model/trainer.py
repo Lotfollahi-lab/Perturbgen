@@ -36,10 +36,10 @@ from T_perturb.src.utils import (  # WarmupScheduler,;
     aggregate_attn_weights,
     compute_cos_similarity,
     compute_rouge_score,
+    map_results_to_genes,
     modify_ckpt_state_dict,
     pearson,
     return_attn_weights,
-    return_cos_similarity,
     return_gene_embeddings,
     return_generation_adata,
     return_prediction_adata,
@@ -137,7 +137,7 @@ class CellGenTrainer(LightningModule):
                 'rb',
             ) as f:
                 gene_to_rowid = pickle.load(f)
-                # swarp key and value
+                # swap key and value
                 self.gene_to_rowid: Dict[Any, Any] | None = {
                     v: k for k, v in gene_to_rowid.items()
                 }
@@ -360,7 +360,7 @@ class CellGenTrainer(LightningModule):
                 ]
                 marker_genes_all = list(set(marker_genes_all))
                 # 2. map cosine similarity to corresponding genes
-                marker_cos_similarity, marker_genes_dict = return_cos_similarity(
+                marker_cos_similarity, marker_genes_dict = map_results_to_genes(
                     cos_similarity=cos_similarity,
                     mapping_dict=(
                         self.gene_to_rowid if self.gene_to_rowid is not None else None
