@@ -21,7 +21,7 @@ trainer:
   pos_encoding_mode: 'time_pos_learnt'
   return_attn: false
   genes_to_perturb:
-    - 'FLT3'
+    - 'CD79A'
   perturbation_token: 1
   perturbation_mode: 'inference'
   perturbation_sequence:
@@ -52,5 +52,5 @@ datamodule:
   pred_tps:
     - 1
 model:
-  precision: 16
+  precision: 32
   ckpt_masking_path: "T_perturb/T_perturb/plt/res/hspc/embeddings/res/checkpoints/20241114_1146_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_learnt_m_cosine_tp_1-2_s_42-epoch=09.ckpt"

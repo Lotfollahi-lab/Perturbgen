@@ -669,9 +669,9 @@ def return_prediction_adata(
     if gene_names is not None:
         test_var = pd.DataFrame(gene_names, columns=['gene_name'])
     gene_embeddings_dict = {}
-    for t in range(1, n_total_tps + 1):
-        gene_embeddings = torch.cat(test_dict[f'gene_embeddings_t{t}'], dim=0).numpy()
-        gene_embeddings_dict[f'gene_embeddings_t{t}'] = gene_embeddings
+
+    gene_embeddings = torch.cat(test_dict['gene_embeddings'], dim=0).numpy()
+    gene_embeddings_dict['gene_embeddings'] = gene_embeddings
 
     # save as pkl file for downstream analysis
     with open(os.path.join(output_dir, f'{file_name}_gene_embeddings.pkl'), 'wb') as f:
@@ -813,9 +813,9 @@ def return_perturbation_adata(
     true_cls = torch.cat(test_dict['true_cls']).numpy()
     perturbed_cls = torch.cat(test_dict['perturbed_cls']).numpy()
     cls_cos_similarity = torch.cat(test_dict['cls_cosine_similarity']).numpy()
+    mean_cos_similarity = torch.cat(test_dict['mean_cosine_similarity']).numpy()
     # delta_probs = torch.cat(test_dict['delta_probs']).numpy()
     # wasserstein_distance = np.concatenate(test_dict['wasserstein_distance'])
-
     # adata.varm
     gene_cos_similarity = torch.cat(test_dict['gene_cosine_similarity'], dim=0).numpy()
     cos_similarity_df = pd.DataFrame(gene_cos_similarity, columns=marker_genes.keys())
@@ -831,6 +831,7 @@ def return_perturbation_adata(
         'true_cls': true_cls,
         'perturbed_cls': perturbed_cls,
         'cls_cos_similarity': cls_cos_similarity,
+        'mean_cos_similarity': mean_cos_similarity,
         # 'delta_probs': delta_probs,
     }
     # varm_dict = {
@@ -857,6 +858,7 @@ def return_perturbation_adata(
     )
     adata.var_names = adata.var['gene_name']
     adata.X = cos_similarity_df
+    raise
     adata.write_h5ad(os.path.join(output_dir, file_name))
     print('anndata generation completed---')
     return adata

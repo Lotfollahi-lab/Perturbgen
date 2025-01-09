@@ -164,11 +164,10 @@ class CellGenTrainer(LightningModule):
             'cell_idx': [],
         }
 
-        for t in range(1, n_total_tps + 1):
-            self.test_dict[f'gene_embeddings_t{t}'] = []
-            if return_attn:
-                self.test_dict[f'self_attn_weights_t{t}'] = []
-                self.test_dict[f'cross_attn_weights_t{t}'] = []
+        self.test_dict['gene_embeddings'] = []
+
+        self.test_dict['self_attn_weights'] = []
+        self.test_dict['cross_attn_weights'] = []
         if var_list is not None:
             self.var_list = var_list
             for var in self.var_list:
@@ -400,10 +399,8 @@ class CellGenTrainer(LightningModule):
                     )
                     self_attn_weights = self_attn_weights.mean(dim=0).detach().cpu()
                     cross_attn_weights = cross_attn_weights.mean(dim=0).detach().cpu()
-                    self.test_dict[f'self_attn_weights_t{t}'].append(self_attn_weights)
-                    self.test_dict[f'cross_attn_weights_t{t}'].append(
-                        cross_attn_weights
-                    )
+                    self.test_dict['self_attn_weights'].append(self_attn_weights)
+                    self.test_dict['cross_attn_weights'].append(cross_attn_weights)
                 self.marker_genes = marker_genes_dict
                 cos_similarity = marker_cos_similarity.detach().cpu()
                 cos_similarity = cos_similarity.to(torch.float16)
@@ -415,7 +412,7 @@ class CellGenTrainer(LightningModule):
                 combined_batch = batch['combined_batch'].detach().cpu()
                 self.test_dict['true_counts'].append(true_counts)
                 self.test_dict['cls_embeddings'].append(cls_embeddings)
-                self.test_dict[f'gene_embeddings_t{t}'].append(gene_embeddings)
+                self.test_dict['gene_embeddings'].append(gene_embeddings)
                 self.test_dict['cosine_similarities'].append(cos_similarity)
                 # self.test_dict['gene_embeddings'].append(gene_embeddings)
                 self.test_dict['batch'].append(combined_batch)
@@ -426,35 +423,26 @@ class CellGenTrainer(LightningModule):
 
     def on_test_epoch_end(self):
         if self.return_attn:
-            for t in range(1, self.n_total_tps + 1):
-                self_attn_weights = torch.stack(
-                    self.test_dict[f'self_attn_weights_t{t}']
-                )
-                cross_attn_weights = torch.stack(
-                    self.test_dict[f'cross_attn_weights_t{t}']
-                )
-                if self.gene_to_rowid is not None:
-                    # order genes based on ascending order of  rowid
-                    tgt_gene_order = sorted(
-                        self.gene_to_rowid, key=self.gene_to_rowid.get
-                    )
-                else:
-                    tgt_gene_order = self.gene_names
-                aggregate_attn_weights(
-                    attn_weights=self_attn_weights,
-                    tgt_gene_names=tgt_gene_order,
-                    output_dir=self.output_dir,
-                    file_name=f'{self.date}_self_attn_weights_t{t}',
-                )
-                aggregate_attn_weights(
-                    attn_weights=cross_attn_weights,
-                    tgt_gene_names=tgt_gene_order,
-                    src_gene_names=tgt_gene_order[
-                        : -self.n_total_tps
-                    ],  # exclude cls token
-                    output_dir=self.output_dir,
-                    file_name=f'{self.date}_cross_attn_weights_t{t}',
-                )
+            self_attn_weights = torch.stack(self.test_dict['self_attn_weights'])
+            cross_attn_weights = torch.stack(self.test_dict['cross_attn_weights'])
+            if self.gene_to_rowid is not None:
+                # order genes based on ascending order of  rowid
+                tgt_gene_order = sorted(self.gene_to_rowid, key=self.gene_to_rowid.get)
+            else:
+                tgt_gene_order = self.gene_names
+            aggregate_attn_weights(
+                attn_weights=self_attn_weights,
+                tgt_gene_names=tgt_gene_order,
+                output_dir=self.output_dir,
+                file_name=f'{self.date}_self_attn_weights',
+            )
+            aggregate_attn_weights(
+                attn_weights=cross_attn_weights,
+                tgt_gene_names=tgt_gene_order,
+                src_gene_names=tgt_gene_order[: -self.n_total_tps],  # exclude cls token
+                output_dir=self.output_dir,
+                file_name=f'{self.date}_cross_attn_weights',
+            )
         if self.return_embeddings:
             obs_key = self.var_list if len(self.var_list) > 0 else []
             obs_key.extend(['batch', 'cell_idx'])

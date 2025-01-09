@@ -6,8 +6,8 @@
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
 #BSUB -o logs/hspc_perturb_CD79B%J.out # output file
 #BSUB -e logs/hspc_perturb_CD79B%J.err # error file
-#BSUB -M 300000  # RAM memory part 2. Default: 100MB
-#BSUB -R 'select[mem>300000] rusage[mem=300000]' # RAM memory part 1. Default: 100MB
+#BSUB -M 50000  # RAM memory part 2. Default: 100MB
+#BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
 #BSUB -J hspc_perturb_CD79B # job name
 
 # load cuda

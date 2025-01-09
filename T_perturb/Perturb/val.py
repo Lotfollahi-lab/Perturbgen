@@ -75,7 +75,7 @@ trainer = pl.Trainer(
     logger=False,
     accelerator=accelerator,
     devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
-    limit_test_batches=500.0,
+    # limit_test_batches=500.0,
     precision=precision,
 )
 trainer.test(
