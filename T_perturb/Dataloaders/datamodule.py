@@ -11,7 +11,9 @@ from geneformer.perturber_utils import pad_tensor_list
 from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningDataModule
 from scipy.sparse import csr_matrix
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
+from collections import Counter, defaultdict
+import random
 
 
 # Dummy dataset
@@ -83,6 +85,64 @@ class CellGenDataset(Dataset):
         if src_len != tgt_len:
             warn('src and tgt dataset have different length')
         self.dataset_length = min(src_len, tgt_len)
+
+    def get_label_weights(self):
+        """
+        Calculate weights for each label to be used with WeightedRandomSampler.
+
+        Args:
+            subsample_indices (list or np.ndarray, optional): Indices of a subset.
+            If provided, weights are calculated based on the subset.
+
+        Returns:
+            torch.Tensor: Weights for each label.
+        """
+        labels = self.src_dataset['cell_type_cellgen_harm']
+
+        # Calculate the frequency of each label
+        label_counts = Counter(labels)  # from collections import Counter
+
+        # Calculate the total number of samples
+        total_count = len(labels)
+
+        # Calculate weights inversely proportional to the frequency
+        weights = {label: total_count / count for label, count in label_counts.items()}
+
+        # Convert weights to a tensor, matching the order of labels
+        weight_tensor = torch.tensor(
+            [weights[label] for label in labels], dtype=torch.float
+        )
+
+        return weight_tensor
+
+    # def get_upsampled_indices(self):
+    #     """
+    #     Generate indices for upsampling to the largest class size.
+    #
+    #     Returns:
+    #         list: Upsampled indices.
+    #     """
+    #     labels = self.src_dataset['cell_type_cellgen_harm']
+    #
+    #     # Group indices by label
+    #     label_to_indices = defaultdict(list)  # from collections import defaultdict
+    #     for idx, label in enumerate(labels):
+    #         label_to_indices[label].append(idx)
+    #
+    #     # Find the maximum class size
+    #     max_size = max(len(indices) for indices in label_to_indices.values())
+    #
+    #     # Upsample each class to match the maximum size
+    #     upsampled_indices = []
+    #     for indices in label_to_indices.values():
+    #         upsampled_indices.extend(
+    #             indices + random.choices(indices, k=max_size - len(indices))
+    #         )
+    #
+    #     # Shuffle the indices to ensure randomness
+    #     random.shuffle(upsampled_indices)
+    #
+    #     return upsampled_indices
 
     def __getitem__(self, ind):
         out = {
@@ -253,12 +313,34 @@ class CellGenDataModule(LightningDataModule):
     def train_dataloader(self):
         data = DataLoader(
             self.train_dataset,
+            sampler=WeightedRandomSampler(
+                weights=self.train_dataset.get_label_weights(),
+                num_samples=len(self.train_dataset),
+                replacement=True,
+                generator=torch.Generator().manual_seed(42),
+            ),
             batch_size=self.batch_size,
-            shuffle=self.shuffle,
+            shuffle=False,
             num_workers=self.num_workers,
             collate_fn=self.collate,
         )
         return data
+        # def train_dataloader(self):
+        #     if self.train_dataset is not None:
+        #         upsampled_indices = self.train_dataset.get_upsampled_indices()
+        #     else:
+        #         raise ValueError("train_dataset is not initialized")
+        #     upsampled_sampler = torch.utils.data.SubsetRandomSampler(upsampled_indices)
+
+        #     data = DataLoader(
+        #         self.train_dataset,
+        #         sampler=upsampled_sampler,
+        #         batch_size=self.batch_size,
+        #         shuffle=False,  # Shuffle is handled by the sampler
+        #         num_workers=self.num_workers,
+        #         collate_fn=self.collate,
+        #     )
+        #     return data
 
     def val_dataloader(self):
         if self.split:

@@ -1,3 +1,4 @@
+
 import os
 import pickle
 from datetime import datetime
@@ -18,7 +19,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-
+#import deepspeed
+#from deepspeed.ops.adam import FusedAdam
 # from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningModule
 from scvi.distributions import NegativeBinomial, ZeroInflatedNegativeBinomial
@@ -195,14 +197,13 @@ class CellGenTrainer(LightningModule):
     def configure_optimizers(self):
         parameters = [{'params': self.transformer.parameters(), 'lr': self.end_lr}]
         optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
+        ##optimizer = FusedAdam(self.transformer.parameters(), lr=self.end_lr, weight_decay=self.weight_decay)
         # Calculate total steps and warmup steps based on number_of_batches_per_epoch
         number_of_batches_per_epoch = len(self.trainer.datamodule.train_dataloader())
         total_steps = self.num_epochs * number_of_batches_per_epoch
         warmup_steps = self.warmup_epochs * number_of_batches_per_epoch
         scheduler = WarmupScheduler(optimizer, warmup_steps=warmup_steps, initial_lr=self.initial_lr, end_lr=self.end_lr)
-        # optimizer = FusedAdam(
-        #     self.transformer.parameters(), lr=self.lr, weight_decay=self.weight_decay
-        # )
+
         # lr_scheduler = WarmupCosineLR(
         #     optimizer,
         #     total_num_steps=2000,
@@ -304,10 +305,6 @@ class CellGenTrainer(LightningModule):
                 ) = compute_cos_similarity(
                     outputs=outputs, time_step=time_step
                 )
-                input_path = "/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/top_2000_genes_90m.pkl"
-                # Load the dictionary from the file
-                with open(input_path, 'rb') as f:
-                    marker_genes = pickle.load(f)
 
                 # Use all genes instead of marker genes
                 # all_genes = list(self.token_id_to_ensembl.values())
@@ -323,36 +320,36 @@ class CellGenTrainer(LightningModule):
                 #marker_genes = ['CNK3', 'FGF2', 'PLC-L3', 'CYK8', 'DYNC1I1', 'WFDC3', 'SARG', 'PSS3', 'C1QB', 'PLCD4', 'GABRR2', 'SLC24A3', 'GPR91', 'AVPR1', 'IRXB1', 'C20ORF26', 'C1ORF150', 'PLCA2', 'BRGDA9', 'DMD', 'ILDR2', 'C1ORF49', 'HWNT11', 'SEP', 'PCYT1B', 'CHRM3', 'GAREM1', 'C6ORF206', 'TMEM158', 'HYSP1', 'SOX7', 'CKLFSF1', 'CR1L', 'TMPRSS9', 'GPR152', 'SLFN14', 'PF22', 'AGP-A', 'R-PTP-S', 'X1K', 'SCA41', 'GCPS', 'CGSPDE', 'ASAP2', 'LINC00889', 'TRP6', 'MATN2', 'PLTP', 'AMOTL1', 'C10ORF47']
                 # 10 hours
                 #marker_genes = [['SLM-2', 'EJM7', 'PRELID4B', 'IDAX', 'TAAL6', 'DYTN', 'TMEM158', 'PCYT1B', '447AA', 'MIXL1', 'APCL', 'C1QTNF4', 'GSTM5', 'VEJAM', 'HYSP1', 'ZNF878', 'NKX6-3', 'CD11D', 'HSPTB1', 'BAALC', 'CLEC2L', 'NCX3', 'GLUK4-2', 'SAMD14', 'FRCL1', 'PPP1R146', 'IRXB1', 'CHRNA2', 'SMTCK', 'LEFTYB', 'ABLIM3', 'CRYM', 'CMS19', 'TRP6', 'SLFN14', 'PLA2G2D', 'HJURP', 'SLC59A2', 'TNCY', 'MOX', 'PF22', 'IA-2/PTP', 'GUC2D', 'BCL2L9', 'PFN4', 'DEE101', 'URG', 'DR6', 'THOX1', 'EST155051']]
-                #marker_cos_similarity, marker_genes_dict = return_cos_similarity(
-                #    cos_similarity=cos_similarity,
-                #    gene_embeddings=gene_embeddings,
-                #    mapping_dict=self.gene_to_tokenid,
-                #    token_ids=token_ids,
-                #)
+                marker_cos_similarity, marker_genes_dict = return_cos_similarity(
+                    cos_similarity=cos_similarity,
+                    gene_embeddings=gene_embeddings,
+                    mapping_dict=self.gene_to_tokenid,
+                    token_ids=token_ids,
+                )
                 #print('All genes dict', all_genes_dict)
                 #print('cosine similarity', all_gene_cos_similarity)
                 #print(marker_cos_similarity.nonzero().size(0))
                 #print(marker_cos_similarity.shape)
 
-                marker_gene_embeddings = return_gene_embeddings(
-                    marker_genes=marker_genes,  # updated argument name
-                    gene_embeddings=gene_embeddings,
-                    mapping_dict=self.gene_to_tokenid,
-                    token_ids=token_ids,
-                )
-                ##self.marker_genes = marker_genes_dict
-                self.marker_genes = marker_genes
+                #marker_gene_embeddings = return_gene_embeddings(
+                #    marker_genes=marker_genes,  # updated argument name
+                #    gene_embeddings=gene_embeddings,
+                #    mapping_dict=self.gene_to_tokenid,
+                #    token_ids=token_ids,
+                #)
+                self.marker_genes = marker_genes_dict
+                ##self.marker_genes = marker_genes
                 #print('Marker Genes or marker_genes',self.marker_genes)
 
                 true_counts = batch[f'tgt_counts_t{time_step}'].detach().cpu()
                 cls_embeddings = cls_embeddings.detach().cpu()
-                #cos_similarity = marker_cos_similarity.detach().cpu()
-                gene_embeddings = marker_gene_embeddings.detach().cpu()
+                cos_similarity = marker_cos_similarity.detach().cpu()
+                ##gene_embeddings = marker_gene_embeddings.detach().cpu()
                 combined_batch = batch['combined_batch'].detach().cpu()
                 self.test_dict['true_counts'].append(true_counts)
                 self.test_dict['cls_embeddings'].append(cls_embeddings)
-                ##self.test_dict['cosine_similarities'].append(cos_similarity)
-                self.test_dict['gene_embeddings'].append(gene_embeddings)
+                self.test_dict['cosine_similarities'].append(cos_similarity)
+                ##self.test_dict['gene_embeddings'].append(gene_embeddings)
                 self.test_dict['batch'].append(combined_batch)
                 #self.test_dict['cell_idx'].append(batch[f'tgt_cell_idx_t{time_step}'])
                 self.test_dict['cell_idx'].append(torch.tensor(batch[f'tgt_cell_idx_t{time_step}']))
@@ -366,17 +363,16 @@ class CellGenTrainer(LightningModule):
             obs_key = self.var_list if len(self.var_list) > 0 else []
             obs_key.extend(['batch', 'cell_idx'])
             # Load gene names from the specified AnnData file
-            adata = sc.read("/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/pp/res/new_subset_LPS/h5ad_pairing_hvg/LPS_hvg_with_gene_name.h5ad")
-            gene_names = adata.var["gene_name"].tolist()  # Convert to list            
+            adata = sc.read("/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/pp/res/lps_10k_ds/h5ad_pairing_hvg/lps_10k_ds_hvg.h5ad")
+            gene_names = adata.var["gene_name"].tolist()  # Convert to list  
             return_prediction_adata(
                 test_dict=self.test_dict,
                 obs_key=obs_key,
                 marker_genes=self.marker_genes,
                 gene_names=gene_names,
-                output_dir='/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/',
-                file_name=f'{self.date}_prediction_embeddings_time90m_e19_top2000.h5ad',
+                output_dir='/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb',
+                file_name=f'{self.date}_prediction_embeddings_cosine_cell_id_time6h_e15_10k_ds.h5ad',
             )
-
 
 class CountDecoderTrainer(LightningModule):
     def __init__(
@@ -1105,10 +1101,10 @@ class CountDecoderTrainer(LightningModule):
             # set to status quo
 
     def configure_optimizers(self):
-        # optimizer = FusedAdam(
-        #     self.decoder.parameters(), lr=self.lr, weight_decay=self.weight_decay
-        # )
         parameters = [{'params': self.decoder.parameters(), 'lr': self.lr}]
+        ##optimizer = FusedAdam(
+        ##    self.decoder.parameters(), lr=self.lr, weight_decay=self.weight_decay
+        ##)
         optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
         # lr_scheduler = WarmupCosineLR(
         #     optimizer,

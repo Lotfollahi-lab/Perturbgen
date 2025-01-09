@@ -2,9 +2,11 @@
 
 import argparse
 import os
+import re
 import uuid
 from datetime import datetime
 
+import pandas as pd
 import pytorch_lightning as pl
 import scanpy as sc
 import torch
@@ -24,7 +26,7 @@ from T_perturb.src.utils import (
 
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/')
+    os.chdir('/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb')
     print('Changed working directory to root of repository')
 
 print(os.getcwd())
@@ -59,6 +61,22 @@ def get_args():
         default='stratified',
         choices=['random', 'stratified', 'unseen_cond'],
         help='splitting mode',
+    )
+    parser.add_argument(
+        '--n_samples',
+        type=int,
+        default=3,
+        help='number of samples for count decoder',
+    )
+    parser.add_argument(
+        '--train_prop',
+        type=float,
+        default=0.8,
+    )
+    parser.add_argument(
+        '--test_prop',
+        type=float,
+        default=0.1,
     )
     parser.add_argument('--split_obs', type=str, default='Donor')
     parser.add_argument('--split_value', type=str, default='D351')
@@ -179,8 +197,9 @@ def get_args():
         default='cosine',
         help='mask scheduler [cosine, exp, pow]',
     )
-    parser.add_argument('--temperature', type=float, default=1.5, help='temperature')
-    parser.add_argument('--iterations', type=int, default=19, help='iterations')
+    parser.add_argument('--temperature', type=float, default=1.0, help='temperature')
+    parser.add_argument('--sequence_length', type=int, default=373, help='iterations')
+    parser.add_argument('--iterations', type=int, default=20, help='iterations')
     parser.add_argument('--conditions', type=dict, default=None, help='conditions')
     parser.add_argument(
         '--conditions_combined', type=list, default=None, help='conditions combined'
@@ -224,6 +243,22 @@ def get_args():
         default=True,
         help='context mode for timepoints',
     )
+    parser.add_argument(
+        '--positional_encoding',
+        type=str,
+        default='time_pos_sin',
+        help='positional encoding',
+    )
+    parser.add_argument(
+        '--guided_gene_list_dir',
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
+        '--generate_cell_type',
+        type=str,
+        default=None,
+    )
     args = parser.parse_args()
     return args
 
@@ -231,16 +266,110 @@ def get_args():
 def main() -> None:
     """Run training."""
     args = get_args()
+    print('positional encoding:', args.positional_encoding)
 
     # PyTorch Lightning allows to set all necessary seeds in one function call.
     pl.seed_everything(args.seed)
     torch.manual_seed(args.seed)
     # Load and preprocess data
     print('Loading and preprocessing data...')
-    tgt_datasets = read_dataset_files(args.tgt_dataset_folder, 'dataset')
-    tgt_adatas = read_dataset_files(args.tgt_adata_folder, 'h5ad')
+    tgt_datasets = read_dataset_files(
+        args.tgt_dataset_folder,
+        'dataset',
+    )
+    tgt_adatas = read_dataset_files(
+        args.tgt_adata_folder,
+        'h5ad',
+    )
     src_dataset = load_from_disk(args.src_dataset)
     src_adata = sc.read_h5ad(args.src_adata)
+
+    # filter for cell type of interest
+    if args.generate_cell_type:
+        tp_cell_type = []
+        pairing_index_list = []
+        pattern = r'tgt_h5ad_t(\d+)'
+        for file_name, tgt_adata in tgt_adatas.items():
+            if args.guided_gene_list_dir:
+                tp_cell_type.extend(
+                    tgt_adatas[file_name].obs['Cell_population'].unique().tolist()
+                )
+            # add row index to filter src
+            tgt_adata.obs['index'] = range(len(tgt_adata))
+            # only select specific timepoints
+            cell_type_mask = tgt_adata.obs['Cell_population'] == args.generate_cell_type
+            if sum(cell_type_mask) == 0:
+                pass
+            else:
+                cell_type_idx = tgt_adata.obs['cell_pairing_index'][cell_type_mask]
+                cell_type_idx = cell_type_idx.tolist()
+                pairing_index = tgt_adata[cell_type_mask].obs['index'].tolist()
+
+                pairing_index_list.extend(pairing_index)
+                tgt_adatas[file_name].obs.drop('index', axis=1, inplace=True)
+
+        if len(pairing_index) > 0:
+            src_adata = src_adata[pairing_index]
+            src_dataset = src_dataset.select(pairing_index)
+            for file_name, tgt_adata in tgt_adatas.items():
+                re_file_name = re.search(pattern, file_name)
+                if re_file_name:
+                    time_step = int(re_file_name.group(1))
+                    tgt_datasets[f'tgt_dataset_t{time_step}'] = tgt_datasets[
+                        f'tgt_dataset_t{time_step}'
+                    ].select(pairing_index)
+                    tgt_adatas[file_name] = tgt_adata[pairing_index]
+    # create gene list for guided generation
+    if args.guided_gene_list_dir:
+        guided_gene_df = pd.read_csv(args.guided_gene_list_dir)
+        # only select cell type of selected timepoint
+        guided_gene_df = guided_gene_df[
+            guided_gene_df['cell_population'].isin(tp_cell_type)
+        ]
+        # select unique genes with value counts for cell_population ==1
+        unique_genes = (
+            guided_gene_df['gene_id']
+            .value_counts()[guided_gene_df['gene_id'].value_counts() == 1]
+            .index
+        )
+        cell_type_df = guided_gene_df[
+            guided_gene_df['cell_population'] == args.generate_cell_type
+        ]
+        # find intersect between unique genes and cell type genes
+        unique_genes_df = cell_type_df[
+            cell_type_df['gene_id'].isin(unique_genes)
+        ].copy()
+        unique_genes_df['unique'] = True
+        if unique_genes_df.shape[0] == 0:
+            raise ValueError(
+                f'No unique genes found in guided '
+                f'gene list for {args.generate_cell_type}'
+            )
+        unique_token_dict = {
+            k: v
+            for k, v in zip(unique_genes_df['gene_name'], unique_genes_df['token_id'])
+        }
+        # find shared genes in the guided gene list
+        shared_genes = cell_type_df[~cell_type_df['gene_id'].isin(unique_genes)][
+            'gene_id'
+        ]
+        # sample 25 genes from the shared gene list
+        # if len(shared_genes) > 25:
+        #     shared_genes = shared_genes.sample(50)
+        # else:
+        #     shared_genes = shared_genes
+        shared_genes_df = cell_type_df[cell_type_df['gene_id'].isin(shared_genes)]
+        shared_token_dict = {
+            k: v
+            for k, v in zip(shared_genes_df['gene_name'], shared_genes_df['token_id'])
+        }
+        print(
+            f'Guided gene list created with {len(unique_token_dict)} genes'
+            f' and {len(shared_token_dict)} shared genes'
+        )
+    else:
+        unique_token_dict = None
+        shared_token_dict = None
 
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
@@ -250,8 +379,8 @@ def main() -> None:
             # start preprocessing to avoid loading anndata into datamodule
             train_indices, val_indices, test_indices = stratified_split(
                 tgt_adata=tgt_adata_tmp,
-                train_prop=0.8,  # 0.8,0.1,0.1 train, val, test
-                test_prop=0.1,
+                train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
+                test_prop=args.test_prop,
                 groups=['Cell_type', 'Donor'],
                 seed=args.seed,
             )
@@ -263,8 +392,8 @@ def main() -> None:
         elif args.splitting_mode == 'random':
             train_indices, val_indices, test_indices = randomised_split(
                 adata=tgt_adata_tmp,
-                train_prop=0.8,  # 0.8,0.1,0.1 train, val, test
-                test_prop=0.1,
+                train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
+                test_prop=args.test_prop,
                 seed=args.seed,
             )
         # elif split == 'unseen_donor':
@@ -303,6 +432,7 @@ def main() -> None:
         for _, tgt_adata in tgt_adatas.items():
             sc.pp.normalize_total(tgt_adata, target_sum=1e4)
             sc.pp.log1p(tgt_adata)
+
     # ZINB count loss preprocessing
     # ----------------------------------------------------------------------------------
 
@@ -369,19 +499,30 @@ def main() -> None:
     print('Data loaded and preprocessed.')
     # count number of unique timepoints
     n_total_timepoints = len(tgt_adatas)
+
     # Initialize model module
     # ----------------------------------------------------------------------------------
     if args.test_mode == 'masking':
+ #       print("Columns in tgt_adata_tmp.var:", tgt_adata_tmp.var.columns)
+
+        # Check for the 'gene_name' column and use 'ensembl_id' if it's not found
+        if 'gene_name' in tgt_adata_tmp.var.columns:
+            gene_names = tgt_adata_tmp.var['gene_name']
+        else:
+            print("Warning: 'gene_name' column not found. Using 'ensembl_id' instead.")
+            gene_names = tgt_adata_tmp.var['ensembl_id']
+
         pretrained_module = CellGenTrainer(
             tgt_vocab_size=args.tgt_vocab_size,
-            d_model=256,
+            d_model=512,
             num_heads=8,
             num_layers=args.num_layers,
             d_ff=args.d_ff,
             max_seq_length=args.max_len + 100,
             dropout=args.cellgen_dropout,
             weight_decay=args.cellgen_wd,
-            lr=args.cellgen_lr,
+            end_lr=args.cellgen_lr,
+            mask_scheduler=args.mask_scheduler,
             # lr_scheduler_patience=5.0,
             # lr_scheduler_factor=0.8,
             return_embeddings=args.return_embeddings,
@@ -389,7 +530,8 @@ def main() -> None:
             time_steps=args.time_steps,
             total_time_steps=n_total_timepoints,
             mapping_dict_path=args.mapping_dict_path,
-            gene_names=tgt_adata_tmp.var['gene_name'],
+            positional_encoding=args.positional_encoding,
+            gene_names=gene_names, # changed by dv
             output_dir=args.output_dir,
             var_list=args.var_list,
             mode=args.mode,
@@ -400,7 +542,7 @@ def main() -> None:
             ckpt_masking_path=args.ckpt_masking_path,
             ckpt_count_path=args.ckpt_count_path,
             tgt_vocab_size=args.tgt_vocab_size,
-            d_model=256,
+            d_model=512,
             num_heads=8,
             num_layers=args.num_layers,
             d_ff=args.d_ff,
@@ -422,10 +564,15 @@ def main() -> None:
             mask_scheduler=args.mask_scheduler,
             output_dir=args.output_dir,
             var_list=args.var_list,
-            n_samples=3,
+            n_samples=args.n_samples,
             mode=args.mode,
             seed=args.seed,
+            positional_encoding=args.positional_encoding,
+            sequence_length=args.sequence_length,
             context_mode=args.context_mode,
+            n_genes=tgt_adata_tmp.X.shape[1],
+            unique_gene_list=unique_token_dict,
+            shared_gene_list=shared_token_dict,
         )
     else:
         raise ValueError('test_mode not recognised, needs to be masking or count')
@@ -500,12 +647,22 @@ def main() -> None:
     # further information.
     # Lightning allows for simple multi-gpu training, gradient accumulation, half
     # precision training, etc. using the trainer class.
+
+    # deepspeed_strategy = DeepSpeedStrategy(
+    #     stage=2,
+    # )
+    # if torch.cuda.is_available():
+    #     cuda_device_name = torch.cuda.get_device_name()
+    # if ('A100' in cuda_device_name) or ('NVIDIA H100 80GB HBM' in cuda_device_name):
+    #     print(f'Using {cuda_device_name} for training')
+    #     precision = 'bf16-mixed'
+    # else:
+    #     precision = '16-mixed'
     trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
         devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
-        limit_test_batches=500.0,
     )
     # Finally, kick of the training process.
     if args.test_mode == 'masking':

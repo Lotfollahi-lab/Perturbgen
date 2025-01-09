@@ -1,3 +1,4 @@
+
 import argparse
 import math
 import os
@@ -249,6 +250,7 @@ def return_gene_embeddings(
         marker_genes_dict[gene] = i
     return gene_embeddings_res
 
+
 def return_prediction_adata(
     test_dict: dict,
     obs_key: list,
@@ -299,21 +301,21 @@ def return_prediction_adata(
     true_counts = torch.cat(test_dict['true_counts'], dim=0).numpy()
     # adata.obsm
     cls_embeddings = torch.cat(test_dict['cls_embeddings'], dim=0).numpy()
-    gene_embeddings = torch.cat(test_dict['gene_embeddings'], dim=0).numpy()
-    ##cos_similarity = torch.cat(test_dict['cosine_similarities'], dim=0).numpy()
+    ##gene_embeddings = torch.cat(test_dict['gene_embeddings'], dim=0).numpy()
+    cos_similarity = torch.cat(test_dict['cosine_similarities'], dim=0).numpy()
     #print('cos_similarity shape', cos_similarity.shape[0])
-    ##cell_idx = torch.cat(test_dict['cell_idx'], dim=0).numpy()  # Concatenate cell_idx values
+    cell_idx = torch.cat(test_dict['cell_idx'], dim=0).numpy()  # Concatenate cell_idx values
     #print('cell_idx shape', cell_idx.shape[0])
-    ##cos_similarity_df = pd.DataFrame(cos_similarity, columns=marker_genes.keys())
-    ##cos_similarity_df.index = cell_idx  # Set cell_idx as index for cos_similarity_df
+    cos_similarity_df = pd.DataFrame(cos_similarity, columns=marker_genes.keys())
+    cos_similarity_df.index = cell_idx  # Set cell_idx as index for cos_similarity_df
     #print('cos_similarity_df before removing', cos_similarity_df)
     # remove all non-expressed genes
-    ##cos_similarity_df = cos_similarity_df.loc[:, (cos_similarity_df != 0).any(axis=0)]
+    cos_similarity_df = cos_similarity_df.loc[:, (cos_similarity_df != 0).any(axis=0)]
     #print('cos_similarity_df after removing', cos_similarity_df)
     
     # Save cosine similarity DataFrame to a separate file
-    ##cos_similarity_csv_path = os.path.join(output_dir, 'cos_similarity_df_time_10h_cell_ind_e19_top500.csv')
-    ##cos_similarity_df.to_csv(cos_similarity_csv_path, index=True)
+    cos_similarity_csv_path = os.path.join(output_dir, 'cos_similarity_df_time_6h_cell_ind_e15_10k.csv')
+    cos_similarity_df.to_csv(cos_similarity_csv_path, index=True)
     #print(f'Saved cos_similarity_df to {cos_similarity_csv_path}')
 
     # add condition from additional obs_key
@@ -357,7 +359,7 @@ def return_prediction_adata(
         var=test_var if gene_names is not None else None,
         obsm={
             'cls_embeddings': cls_embeddings,
-            'gene_embeddings': gene_embeddings,
+            # 'gene_embeddings': gene_embeddings,
         },
         uns={
             'marker_genes': marker_genes,
@@ -724,23 +726,23 @@ def pairing_src_to_tgt_cells(
             max_rows = len(adata_dict[adata_tmp])
             max_reference_time = adata_tmp
     if pairing_mode == 'stratified':
-        # drop Donor if they do not have Cell_type, Donor in all the Time_points
+        # Drop donors if they do not have Cell_type, Donor in all the Time_points
         adata_grouped = adata_subset_.obs[
             adata_subset_.obs.groupby(['cell_type_cellgen_harm'])[pairing_obs].transform(
                 'nunique'
             )
             == 4
         ]
-        # dropped_donors = (
-        #     adata_subset.obs['Donor'].nunique() - adata_grouped['Donor'].nunique()
-        # )
-        # print(f'dropped {dropped_donors} donors')
+        # Downsample normal cells to 40%
         resting_cells = adata_grouped.loc[adata_grouped[pairing_obs] == 'normal', :]
+        downsampled_resting_cells = resting_cells.sample(
+            frac=0.4, random_state=seed_no
+        )        
         grouped = adata_grouped.groupby(['cell_type_cellgen_harm'])
         for idx, resting in tqdm.tqdm(
-            resting_cells.iterrows(), total=resting_cells.shape[0]
+            downsampled_resting_cells.iterrows(), total=downsampled_resting_cells.shape[0]
         ):
-            # get the indices of the other time points for the same cell type and donor
+            # Get the indices of the other time points for the same cell type and donor
             group = grouped.get_group((resting['cell_type_cellgen_harm']))
             indices_16h = group[group[pairing_obs] == '90m_LPS'].index
             indices_40h = group[group[pairing_obs] == '6h_LPS'].index

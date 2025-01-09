@@ -12,6 +12,8 @@ from datasets import load_from_disk
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy
+##from pytorch_lightning.strategies import DeepSpeedStrategy
+
 
 from T_perturb.Dataloaders.datamodule import CellGenDataModule
 from T_perturb.Model.trainer import CellGenTrainer, CountDecoderTrainer
@@ -183,7 +185,7 @@ def get_args():
         # type=list,
         nargs='+',
         type=int,
-        default=[1, 2, 3],
+        default=[1, 3],
         help='time steps to include during training',
     )
     parser.add_argument(
@@ -192,7 +194,7 @@ def get_args():
         nargs='+',
         type=str,
         # default=['Time_point'],
-        default=['Cell_population', 'Cell_type', 'Time_point', 'Donor'],
+        default=['cell_type_cellgen_harm', 'donor_cellgen_harm', 'time_after_LPS'],
         help='List of variables to keep in the dataset',
     )
     parser.add_argument(
@@ -266,7 +268,7 @@ def main() -> None:
                 tgt_adata=tgt_adata_tmp,
                 train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
                 test_prop=args.test_prop,
-                groups=['Cell_type', 'Donor'],
+                groups=['cell_type_cellgen_harm', 'donor_cellgen_harm'],
                 seed=args.seed,
             )
 
@@ -581,9 +583,9 @@ def main() -> None:
     )
     accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
     print('Using device {}.'.format(accelerator))
-    # deepspeed_strategy = DeepSpeedStrategy(
-    #     stage=2,
-    # )
+    ##deepspeed_strategy = DeepSpeedStrategy(
+    ##    stage=2,
+    ##)
     # if torch.cuda.is_available():
     #     cuda_device_name = torch.cuda.get_device_name()
     # if ('A100' in cuda_device_name) or ('NVIDIA H100 80GB HBM' in cuda_device_name):
@@ -604,7 +606,7 @@ def main() -> None:
         max_epochs=args.epochs,
         accelerator='auto',
         devices=-1 if torch.cuda.is_available() else 0,
-        strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
+        strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto', ## changed to deepspeed_strategy
     )
     print('Starting training...')
     if os.getcwd().split('/')[-1] != 'T_perturb':  # Change to match your directory name
