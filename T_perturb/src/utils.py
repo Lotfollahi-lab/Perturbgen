@@ -71,7 +71,7 @@ def read_dataset_files(directory, file_type):
                 adata = sc.read_h5ad(
                     filename_
                 )
-                adata.X = adata.X.A 
+                adata.X = adata.X
                 dataset_dict[f'tgt_{file_type}_t{filename[0]}'] = adata
     return dataset_dict
 

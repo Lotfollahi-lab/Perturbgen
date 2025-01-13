@@ -9,7 +9,7 @@ from typing import (
     Literal,
     Optional,
 )
-
+from scmaskgit.Modules.T_model import scmoscf
 import numpy as np
 import torch
 from einops import rearrange, repeat
@@ -55,7 +55,6 @@ from T_perturb.src.utils import (
 
 #     def forward(self, x):
 #         return drop_path(x, self.drop_prob, self.training)
-
 
 class SepSinPositionalEncoding(nn.Module):
     def __init__(self, d_model: int, length: int):
@@ -439,127 +438,46 @@ class Geneformerwrapper(nn.Module):
         embs = outputs.hidden_states[-1]
         return embs
 
-
-class Encoder(nn.Module):
-    '''
-    Description:
-    ------------
-    Transformer encoder modified from
-    URL: https://pytorch.org/tutorials/beginner/transformer_tutorial.html # noqa
-    Last accessed: 2024-05-19
-    Parameters:
-    -----------
-    total_vocab_size: `int`
-        Total vocabulary size.
-    max_seq_length: `int`
-        Maximum sequence length.
-    n_time_steps: `int`
-        Number of time steps for positional encoding.
-    d_model: `int`
-        Token embedding dimension.
-    nhead: `int`
-        Number of attention heads.
-    nlayers: `int`
-        Number of attention layers.
-    dropout: `float`
-        Dropout rate.
-    d_ff: `int`
-        Dimension of the feed forward network.
-    position_embedding: `str` (default: 'learnt')
-        Positional encoding type: ['sinusoidal', 'learnt'].
-    Returns:
-    --------
-    output: `torch.Tensor`
-        Output tensor.
-    '''
-
+class scmaskgitwrapper(nn.Module):
     def __init__(
         self,
-        total_vocab_size: int,
-        max_seq_length: int,
-        n_time_steps: int,
-        d_model: int = 256,
-        nhead: int = 4,
-        nlayers: int = 6,
-        dropout: float = 0.02,
-        d_ff: int = 512,
-        position_embedding: Literal[
-            'time_pos_sin', 'comb_sin', 'sin_learnt'
-        ] = 'time_pos_sin',
+        # model_path='/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output1/checkpoints/20250107_1024_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=08.ckpt',
+        model_path='/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output2/checkpoints/20250110_2325_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=01.ckpt',
+ 
     ):
-        super().__init__()
-        self.position_embedding = position_embedding
-        self.positional_encoding = CombSinPositionalEncoding(
-            d_model=d_model,
-            max_seq_length=max_seq_length,
-            n_time_steps=n_time_steps,
-            mode='Transformer_encoder',
-        )
-
-        encoder_layers = TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=nhead,
-            dim_feedforward=d_ff,
-            dropout=dropout,
-            # batch_first=True,
-        )
-        self.transformer_encoder = TransformerEncoder(
-            encoder_layers,
-            num_layers=nlayers,
-            # norm=nn.LayerNorm(d_model),
-        )
-        self.token_embedding = nn.Embedding(total_vocab_size, d_model, padding_idx=0)
-        nn.init.xavier_uniform_(self.token_embedding.weight)
-
-        self.d_model = d_model
-        self.total_vocab_size = total_vocab_size
-        self.init_weights()
-
-    def init_weights(self) -> None:
-        initrange = 0.1
-        self.token_embedding.weight.data.uniform_(-initrange, initrange)
-
-    def forward(self, src: torch.Tensor, src_mask: torch.Tensor = None) -> torch.Tensor:
         '''
+        Description:
+        ------------
+        Wrapper for Geneformer model.
+
         Parameters:
         -----------
-        src: `torch.Tensor`
-            shape ``[batch_size, seq_len, total_vocab_size]``
-        src_mask: `torch.Tensor`
-            shape ``[batch_size, seq_len]``
-        Returns:
-        --------
-        output: `torch.Tensor`
-            shape ``[batch_size, seq_len, total_vocab_size]``
+        model_path: `str`
+            Path to the Geneformer model.
+    
         '''
-        # batch_size, sequence_length = src.size()
-        # # Sample sequences for each element in the batch
-        # tokens = torch.arange(self.total_vocab_size)
-        # # Preallocate a tensor to hold all sampled sequences
-        # src = torch.empty(
-        #     (batch_size, sequence_length), dtype=torch.long, device=src.device
-        # )
-        # for i in range(batch_size):
-        #     # Sampling without replacement for each sequence
-        #     sampled_indices = torch.multinomial(
-        #         torch.ones(self.total_vocab_size), sequence_length, replacement=False
-        #     )
-        #     src[i] = tokens[sampled_indices]
-        # transpose src:
-        # [batch_size, seq_len, d_model] -> [seq_len, batch_size, d_model]
+        super(scmaskgitwrapper, self).__init__()
+        
+        self.model = scmoscf(tgt_vocab_size= 26717,
+        d_model= 768,
+        num_heads = 8,
+        num_layers = 6,
+        d_ff = 96,
+        max_seq_length = 4096,
+        dropout = 0.03,)
+        pretrained_dict =torch.load(model_path, map_location = "cpu", weights_only=True)["state_dict"]
+        corrected_dict = {k.replace('transformer.', ''): v for k, v in pretrained_dict.items()}
+        self.model.load_state_dict(corrected_dict)
+        for param in self.model.parameters():
+            param.requires_grad = False
+        self.model.eval()
 
-        src_embedding = self.token_embedding(src) * math.sqrt(self.d_model)
-        src_embedding = self.rank_positional_encoding(src_embedding)
-        src_embedding = self.time_positional_encoding(src_embedding, tgt_time_step=None)
-        output = self.transformer_encoder(src_embedding, src_key_padding_mask=src_mask)
-        # reverse transpose
-        output = output.transpose(0, 1)
-        return output
-        # output = self.transformer_encoder(
-        #     src_embedding,
-        #     src_key_padding_mask=src_mask,
-        # )
-        # return output
+    def forward(self, src_input_id):
+        with torch.no_grad():
+            outputs = self.model.forward(
+                src_input_id=src_input_id
+            )
+        return outputs['dec_embedding']
 
 
 class CellGen(nn.Module):
@@ -584,6 +502,7 @@ class CellGen(nn.Module):
         position_embedding: Literal[
             'time_pos_sin', 'comb_sin', 'sin_learnt'
         ] = 'time_pos_sin',
+        model_path : str = '/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output2/checkpoints/20250110_2325_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=01.ckpt',
     ):
         '''
         Description:
@@ -682,13 +601,8 @@ class CellGen(nn.Module):
         if mode in ['GF_frozen', 'GF_fine_tuned']:
             self.encoder_layers = Geneformerwrapper(mode=mode)
         elif mode == 'Transformer_encoder':
-            self.encoder_layers = Encoder(
-                total_vocab_size=tgt_vocab_size,
-                max_seq_length=max_seq_length,
-                n_time_steps=total_time_steps,
-                d_model=d_model,
-                position_embedding=position_embedding,
-            )
+            print("Using scmaskgit")
+            self.encoder_layers = scmaskgitwrapper()
         else:
             raise ValueError(f'Invalid encoder mode: {mode}')
         self.mode = mode
@@ -816,13 +730,13 @@ class CellGen(nn.Module):
         return tgt_pad_dict
 
     def call_encoder(self, src_input_id, src_attention_mask):
-        if self.mode in ['GF_frozen', 'GF_fine_tuned']:
-            # BERT mask: 1 for tokens to keep, 0 for tokens to mask. Thus, negate mask.
-            src_attention_mask = (~src_attention_mask).clone().int()
-            enc_output = self.encoder_layers(src_input_id, src_attention_mask)
-        else:
+        # if self.mode in ['GF_frozen', 'GF_fine_tuned']:
+        #     # BERT mask: 1 for tokens to keep, 0 for tokens to mask. Thus, negate mask.
+        #     src_attention_mask = (~src_attention_mask).clone().int()
+        #     enc_output = self.encoder_layers(src_input_id, src_attention_mask)
+        # else:
             # different mask for transformer encoder
-            enc_output = self.encoder_layers(src_input_id, src_attention_mask)
+        enc_output = self.encoder_layers(src_input_id)
         return enc_output
 
     def call_decoder(
@@ -891,7 +805,7 @@ class CellGen(nn.Module):
                         dec_embedding = self.pos_sin_pos_encoding(dec_embedding)
                     elif self.position_embedding == 'sin_learnt':
                         dec_embedding = self.time_sin_pos_encoding(
-                            tgt_embedding, time_step
+                            tgt_embedding, time_step+1
                         )
                         dec_embedding = self.learnt_pos_encoding(dec_embedding)
                     elif self.position_embedding == 'comb_sin':
@@ -989,7 +903,7 @@ class CellGen(nn.Module):
                     tgt_embedding = self.pos_sin_pos_encoding(tgt_embedding)
                 elif self.position_embedding == 'sin_learnt':
                     tgt_embedding = self.time_sin_pos_encoding(
-                        tgt_embedding, tgt_time_step
+                        tgt_embedding, tgt_time_step+1
                     )
                     tgt_embedding = self.learnt_pos_encoding(tgt_embedding)
                 elif self.position_embedding == 'comb_sin':
@@ -1063,7 +977,7 @@ class CellGen(nn.Module):
                 tgt_embedding = self.time_sin_pos_encoding(tgt_embedding, tgt_time_step)
                 tgt_embedding = self.pos_sin_pos_encoding(tgt_embedding)
             elif self.position_embedding == 'sin_learnt':
-                tgt_embedding = self.time_sin_pos_encoding(tgt_embedding, tgt_time_step)
+                tgt_embedding = self.time_sin_pos_encoding(tgt_embedding, tgt_time_step+1)
                 tgt_embedding = self.learnt_pos_encoding(tgt_embedding)
             elif self.position_embedding == 'comb_sin':
                 tgt_embedding = self.comb_pos_encoding(
@@ -1078,46 +992,8 @@ class CellGen(nn.Module):
                 time_random=tgt_time_step,
                 labels=labels,
             )
-            # if context_mode:
-            #     context_embedding_dict, context_pad_dict = self.generate_context(
-            #         enc_output=enc_output,
-            #         src_attention_mask=src_attention_mask,
-            #         tgt_time_step=tgt_time_step,
-            #         all_time_steps=context_time_steps,
-            #         tgt_input_id_dict=tgt_input_id_dict,
-            #         tgt_pad_dict=tgt_pad_dict,
-            #     )
-            #     # if generate:
-            #     #     context_pad_dict = generate_pad_dict
-            #     outputs = self.context_backprop(
-            #         context_embedding_dict=context_embedding_dict,
-            #         context_pad_dict=context_pad_dict,
-            #         tgt_pad=tgt_pad,
-            #         tgt_time_step=tgt_time_step,
-            #         tgt_input_id=tgt_input_id,
-            #         not_masked=not_masked,
-            #         labels=labels,
-            #     )
-            # else:
-
-            #     tgt_embedding = self.token_embedding(tgt_input_id)
-            #     tgt_embedding = self.positional_encoding(
-            #         tgt_embedding, tgt_time_step
-            #     )
-            #     outputs = self.call_decoder(
-            #         enc_output=context_output if context_mode else enc_output,
-            #         src_attention_mask=(
-            #             context_mask
-            #             if context_mode
-            #             else src_attention_mask
-            #             ),
-            #         dec_embedding=tgt_embedding,
-            #         tgt_pad=tgt_pad,
-            #         time_random=tgt_time_step,
-            #         labels=labels,
-            #     )
+            
         return outputs
-
 
 class CountHead(nn.Module):
     def __init__(

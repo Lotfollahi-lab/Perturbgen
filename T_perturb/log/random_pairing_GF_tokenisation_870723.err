@@ -1,31 +1,0 @@
-/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/scanpy/preprocessing/_normalization.py:169: UserWarning: Received a view of an AnnData. Making a copy.
-  view_to_actual(adata)
-/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/scanpy/preprocessing/_highly_variable_genes.py:226: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
-  disp_grouped = df.groupby("mean_bin")["dispersions"]
-/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/scanpy/preprocessing/_highly_variable_genes.py:226: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
-  disp_grouped = df.groupby("mean_bin")["dispersions"]
-/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/scanpy/preprocessing/_highly_variable_genes.py:226: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
-  disp_grouped = df.groupby("mean_bin")["dispersions"]
-/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/scanpy/preprocessing/_highly_variable_genes.py:498: FutureWarning: The behavior of DataFrame concatenation with empty or all-NA entries is deprecated. In a future version, this will no longer exclude empty or all-NA columns when determining the result dtypes. To retain the old behavior, exclude the relevant entries before the concat operation.
-  hvg = pd.concat([hvg, missing_hvg], ignore_index=True)
-/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/scanpy/preprocessing/_highly_variable_genes.py:508: FutureWarning: The provided callable <function nanmean at 0x145ed54216c0> is currently using SeriesGroupBy.mean. In a future version of pandas, the provided callable will be used directly. To keep current behavior pass the string "mean" instead.
-  df = df.groupby("gene").agg(
-/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/scanpy/preprocessing/_highly_variable_genes.py:508: FutureWarning: The provided callable <function nanmean at 0x145ed54216c0> is currently using SeriesGroupBy.mean. In a future version of pandas, the provided callable will be used directly. To keep current behavior pass the string "mean" instead.
-  df = df.groupby("gene").agg(
-/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/scanpy/preprocessing/_highly_variable_genes.py:508: FutureWarning: The provided callable <function nansum at 0x145ed5421240> is currently using SeriesGroupBy.sum. In a future version of pandas, the provided callable will be used directly. To keep current behavior pass the string "sum" instead.
-  df = df.groupby("gene").agg(
-/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/geneformer/tokenizer.py:473: FutureWarning: Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
-  for i in adata.var["ensembl_id_collapsed"][coding_miRNA_loc]
-/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/geneformer/tokenizer.py:476: FutureWarning: Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
-  coding_miRNA_ids = adata.var["ensembl_id_collapsed"][coding_miRNA_loc]
-  0%|          | 0/3 [00:00<?, ?it/s]/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/anndata/_core/aligned_df.py:68: ImplicitModificationWarning: Transforming to str index.
-  warnings.warn("Transforming to str index.", ImplicitModificationWarning)
- 33%|███▎      | 1/3 [00:07<00:15,  7.81s/it]/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/anndata/_core/aligned_df.py:68: ImplicitModificationWarning: Transforming to str index.
-  warnings.warn("Transforming to str index.", ImplicitModificationWarning)
-/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/anndata/_core/anndata.py:1754: UserWarning: Observation names are not unique. To make them unique, call `.obs_names_make_unique`.
-  utils.warn_names_duplicates("obs")
- 67%|██████▋   | 2/3 [00:16<00:08,  8.06s/it]/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/anndata/_core/aligned_df.py:68: ImplicitModificationWarning: Transforming to str index.
-  warnings.warn("Transforming to str index.", ImplicitModificationWarning)
-/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/T_perturb/.venv/lib/python3.10/site-packages/anndata/_core/anndata.py:1754: UserWarning: Observation names are not unique. To make them unique, call `.obs_names_make_unique`.
-  utils.warn_names_duplicates("obs")
-100%|██████████| 3/3 [00:24<00:00,  8.15s/it]100%|██████████| 3/3 [00:24<00:00,  8.10s/it]

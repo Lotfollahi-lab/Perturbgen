@@ -27,7 +27,7 @@ from T_perturb.src.utils import (
 
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb')
+    os.chdir('/lustre/scratch126/cellgen/team361/av13/T_perturb/T_perturb/')
     print('Changed working directory to root of repository')
 
 
@@ -114,6 +114,13 @@ def get_args():
         # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl',
         # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
         default='./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl',
+    )
+    parser.add_argument(
+        '--encoder_path',
+        type=str,
+        # default='',
+        # default='/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output1/checkpoints/20250107_1024_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=08.ckpt'
+        default='/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output2/checkpoints/20250110_2325_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=01.ckpt',
     )
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle')
@@ -393,7 +400,7 @@ def main() -> None:
         pretrained_module = CellGenTrainer(
             # tgt_vocab_size=1820,  # 704 for degs, 1820 for tokenised
             tgt_vocab_size=args.tgt_vocab_size,  # max token id + 1 for padding
-            d_model=512,
+            d_model=768,
             num_heads=8,
             num_layers=args.num_layers,
             d_ff=args.d_ff,
@@ -412,13 +419,14 @@ def main() -> None:
             mode=args.mode,
             context_mode=args.context_mode,
             positional_encoding=args.positional_encoding,
+            encoder_path=args.encoder_path,
         )
     elif args.train_mode == 'count':
         decoder_module = CountDecoderTrainer(
             ckpt_masking_path=args.ckpt_masking_path,
             ckpt_count_path=None,
             tgt_vocab_size=args.tgt_vocab_size,
-            d_model=512,
+            d_model=768,
             num_heads=8,
             num_layers=args.num_layers,
             d_ff=args.d_ff,
@@ -549,21 +557,21 @@ def main() -> None:
         mode=mode,
     )
     # The tensorboard logger allows for monitoring the progress of training
-    if torch.cuda.device_count() > 1:
-        # multi gpu training with group logging
-        wandb_logger = WandbLogger(
-            project='ttransformer',
-            name=f'{run_id}_{str(uuid.uuid4())[:6]}',
-            save_dir=args.log_dir,
-            log_model='True',
-        )  # noqa
-    else:
-        wandb_logger = WandbLogger(
-            project='ttransformer',
-            name=f'{run_id}',
-            save_dir=args.log_dir,
-            log_model='True',
-        )  # noqa
+    # if torch.cuda.device_count() > 1:
+    #     # multi gpu training with group logging
+    #     wandb_logger = WandbLogger(
+    #         project='ttransformer',
+    #         name=f'{run_id}_{str(uuid.uuid4())[:6]}',
+    #         save_dir=args.log_dir,
+    #         log_model='True',
+    #     )  # noqa
+    # else:
+    #     wandb_logger = WandbLogger(
+    #         project='ttransformer',
+    #         name=f'{run_id}',
+    #         save_dir=args.log_dir,
+    #         log_model='True',
+    #     )  # noqa
 
     # In this simple example we just check if a GPU is available.
     # For training larger models in a distributed settings, this needs more care.
@@ -597,7 +605,7 @@ def main() -> None:
     # If the device is an A100, set the precision for matrix multiplication
     ddp_strategy = DDPStrategy(find_unused_parameters=True)
     trainer = pl.Trainer(
-        logger=wandb_logger,
+        # logger=wandb_logger,
         callbacks=[
             TQDMProgressBar(refresh_rate=10),
             checkpoint_callback,

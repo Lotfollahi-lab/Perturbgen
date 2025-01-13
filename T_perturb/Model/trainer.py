@@ -90,6 +90,7 @@ class CellGenTrainer(LightningModule):
         var_list: Optional[List[str]] = None,
         gene_names: Optional[List[str]] = None,
         mapping_dict_path: Optional[str] = None,
+        encoder_path: str = "/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output2/checkpoints/20250110_2325_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=01.ckpt",
         *args,
         **kwargs,
     ) -> None:
@@ -108,6 +109,7 @@ class CellGenTrainer(LightningModule):
             time_steps=time_steps,
             total_time_steps=total_time_steps,
             mode=mode,
+            model_path = encoder_path,
             #mask_scheduler=mask_scheduler,
             #position_embedding=positional_encoding,
         )
