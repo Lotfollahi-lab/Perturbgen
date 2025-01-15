@@ -100,7 +100,7 @@ class CellGenTrainer(LightningModule):
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
-        set_matmul_precision_for_device(precision)
+        # set_matmul_precision_for_device(precision)
         if context_tps is None:
             context_tps = pred_tps
         self.context_tps = context_tps
@@ -254,6 +254,11 @@ class CellGenTrainer(LightningModule):
             # }
         }
 
+    def on_train_epoch_start(self):
+        if self.current_epoch == 0:  # Switch after 5 epochs
+            print('Warmup on fp32')
+            self.trainer.precision_plugin.precision = '32-true'
+
     def training_step(self, batch, *args, **kwargs):
         # log learning rate
         self.log(
@@ -283,7 +288,8 @@ class CellGenTrainer(LightningModule):
                 )
             dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
             labels = labels.contiguous().view(-1)
-            masking_loss = self.masking_loss(dec_logits, labels)
+            with torch.cuda.amp.autocast(dtype=torch.float32):
+                masking_loss = self.masking_loss(dec_logits, labels)
             self.log(
                 'train/masking_loss',
                 masking_loss,

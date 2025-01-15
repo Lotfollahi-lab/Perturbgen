@@ -522,13 +522,13 @@ def main() -> None:
     #     # offload_parameters=True,
     # )
 
-    if torch.cuda.is_available():
-        cuda_device_name = torch.cuda.get_device_name()
-    if ('A100' in cuda_device_name) or ('NVIDIA H100 80GB HBM' in cuda_device_name):
-        print(f'Using {cuda_device_name} for training')
-        precision = 'bf16-mixed'
-    else:
-        precision = '16-mixed'
+    # if torch.cuda.is_available():
+    #     cuda_device_name = torch.cuda.get_device_name()
+    # if ('A100' in cuda_device_name) or ('NVIDIA H100 80GB HBM' in cuda_device_name):
+    #     print(f'Using {cuda_device_name} for training')
+    #     precision = 'bf16-mixed'
+    # else:
+    #     precision = '16-mixed'
     # # After each epoch, convert DeepSpeed checkpoint to FP32 and save
     # class DeepSpeedCheckpointConverter(Callback):
     #     def __init__(self, checkpoint_path, filename, save_interval=5):
@@ -576,6 +576,7 @@ def main() -> None:
     # )
     # If the device is an A100, set the precision for matrix multiplication
     ddp_strategy = DDPStrategy(find_unused_parameters=True)
+
     trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=[
@@ -583,13 +584,14 @@ def main() -> None:
             early_stop_callback,
             checkpoint_callback,
         ],
+        # accumulate_grad_batches=10,
         max_epochs=args.epochs,
         accelerator=accelerator,
-        precision=precision,
+        # precision=precision,
+        # gradient_clip_val=1.0,
         devices=-1 if torch.cuda.is_available() else 0,
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
     )
-    print('Starting training...')
 
     if args.train_mode == 'masking':
         # Finally, kick of the training process.

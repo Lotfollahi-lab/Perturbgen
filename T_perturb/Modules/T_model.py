@@ -522,6 +522,7 @@ class scmaskgitwrapper(nn.Module):
             k.replace('transformer.', ''): v for k, v in pretrained_dict.items()
         }
         self.model.load_state_dict(corrected_dict)
+        # self.model = self.model.to(torch.bfloat16)
         for param in self.model.parameters():
             param.requires_grad = False
         self.model.eval()

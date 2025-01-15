@@ -42,13 +42,13 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --splitting_mode stratified \
 --split_obs celltype_v2 \
 --output_dir $RES_DIR/$RES_NAME/res \
---src_dataset "T_perturb/T_perturb/pp/res/hspc/dataset_all_src/stem.dataset" \
---tgt_dataset_folder "T_perturb/T_perturb/pp/res/hspc/dataset_all_tgt" \
---src_adata "T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_all_src/stem.h5ad" \
---tgt_adata_folder "T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_all_tgt" \
---mapping_dict_path  "T_perturb/T_perturb/pp/res/hspc/token_id_to_genename_10000_all.pkl" \
+--src_dataset "./T_perturb/T_perturb/pp/res/hspc/dataset_10000_hvg_src/stem.dataset" \
+--tgt_dataset_folder "./T_perturb/T_perturb/pp/res/hspc/dataset_10000_hvg_tgt" \
+--src_adata "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_10000_hvg_src/stem.h5ad" \
+--tgt_adata_folder "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_10000_hvg_tgt" \
+--mapping_dict_path  "./T_perturb/T_perturb/pp/res/hspc/token_id_to_genename_10000_hvg.pkl" \
 --batch_size 64 \
---max_len 4096 \
+--max_len 2200 \
 --epochs 10 \
 --tgt_vocab_size 22044 \
 --cellgen_lr 0.00001 \
@@ -62,7 +62,7 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --encoder scmaskgit \
 --context_mode True \
 --mask_scheduler 'cosine' \
---pos_encoding_mode 'time_pos_learnt'
+--pos_encoding_mode 'time_pos_sin'
 echo "--- Finished computing model"
 
 # 2k hvgs
