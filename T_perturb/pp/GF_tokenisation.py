@@ -43,7 +43,14 @@ def get_args():
         type=str,
         # default='cytoimmgen',
         default='hspc',
-        choices=['cytoimmgen', 'eb', 'hspc', 'mnc'],
+        choices=[
+            'cytoimmgen',
+            'eb',
+            'mnc',
+            'hspc',
+            'hspc_pbmc_median',
+            'hspc_GF_26k_median',
+        ],
     )
     parser.add_argument(
         '--gene_filtering_mode',
@@ -244,6 +251,9 @@ genename_dict = {v: k for k, v in genename_dict.items()}
 token_to_genename = {
     v: genename_dict[k] for k, v in token_dict.items() if k in genename_dict
 }
+
+os.makedirs(f'./T_perturb/T_perturb/pp/res/{args.dataset}', exist_ok=True)
+
 # save token_dict
 with open(
     f'./T_perturb/T_perturb/pp/res/{args.dataset}/'

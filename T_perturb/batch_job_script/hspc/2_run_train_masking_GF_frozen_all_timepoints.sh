@@ -6,8 +6,8 @@
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
 #BSUB -o logs/hspc_masking_%J.out # output file
 #BSUB -e logs/hspc_masking_%J.err # error file
-#BSUB -M 50000  # RAM memory part 2. Default: 100MB
-#BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
+#BSUB -M 20000  # RAM memory part 2. Default: 100MB
+#BSUB -R 'select[mem>20000] rusage[mem=20000]' # RAM memory part 1. Default: 100MB
 #BSUB -J hspc_masking # job name
 
 # load cuda
@@ -59,10 +59,11 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --num_layers 6 \
 --pred_tps 1 2 \
 --var_list sex phase tissue celltype_v2 diff_state \
---encoder scmaskgit \
+--encoder GF_frozen \
 --context_mode True \
 --mask_scheduler 'cosine' \
---pos_encoding_mode 'time_pos_sin'
+--pos_encoding_mode 'time_pos_sin' \
+--d_model 512
 echo "--- Finished computing model"
 
 # 2k hvgs

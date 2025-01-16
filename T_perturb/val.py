@@ -232,6 +232,7 @@ def get_args():
             'GF_fine_tuned',
             'GF_frozen',
             'Transformer_encoder',
+            'scmaskgit',
         ],
         help='mode of encoder',
     )
@@ -252,6 +253,12 @@ def get_args():
         type=str,
         default='time_pos_sin',
         help='positional encoding',
+    )
+    parser.add_argument(
+        '--d_model',
+        type=int,
+        default=512,
+        help='embedding dimension',
     )
 
     args = parser.parse_args()
@@ -356,13 +363,14 @@ def main() -> None:
     )
     print('Data loaded and preprocessed.')
     # count number of unique timepoints
+
     n_total_tps = len(tgt_adatas)
 
     # Initialize model module
     # ----------------------------------------------------------------------------------
     test_kwargs = {
         'tgt_vocab_size': args.tgt_vocab_size,
-        'd_model': 512,
+        'd_model': args.d_model,
         'num_heads': 8,
         'num_layers': args.num_layers,
         'd_ff': args.d_ff,

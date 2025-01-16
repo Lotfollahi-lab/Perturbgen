@@ -1,7 +1,7 @@
 #make a date directory if it does not exist
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-cellgeni-a100)
-#BSUB -gpu 'mode=exclusive_process:num=4' # request for exclusive access to gpu
+#BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu
 #BSUB -n 16 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
@@ -23,11 +23,11 @@ RES_DIR="/lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_pertur
 RES_NAME="eb/extrapolation"
 # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
-# Get the current timestamp
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-# copy the current script to the result directory
-cp $0 $RES_DIR/$RES_NAME/2_run_train_masking_GF_frozen_extrapolation_$TIMESTAMP.sh
-echo "Copying script to $RES_DIR/$RES_NAME/2_run_train_masking_GF_frozen_extrapolation_$TIMESTAMP.sh"
+# # Get the current timestamp
+# TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+# # copy the current script to the result directory
+# cp $0 $RES_DIR/$RES_NAME/2_run_train_masking_GF_frozen_extrapolation_$TIMESTAMP.sh
+# echo "Copying script to $RES_DIR/$RES_NAME/2_run_train_masking_GF_frozen_extrapolation_$TIMESTAMP.sh"
 
 # export WANDB_DIR=$cwd/wandb
 # Run python script to PETRA
@@ -55,10 +55,12 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --n_workers 16 \
 --num_layers 3 \
 --d_ff 32 \
---pred_tps 1 2 \
+--pred_tps 1 2 3 \
 --var_list Time_point \
---mode GF_frozen \
---positional_encoding sin_learnt \
---mask_scheduler 'cosine'
+--encoder scmaskgit \
+--context_mode True \
+--pos_encoding_mode time_pos_sin \
+--mask_scheduler 'cosine' \
+--d_model 768
 
 echo '--- Finished computing model'

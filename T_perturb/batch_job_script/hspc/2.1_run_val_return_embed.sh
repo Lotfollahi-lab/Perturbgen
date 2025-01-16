@@ -8,7 +8,7 @@
 #BSUB -e logs/return_embed_%J.err # error file
 #BSUB -M 400000  # RAM memory part 2. Default: 100MB
 #BSUB -R "select[mem>400000] rusage[mem=400000]" # RAM memory part 1. Default: 100MB
-#BSUB -J return_embed # job name
+#BSUB -J return_embed_scmaskgit # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -41,7 +41,7 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --return_embed True \
 --return_attn False \
 --generate False \
---ckpt_masking_path "./T_perturb/T_perturb/plt/res/hspc/embeddings/res/checkpoints/20241114_1146_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_learnt_m_cosine_tp_1-2_s_42-epoch=09.ckpt" \
+--ckpt_masking_path "T_perturb/T_perturb/plt/res/hspc/embeddings/res/checkpoints/20250115_1849_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_cosine_tp_1-2_s_42-epoch=09.ckpt" \
 --output_dir $RES_DIR/$RES_NAME/res \
 --src_dataset "./T_perturb/T_perturb/pp/res/hspc/dataset_10000_hvg_src/stem.dataset" \
 --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/hspc/dataset_10000_hvg_tgt" \
@@ -60,10 +60,11 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --n_workers 8 \
 --pred_tps 1 2 \
 --var_list sex phase tissue celltype_v2 diff_state \
---encoder GF_frozen \
+--encoder scmaskgit \
 --context_mode True \
 --mask_scheduler 'cosine' \
---pos_encoding_mode 'time_pos_learnt'
+--pos_encoding_mode 'time_pos_sin' \
+--d_model 768
 echo "--- Finished computing model"
 
 # 2k hvgs

@@ -615,7 +615,9 @@ class Encoder(nn.Module):
         initrange = 0.1
         self.token_embedding.weight.data.uniform_(-initrange, initrange)
 
-    def forward(self, src: torch.Tensor, src_mask: torch.Tensor = None) -> torch.Tensor:
+    def forward(
+        self, src_input_id: torch.Tensor, src_attention_mask: torch.Tensor = None
+    ) -> torch.Tensor:
         '''
         Parameters:
         -----------
@@ -628,11 +630,11 @@ class Encoder(nn.Module):
         output: `torch.Tensor`
             shape ``[batch_size, seq_len, total_vocab_size]``
         '''
-        src_embedding = self.token_embedding(src) * math.sqrt(self.d_model)
+        src_embedding = self.token_embedding(src_input_id) * math.sqrt(self.d_model)
         dec_embedding = self.pos_embedding(src_embedding, tgt_time_step=0)
         output = self.transformer_encoder(
             dec_embedding,
-            src_key_padding_mask=src_mask,
+            src_key_padding_mask=src_attention_mask,
         )
         return output
 

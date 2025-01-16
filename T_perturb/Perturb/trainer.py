@@ -35,7 +35,8 @@ class PerturberTrainer(CellGenTrainer):
         mapping_dict_path: str | None = None,
         genes_to_perturb: List[str] | None = None,
         validation_mode: Literal['inference', 'generate'] | None = None,
-        perturbation_mode: Literal['mask', 'pad', 'delete'] | None = None,
+        perturbation_mode: Literal['mask', 'pad', 'delete', 'overexpress']
+        | None = None,
         perturbation_sequence: Literal['src', 'tgt'] | None = None,
         gene_module_list: List[str] | None = None,
         num_of_background_genes: int | None = None,
@@ -180,7 +181,7 @@ class PerturberTrainer(CellGenTrainer):
     ):
         if perturbation:
             self.tokens_to_perturb = self.tokens_to_perturb.to(self.device)
-            if self.perturbation_mode != 'delete':
+            if self.perturbation_mode in ['mask', 'pad']:
                 if self.perturbation_mode == 'mask':
                     perturbation_token = self.gene_to_tokenid['<mask>']
                 elif self.perturbation_mode == 'pad':
@@ -190,15 +191,7 @@ class PerturberTrainer(CellGenTrainer):
                 )
         tgt_input_id_dict = {}
         for i in self.pred_tps:
-            tgt_input_id_ = torch.cat(
-                (
-                    getattr(self, f'cls_token_{str(i)}').expand(
-                        batch[f'tgt_input_ids_t{i}'].shape[0], -1
-                    ),
-                    batch[f'tgt_input_ids_t{i}'],
-                ),
-                dim=1,
-            )
+            tgt_input_id_ = batch[f'tgt_input_ids_t{i}'].clone()
             if perturbation:
                 if (
                     self.perturbation_sequence is not None
@@ -206,7 +199,7 @@ class PerturberTrainer(CellGenTrainer):
                 ):
                     perturbed_tgt = tgt_input_id_.clone()
                     mask = torch.isin(tgt_input_id_, self.tokens_to_perturb)
-                    if self.perturbation_mode == 'delete':
+                    if self.perturbation_mode in ['delete', 'overexpress']:
                         # Create a mask for elements not equal to the target token
                         mask = perturbed_tgt != self.tokens_to_perturb
                         # add padding mask
@@ -236,11 +229,30 @@ class PerturberTrainer(CellGenTrainer):
                         perturbed_tgt[batch_indices, position_indices] = valid_tokens
                     else:
                         perturbed_tgt[mask] = self.perturbation_token
-                    tgt_input_id_dict[f'tgt_input_ids_t{i}'] = perturbed_tgt
-                else:
-                    tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
-            else:
-                tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
+                    tgt_input_id_ = perturbed_tgt.clone()
+                    # add another if to concatenate overexpressed genes
+                    if self.perturbation_mode == 'overexpress':
+                        # concatenate tokens_to_perturb to tgt_input_id_
+                        tgt_input_id_ = torch.cat(
+                            (
+                                self.tokens_to_perturb.expand(
+                                    tgt_input_id_.shape[0], -1
+                                ),
+                                tgt_input_id_,
+                            ),
+                            dim=1,
+                        )
+
+            tgt_input_id_ = torch.cat(
+                (
+                    getattr(self, f'cls_token_{str(i)}').expand(
+                        tgt_input_id_.shape[0], -1
+                    ),
+                    tgt_input_id_,
+                ),
+                dim=1,
+            )
+            tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
         if perturbation:
             if (
                 self.perturbation_sequence is not None
@@ -337,6 +349,8 @@ class PerturberTrainer(CellGenTrainer):
         return mean_embs
 
     def test_step(self, batch, *args, **kwargs):
+        print(batch)
+        raise
         if self.validation_mode == 'inference':
             true_outputs, _, _ = self.forward(batch, perturbation=False)
             perturbed_outputs, _, _ = self.forward(batch, perturbation=True)
@@ -393,11 +407,14 @@ class PerturberTrainer(CellGenTrainer):
 
             true_cls = true_outputs[t]['dec_embedding'][:, 0, :]
             true_gene = true_outputs[t]['dec_embedding'][:, 1:, :]
+            print(true_gene.shape)
 
             # true_logits = true_outputs[t]['dec_logits'][:, 1:, :]
 
             perturbed_cls = perturbed_outputs[t]['dec_embedding'][:, 0, :]
             perturbed_gene = perturbed_outputs[t]['dec_embedding'][:, 1:, :]
+            print(perturbed_gene.shape)
+            raise
             # perturbed_logits = perturbed_outputs[t]['dec_logits'][:, 1:, :]
 
             # true_probs = torch.softmax(true_logits, dim=-1)

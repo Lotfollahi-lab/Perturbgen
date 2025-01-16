@@ -256,6 +256,12 @@ def get_args():
         default=True,
         help='context mode for timepoints',
     )
+    parser.add_argument(
+        '--d_model',
+        type=int,
+        default=512,
+        help='embedding dimension',
+    )
     args = parser.parse_args()
     return args
 
@@ -354,8 +360,6 @@ def main() -> None:
             args.conditions_combined,
             tgt_adata_tmp,
         )
-
-    print('Data loaded and preprocessed.')
     # count number of unique timepoints
     n_total_tps = len(tgt_adatas)
 
@@ -363,7 +367,7 @@ def main() -> None:
     # ----------------------------------------------------------------------------------
     trainer_kwargs = {
         'tgt_vocab_size': args.tgt_vocab_size,
-        'd_model': 768,
+        'd_model': args.d_model,
         'num_heads': 8,
         'num_layers': args.num_layers,
         'd_ff': args.d_ff,
@@ -575,7 +579,7 @@ def main() -> None:
     #     checkpoint_path=checkpoint_path, filename=filename
     # )
     # If the device is an A100, set the precision for matrix multiplication
-    ddp_strategy = DDPStrategy(find_unused_parameters=True)
+    ddp_strategy = DDPStrategy(find_unused_parameters=False)
 
     trainer = pl.Trainer(
         logger=wandb_logger,

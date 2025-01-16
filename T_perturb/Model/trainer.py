@@ -100,10 +100,16 @@ class CellGenTrainer(LightningModule):
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
-        # set_matmul_precision_for_device(precision)
+        set_matmul_precision_for_device(precision)
         if context_tps is None:
             context_tps = pred_tps
+            self.total_tps = pred_tps
+        else:
+            self.total_tps = context_tps + pred_tps
+        self.pred_tps = pred_tps
+        self.n_total_tps = n_total_tps
         self.context_tps = context_tps
+
         self.transformer = CellGen(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
@@ -152,8 +158,7 @@ class CellGenTrainer(LightningModule):
         self.return_embeddings = return_embeddings
         self.generate = generate
         self.tgt_vocab_size = tgt_vocab_size
-        self.pred_tps = pred_tps
-        self.n_total_tps = n_total_tps
+
         self.context_mode = context_mode
 
         self.test_dict: Dict[str, List[Any]] = {
@@ -181,7 +186,7 @@ class CellGenTrainer(LightningModule):
         total_vocab_size = tgt_vocab_size
         # register buffer for CLS
         # initialize cls token for all time steps
-        self.total_tps = list(range(1, n_total_tps + 1))
+
         for i in self.total_tps:
             # i-1, as first token is tgt_vocab_size
             self.register_buffer(
@@ -253,11 +258,6 @@ class CellGenTrainer(LightningModule):
             #     'frequency': 1
             # }
         }
-
-    def on_train_epoch_start(self):
-        if self.current_epoch == 0:  # Switch after 5 epochs
-            print('Warmup on fp32')
-            self.trainer.precision_plugin.precision = '32-true'
 
     def training_step(self, batch, *args, **kwargs):
         # log learning rate
@@ -366,7 +366,7 @@ class CellGenTrainer(LightningModule):
                 marker_genes_all = list(set(marker_genes_all))
                 # 2. map cosine similarity to corresponding genes
                 marker_cos_similarity, marker_genes_dict = map_results_to_genes(
-                    cos_similarity=cos_similarity,
+                    res=cos_similarity,
                     mapping_dict=(
                         self.gene_to_rowid if self.gene_to_rowid is not None else None
                     ),
@@ -582,7 +582,10 @@ class CountDecoderTrainer(LightningModule):
         self.mse = MeanSquaredError()
         total_vocab_size = tgt_vocab_size
         self.pred_tps = pred_tps
-        self.total_tps = list(range(1, n_total_tps + 1))
+        if context_tps is None:
+            self.total_tps = pred_tps
+        else:
+            self.total_tps = context_tps + pred_tps
         for i in self.total_tps:
             self.register_buffer(
                 f'cls_token_{str(i)}',
