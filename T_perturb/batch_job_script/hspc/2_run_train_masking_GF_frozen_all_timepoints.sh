@@ -59,6 +59,7 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --num_layers 6 \
 --pred_tps 1 2 \
 --var_list sex phase tissue celltype_v2 diff_state \
+--cond_list tissue celltype_v2 diff_state \
 --encoder scmaskgit \
 --encoder_path "/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt" \
 --context_mode True \

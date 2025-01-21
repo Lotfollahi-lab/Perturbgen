@@ -8,7 +8,7 @@ from datetime import datetime
 import pytorch_lightning as pl
 import scanpy as sc
 import torch
-from datasets import load_from_disk
+from datasets import concatenate_datasets, load_from_disk
 
 # from pytorch_lightning import Callback
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
@@ -216,6 +216,12 @@ def get_args():
         help='List of variables to keep in the dataset',
     )
     parser.add_argument(
+        '--cond_list',
+        nargs='+',
+        type=str,
+        help='List of variables to form condition tokens',
+    )
+    parser.add_argument(
         '--train_prop',
         type=float,
         default=0.8,
@@ -369,6 +375,25 @@ def main() -> None:
     # count number of unique timepoints
     n_total_tps = len(tgt_adatas)
 
+    # create dictionnary of metadata for classifier-free guidance
+    token_no = 1
+
+    # create full dataset to extract metadata for conditioning
+    dataset_list = [src_dataset]
+    for dataset in tgt_datasets.values():
+        dataset_list.append(dataset)
+    full_dataset = concatenate_datasets(dataset_list)
+    if args.cond_list is not None:
+        condition_dict = {}
+        for condition in args.cond_list:
+            condition_dict[args.cond_list] = {
+                cell_type: i + token_no
+                for i, cell_type in enumerate(full_dataset.unique(condition))
+            }
+            token_no += len(condition_dict[condition])
+    else:
+        condition_dict = None
+
     # Initialize model module
     # ----------------------------------------------------------------------------------
     trainer_kwargs = {
@@ -386,6 +411,7 @@ def main() -> None:
         'output_dir': args.output_dir,
         'pos_encoding_mode': args.pos_encoding_mode,
         'encoder_path': args.encoder_path,
+        'condition_dict': condition_dict,
     }
     if args.train_mode == 'masking':
         trainer_kwargs['dropout'] = args.cellgen_dropout

@@ -100,6 +100,7 @@ class CellGenTrainer(LightningModule):
         gene_names: List[str] | None = None,
         mapping_dict_path: str | None = None,
         context_tps: List[int] | None = None,
+        condition_dict: Dict[str, Dict] | None = None,
         # *args,
         # **kwargs,
     ) -> None:
@@ -133,6 +134,7 @@ class CellGenTrainer(LightningModule):
             pos_encoding_mode=pos_encoding_mode,
             return_attn=return_attn,
             context_mode=context_mode,
+            condition_dict=condition_dict,
         )
         self.masking_loss = nn.CrossEntropyLoss()
 
@@ -215,23 +217,43 @@ class CellGenTrainer(LightningModule):
         self.return_attn = return_attn
         self.mask_scheduler = mask_scheduler
         self.encoder = encoder
+        self.condition_dict = condition_dict
 
     def forward(self, batch):
+        batch_size = batch['src_input_ids'].shape[0]
         tgt_input_id_dict = {}
+        cond_dict = {}
         for i in self.pred_tps:
-            tgt_input_id_ = torch.cat(
-                (
-                    getattr(self, f'cls_token_{str(i)}').expand(
-                        batch[f'tgt_input_ids_t{i}'].shape[0], -1
-                    ),
-                    batch[f'tgt_input_ids_t{i}'],
-                ),
-                dim=1,
+            tgt_input_id_dict[f'tgt_input_ids_t{i}'] = batch[f'tgt_input_ids_t{i}']
+            self.cond_ids = torch.zeros(
+                (batch_size, len(self.condition_dict)),
+                dtype=torch.long,
+                device=self.device,
             )
-            tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
+
+            if self.condition_dict is not None:
+                for j, condition in enumerate(self.condition_dict.keys()):
+                    if condition == 'timepoint':
+                        time_token = torch.tensor(
+                            self.condition_dict['timepoint'][f't_{i}'], dtype=torch.long
+                        )
+                        self.cond_ids[:, j] = torch.tensor(
+                            time_token, dtype=torch.long, device=self.device
+                        )
+                    else:
+                        cond_ids = batch[f'{condition}_t{i}']
+                        condition_tokens = [
+                            self.condition_dict[condition][id] for id in cond_ids
+                        ]
+                        # j+1 to skip time token
+                        self.cond_ids[:, j] = torch.tensor(
+                            condition_tokens, dtype=torch.long, device=self.device
+                        )
+                    cond_dict[i] = self.cond_ids
         outputs = self.transformer(
             src_input_id=batch['src_input_ids'],
             tgt_input_id_dict=tgt_input_id_dict,
+            cond_dict=cond_dict,
             not_masked=self.return_embeddings,
         )
         return outputs, tgt_input_id_dict
@@ -277,6 +299,7 @@ class CellGenTrainer(LightningModule):
             prog_bar=True,
             logger=True,
         )
+
         outputs, _ = self.forward(batch)
         for t in outputs.keys():
             dec_logits = outputs[t]['dec_logits']
@@ -295,9 +318,10 @@ class CellGenTrainer(LightningModule):
                     sync_dist=True,
                 )
             dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
+
             labels = labels.contiguous().view(-1)
-            with torch.cuda.amp.autocast(dtype=torch.float32):
-                masking_loss = self.masking_loss(dec_logits, labels)
+
+            masking_loss = self.masking_loss(dec_logits, labels)
             self.log(
                 'train/masking_loss',
                 masking_loss,

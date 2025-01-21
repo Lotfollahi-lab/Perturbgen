@@ -12,6 +12,7 @@ from typing import (
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from einops import rearrange, repeat
 from scmaskgit.Modules.T_model import scmoscf
 from torch import einsum, nn
@@ -669,6 +670,7 @@ class CellGen(nn.Module):
         context_mode: bool = True,
         context_tps: List[int] | None = None,
         encoder_path: str | None = None,
+        condition_dict: Dict[str, Dict] | None = None,
     ):
         '''
         Description:
@@ -786,6 +788,14 @@ class CellGen(nn.Module):
         self.pad_token = pad_token
         self.context_mode = context_mode
         self.mask_scheduler = mask_scheduler
+        self.condition_dict = condition_dict
+        if self.condition_dict is not None:
+            # select max value from the condition dict.values()
+            max_dict = {
+                key: max(lst.values()) for key, lst in self.condition_dict.items()
+            }
+            cond_vocab_size = max(max_dict.values())
+            self.cond_embedding = nn.Embedding(cond_vocab_size + 1, d_model)
 
     def generate_mask(
         self,
@@ -956,6 +966,7 @@ class CellGen(nn.Module):
         all_time_steps,
         tgt_input_id_dict,
         tgt_pad_dict,
+        cond_dict,
     ):
         context_embs_list = [enc_output]
         context_pad_list = [src_attention_mask]
@@ -977,6 +988,16 @@ class CellGen(nn.Module):
 
                 with torch.no_grad():
                     tgt_embedding = self.token_embedding(tgt_input_id)
+                    # ---classifier-free guidance---
+                    if cond_dict is not None:
+                        cond_ids = cond_dict[time_step]
+                        cond_token_emb = self.cond_embedding(cond_ids)
+                        tgt_embedding = torch.cat(
+                            [cond_token_emb, tgt_embedding.clone()], dim=1
+                        )
+                        # no padding for condition tokens
+                        cond_pad = torch.zeros_like(cond_ids, dtype=torch.bool)
+                        tgt_pad = torch.cat([cond_pad, tgt_pad.clone()], dim=1)
                     dec_embedding = self.pos_embedding(
                         tgt_embedding, tgt_time_step=time_step
                     )
@@ -1003,6 +1024,7 @@ class CellGen(nn.Module):
         tgt_input_id_dict: dict | None = None,
         generate_id_dict: dict | None = None,
         generate_pad_dict: dict | None = None,
+        cond_dict: torch.Tensor | None = None,
     ):
         '''
         Description:
@@ -1070,8 +1092,9 @@ class CellGen(nn.Module):
                     all_time_steps=context_time_steps,
                     tgt_input_id_dict=tgt_input_id_dict,
                     tgt_pad_dict=tgt_pad_dict,
+                    cond_dict=cond_dict,
                 )
-            if (not_masked is False) & (generate_id_dict is None):
+            if (not_masked is False) and (generate_id_dict is None):
                 # apply masking during first stage of MLM training
                 tgt_input_id, labels = self.generate_mask(
                     tgt_input_id,
@@ -1082,14 +1105,30 @@ class CellGen(nn.Module):
                 # no true labels for MLM loss
                 labels = None
             tgt_embedding = self.token_embedding(tgt_input_id)
-            tgt_embedding = self.pos_embedding(tgt_embedding, tgt_time_step)
+            # ---classifier-free guidance---
+            if cond_dict is not None:
+                cond_ids = cond_dict[tgt_time_step]
+                cond_token_emb = self.cond_embedding(cond_ids)
+
+                tgt_embedding = torch.cat(
+                    [cond_token_emb, tgt_embedding.clone()], dim=1
+                )
+                # no padding for condition tokens
+                cond_pad = torch.zeros_like(cond_ids, dtype=torch.bool)
+                tgt_pad = torch.cat([cond_pad, tgt_pad.clone()], dim=1)
+                if labels is not None:
+                    cond_len = cond_token_emb.shape[1]
+                    # add -100 to ignore condition tokens in CE loss
+                    labels = F.pad(labels, (cond_len, 0), value=-100)
+            dec_embedding = self.pos_embedding(tgt_embedding, tgt_time_step)
+
             # does not include any context
             outputs = self.call_decoder(
                 enc_output=context_output if self.context_mode else enc_output,
                 src_attention_mask=context_mask
                 if self.context_mode
                 else src_attention_mask,
-                dec_embedding=tgt_embedding,
+                dec_embedding=dec_embedding,
                 tgt_pad=tgt_pad,
                 labels=labels,
             )
