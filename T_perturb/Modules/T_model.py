@@ -12,7 +12,6 @@ from typing import (
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from einops import rearrange, repeat
 from scmaskgit.Modules.T_model import scmoscf
 from torch import einsum, nn
@@ -643,7 +642,7 @@ class Encoder(nn.Module):
         return output
 
 
-class CellGen(nn.Module):
+class CytoMeister(nn.Module):
     def __init__(
         self,
         tgt_vocab_size: int = 25426,
@@ -723,7 +722,7 @@ class CellGen(nn.Module):
             - 'dec_embedding': Decoder embeddings.
             - 'mean_embedding': Mean embeddings for non-padding tokens.
         '''
-        super(CellGen, self).__init__()
+        super(CytoMeister, self).__init__()
 
         self.pos_embedding = PositionalEncoding(
             d_model=d_model,
@@ -746,10 +745,10 @@ class CellGen(nn.Module):
         self.total_tps = list(range(1, n_total_tps + 1))
         self.mask_token = 1
         # add number of CLS tokens to the vocab size
-        total_vocab_size = tgt_vocab_size + n_total_tps
+        # total_vocab_size = tgt_vocab_size + n_total_tps
         # total_vocab_size = total_vocab_size + 1  # add one for padding token
         self.token_embedding = nn.Embedding(
-            total_vocab_size, d_model, padding_idx=pad_token
+            tgt_vocab_size, d_model, padding_idx=pad_token
         )
         if encoder in ['GF_frozen', 'GF_fine_tuned']:
             self.encoder_layers = Geneformerwrapper(mode=encoder)
@@ -788,14 +787,13 @@ class CellGen(nn.Module):
         self.pad_token = pad_token
         self.context_mode = context_mode
         self.mask_scheduler = mask_scheduler
-        self.condition_dict = condition_dict
-        if self.condition_dict is not None:
-            # select max value from the condition dict.values()
-            max_dict = {
-                key: max(lst.values()) for key, lst in self.condition_dict.items()
-            }
-            cond_vocab_size = max(max_dict.values())
-            self.cond_embedding = nn.Embedding(cond_vocab_size + 1, d_model)
+        # self.condition_dict = condition_dict
+        # if self.condition_dict is not None:
+        #     # select max value from the condition dict.values()
+        #     max_dict = {
+        #         key: max(lst.values()) for key, lst in self.condition_dict.items()
+        #     }
+        #     cond_vocab_size = max(max_dict.values())
 
     def generate_mask(
         self,
@@ -987,17 +985,18 @@ class CellGen(nn.Module):
                 tgt_pad = tgt_pad_dict[f'tgt_pad_t{time_step}']
 
                 with torch.no_grad():
+                    # # ---classifier-free guidance---
+                    # if cond_dict is not None:
+                    #     cond_ids = cond_dict[time_step]
+                    #     # concatenate condition tokens with target tokens
+                    #     tgt_input_id = torch.cat(
+                    #         [cond_ids,
+                    #          tgt_input_id.clone()
+                    #          ], dim=1)
+                    #     # no padding for condition tokens
+                    #     cond_pad = torch.zeros_like(cond_ids, dtype=torch.bool)
+                    #     tgt_pad = torch.cat([cond_pad, tgt_pad.clone()], dim=1)
                     tgt_embedding = self.token_embedding(tgt_input_id)
-                    # ---classifier-free guidance---
-                    if cond_dict is not None:
-                        cond_ids = cond_dict[time_step]
-                        cond_token_emb = self.cond_embedding(cond_ids)
-                        tgt_embedding = torch.cat(
-                            [cond_token_emb, tgt_embedding.clone()], dim=1
-                        )
-                        # no padding for condition tokens
-                        cond_pad = torch.zeros_like(cond_ids, dtype=torch.bool)
-                        tgt_pad = torch.cat([cond_pad, tgt_pad.clone()], dim=1)
                     dec_embedding = self.pos_embedding(
                         tgt_embedding, tgt_time_step=time_step
                     )
@@ -1094,6 +1093,17 @@ class CellGen(nn.Module):
                     tgt_pad_dict=tgt_pad_dict,
                     cond_dict=cond_dict,
                 )
+
+            # # ---conditioning---
+            # if cond_dict is not None:
+            #     # add condition tokens to the target tokens for masking
+            #     cond_ids = cond_dict[tgt_time_step]
+            #     print('cond_ids', cond_ids)
+            #     tgt_input_id = torch.cat([cond_ids, tgt_input_id.clone()], dim=1)
+            #     print('tgt_input_id after concatenating', tgt_input_id)
+            #     # no padding for condition tokens
+            #     cond_pad = torch.zeros_like(cond_ids, dtype=torch.bool)
+            #     tgt_pad = torch.cat([cond_pad, tgt_pad.clone()], dim=1)
             if (not_masked is False) and (generate_id_dict is None):
                 # apply masking during first stage of MLM training
                 tgt_input_id, labels = self.generate_mask(
@@ -1104,22 +1114,8 @@ class CellGen(nn.Module):
             else:
                 # no true labels for MLM loss
                 labels = None
-            tgt_embedding = self.token_embedding(tgt_input_id)
-            # ---classifier-free guidance---
-            if cond_dict is not None:
-                cond_ids = cond_dict[tgt_time_step]
-                cond_token_emb = self.cond_embedding(cond_ids)
 
-                tgt_embedding = torch.cat(
-                    [cond_token_emb, tgt_embedding.clone()], dim=1
-                )
-                # no padding for condition tokens
-                cond_pad = torch.zeros_like(cond_ids, dtype=torch.bool)
-                tgt_pad = torch.cat([cond_pad, tgt_pad.clone()], dim=1)
-                if labels is not None:
-                    cond_len = cond_token_emb.shape[1]
-                    # add -100 to ignore condition tokens in CE loss
-                    labels = F.pad(labels, (cond_len, 0), value=-100)
+            tgt_embedding = self.token_embedding(tgt_input_id)
             dec_embedding = self.pos_embedding(tgt_embedding, tgt_time_step)
 
             # does not include any context
@@ -1216,12 +1212,12 @@ class CellGen(nn.Module):
             tgt_input_id = tgt_input_id_dict[tgt_input_id_key]
 
             # create ids and scores matrix for each batch
-            ids = torch.full_like(tgt_input_id, self.mask_token, dtype=torch.long)
-            # add cls token to the ids
-            ids[:, 0] = tgt_input_id[:, 0]
+            ids = torch.zeros_like(tgt_input_id, self.mask_token, dtype=torch.long)
+            # # add cls token to the ids
+            # ids[:, 0] = tgt_input_id[:, 0]
 
-            # replace the rest of the tokens with pad token
-            ids[:, sequence_length:] = 0
+            # # replace the rest of the tokens with pad token
+            # ids[:, sequence_length:] = 0
             tgt_input_id_dict_[tgt_input_id_key] = ids
             # pad ids
             scores = torch.zeros_like(tgt_input_id, dtype=torch.float)
@@ -1300,7 +1296,7 @@ class CellGen(nn.Module):
                 Generated target token inputs.
         '''
         max_neg_value = -torch.finfo().max
-        scores[:, :1] = max_neg_value
+        # scores[:, :1] = max_neg_value
         tmp_ids = generate_id_dict[f'tgt_input_ids_t{tgt_time_step}'].clone()
         batch_size, seq_len = tmp_ids.shape
         # find total_tokens by find the numbers of 1s in the mask
@@ -1346,14 +1342,15 @@ class CellGen(nn.Module):
                 not_masked=False,
                 tgt_time_step=tgt_time_step,
             )
-            logits = outputs[tgt_time_step]['dec_logits'][:, 1:, :]
+            # logits = outputs[tgt_time_step]['dec_logits'][:, 1:, :]
+            logits = outputs[tgt_time_step]['dec_logits']
 
-            # exclude cls token
-            tmp_ids_ = tmp_ids[:, 1:].clone()
-            scores_ = scores[:, 1:].clone()
-            ids_to_keep_ = ids_to_keep[:, 1:].clone()
+            # # exclude cls token
+            # tmp_ids_ = tmp_ids[:, 1:].clone()
+            # scores_ = scores[:, 1:].clone()
+            # ids_to_keep_ = ids_to_keep[:, 1:].clone()
             # Create a mask of already predicted tokens
-            indices = ids_to_keep_.unsqueeze(1).expand(-1, seq_len - 1, -1)
+            indices = ids_to_keep.unsqueeze(1).expand(-1, seq_len - 1, -1)
             logits.scatter_(2, indices, max_neg_value)
             filtered_logits = top_k(logits.clone(), topk_filter_thres)
             temperature = starting_temperature * (
@@ -1361,18 +1358,18 @@ class CellGen(nn.Module):
             )  # temperature is annealed
             pred_ids = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
 
-            is_mask = tmp_ids_ == self.mask_token
-            tmp_ids_ = torch.where(is_mask, pred_ids, tmp_ids_)
+            is_mask = tmp_ids == self.mask_token
+            tmp_ids = torch.where(is_mask, pred_ids, tmp_ids)
             probs_without_temperature = logits.softmax(dim=-1)
 
-            scores_ = 1 - probs_without_temperature.gather(2, pred_ids[..., None])
-            scores_ = rearrange(scores_, '... 1 -> ...')
+            scores = 1 - probs_without_temperature.gather(2, pred_ids[..., None])
+            scores = rearrange(scores, '... 1 -> ...')
 
             if not can_remask_prev_masked:
-                scores_.masked_fill_(~is_mask, max_neg_value)
+                scores.masked_fill_(~is_mask, max_neg_value)
             # add cls token to the ids and update scores and ids
-            scores[:, 1:] = scores_
-            tmp_ids[:, 1:] = tmp_ids_
+            # scores[:, 1:] = scores_
+            # tmp_ids[:, 1:] = tmp_ids_
         return outputs[tgt_time_step], tmp_ids
 
 

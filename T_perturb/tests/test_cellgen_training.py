@@ -9,8 +9,8 @@ from datasets import Dataset
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import CSVLogger
 
-from T_perturb.Dataloaders.datamodule import CellGenDataModule
-from T_perturb.Model.trainer import CellGenTrainer
+from T_perturb.Dataloaders.datamodule import CytoMeisterDataModule
+from T_perturb.Model.trainer import CytoMeisterTrainer
 
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
@@ -70,9 +70,9 @@ def dummy_dataset(
         return tgt_dataset_dict
 
 
-class CellGenTestTrainingCase(unittest.TestCase):
+class CytoMeisterTestTrainingCase(unittest.TestCase):
     def __init__(self, *args, **kwargs):
-        super(CellGenTestTrainingCase, self).__init__(*args, **kwargs)
+        super(CytoMeisterTestTrainingCase, self).__init__(*args, **kwargs)
         self.pred_tps = [1, 2]
         self.n_total_tps = 2
         self.max_seq_length = 50
@@ -87,7 +87,7 @@ class CellGenTestTrainingCase(unittest.TestCase):
         torch.backends.cudnn.benchmark = False
 
         # Load transformer model and count decoder
-        transformer = CellGenTrainer(
+        transformer = CytoMeisterTrainer(
             tgt_vocab_size=self.tgt_vocab_size,
             d_model=self.d_model,
             num_heads=4,
@@ -124,7 +124,7 @@ class CellGenTestTrainingCase(unittest.TestCase):
         )
 
         # Load the data module
-        self.data_module = CellGenDataModule(
+        self.data_module = CytoMeisterDataModule(
             src_dataset=src_dataset,
             tgt_datasets=tgt_datasets,
             batch_size=self.batch_size,

@@ -338,7 +338,6 @@ def map_results_to_genes(
         len(marker_genes_ids.keys()),
         device=res.device,
     )
-
     marker_genes_dict = {}
     for i, gene in enumerate(marker_genes_ids.keys()):
         # extract cosine similarity for marker genes
@@ -620,7 +619,6 @@ def return_prediction_adata(
     output_dir: str,
     file_name: str,
     gene_names: list,
-    n_total_tps: int,
 ):
     """
     Description:
@@ -671,7 +669,6 @@ def return_prediction_adata(
         test_var = pd.DataFrame(gene_names, columns=['gene_name'])
     if len(test_dict['gene_embeddings']) > 0:
         gene_embeddings_dict = {}
-
         gene_embeddings = torch.cat(test_dict['gene_embeddings'], dim=0).numpy()
         gene_embeddings_dict['gene_embeddings'] = gene_embeddings
 

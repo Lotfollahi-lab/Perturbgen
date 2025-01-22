@@ -42,9 +42,10 @@ def get_args():
         '--dataset',
         type=str,
         # default='cytoimmgen',
-        default='hspc',
+        default='hspc_pbmc_median',
         choices=[
             'cytoimmgen',
+            'cytoimmgen_pbmc_median',
             'eb',
             'eb_pbmc_median',
             'eb_GF_26k_median',
@@ -57,7 +58,7 @@ def get_args():
     parser.add_argument(
         '--gene_filtering_mode',
         type=str,
-        default='all',
+        default='hvg',
         choices=['hvg', 'degs', 'all'],
         help='Gene filtering mode: hvg or degs',
     )
@@ -157,19 +158,19 @@ def get_args():
     parser.add_argument(
         '--gene_median_path',
         type=str,
-        # default='/lustre/scratch126/cellgen/team361/am74/'
-        # 'Adib/TRACE/Loom_cohort/tdigest/2nd_run/'
-        # 'Dictionaries/trace_median.pkl',
-        default='T_perturb/Geneformer/geneformer/gene_median_dictionary_gc95M.pkl',
+        default='/lustre/scratch126/cellgen/team361/am74/'
+        'Adib/TRACE/Loom_cohort/tdigest/2nd_run/'
+        'Dictionaries/filtered_trace_median.pkl',
+        # default='T_perturb/Geneformer/geneformer/gene_median_dictionary_gc95M.pkl',
         help='Path to gene median file',
     )
     parser.add_argument(
         '--token_dict_path',
         type=str,
-        # default='/lustre/scratch126/cellgen/team361/am74/'
-        # 'Adib/TRACE/Loom_cohort/tdigest/2nd_run/'
-        # 'Dictionaries/trace_token.pkl',
-        default='T_perturb/Geneformer/geneformer/token_dictionary_gc95M.pkl',
+        default='/lustre/scratch126/cellgen/team361/am74/'
+        'Adib/TRACE/Loom_cohort/tdigest/2nd_run/'
+        'Dictionaries/trace_filtered_tokenid.pkl',
+        # default='T_perturb/Geneformer/geneformer/token_dictionary_gc95M.pkl',
         help='Path to token dictionary file',
     )
     parser.add_argument(
@@ -177,7 +178,7 @@ def get_args():
         type=str,
         # default='/lustre/scratch126/cellgen/team361/am74/'
         # 'Adib/TRACE/Loom_cohort/tdigest/2nd_run/'
-        # 'Dictionaries/trace_gene_mapping.pkl',
+        # 'Dictionaries/filtered_trace_median.pkl',
         default='T_perturb/Geneformer/geneformer/gene_name_id_dict_gc95M.pkl',
         help='Path to gene mapping file',
     )
@@ -198,11 +199,12 @@ gene_filter_mode_suffix = (
     else f'{args.n_hvg}_{args.gene_filtering_mode}'
 )
 
-if args.dataset == 'cytoimmgen':
+if args.dataset.startswith('cytoimmgen'):
     adata = map_ensembl_to_genename(
         adata,
         './data/h5d_files/phase2_data_qced_cells_cellCycleScored_geneMetadata.csv.gz',
     )
+    adata.var['ensembl_id'] = adata.var_names
 else:
     adata.var['gene_name'] = adata.var_names
     adata.var_names = adata.var['ensembl_id']
@@ -348,8 +350,8 @@ tk = TranscriptomeTokenizer(
     model_input_size=4096,
     collapse_gene_ids=True,
     special_token=True,
-    # gene_median_file=args.gene_median_path,
-    # token_dictionary_file=args.token_dict_path,
+    gene_median_file=args.gene_median_path,
+    token_dictionary_file=args.token_dict_path,
     # gene_mapping_file=args.gene_mapping_path,
 )
 # time it

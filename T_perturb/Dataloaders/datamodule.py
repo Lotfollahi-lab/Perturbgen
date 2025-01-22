@@ -13,7 +13,7 @@ from scipy.sparse import csr_matrix
 from torch.utils.data import DataLoader, Dataset
 
 
-class CellGenDataset(Dataset):
+class CytoMeisterDataset(Dataset):
     def __init__(
         self,
         src_dataset: DatasetDict,
@@ -86,7 +86,7 @@ class CellGenDataset(Dataset):
         return self.dataset_length
 
 
-class CellGenDataModule(LightningDataModule):
+class CytoMeisterDataModule(LightningDataModule):
     def __init__(
         self,
         src_dataset: DatasetDict,
@@ -113,7 +113,7 @@ class CellGenDataModule(LightningDataModule):
         """
         Description:
         ------------
-        Custom datamodule for CellGen tokenised data.
+        Custom datamodule for CytoMeister tokenised data.
         """
         super().__init__()
         print('Start datamodule')
@@ -170,18 +170,18 @@ class CellGenDataModule(LightningDataModule):
                     if self.condition_keys is not None
                     else None
                 )
-                self.train_dataset = CellGenDataset(**dataset_args)
+                self.train_dataset = CytoMeisterDataset(**dataset_args)
                 if self.val_indices is not None:
                     dataset_args['split_indices'] = self.val_indices
-                    self.val_dataset = CellGenDataset(**dataset_args)
+                    self.val_dataset = CytoMeisterDataset(**dataset_args)
                 else:
                     self.val_dataset = None
             else:
                 dataset_args['split_indices'] = self.train_indices
-                self.train_dataset = CellGenDataset(**dataset_args)
+                self.train_dataset = CytoMeisterDataset(**dataset_args)
                 if self.val_indices is not None:
                     dataset_args['split_indices'] = self.val_indices
-                    self.val_dataset = CellGenDataset(**dataset_args)
+                    self.val_dataset = CytoMeisterDataset(**dataset_args)
                 else:
                     self.val_dataset = None
         if stage == 'test' or stage is None:
@@ -203,9 +203,9 @@ class CellGenDataModule(LightningDataModule):
                     if self.condition_keys is not None
                     else None
                 )
-                self.test_dataset = CellGenDataset(**dataset_args)
+                self.test_dataset = CytoMeisterDataset(**dataset_args)
             else:
-                self.test_dataset = CellGenDataset(**dataset_args)
+                self.test_dataset = CytoMeisterDataset(**dataset_args)
 
     def train_dataloader(self):
         self.dataloader_kwargs['dataset'] = self.train_dataset

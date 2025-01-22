@@ -14,7 +14,7 @@ import torch
 # from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from torch.nn.functional import cosine_similarity
 
-from T_perturb.Model.trainer import CellGenTrainer
+from T_perturb.Model.trainer import CytoMeisterTrainer
 from T_perturb.Perturb.T_model import PerturberMasking
 from T_perturb.src.optimal_transport import wasserstein
 from T_perturb.src.utils import (
@@ -25,7 +25,7 @@ from T_perturb.src.utils import (
 )
 
 
-class PerturberTrainer(CellGenTrainer):
+class PerturberTrainer(CytoMeisterTrainer):
     def __init__(
         self,
         generate: bool = False,
@@ -174,6 +174,35 @@ class PerturberTrainer(CellGenTrainer):
         self.pos_encoding_mode = kwargs['pos_encoding_mode']
         self.mask_scheduler = kwargs['mask_scheduler']
 
+    def delete_token(
+        self,
+        perturbed_tgt: torch.Tensor,
+        token_to_perturb: torch.Tensor,
+    ):
+        # Create a mask for elements not equal to the target token
+        mask = perturbed_tgt != token_to_perturb
+        # add padding mask
+        pad_mask = perturbed_tgt != self.pad_token_id
+        mask_ = mask & pad_mask
+        # Count the number of valid tokens in each sequence
+        valid_counts = mask_.sum(dim=1)
+        # Get indices for valid tokens
+        valid_tokens = perturbed_tgt[mask_]
+
+        # Initialize the result tensor filled with pad_token_id
+        perturbed_tgt = torch.full_like(perturbed_tgt, self.pad_token_id)
+
+        # Use advanced indexing to fill the valid tokens
+        # into the perturbed_tgt tensor
+        batch_indices = torch.arange(
+            perturbed_tgt.size(0), device=perturbed_tgt.device
+        ).repeat_interleave(valid_counts)
+        position_indices = torch.cat(
+            [torch.arange(c, device=perturbed_tgt.device) for c in valid_counts]
+        )
+        perturbed_tgt[batch_indices, position_indices] = valid_tokens
+        return perturbed_tgt
+
     def forward(
         self,
         batch: Any,
@@ -200,33 +229,9 @@ class PerturberTrainer(CellGenTrainer):
                     perturbed_tgt = tgt_input_id_.clone()
                     mask = torch.isin(tgt_input_id_, self.tokens_to_perturb)
                     if self.perturbation_mode in ['delete', 'overexpress']:
-                        # Create a mask for elements not equal to the target token
-                        mask = perturbed_tgt != self.tokens_to_perturb
-                        # add padding mask
-                        pad_mask = perturbed_tgt != self.pad_token_id
-                        mask_ = mask & pad_mask
-                        # Count the number of valid tokens in each sequence
-                        valid_counts = mask_.sum(dim=1)
-                        # Get indices for valid tokens
-                        valid_tokens = perturbed_tgt[mask_]
-
-                        # Initialize the result tensor filled with pad_token_id
-                        perturbed_tgt = torch.full_like(
-                            perturbed_tgt, self.pad_token_id
+                        perturbed_tgt = self.delete_token(
+                            perturbed_tgt, self.tokens_to_perturb
                         )
-
-                        # Use advanced indexing to fill the valid tokens
-                        # into the perturbed_tgt tensor
-                        batch_indices = torch.arange(
-                            perturbed_tgt.size(0), device=perturbed_tgt.device
-                        ).repeat_interleave(valid_counts)
-                        position_indices = torch.cat(
-                            [
-                                torch.arange(c, device=perturbed_tgt.device)
-                                for c in valid_counts
-                            ]
-                        )
-                        perturbed_tgt[batch_indices, position_indices] = valid_tokens
                     else:
                         perturbed_tgt[mask] = self.perturbation_token
                     tgt_input_id_ = perturbed_tgt.clone()
@@ -349,8 +354,13 @@ class PerturberTrainer(CellGenTrainer):
         return mean_embs
 
     def test_step(self, batch, *args, **kwargs):
-        print(batch)
-        raise
+        # exclude self.tokens_to_perturb from downstream analysis by creating a mask
+        self.tokens_to_perturb = self.tokens_to_perturb.to(self.device)
+        perturbed_mask_dict = {}
+        for i in self.pred_tps:
+            perturbed_mask_dict[i] = torch.isin(
+                batch[f'tgt_input_ids_t{i}'], self.tokens_to_perturb
+            )
         if self.validation_mode == 'inference':
             true_outputs, _, _ = self.forward(batch, perturbation=False)
             perturbed_outputs, _, _ = self.forward(batch, perturbation=True)
@@ -407,12 +417,12 @@ class PerturberTrainer(CellGenTrainer):
 
             true_cls = true_outputs[t]['dec_embedding'][:, 0, :]
             true_gene = true_outputs[t]['dec_embedding'][:, 1:, :]
-            print(true_gene.shape)
 
             # true_logits = true_outputs[t]['dec_logits'][:, 1:, :]
 
             perturbed_cls = perturbed_outputs[t]['dec_embedding'][:, 0, :]
             perturbed_gene = perturbed_outputs[t]['dec_embedding'][:, 1:, :]
+            print(true_gene.shape)
             print(perturbed_gene.shape)
             raise
             # perturbed_logits = perturbed_outputs[t]['dec_logits'][:, 1:, :]

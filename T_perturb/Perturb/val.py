@@ -7,7 +7,7 @@ import torch
 import yaml  # type: ignore
 from datasets import load_from_disk
 
-from T_perturb.Dataloaders.datamodule import CellGenDataModule
+from T_perturb.Dataloaders.datamodule import CytoMeisterDataModule
 from T_perturb.Perturb.trainer import PerturberTrainer
 from T_perturb.src.utils import read_dataset_files
 
@@ -61,7 +61,7 @@ else:
     print('Using 32-bit precision for inference')
 
 decoder_module = PerturberTrainer(n_total_tps=n_total_tps, **config['trainer'])
-data_module = CellGenDataModule(
+data_module = CytoMeisterDataModule(
     n_total_tps=n_total_tps,
     src_dataset=src_dataset,
     tgt_datasets=tgt_datasets,
@@ -75,7 +75,6 @@ trainer = pl.Trainer(
     logger=False,
     accelerator=accelerator,
     devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
-    # limit_test_batches=500.0,
     precision=precision,
 )
 trainer.test(

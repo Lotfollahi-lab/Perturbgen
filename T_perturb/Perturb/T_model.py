@@ -4,7 +4,7 @@ import torch
 from einops import rearrange
 from torch import nn
 
-from T_perturb.Modules.T_model import CellGen
+from T_perturb.Modules.T_model import CytoMeister
 from T_perturb.src.utils import (
     gumbel_sample,
     noise_schedule,
@@ -12,7 +12,7 @@ from T_perturb.src.utils import (
 )
 
 
-class PerturberMasking(CellGen):
+class PerturberMasking(CytoMeister):
     def __init__(
         self,
         *args,

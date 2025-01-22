@@ -7,8 +7,8 @@ import pytorch_lightning as pl
 import scanpy as sc
 import torch
 
-from T_perturb.Dataloaders.datamodule import CellGenDataModule
-from T_perturb.Model.trainer import CellGenTrainer
+from T_perturb.Dataloaders.datamodule import CytoMeisterDataModule
+from T_perturb.Model.trainer import CytoMeisterTrainer
 from T_perturb.src.utils import label_encoder
 from T_perturb.tests.test_cellgen_training import dummy_dataset
 from T_perturb.tests.test_countdecoder_training import dummy_cell_gene_matrix
@@ -18,9 +18,9 @@ if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative/')
 
 
-class CellGenTestEmbeddingCase(unittest.TestCase):
+class CytoMeisterTestEmbeddingCase(unittest.TestCase):
     def __init__(self, *args, **kwargs):
-        super(CellGenTestEmbeddingCase, self).__init__(*args, **kwargs)
+        super(CytoMeisterTestEmbeddingCase, self).__init__(*args, **kwargs)
         self.pred_tps = [1, 2]
         self.context_tps = [1, 2]
         self.n_total_tps = 2
@@ -120,7 +120,7 @@ class CellGenTestEmbeddingCase(unittest.TestCase):
             )
             conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
 
-        decoder_module = CellGenTrainer(
+        decoder_module = CytoMeisterTrainer(
             tgt_vocab_size=self.tgt_vocab_size,
             d_model=self.d_model,
             num_heads=4,
@@ -144,7 +144,7 @@ class CellGenTestEmbeddingCase(unittest.TestCase):
         )
         self.decoder_module = decoder_module
         # Load the data module
-        self.data_module = CellGenDataModule(
+        self.data_module = CytoMeisterDataModule(
             src_dataset=src_dataset,
             tgt_datasets=tgt_datasets,
             tgt_counts_dict=tgt_counts_dict,

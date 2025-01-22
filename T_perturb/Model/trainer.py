@@ -24,7 +24,7 @@ from scvi.distributions import NegativeBinomial, ZeroInflatedNegativeBinomial
 from torchmetrics import MeanSquaredError
 from torchmetrics.text import Perplexity
 
-from T_perturb.Modules.T_model import CellGen, CountDecoder
+from T_perturb.Modules.T_model import CountDecoder, CytoMeister
 from T_perturb.src.losses import mse_loss
 from T_perturb.src.metric import (
     compute_distribution_distances,
@@ -61,7 +61,7 @@ def set_matmul_precision_for_device(precision: Literal['high', 'medium'] = 'medi
         print('Using CPU for training')
 
 
-class CellGenTrainer(LightningModule):
+class CytoMeisterTrainer(LightningModule):
     def __init__(
         self,
         tgt_vocab_size: int = 25000,
@@ -96,6 +96,7 @@ class CellGenTrainer(LightningModule):
             'T_perturb/T_perturb/pp/res/hspc/tokenid_to_rowid_hvg.pkl'
         ),
         encoder_path: str | None = None,
+        deg_pkl_path: str | None = None,
         var_list: List[str] | None = None,
         gene_names: List[str] | None = None,
         mapping_dict_path: str | None = None,
@@ -116,7 +117,7 @@ class CellGenTrainer(LightningModule):
         self.n_total_tps = n_total_tps
         self.context_tps = context_tps
 
-        self.transformer = CellGen(
+        self.transformer = CytoMeister(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
             num_heads=num_heads,
@@ -192,23 +193,23 @@ class CellGenTrainer(LightningModule):
         self.marker_genes = None
         self.pad_token_id = pad_token_id
         self.gene_names = gene_names
-        total_vocab_size = tgt_vocab_size
+        # total_vocab_size = tgt_vocab_size
         # register buffer for CLS
         # initialize cls token for all time steps
 
-        for i in self.total_tps:
-            # i-1, as first token is tgt_vocab_size
-            self.register_buffer(
-                f'cls_token_{str(i)}',
-                torch.tensor(
-                    [total_vocab_size + (i - 1)],
-                    dtype=torch.long,
-                ),
-            )
-            print(f'cls_token_{str(i)}', getattr(self, f'cls_token_{str(i)}'))
-            # update mapping_dict to include cls token
-            if self.gene_to_rowid is not None:
-                self.gene_to_rowid[f'cls_token_{str(i)}'] = total_vocab_size + (i - 1)
+        # for i in self.total_tps:
+        #     # i-1, as first token is tgt_vocab_size
+        #     self.register_buffer(
+        #         f'cls_token_{str(i)}',
+        #         torch.tensor(
+        #             [total_vocab_size + (i - 1)],
+        #             dtype=torch.long,
+        #         ),
+        #     )
+        #     print(f'cls_token_{str(i)}', getattr(self, f'cls_token_{str(i)}'))
+        #     # update mapping_dict to include cls token
+        #     if self.gene_to_rowid is not None:
+        #         self.gene_to_rowid[f'cls_token_{str(i)}'] = total_vocab_size + (i - 1)
         self.output_dir = output_dir
         # create directory if not exist
         if not os.path.exists(self.output_dir):
@@ -217,21 +218,19 @@ class CellGenTrainer(LightningModule):
         self.return_attn = return_attn
         self.mask_scheduler = mask_scheduler
         self.encoder = encoder
+        self.deg_pkl_path = deg_pkl_path
         self.condition_dict = condition_dict
 
     def forward(self, batch):
         batch_size = batch['src_input_ids'].shape[0]
         tgt_input_id_dict = {}
-        cond_dict = {}
         for i in self.pred_tps:
-            tgt_input_id_dict[f'tgt_input_ids_t{i}'] = batch[f'tgt_input_ids_t{i}']
-            self.cond_ids = torch.zeros(
-                (batch_size, len(self.condition_dict)),
-                dtype=torch.long,
-                device=self.device,
-            )
-
             if self.condition_dict is not None:
+                self.cond_ids = torch.zeros(
+                    (batch_size, len(self.condition_dict)),
+                    dtype=torch.long,
+                    device=self.device,
+                )
                 for j, condition in enumerate(self.condition_dict.keys()):
                     if condition == 'timepoint':
                         time_token = torch.tensor(
@@ -249,11 +248,14 @@ class CellGenTrainer(LightningModule):
                         self.cond_ids[:, j] = torch.tensor(
                             condition_tokens, dtype=torch.long, device=self.device
                         )
-                    cond_dict[i] = self.cond_ids
+                tgt_input_id_dict[f'tgt_input_ids_t{i}'] = torch.cat(
+                    (self.cond_ids, batch[f'tgt_input_ids_t{i}']), dim=1
+                )
+            else:
+                tgt_input_id_dict[f'tgt_input_ids_t{i}'] = batch[f'tgt_input_ids_t{i}']
         outputs = self.transformer(
             src_input_id=batch['src_input_ids'],
             tgt_input_id_dict=tgt_input_id_dict,
-            cond_dict=cond_dict,
             not_masked=self.return_embeddings,
         )
         return outputs, tgt_input_id_dict
@@ -339,7 +341,7 @@ class CellGenTrainer(LightningModule):
         pass
 
     def validation_step(self, batch, *args, **kwargs):
-        outputs = self.forward(batch)
+        outputs, _ = self.forward(batch)
         for t in outputs.keys():
             dec_logits = outputs[t]['dec_logits']
             labels = outputs[t]['labels']
@@ -381,11 +383,10 @@ class CellGenTrainer(LightningModule):
                 # 1. compute cosine similarity
                 cos_similarity = compute_cos_similarity(outputs=outputs, time_step=t)
 
-                if self.return_gene_embs:
+                if self.deg_pkl_path is not None:
                     # load marker genes
                     with open(
-                        './T_perturb/T_perturb/plt/res/hspc/embeddings/'
-                        'res/cos_sim/top_genes_celltype_v2_10k.pkl',
+                        self.deg_pkl_path,
                         'rb',
                     ) as f:
                         marker_genes = pickle.load(f)
@@ -398,17 +399,18 @@ class CellGenTrainer(LightningModule):
                         gene for genes in marker_genes_.values() for gene in genes
                     ]
                     marker_genes_all = list(set(marker_genes_all))
-                    # 2. map cosine similarity to corresponding genes
-                    marker_cos_similarity, marker_genes_dict = map_results_to_genes(
-                        res=cos_similarity,
-                        mapping_dict=(
-                            self.gene_to_rowid
-                            if self.gene_to_rowid is not None
-                            else None
-                        ),
-                        token_ids=token_ids,
-                        marker_genes=marker_genes_all,
-                    )
+                else:
+                    marker_genes_all = None
+                # 2. map cosine similarity to corresponding genes
+                marker_cos_similarity, marker_genes_dict = map_results_to_genes(
+                    res=cos_similarity,
+                    mapping_dict=(
+                        self.gene_to_rowid if self.gene_to_rowid is not None else None
+                    ),
+                    token_ids=token_ids,
+                    marker_genes=marker_genes_all,
+                )
+                if self.return_gene_embs:
                     # take the non zero mean of the gene embeddings
                     gene_embeddings = return_gene_embeddings(
                         # marker_genes=marker_genes,
@@ -452,10 +454,10 @@ class CellGenTrainer(LightningModule):
                     gene_embeddings = gene_embeddings.to(torch.float16)
                     self.test_dict['gene_embeddings'].append(gene_embeddings)
                     # cosine similarity
-                    self.marker_genes = marker_genes_dict
-                    cos_similarity = marker_cos_similarity.detach().cpu()
-                    cos_similarity = cos_similarity.to(torch.float16)
-                    self.test_dict['cosine_similarities'].append(cos_similarity)
+                self.marker_genes = marker_genes_dict
+                cos_similarity = marker_cos_similarity.detach().cpu()
+                cos_similarity = cos_similarity.to(torch.float16)
+                self.test_dict['cosine_similarities'].append(cos_similarity)
                 true_counts = batch[f'tgt_counts_t{t}'].detach().cpu()
                 cls_embeddings = outputs[t]['mean_embedding'].detach().cpu()
                 # gene_embeddings = marker_gene_embeddings.detach().cpu()
@@ -502,7 +504,6 @@ class CellGenTrainer(LightningModule):
                 file_name=f'{self.date}_inference_embs_'
                 f't{self.pred_tps}_{self.encoder}_'
                 f'm{self.mask_scheduler}',
-                n_total_tps=self.n_total_tps,
             )
 
 
@@ -544,6 +545,7 @@ class CountDecoderTrainer(LightningModule):
         tgt_adata: ad.AnnData | None = None,
         ckpt_masking_path: str | None = None,
         ckpt_count_path: str | None = None,
+        condition_dict: Dict[str, Dict] | None = None,
         conditions: Dict[Any, Any] | None = None,
         conditions_combined: List[Any] | None = None,
         unique_gene_list: Dict[Any, Any] | None = None,
@@ -565,7 +567,7 @@ class CountDecoderTrainer(LightningModule):
                 ensembl_to_token_id = pickle.load(f)
         # change to token_id to gene name
         self.token_id_to_ensembl = {v: k for k, v in ensembl_to_token_id.items()}
-        self.pretrained_model = CellGen(
+        self.pretrained_model = CytoMeister(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
             num_heads=num_heads,
@@ -578,6 +580,7 @@ class CountDecoderTrainer(LightningModule):
             encoder=encoder,
             encoder_path=encoder_path,
             pos_encoding_mode=pos_encoding_mode,
+            condition_dict=condition_dict,
         )
         self.pos_encoding_mode = pos_encoding_mode
         # load PETRA checkpoint
@@ -625,20 +628,20 @@ class CountDecoderTrainer(LightningModule):
             self.theta = None
 
         self.mse = MeanSquaredError()
-        total_vocab_size = tgt_vocab_size
+        # total_vocab_size = tgt_vocab_size
         self.pred_tps = pred_tps
         if context_tps is None:
             self.total_tps = pred_tps
         else:
             self.total_tps = context_tps + pred_tps
-        for i in self.total_tps:
-            self.register_buffer(
-                f'cls_token_{str(i)}',
-                torch.tensor(
-                    [total_vocab_size + (i - 1)],
-                    dtype=torch.long,
-                ),
-            )
+        # for i in self.total_tps:
+        #     self.register_buffer(
+        #         f'cls_token_{str(i)}',
+        #         torch.tensor(
+        #             [total_vocab_size + (i - 1)],
+        #             dtype=torch.long,
+        #         ),
+        #     )
         self.generate = generate
         self.adata = tgt_adata
         # scheduler
@@ -690,16 +693,16 @@ class CountDecoderTrainer(LightningModule):
         else:
             time_points = self.pred_tps
         for t in time_points:
-            tgt_input_id_ = torch.cat(
-                (
-                    getattr(self, f'cls_token_{str(t)}').expand(
-                        batch[f'tgt_input_ids_t{t}'].shape[0], -1
-                    ),
-                    batch[f'tgt_input_ids_t{t}'],
-                ),
-                dim=1,
-            )
-            tgt_input_id_dict[f'tgt_input_ids_t{t}'] = tgt_input_id_
+            # tgt_input_id_ = torch.cat(
+            #     (
+            #         getattr(self, f'cls_token_{str(t)}').expand(
+            #             batch[f'tgt_input_ids_t{t}'].shape[0], -1
+            #         ),
+            #         batch[f'tgt_input_ids_t{t}'],
+            #     ),
+            #     dim=1,
+            # )
+            tgt_input_id_dict[f'tgt_input_ids_t{t}'] = batch[f'tgt_input_ids_t{t}']
         if generate:
             outputs = None
         else:
@@ -1018,7 +1021,6 @@ class CountDecoderTrainer(LightningModule):
             outputs, pred_ids_dict = self.decoder.generate_counts(
                 **decoder_kwargs,
             )
-            # print(pred_ids_dict)
 
             for t in self.pred_tps:
                 if self.return_rouge_score:

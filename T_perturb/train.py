@@ -15,8 +15,8 @@ from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy  # ,DeepSpeedStrategy
 
-from T_perturb.Dataloaders.datamodule import CellGenDataModule
-from T_perturb.Model.trainer import CellGenTrainer, CountDecoderTrainer
+from T_perturb.Dataloaders.datamodule import CytoMeisterDataModule
+from T_perturb.Model.trainer import CountDecoderTrainer, CytoMeisterTrainer
 from T_perturb.src.utils import (
     condition_for_count_loss,
     randomised_split,
@@ -376,7 +376,7 @@ def main() -> None:
     n_total_tps = len(tgt_adatas)
 
     # create dictionnary of metadata for classifier-free guidance
-    token_no = 1
+    token_no = args.tgt_vocab_size
 
     # create full dataset to extract metadata for conditioning
     dataset_list = [src_dataset]
@@ -386,7 +386,7 @@ def main() -> None:
     if args.cond_list is not None:
         condition_dict = {}
         for condition in args.cond_list:
-            condition_dict[args.cond_list] = {
+            condition_dict[condition] = {
                 cell_type: i + token_no
                 for i, cell_type in enumerate(full_dataset.unique(condition))
             }
@@ -397,7 +397,7 @@ def main() -> None:
     # Initialize model module
     # ----------------------------------------------------------------------------------
     trainer_kwargs = {
-        'tgt_vocab_size': args.tgt_vocab_size,
+        'tgt_vocab_size': token_no + 50,  # add 50 for extra tokens
         'd_model': args.d_model,
         'num_heads': 8,
         'num_layers': args.num_layers,
@@ -420,7 +420,7 @@ def main() -> None:
         trainer_kwargs['weight_decay'] = args.cellgen_wd
         trainer_kwargs['mapping_dict_path'] = args.mapping_dict_path
         trainer_kwargs['context_mode'] = args.context_mode
-        pretrained_module = CellGenTrainer(**trainer_kwargs)
+        pretrained_module = CytoMeisterTrainer(**trainer_kwargs)
     elif args.train_mode == 'count':
         trainer_kwargs['ckpt_masking_path'] = args.ckpt_masking_path
         trainer_kwargs['ckpt_count_path'] = None
@@ -469,7 +469,7 @@ def main() -> None:
     }
     if args.train_mode == 'masking':
         # TODO: Do not pass src into DataModule
-        data_module = CellGenDataModule(**data_module_kwargs)
+        data_module = CytoMeisterDataModule(**data_module_kwargs)
 
     elif args.train_mode == 'count':
         data_module_kwargs['src_counts'] = src_counts
@@ -478,7 +478,7 @@ def main() -> None:
         data_module_kwargs['condition_encodings'] = condition_encodings
         data_module_kwargs['conditions'] = conditions
         data_module_kwargs['conditions_combined'] = conditions_combined
-        data_module = CellGenDataModule(**data_module_kwargs)
+        data_module = CytoMeisterDataModule(**data_module_kwargs)
     # Setup trainer
     # ----------------------------------------------------------------------------------
     run_id = datetime.now().strftime('%Y%m%d_%H%M_cellgen')
@@ -521,7 +521,7 @@ def main() -> None:
         dirpath=checkpoint_path,
         filename=f'{filename}-' + '{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=10,
+        every_n_epochs=5,
         verbose=True,
         monitor=monitor_metric,
         mode=mode,
@@ -547,7 +547,7 @@ def main() -> None:
     early_stop_callback = pl.callbacks.EarlyStopping(
         monitor=monitor_metric,
         min_delta=0.00,
-        patience=20,
+        patience=10,
         verbose=False,
         mode=mode,
     )

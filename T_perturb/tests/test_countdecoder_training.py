@@ -12,7 +12,7 @@ import torch
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import CSVLogger
 
-from T_perturb.Dataloaders.datamodule import CellGenDataModule
+from T_perturb.Dataloaders.datamodule import CytoMeisterDataModule
 from T_perturb.Model.trainer import CountDecoderTrainer
 from T_perturb.src.utils import label_encoder
 from T_perturb.tests.test_cellgen_training import dummy_dataset
@@ -47,9 +47,9 @@ def dummy_cell_gene_matrix(
         return counts_dict
 
 
-class CellGenTestTrainingCase(unittest.TestCase):
+class CytoMeisterTestTrainingCase(unittest.TestCase):
     def __init__(self, *args, **kwargs):
-        super(CellGenTestTrainingCase, self).__init__(*args, **kwargs)
+        super(CytoMeisterTestTrainingCase, self).__init__(*args, **kwargs)
         self.pred_tps = [1, 2]
         self.n_total_tps = 2
         self.max_seq_length = 50
@@ -189,7 +189,7 @@ class CellGenTestTrainingCase(unittest.TestCase):
         self.decoder_module = decoder_module
 
         # Load the data module
-        self.data_module = CellGenDataModule(
+        self.data_module = CytoMeisterDataModule(
             src_dataset=src_dataset,
             tgt_datasets=tgt_datasets,
             batch_size=self.batch_size,

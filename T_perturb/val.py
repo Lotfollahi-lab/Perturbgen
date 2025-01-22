@@ -8,12 +8,12 @@ from datetime import datetime
 import pytorch_lightning as pl
 import scanpy as sc
 import torch
-from datasets import load_from_disk
+from datasets import concatenate_datasets, load_from_disk
 from pytorch_lightning.callbacks import TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 
-from T_perturb.Dataloaders.datamodule import CellGenDataModule
-from T_perturb.Model.trainer import CellGenTrainer, CountDecoderTrainer
+from T_perturb.Dataloaders.datamodule import CytoMeisterDataModule
+from T_perturb.Model.trainer import CountDecoderTrainer, CytoMeisterTrainer
 from T_perturb.src.utils import (
     condition_for_count_loss,
     randomised_split,
@@ -26,8 +26,6 @@ if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
     os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative')
     print('Changed working directory to root of repository')
-
-print(os.getcwd())
 
 
 def get_args():
@@ -225,6 +223,12 @@ def get_args():
         help='List of variables to keep in the dataset',
     )
     parser.add_argument(
+        '--cond_list',
+        nargs='+',
+        type=str,
+        help='List of variables to form condition tokens',
+    )
+    parser.add_argument(
         '--encoder',
         default='GF_frozen',
         type=str,
@@ -378,6 +382,25 @@ def main() -> None:
 
     n_total_tps = len(tgt_adatas)
 
+    # create dictionnary of metadata for classifier-free guidance
+    token_no = 1
+
+    # create full dataset to extract metadata for conditioning
+    dataset_list = [src_dataset]
+    for dataset in tgt_datasets.values():
+        dataset_list.append(dataset)
+    full_dataset = concatenate_datasets(dataset_list)
+    if args.cond_list is not None:
+        condition_dict = {}
+        for condition in args.cond_list:
+            condition_dict[condition] = {
+                cell_type: i + token_no
+                for i, cell_type in enumerate(full_dataset.unique(condition))
+            }
+            token_no += len(condition_dict[condition])
+    else:
+        condition_dict = None
+
     # Initialize model module
     # ----------------------------------------------------------------------------------
     test_kwargs = {
@@ -398,6 +421,7 @@ def main() -> None:
         'encoder': args.encoder,
         'var_list': args.var_list,
         'encoder_path': args.encoder_path,
+        'condition_dict': condition_dict,
     }
     if args.test_mode == 'masking':
         test_kwargs['weight_decay'] = args.cellgen_wd
@@ -407,8 +431,8 @@ def main() -> None:
         test_kwargs['gene_names'] = tgt_adata_tmp.var['gene_name']
         test_kwargs['context_mode'] = args.context_mode
         test_kwargs['return_attn'] = args.return_attn
-        test_kwargs['tokenid_to_rowid_path'] = (args.tokenid_to_rowid_path,)
-        pretrained_module = CellGenTrainer(**test_kwargs)
+        test_kwargs['tokenid_to_rowid_path'] = args.tokenid_to_rowid_path
+        pretrained_module = CytoMeisterTrainer(**test_kwargs)
 
     elif args.test_mode == 'count':
         test_kwargs['ckpt_masking_path'] = args.ckpt_masking_path
@@ -464,12 +488,12 @@ def main() -> None:
         'conditions_combined': conditions_combined,
     }
 
-    data_module = CellGenDataModule(
+    data_module = CytoMeisterDataModule(
         **data_module_kwargs,
     )
     # Setup trainer
     # ----------------------------------------------------------------------------------
-    run_id = datetime.now().strftime('%Y%m%d_%H%M_cellgen')
+    run_id = datetime.now().strftime('%Y%m%d_%H%M_CytoMeister')
     log_path = os.path.join(
         './T_perturb/T_perturb/wandb/wandb',
         run_id,

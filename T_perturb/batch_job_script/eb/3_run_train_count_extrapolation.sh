@@ -1,6 +1,6 @@
 #!/bin/bash
-#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
+#BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -gpu 'mode=exclusive_process:num=2:gmodel=NVIDIAA100_SXM4_80GB' # request for exclusive access to gpu
 #BSUB -n 8 # number of cores
 #BSUB -G teamtrynka # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
@@ -19,7 +19,7 @@ source /lustre/scratch126/cellgen/team361/kl11/t_generative/.cellgen_4096/bin/ac
 
 # results directory
 RES_DIR="/lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb/plt/res"
-RES_NAME="eb/pbmc_median"
+RES_NAME="eb/pbmc_median/extrapolation"
 
 # # if directory does not exist, create it with the name $RES_NAME
 # mkdir -p $RES_DIR/$RES_NAME
@@ -39,17 +39,17 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --train_mode count \
 --split False \
 --splitting_mode random \
---output_dir $RES_DIR/$RES_NAME/res \
---ckpt_masking_path 'T_perturb/T_perturb/plt/res/eb/pbmc_median/extrapolation/checkpoints/20250117_1632_cellgen_train_masking_lr_0.001_wd_0.0001_batch_64_ptime_pos_sin_m_cosine_tp_1-2-3_s_42-epoch=49.ckpt' \
+--output_dir $RES_DIR/$RES_NAME \
+--ckpt_masking_path 'T_perturb/T_perturb/plt/res/eb/pbmc_median/extrapolation/checkpoints/20250122_2147_cellgen_train_masking_lr_0.001_wd_0.0001_batch_64_ptime_pos_sin_m_cosine_tp_1-2-3_s_42-epoch=49.ckpt' \
 --src_dataset 'T_perturb/T_perturb/pp/res/eb_pbmc_median/dataset_2000_hvg_src/Day 00-03.dataset' \
 --tgt_dataset_folder 'T_perturb/T_perturb/pp/res/eb_pbmc_median/dataset_2000_hvg_tgt' \
 --src_adata 'T_perturb/T_perturb/pp/res/eb_pbmc_median/h5ad_pairing_2000_hvg_src/Day 00-03.h5ad' \
 --tgt_adata_folder 'T_perturb/T_perturb/pp/res/eb_pbmc_median/h5ad_pairing_2000_hvg_tgt' \
---mapping_dict_path  './T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl' \
+--mapping_dict_path  'T_perturb/T_perturb/pp/res/eb_pbmc_median/token_id_to_genename_2000_hvg.pkl' \
 --batch_size 64 \
 --max_len 300 \
 --epochs 100 \
---tgt_vocab_size 19679 \
+--tgt_vocab_size 1750 \
 --cellgen_lr 0.001 \
 --count_lr 0.0001 \
 --cellgen_wd 0.0001 \
