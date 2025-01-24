@@ -393,6 +393,7 @@ def main() -> None:
             token_no += len(condition_dict[condition])
     else:
         condition_dict = None
+    print('prepare condition dict', condition_dict)
 
     # Initialize model module
     # ----------------------------------------------------------------------------------

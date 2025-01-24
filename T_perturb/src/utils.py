@@ -198,6 +198,45 @@ def condition_for_count_loss(
     )
 
 
+def concat_cond_tokens(
+    time_points: list[int],
+    batch: dict,
+    condition_dict: dict[str, dict] | None = None,
+):
+    batch_size = batch['src_input_ids'].shape[0]
+    tgt_input_id_dict = {}
+    for i in time_points:
+        tgt_input_id = batch[f'tgt_input_ids_t{i}']
+        device = tgt_input_id.device
+        if condition_dict is not None:
+            cond_ids = torch.zeros(
+                (batch_size, len(condition_dict)), dtype=torch.long, device=device
+            )
+            for j, condition in enumerate(condition_dict.keys()):
+                if condition == 'timepoint':
+                    time_token = torch.tensor(
+                        condition_dict['timepoint'][f't_{i}'], dtype=torch.long
+                    )
+                    cond_ids[:, j] = torch.tensor(
+                        time_token, dtype=torch.long, device=device
+                    )
+                else:
+                    condition_tokens = [
+                        condition_dict[condition][id]
+                        for id in batch[f'{condition}_t{i}']
+                    ]
+                    # j+1 to skip time token
+                    cond_ids[:, j] = torch.tensor(
+                        condition_tokens, dtype=torch.long, device=device
+                    )
+            tgt_input_id_dict[f'tgt_input_ids_t{i}'] = torch.cat(
+                (cond_ids, tgt_input_id), dim=1
+            )
+        else:
+            tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id
+    return tgt_input_id_dict
+
+
 def compute_rouge_score(
     rouge,
     pred_ids: np.ndarray,

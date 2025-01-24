@@ -383,7 +383,7 @@ def main() -> None:
     n_total_tps = len(tgt_adatas)
 
     # create dictionnary of metadata for classifier-free guidance
-    token_no = 1
+    token_no = args.tgt_vocab_size
 
     # create full dataset to extract metadata for conditioning
     dataset_list = [src_dataset]
@@ -404,7 +404,7 @@ def main() -> None:
     # Initialize model module
     # ----------------------------------------------------------------------------------
     test_kwargs = {
-        'tgt_vocab_size': args.tgt_vocab_size,
+        'tgt_vocab_size': token_no + 50,  # add 50 for extra tokens
         'd_model': args.d_model,
         'num_heads': 8,
         'num_layers': args.num_layers,

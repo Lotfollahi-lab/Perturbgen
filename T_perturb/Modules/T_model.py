@@ -866,24 +866,23 @@ class CytoMeister(nn.Module):
             )
             tgt_input_id[indices_random] = random_tokens[indices_random]
         elif mask_mode == 'MASKGIT':
-            # exclude CLS token, adapt the shape to sequence length-1
-            sample_length = torch.sum(~tgt_pad, dim=1) - 1
+            sample_length = torch.sum(~tgt_pad, dim=1)
             batch, seq_len = tgt_input_id.shape
             rand_time = uniform((batch,), device=device)
             rand_mask_probs = noise_schedule(
                 rand_time,
                 method=self.mask_scheduler,
-                total_tokens=torch.tensor((seq_len - 1), device=device),
+                total_tokens=torch.tensor(seq_len, device=device),
             )
             num_token_masked = (
                 (torch.mul(sample_length, rand_mask_probs)).round().clamp(min=1)
             )
-            rand_int = torch.rand((batch, seq_len - 1), device=device)
-            # exclude CLS token and set pad token to 1 to exclude from masking
-            rand_int[tgt_pad[:, 1:]] = 1
+            rand_int = torch.rand(batch, seq_len, device=device)
+            # # exclude CLS token and set pad token to 1 to exclude from masking
+            rand_int[tgt_pad] = 1
             batch_randperm = rand_int.argsort(dim=-1)
             mask = batch_randperm < rearrange(num_token_masked, 'b -> b 1')
-            # concatenate CLS boolean mask
+            # # concatenate CLS boolean mask
             mask = torch.cat(
                 [torch.zeros((batch, 1), dtype=torch.bool, device=device), mask], dim=-1
             )
@@ -1140,6 +1139,7 @@ class CytoMeister(nn.Module):
         temperature: float = 2.0,  # keep in range 2.0-3.0
         # self_cond_prob=0.9,
         iterations: int = 18,  # optimal of iterations in MaskGIT
+        cond_length: int = 0,
         mask_scheduler: str = 'cosine',
         sequence_length: int | None = None,
         **kwargs,
@@ -1212,12 +1212,13 @@ class CytoMeister(nn.Module):
             tgt_input_id = tgt_input_id_dict[tgt_input_id_key]
 
             # create ids and scores matrix for each batch
-            ids = torch.zeros_like(tgt_input_id, self.mask_token, dtype=torch.long)
-            # # add cls token to the ids
-            # ids[:, 0] = tgt_input_id[:, 0]
+            ids = torch.full_like(tgt_input_id, self.mask_token, dtype=torch.long)
+            # add cls token to the ids
+            if cond_length > 0:
+                ids[:, :cond_length] = tgt_input_id[:, :cond_length]
 
-            # # replace the rest of the tokens with pad token
-            # ids[:, sequence_length:] = 0
+            # replace the rest of the tokens with pad token
+            ids[:, sequence_length:] = 0
             tgt_input_id_dict_[tgt_input_id_key] = ids
             # pad ids
             scores = torch.zeros_like(tgt_input_id, dtype=torch.float)
@@ -1233,6 +1234,7 @@ class CytoMeister(nn.Module):
                 iterations=iterations,
                 scores=scores,
                 tgt_time_step=time_step,
+                cond_length=cond_length,
             )
             generate_id_dict[time_step] = generated_ids
             all_outputs[time_step] = outputs
@@ -1251,6 +1253,7 @@ class CytoMeister(nn.Module):
         starting_temperature: float = 2.0,
         iterations: int = 18,
         tgt_time_step: int = 1,
+        cond_length: int = 0,
     ):
         '''
         Description:
@@ -1296,7 +1299,7 @@ class CytoMeister(nn.Module):
                 Generated target token inputs.
         '''
         max_neg_value = -torch.finfo().max
-        # scores[:, :1] = max_neg_value
+        scores[:, :cond_length] = max_neg_value
         tmp_ids = generate_id_dict[f'tgt_input_ids_t{tgt_time_step}'].clone()
         batch_size, seq_len = tmp_ids.shape
         # find total_tokens by find the numbers of 1s in the mask
@@ -1342,15 +1345,14 @@ class CytoMeister(nn.Module):
                 not_masked=False,
                 tgt_time_step=tgt_time_step,
             )
-            # logits = outputs[tgt_time_step]['dec_logits'][:, 1:, :]
-            logits = outputs[tgt_time_step]['dec_logits']
+            logits = outputs[tgt_time_step]['dec_logits'][:, cond_length:, :]
 
-            # # exclude cls token
-            # tmp_ids_ = tmp_ids[:, 1:].clone()
-            # scores_ = scores[:, 1:].clone()
-            # ids_to_keep_ = ids_to_keep[:, 1:].clone()
+            # exclude cls token
+            tmp_ids_ = tmp_ids[:, cond_length:].clone()
+            scores_ = scores[:, cond_length:].clone()
+            ids_to_keep_ = ids_to_keep[:, cond_length:].clone()
             # Create a mask of already predicted tokens
-            indices = ids_to_keep.unsqueeze(1).expand(-1, seq_len - 1, -1)
+            indices = ids_to_keep_.unsqueeze(1).expand(-1, seq_len - 1, -1)
             logits.scatter_(2, indices, max_neg_value)
             filtered_logits = top_k(logits.clone(), topk_filter_thres)
             temperature = starting_temperature * (
@@ -1358,18 +1360,18 @@ class CytoMeister(nn.Module):
             )  # temperature is annealed
             pred_ids = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
 
-            is_mask = tmp_ids == self.mask_token
-            tmp_ids = torch.where(is_mask, pred_ids, tmp_ids)
+            is_mask = tmp_ids_ == self.mask_token
+            tmp_ids_ = torch.where(is_mask, pred_ids, tmp_ids_)
             probs_without_temperature = logits.softmax(dim=-1)
 
-            scores = 1 - probs_without_temperature.gather(2, pred_ids[..., None])
-            scores = rearrange(scores, '... 1 -> ...')
+            scores_ = 1 - probs_without_temperature.gather(2, pred_ids[..., None])
+            scores_ = rearrange(scores_, '... 1 -> ...')
 
             if not can_remask_prev_masked:
-                scores.masked_fill_(~is_mask, max_neg_value)
+                scores_.masked_fill_(~is_mask, max_neg_value)
             # add cls token to the ids and update scores and ids
-            # scores[:, 1:] = scores_
-            # tmp_ids[:, 1:] = tmp_ids_
+            scores[:, cond_length:] = scores_
+            tmp_ids[:, cond_length:] = tmp_ids_
         return outputs[tgt_time_step], tmp_ids
 
 
@@ -1529,6 +1531,7 @@ class CountDecoder(nn.Module):
         iterations: int = 18,  # optimal of iterations in MaskGIT
         mask_scheduler: str = 'cosine',
         sequence_length: int = 2048,
+        cond_length: int = 0,
     ):
         outputs, generate_id_dict = self.pretrained_model.generate(
             src_input_id=src_input_id,
@@ -1539,6 +1542,7 @@ class CountDecoder(nn.Module):
             iterations=iterations,
             mask_scheduler=mask_scheduler,
             sequence_length=sequence_length,
+            cond_length=cond_length,
         )
 
         count_outputs = {}

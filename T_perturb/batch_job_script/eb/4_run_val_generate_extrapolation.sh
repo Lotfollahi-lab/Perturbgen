@@ -39,7 +39,7 @@ python3 $cwd/val.py \
 --splitting_mode random \
 --generate True \
 --output_dir $RES_DIR/$RES_NAME/res \
---ckpt_count_path 'T_perturb/T_perturb/plt/res/eb/pbmc_median/extrapolation/checkpoints/20250122_1113_cellgen_train_count_lr_0.0001_wd_0.0001_batch_64_zinb_tp_1-2-3_s_42_pos_time_pos_sin_m_cosine-epoch=99.ckpt' \
+--ckpt_count_path 'T_perturb/T_perturb/plt/res/eb/pbmc_median/extrapolation/checkpoints/20250123_1028_cellgen_train_count_lr_0.0001_wd_0.0001_batch_64_zinb_tp_1-2-3_s_42_pos_time_pos_sin_m_cosine-epoch=99.ckpt' \
 --src_dataset 'T_perturb/T_perturb/pp/res/eb_pbmc_median/dataset_2000_hvg_src/Day 00-03.dataset' \
 --tgt_dataset_folder 'T_perturb/T_perturb/pp/res/eb_pbmc_median/dataset_2000_hvg_tgt' \
 --src_adata 'T_perturb/T_perturb/pp/res/eb_pbmc_median/h5ad_pairing_2000_hvg_src/Day 00-03.h5ad' \
@@ -58,6 +58,7 @@ python3 $cwd/val.py \
 --pred_tps 4 \
 --context_tps 1 2 3 \
 --var_list Time_point \
+--cond_list Time_point \
 --encoder scmaskgit \
 --encoder_path "/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt" \
 --context_mode True \

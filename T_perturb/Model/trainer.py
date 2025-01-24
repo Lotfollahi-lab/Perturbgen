@@ -36,6 +36,7 @@ from T_perturb.src.utils import (  # WarmupScheduler,;
     aggregate_attn_weights,
     compute_cos_similarity,
     compute_rouge_score,
+    concat_cond_tokens,
     map_results_to_genes,
     modify_ckpt_state_dict,
     pearson,
@@ -222,37 +223,11 @@ class CytoMeisterTrainer(LightningModule):
         self.condition_dict = condition_dict
 
     def forward(self, batch):
-        batch_size = batch['src_input_ids'].shape[0]
-        tgt_input_id_dict = {}
-        for i in self.pred_tps:
-            if self.condition_dict is not None:
-                self.cond_ids = torch.zeros(
-                    (batch_size, len(self.condition_dict)),
-                    dtype=torch.long,
-                    device=self.device,
-                )
-                for j, condition in enumerate(self.condition_dict.keys()):
-                    if condition == 'timepoint':
-                        time_token = torch.tensor(
-                            self.condition_dict['timepoint'][f't_{i}'], dtype=torch.long
-                        )
-                        self.cond_ids[:, j] = torch.tensor(
-                            time_token, dtype=torch.long, device=self.device
-                        )
-                    else:
-                        cond_ids = batch[f'{condition}_t{i}']
-                        condition_tokens = [
-                            self.condition_dict[condition][id] for id in cond_ids
-                        ]
-                        # j+1 to skip time token
-                        self.cond_ids[:, j] = torch.tensor(
-                            condition_tokens, dtype=torch.long, device=self.device
-                        )
-                tgt_input_id_dict[f'tgt_input_ids_t{i}'] = torch.cat(
-                    (self.cond_ids, batch[f'tgt_input_ids_t{i}']), dim=1
-                )
-            else:
-                tgt_input_id_dict[f'tgt_input_ids_t{i}'] = batch[f'tgt_input_ids_t{i}']
+        tgt_input_id_dict = concat_cond_tokens(
+            time_points=self.pred_tps,
+            condition_dict=self.condition_dict,
+            batch=batch,
+        )
         outputs = self.transformer(
             src_input_id=batch['src_input_ids'],
             tgt_input_id_dict=tgt_input_id_dict,
@@ -682,27 +657,21 @@ class CountDecoderTrainer(LightningModule):
         self.seed = seed
         self.date = datetime.now().strftime('%Y%m%d-%H:%M')
         # guided generation
-
         self.unique_gene_list = unique_gene_list
         self.shared_gene_list = shared_gene_list
 
+        self.condition_dict = condition_dict
+
     def forward(self, batch, generate: bool = False):
-        tgt_input_id_dict = {}
         if generate:
             time_points = self.total_tps
         else:
             time_points = self.pred_tps
-        for t in time_points:
-            # tgt_input_id_ = torch.cat(
-            #     (
-            #         getattr(self, f'cls_token_{str(t)}').expand(
-            #             batch[f'tgt_input_ids_t{t}'].shape[0], -1
-            #         ),
-            #         batch[f'tgt_input_ids_t{t}'],
-            #     ),
-            #     dim=1,
-            # )
-            tgt_input_id_dict[f'tgt_input_ids_t{t}'] = batch[f'tgt_input_ids_t{t}']
+        tgt_input_id_dict = concat_cond_tokens(
+            time_points=time_points,
+            condition_dict=self.condition_dict,
+            batch=batch,
+        )
         if generate:
             outputs = None
         else:
@@ -1017,8 +986,14 @@ class CountDecoderTrainer(LightningModule):
                 'iterations': self.iterations,
                 'sequence_length': self.sequence_length,
             }
+            if self.condition_dict is not None:
+                cond_length = len(self.condition_dict)
+
+            else:
+                cond_length = 0
 
             outputs, pred_ids_dict = self.decoder.generate_counts(
+                cond_length=cond_length,
                 **decoder_kwargs,
             )
 
