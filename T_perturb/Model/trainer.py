@@ -37,6 +37,7 @@ from T_perturb.src.utils import (  # WarmupScheduler,;
     compute_cos_similarity,
     compute_rouge_score,
     concat_cond_tokens,
+    exclude_special_tokens,
     map_results_to_genes,
     modify_ckpt_state_dict,
     pearson,
@@ -107,6 +108,8 @@ class CytoMeisterTrainer(LightningModule):
         mapping_dict_path: str | None = None,
         context_tps: List[int] | None = None,
         condition_dict: Dict[str, Dict] | None = None,
+        gene_embs_list: List[str] | None = None,
+        gene_embs_condition: str | None = None,
         # *args,
         # **kwargs,
     ) -> None:
@@ -171,6 +174,9 @@ class CytoMeisterTrainer(LightningModule):
         self.tokenid_to_rowid = tokenid_to_rowid
         self.return_embeddings = return_embeddings
         self.return_gene_embs = return_gene_embs
+        self.gene_embs_list = gene_embs_list
+        self.gene_embs_condition = gene_embs_condition
+        self.d_model = d_model
         self.generate = generate
         self.tgt_vocab_size = tgt_vocab_size
 
@@ -195,9 +201,22 @@ class CytoMeisterTrainer(LightningModule):
         else:
             self.var_list = []
 
-        self.marker_genes = None
         self.pad_token_id = pad_token_id
         self.gene_names = gene_names
+        if deg_pkl_path is not None:
+            # load marker genes
+            with open(
+                deg_pkl_path,
+                'rb',
+            ) as f:
+                marker_genes_dict = pickle.load(f)
+            marker_genes_all = [
+                gene for genes in marker_genes_dict.values() for gene in genes
+            ]
+            marker_genes_all = list(set(marker_genes_all))
+            self.marker_genes: List[str] | None = marker_genes_all
+        else:
+            self.marker_genes = None
         # total_vocab_size = tgt_vocab_size
         # register buffer for CLS
         # initialize cls token for all time steps
@@ -223,7 +242,6 @@ class CytoMeisterTrainer(LightningModule):
         self.return_attn = return_attn
         self.mask_scheduler = mask_scheduler
         self.encoder = encoder
-        self.deg_pkl_path = deg_pkl_path
         self.condition_dict = condition_dict
 
         # generation parameters
@@ -374,11 +392,34 @@ class CytoMeisterTrainer(LightningModule):
             )
             return masking_loss
 
+    def on_test_batch_start(self, batch, *args, **kwargs):
+        if self.return_gene_embs:
+            n_genes = exclude_special_tokens(
+                self.gene_to_rowid,
+                self.marker_genes,
+            )
+            self.sum_gene_embs = {
+                f'{condition}': torch.zeros(
+                    size=(len(n_genes), self.d_model), dtype=self.dtype
+                )
+                for condition in self.gene_embs_list
+            }
+            self.count_gene_embs = {
+                f'{condition}': torch.zeros(size=(len(n_genes), 1), dtype=self.dtype)
+                for condition in self.gene_embs_list
+            }
+            self.cell_idx = []
+
     def test_step(self, batch, *args, **kwargs):
         outputs, tgt_input_id_dict = self.forward(
             batch,
             generate=self.generate,
         )
+        if self.condition_dict is not None:
+            cond_length = len(self.condition_dict)
+
+        else:
+            cond_length = 0
         if self.generate:
             decoder_kwargs = {
                 'src_input_id': batch['src_input_ids'],
@@ -390,11 +431,6 @@ class CytoMeisterTrainer(LightningModule):
                 'iterations': self.iterations,
                 'sequence_length': self.sequence_length,
             }
-            if self.condition_dict is not None:
-                cond_length = len(self.condition_dict)
-
-            else:
-                cond_length = 0
 
             outputs, tgt_input_id_dict = self.transformer.generate(
                 cond_length=cond_length,
@@ -421,20 +457,6 @@ class CytoMeisterTrainer(LightningModule):
             # 1. compute cosine similarity
             cos_similarity = compute_cos_similarity(outputs=outputs, time_step=t)
 
-            if self.deg_pkl_path is not None:
-                # load marker genes
-                with open(
-                    self.deg_pkl_path,
-                    'rb',
-                ) as f:
-                    marker_genes = pickle.load(f)
-                # concatenate all marker genes which are in a list
-                marker_genes_all = [
-                    gene for genes in marker_genes.values() for gene in genes
-                ]
-                marker_genes_all = list(set(marker_genes_all))
-            else:
-                marker_genes_all = None
             if self.return_embeddings:
                 # 2. map cosine similarity to corresponding genes
                 marker_cos_similarity, marker_genes_dict = map_results_to_genes(
@@ -443,12 +465,12 @@ class CytoMeisterTrainer(LightningModule):
                         self.gene_to_rowid if self.gene_to_rowid is not None else None
                     ),
                     token_ids=token_ids,
-                    marker_genes=marker_genes_all,
+                    marker_genes=self.marker_genes,
                 )
                 cos_similarity = marker_cos_similarity.detach().cpu()
                 cos_similarity = cos_similarity.to(torch.float16)
                 self.test_dict['cosine_similarities'].append(cos_similarity)
-                self.marker_genes = marker_genes_dict
+                self.marker_genes_dict = marker_genes_dict
             if self.return_gene_embs:
                 # take the non zero mean of the gene embeddings
                 gene_embeddings = return_gene_embeddings(
@@ -458,7 +480,7 @@ class CytoMeisterTrainer(LightningModule):
                         self.gene_to_rowid if self.gene_to_rowid is not None else None
                     ),
                     token_ids=token_ids,
-                    marker_genes=marker_genes_all,
+                    marker_genes=self.marker_genes,
                 )
             if self.return_attn:
                 context_tps = [tp for tp in self.context_tps if tp != t]
@@ -486,7 +508,42 @@ class CytoMeisterTrainer(LightningModule):
             if self.return_gene_embs:
                 # gene embeddings
                 gene_embeddings = gene_embeddings.detach().cpu()
-                gene_embeddings = gene_embeddings.to(torch.float16)
+                # print when there are duplicates in tgt_cell_idx
+                if len(set(batch[f'tgt_cell_idx_t{t}'])) != len(
+                    batch[f'tgt_cell_idx_t{t}']
+                ):
+                    print('Duplicates in cell_idx')
+                    print(batch[f'tgt_cell_idx_t{t}'])
+                    raise
+                    # raise
+                for condition in self.gene_embs_list:
+                    print('condition', condition)
+                    print(batch[f'{self.gene_embs_condition}_t{t}'])
+                    condition_mask = (
+                        np.array(batch[f'{self.gene_embs_condition}_t{t}']) == condition
+                    )
+                    if any(condition_mask):
+                        print(self.sum_gene_embs[condition].shape)
+                        print(gene_embeddings[condition_mask].shape)
+                        self.sum_gene_embs[condition] += gene_embeddings[
+                            condition_mask
+                        ].sum(dim=0)
+                        print(self.sum_gene_embs[condition])
+                        # count number of non zero gene embeddings
+                        # along the batch dimension
+                        non_zero_gene_embs = torch.nonzero(
+                            gene_embeddings[condition_mask].sum(dim=1)
+                        )
+                        print('non_zero_gene_embs', non_zero_gene_embs)
+                        # raise
+                        # count number of non zero gene
+                        # embeddings along the batch dimension
+
+                        self.count_gene_embs[condition] += condition_mask.sum()
+                    print('condition', gene_embeddings[condition_mask].shape)
+                raise
+                self.cell_idx.append(batch[f'tgt_cell_idx_t{t}'])
+                raise
                 self.test_dict['gene_embeddings'].append(gene_embeddings)
                 # cosine similarity
 
@@ -529,7 +586,7 @@ class CytoMeisterTrainer(LightningModule):
             return_prediction_adata(
                 test_dict=self.test_dict,
                 obs_key=obs_key,
-                marker_genes=self.marker_genes,
+                marker_genes=self.marker_genes_dict,
                 gene_names=self.gene_names,
                 output_dir=self.output_dir,
                 file_name=f'{self.date}_inference_embs_'
@@ -1061,6 +1118,11 @@ class CountDecoderTrainer(LightningModule):
             batch,
             generate=self.generate,
         )
+        if self.condition_dict is not None:
+            cond_length = len(self.condition_dict)
+
+        else:
+            cond_length = 0
         if self.generate:
             decoder_kwargs = {
                 'src_input_id': batch['src_input_ids'],
@@ -1072,11 +1134,6 @@ class CountDecoderTrainer(LightningModule):
                 'iterations': self.iterations,
                 'sequence_length': self.sequence_length,
             }
-            if self.condition_dict is not None:
-                cond_length = len(self.condition_dict)
-
-            else:
-                cond_length = 0
 
             outputs, pred_ids_dict = self.decoder.generate_counts(
                 cond_length=cond_length,

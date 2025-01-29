@@ -592,6 +592,24 @@ def aggregate_attn_weights(
     attn_weights_df.to_csv(os.path.join(output_dir, f'{file_name}.csv'))
 
 
+def exclude_special_tokens(
+    mapping_dict: Dict,
+    marker_genes: Optional[List[str]] = None,
+):
+    if marker_genes is not None:
+        marker_genes_ids = {v: k for v, k in mapping_dict.items() if v in marker_genes}
+    else:
+        special_tokens = ['<cls>', '<mask>', '<pad>', '<eos>']
+        marker_genes_ids = {
+            v: k for v, k in mapping_dict.items() if v not in special_tokens
+        }
+        # exclude all tokens starting with cls
+        marker_genes_ids = {
+            v: k for v, k in marker_genes_ids.items() if not v.startswith('cls')
+        }
+    return marker_genes_ids
+
+
 def return_gene_embeddings(
     gene_embeddings: torch.tensor,
     mapping_dict: Dict,
@@ -616,18 +634,7 @@ def return_gene_embeddings(
     --------
     gene_embeddings_res: `torch.tensor`
     """
-    if marker_genes is not None:
-        marker_genes_ids = {v: k for v, k in mapping_dict.items() if v in marker_genes}
-    else:
-        # exclude special tokens from marker genes
-        special_tokens = ['<cls>', '<mask>', '<pad>', '<eos>']
-        marker_genes_ids = {
-            v: k for v, k in mapping_dict.items() if v not in special_tokens
-        }
-        # exclude all tokens starting with cls
-        marker_genes_ids = {
-            v: k for v, k in marker_genes_ids.items() if not v.startswith('cls')
-        }
+    marker_genes_ids = exclude_special_tokens(mapping_dict, marker_genes)
     # filter for marker genes and swap key value
     # marker_genes_ids = {v: k for v, k in mapping_dict.items() if v in marker_genes}
     gene_embeddings_res = torch.zeros(

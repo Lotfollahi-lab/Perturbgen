@@ -294,6 +294,12 @@ def get_args():
         default=False,
         help='return gene embeddings',
     )
+    parser.add_argument(
+        '--gene_embs_condition',
+        type=str,
+        default=None,
+        help='aggregate gene embeddings over condition',
+    )
 
     args = parser.parse_args()
     return args
@@ -404,10 +410,15 @@ def main() -> None:
     token_no = args.tgt_vocab_size
 
     # create full dataset to extract metadata for conditioning
-    dataset_list = [src_dataset]
+    tgt_dataset_list = []
     for dataset in tgt_datasets.values():
-        dataset_list.append(dataset)
-    full_dataset = concatenate_datasets(dataset_list)
+        tgt_dataset_list.append(dataset)
+    if args.gene_embs_condition is not None:
+        full_tgt_dataset = concatenate_datasets(tgt_dataset_list)
+        gene_embs_list = full_tgt_dataset.unique(args.gene_embs_condition)
+    else:
+        gene_embs_list = None
+    full_dataset = concatenate_datasets([src_dataset] + tgt_dataset_list)
     if args.cond_list is not None:
         condition_dict = {}
         for condition in args.cond_list:
@@ -455,6 +466,8 @@ def main() -> None:
         test_kwargs['return_attn'] = args.return_attn
         test_kwargs['tokenid_to_rowid_path'] = args.tokenid_to_rowid_path
         test_kwargs['deg_pkl_path'] = args.deg_pkl_path
+        test_kwargs['gene_embs_list'] = gene_embs_list
+        test_kwargs['gene_embs_condition'] = args.gene_embs_condition
         pretrained_module = CytoMeisterTrainer(**test_kwargs)
 
     elif args.test_mode == 'count':
@@ -562,7 +575,8 @@ def main() -> None:
         logger=wandb_logger,
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
-        devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
+        devices=1,  # inference only on one gpu
+        limit_test_batches=10.0,
     )
     # Finally, kick of the training process.
     if args.test_mode == 'masking':

@@ -1199,11 +1199,11 @@ class CytoMeister(nn.Module):
             tgt_input_id_dict_ = {k: v.clone() for k, v in tgt_input_id_dict.items()}
             tgt_pad_dict_ = {k: v.clone() for k, v in tgt_pad_dict.items()}
             # use max shape instead of genes you like to generate
-            pad_tensor = torch.ones_like(tgt_pad_dict_[f'tgt_pad_t{time_step}'])
+            # pad_tensor = torch.ones_like(tgt_pad_dict_[f'tgt_pad_t{time_step}'])
             # pass sequence length for generation
-            pad_tensor[:, sequence_length:] = 0
-            tgt_pad = generate_pad(pad_tensor)
-            tgt_pad_dict_[f'tgt_pad_t{time_step}'] = tgt_pad
+            # pad_tensor[:, sequence_length:] = 0
+            # tgt_pad = generate_pad(pad_tensor)
+            # tgt_pad_dict_[f'tgt_pad_t{time_step}'] = tgt_pad
             tgt_input_id_key = f'tgt_input_ids_t{time_step}'
             tgt_input_id = tgt_input_id_dict[tgt_input_id_key]
 
@@ -1214,7 +1214,8 @@ class CytoMeister(nn.Module):
                 ids[:, :cond_length] = tgt_input_id[:, :cond_length]
 
             # replace the rest of the tokens with pad token
-            ids[:, sequence_length:] = 0
+            # ids[:, sequence_length:] = 0
+            ids[tgt_pad_dict[f'tgt_pad_t{time_step}']] = self.pad_token
             tgt_input_id_dict_[tgt_input_id_key] = ids
             # pad ids
             scores = torch.zeros_like(tgt_input_id, dtype=torch.float)
@@ -1294,7 +1295,7 @@ class CytoMeister(nn.Module):
             tmp_ids: `torch.Tensor`
                 Generated target token inputs.
         '''
-        max_neg_value = -torch.finfo().max
+        max_neg_value = -torch.finfo(scores.dtype).max
         scores[:, :cond_length] = max_neg_value
         tmp_ids = generate_id_dict[f'tgt_input_ids_t{tgt_time_step}'].clone()
         batch_size, seq_len = tmp_ids.shape
