@@ -1,5 +1,4 @@
 import pickle
-from typing import Optional
 from warnings import warn
 
 import numpy as np
@@ -11,51 +10,28 @@ from geneformer.perturber_utils import pad_tensor_list
 from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningDataModule
 from scipy.sparse import csr_matrix
-from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
-from collections import Counter, defaultdict
-import random
+from torch.utils.data import DataLoader, Dataset
 
 
-# Dummy dataset
-class DummyDataset(torch.utils.data.Dataset):
-    def __init__(self, max_len, tgt_vocab_size):
-        self.max_len = max_len
-        self.tgt_vocab_size = tgt_vocab_size
-
-    def __len__(self):
-        return 1000  # Dummy number of samples
-
-    def __getitem__(self, idx):
-        # Dummy input data (replace with your actual data loading)
-        src_input_ids = torch.randint(0, self.tgt_vocab_size, (self.max_len,))
-        tgt_input_ids = torch.randint(0, self.tgt_vocab_size, (self.max_len,))
-        src_input_ids[:, -5:] = 0
-        tgt_input_ids[:, -5:] = 0
-
-        return {
-            'src': src_input_ids,
-            'tgt': tgt_input_ids,
-        }
-
-
-class CellGenDataset(Dataset):
+class CytoMeisterDataset(Dataset):
     def __init__(
         self,
         src_dataset: DatasetDict,
         tgt_datasets: DatasetDict,
         time_steps: list = [1, 2],
-        src_counts: Optional[np.ndarray] = None,
-        tgt_counts_dict: Optional[np.ndarray] = None,
-        split_indices: Optional[list] = None,
-        conditions: Optional[torch.Tensor] = None,
-        conditions_combined: Optional[torch.Tensor] = None,
-        condition_encodings: Optional[dict] = None,
+        src_counts: np.ndarray | None = None,
+        tgt_counts_dict: np.ndarray | None = None,
+        split_indices: list | None = None,
+        conditions: torch.Tensor | None = None,
+        conditions_combined: torch.Tensor | None = None,
+        condition_encodings: dict | None = None,
     ):
         super().__init__()
         self.src_dataset = src_dataset
         self.tgt_datasets = tgt_datasets
         self.src_counts = src_counts
         self.tgt_counts_dict = tgt_counts_dict
+
         self.conditions = conditions
         self.conditions_combined = conditions_combined
         self.condition_encodings = condition_encodings
@@ -86,64 +62,6 @@ class CellGenDataset(Dataset):
             warn('src and tgt dataset have different length')
         self.dataset_length = min(src_len, tgt_len)
 
-    def get_label_weights(self):
-        """
-        Calculate weights for each label to be used with WeightedRandomSampler.
-
-        Args:
-            subsample_indices (list or np.ndarray, optional): Indices of a subset.
-            If provided, weights are calculated based on the subset.
-
-        Returns:
-            torch.Tensor: Weights for each label.
-        """
-        labels = self.src_dataset['cell_type_cellgen_harm']
-
-        # Calculate the frequency of each label
-        label_counts = Counter(labels)  # from collections import Counter
-
-        # Calculate the total number of samples
-        total_count = len(labels)
-
-        # Calculate weights inversely proportional to the frequency
-        weights = {label: total_count / count for label, count in label_counts.items()}
-
-        # Convert weights to a tensor, matching the order of labels
-        weight_tensor = torch.tensor(
-            [weights[label] for label in labels], dtype=torch.float
-        )
-
-        return weight_tensor
-
-    # def get_upsampled_indices(self):
-    #     """
-    #     Generate indices for upsampling to the largest class size.
-    #
-    #     Returns:
-    #         list: Upsampled indices.
-    #     """
-    #     labels = self.src_dataset['cell_type_cellgen_harm']
-    #
-    #     # Group indices by label
-    #     label_to_indices = defaultdict(list)  # from collections import defaultdict
-    #     for idx, label in enumerate(labels):
-    #         label_to_indices[label].append(idx)
-    #
-    #     # Find the maximum class size
-    #     max_size = max(len(indices) for indices in label_to_indices.values())
-    #
-    #     # Upsample each class to match the maximum size
-    #     upsampled_indices = []
-    #     for indices in label_to_indices.values():
-    #         upsampled_indices.extend(
-    #             indices + random.choices(indices, k=max_size - len(indices))
-    #         )
-    #
-    #     # Shuffle the indices to ensure randomness
-    #     random.shuffle(upsampled_indices)
-    #
-    #     return upsampled_indices
-
     def __getitem__(self, ind):
         out = {
             'src_dataset': self.src_dataset[ind],
@@ -168,8 +86,7 @@ class CellGenDataset(Dataset):
         return self.dataset_length
 
 
-# two dataloader vs one dataloader
-class CellGenDataModule(LightningDataModule):
+class CytoMeisterDataModule(LightningDataModule):
     def __init__(
         self,
         src_dataset: DatasetDict,
@@ -179,23 +96,24 @@ class CellGenDataModule(LightningDataModule):
         shuffle: bool = False,
         max_len: int = 2048,
         split: bool = False,
-        time_steps: list = [1, 2],
-        total_time_steps: int = 4,
-        src_counts: Optional[np.ndarray] = None,
-        tgt_counts_dict: Optional[np.ndarray] = None,
-        condition_keys: Optional[list] = None,
-        condition_encodings: Optional[dict] = None,
-        conditions: Optional[torch.Tensor] = None,
-        conditions_combined: Optional[torch.Tensor] = None,
-        train_indices: Optional[list[int]] = None,
-        val_indices: Optional[list[int]] = None,
-        test_indices: Optional[list[int]] = None,
-        var_list: Optional[list] = None,
+        pred_tps: list = [1, 2],
+        n_total_tps: int = 4,
+        src_counts: np.ndarray | None = None,
+        tgt_counts_dict: np.ndarray | None = None,
+        condition_keys: list | None = None,
+        condition_encodings: dict | None = None,
+        conditions: torch.Tensor | None = None,
+        conditions_combined: torch.Tensor | None = None,
+        train_indices: list[int] | None = None,
+        val_indices: list[int] | None = None,
+        test_indices: list[int] | None = None,
+        var_list: list | None = None,
+        context_tps: list | None = None,
     ):
         """
         Description:
         ------------
-        Custom datamodule for Petra tokenised data.
+        Custom datamodule for CytoMeister tokenised data.
         """
         super().__init__()
         print('Start datamodule')
@@ -203,9 +121,12 @@ class CellGenDataModule(LightningDataModule):
         self.tgt_datasets = tgt_datasets
         self.src_counts = src_counts
         self.tgt_counts_dict = tgt_counts_dict
-        self.batch_size = batch_size
-        self.num_workers = num_workers
-        self.shuffle = shuffle
+        self.dataloader_kwargs = {
+            'batch_size': batch_size,
+            'shuffle': shuffle,
+            'num_workers': num_workers,
+            'pin_memory': True,
+        }
         token_dictionary_file = TOKEN_DICTIONARY_FILE
         with open(token_dictionary_file, 'rb') as f:
             self.gene_token_dict = pickle.load(f)
@@ -221,149 +142,91 @@ class CellGenDataModule(LightningDataModule):
         self.train_indices = train_indices
         self.val_indices = val_indices
         self.test_indices = test_indices
-        self.time_steps = time_steps
-        self.total_time_steps = total_time_steps
+        self.pred_tps = pred_tps
+        self.context_tps = context_tps
+        self.total_tps = list(range(1, n_total_tps + 1))
         self.var_list = var_list
         # create condition encoder for categorical variables in
         # form of dictionary with key: value pairs based on condition_keys
 
     def setup(self, stage=None):
+        dataset_args = {
+            'src_dataset': self.src_dataset,
+            'tgt_datasets': self.tgt_datasets,
+            'src_counts': self.src_counts,
+            'tgt_counts_dict': self.tgt_counts_dict,
+        }
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
+            self.all_modelling_tps = self.pred_tps
+            dataset_args['time_steps'] = self.pred_tps
             if self.condition_encodings is not None:
-                self.train_dataset = CellGenDataset(
-                    src_dataset=self.src_dataset,
-                    tgt_datasets=self.tgt_datasets,
-                    split_indices=self.train_indices,
-                    src_counts=self.src_counts,
-                    tgt_counts_dict=self.tgt_counts_dict,
-                    time_steps=self.time_steps,
-                    conditions=self.conditions
-                    if self.condition_keys is not None
-                    else None,
-                    conditions_combined=self.conditions_combined
-                    if self.condition_keys is not None
-                    else None,
+                dataset_args['split_indices'] = self.train_indices
+                dataset_args['conditions'] = (
+                    self.conditions if self.condition_keys is not None else None
                 )
+                dataset_args['conditions_combined'] = (
+                    self.conditions_combined
+                    if self.condition_keys is not None
+                    else None
+                )
+                self.train_dataset = CytoMeisterDataset(**dataset_args)
                 if self.val_indices is not None:
-                    self.val_dataset = CellGenDataset(
-                        src_dataset=self.src_dataset,
-                        tgt_datasets=self.tgt_datasets,
-                        split_indices=self.val_indices,
-                        src_counts=self.src_counts,
-                        tgt_counts_dict=self.tgt_counts_dict,
-                        time_steps=self.time_steps,
-                        conditions=self.conditions
-                        if self.condition_keys is not None
-                        else None,
-                        conditions_combined=self.conditions_combined
-                        if self.condition_keys is not None
-                        else None,
-                    )
+                    dataset_args['split_indices'] = self.val_indices
+                    self.val_dataset = CytoMeisterDataset(**dataset_args)
                 else:
                     self.val_dataset = None
             else:
-                self.train_dataset = CellGenDataset(
-                    src_dataset=self.src_dataset,
-                    tgt_datasets=self.tgt_datasets,
-                    split_indices=self.train_indices,
-                    src_counts=self.src_counts,
-                    tgt_counts_dict=self.tgt_counts_dict,
-                    time_steps=self.time_steps,
-                )
+                dataset_args['split_indices'] = self.train_indices
+                self.train_dataset = CytoMeisterDataset(**dataset_args)
                 if self.val_indices is not None:
-                    self.val_dataset = CellGenDataset(
-                        src_dataset=self.src_dataset,
-                        tgt_datasets=self.tgt_datasets,
-                        split_indices=self.val_indices,
-                        src_counts=self.src_counts,
-                        tgt_counts_dict=self.tgt_counts_dict,
-                        time_steps=self.time_steps,
-                    )
+                    dataset_args['split_indices'] = self.val_indices
+                    self.val_dataset = CytoMeisterDataset(**dataset_args)
                 else:
                     self.val_dataset = None
         if stage == 'test' or stage is None:
-            # use all time steps to provide as context
-            self.time_steps = list(range(1, self.total_time_steps + 1))
-            if self.condition_encodings is not None:
-                self.test_dataset = CellGenDataset(
-                    src_dataset=self.src_dataset,
-                    tgt_datasets=self.tgt_datasets,
-                    split_indices=self.test_indices,
-                    src_counts=self.src_counts,
-                    tgt_counts_dict=self.tgt_counts_dict,
-                    time_steps=self.time_steps,
-                    conditions=self.conditions
-                    if self.condition_keys is not None
-                    else None,
-                    conditions_combined=self.conditions_combined
-                    if self.condition_keys is not None
-                    else None,
-                )
+            if self.context_tps is not None:
+                # use only defined time steps for modelling to avoid data leakage
+                self.all_modelling_tps = self.pred_tps + self.context_tps
             else:
-                self.test_dataset = CellGenDataset(
-                    src_dataset=self.src_dataset,
-                    tgt_datasets=self.tgt_datasets,
-                    split_indices=self.test_indices,
-                    src_counts=self.src_counts,
-                    tgt_counts_dict=self.tgt_counts_dict,
-                    time_steps=self.time_steps,
+                print('Define context_tps for testing')
+                self.all_modelling_tps = self.total_tps
+
+            dataset_args['time_steps'] = self.all_modelling_tps
+            dataset_args['split_indices'] = self.test_indices
+            if self.condition_encodings is not None:
+                dataset_args['conditions'] = (
+                    self.conditions if self.condition_keys is not None else None
                 )
+                dataset_args['conditions_combined'] = (
+                    self.conditions_combined
+                    if self.condition_keys is not None
+                    else None
+                )
+                self.test_dataset = CytoMeisterDataset(**dataset_args)
+            else:
+                self.test_dataset = CytoMeisterDataset(**dataset_args)
 
     def train_dataloader(self):
-        data = DataLoader(
-            self.train_dataset,
-            sampler=WeightedRandomSampler(
-                weights=self.train_dataset.get_label_weights(),
-                num_samples=len(self.train_dataset),
-                replacement=True,
-                generator=torch.Generator().manual_seed(42),
-            ),
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=self.num_workers,
-            collate_fn=self.collate,
-        )
+        self.dataloader_kwargs['dataset'] = self.train_dataset
+        self.dataloader_kwargs['collate_fn'] = self.collate
+        data = DataLoader(**self.dataloader_kwargs)
         return data
-        # def train_dataloader(self):
-        #     if self.train_dataset is not None:
-        #         upsampled_indices = self.train_dataset.get_upsampled_indices()
-        #     else:
-        #         raise ValueError("train_dataset is not initialized")
-        #     upsampled_sampler = torch.utils.data.SubsetRandomSampler(upsampled_indices)
-
-        #     data = DataLoader(
-        #         self.train_dataset,
-        #         sampler=upsampled_sampler,
-        #         batch_size=self.batch_size,
-        #         shuffle=False,  # Shuffle is handled by the sampler
-        #         num_workers=self.num_workers,
-        #         collate_fn=self.collate,
-        #     )
-        #     return data
 
     def val_dataloader(self):
+        self.dataloader_kwargs['dataset'] = self.val_dataset
+        self.dataloader_kwargs['shuffle'] = False
+        self.dataloader_kwargs['collate_fn'] = self.collate
         if self.split:
-            data = DataLoader(
-                self.val_dataset,
-                batch_size=self.batch_size,
-                shuffle=False,
-                num_workers=self.num_workers,
-                collate_fn=self.collate,
-            )
+            data = DataLoader(**self.dataloader_kwargs)
             return data
         else:
             return []
 
     def test_dataloader(self):
-        data = DataLoader(
-            self.test_dataset,
-            batch_size=self.batch_size,
-            shuffle=self.shuffle,
-            num_workers=self.num_workers,
-            collate_fn=self.collate,
-            # persistent_workers=True,
-        )
+        self.dataloader_kwargs['dataset'] = self.test_dataset
+        self.dataloader_kwargs['collate_fn'] = self.collate
+        data = DataLoader(**self.dataloader_kwargs , drop_last=True)
         return data
 
     def collate(self, batch):
@@ -399,7 +262,7 @@ class CellGenDataModule(LightningDataModule):
             'combined_batch': condition_combined,
         }
 
-        for time_step in self.time_steps:
+        for time_step in self.all_modelling_tps:
             if batch[0]['tgt_counts_t1'] is not None:
                 if isinstance(batch[0][f'tgt_counts_t{time_step}'], csr_matrix):
                     tgt_counts = [
@@ -420,11 +283,11 @@ class CellGenDataModule(LightningDataModule):
                     ]
                     tgt_size_factor = [
                         torch.tensor(
-                            np.ravel(d[f'tgt_counts_t{time_step}'].reshape(1, -1).sum(axis=1))
+                            np.ravel(d[f'tgt_counts_t{time_step}'].sum(axis=1))
                         )
                         for d in batch
                     ]
-                out[f'tgt_counts_t{time_step}'] = torch.stack(tgt_counts)
+                out[f'tgt_counts_t{time_step}'] = torch.cat(tgt_counts, dim=0)
                 out[f'tgt_size_factor_t{time_step}'] = torch.cat(tgt_size_factor, dim=0)
             # create input ids
             dataset = f'tgt_dataset_t{time_step}'
@@ -447,4 +310,5 @@ class CellGenDataModule(LightningDataModule):
                 self.pad_token_id,
                 model_input_size,
             )
+
         return out
