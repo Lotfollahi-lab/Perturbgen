@@ -1,4 +1,3 @@
-
 import argparse
 import math
 import os
@@ -8,6 +7,7 @@ from pathlib import Path
 from typing import (
     Dict,
     List,
+    Literal,
     Optional,
 )
 
@@ -26,7 +26,7 @@ from torch.nn.functional import cosine_similarity
 from torch.optim import Optimizer
 from torch.utils.data import Subset
 from torchmetrics import PearsonCorrCoef
-from torch.optim import Optimizer
+
 
 class WarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
     def __init__(
@@ -68,11 +68,9 @@ def read_dataset_files(directory, file_type):
                     filename_
                 )  # Removing the '.dataset' extension from the key
             elif file_type == 'h5ad':
-                adata = sc.read_h5ad(
+                dataset_dict[f'tgt_{file_type}_t{filename[0]}'] = sc.read_h5ad(
                     filename_
                 )
-                adata.X = adata.X
-                dataset_dict[f'tgt_{file_type}_t{filename[0]}'] = adata
     return dataset_dict
 
 
@@ -103,6 +101,162 @@ def map_ensembl_to_genename(
     return adata
 
 
+def condition_for_count_loss(
+    condition_keys: str,
+    conditions: dict,
+    conditions_combined: list,
+    tgt_adata_tmp: ad.AnnData,
+):
+    '''
+    Description:
+    ------------
+    This function encodes conditions for count loss.
+    Parameters:
+    -----------
+    condition_keys: `str`
+        Key to encode conditions.
+    conditions: `dict`
+        Dictionary of conditions.
+    conditions_combined: `list`
+        List of combined conditions.
+    tgt_adata_tmp: `~anndata.AnnData`
+        target adata object.
+    Returns:
+    --------
+    conditions: `torch.tensor`
+        Tensor of encoded conditions.
+    condition_encodings: `dict`
+        Dictionary of condition encodings.
+    conditions_combined: `torch.tensor`
+        Tensor of encoded combined conditions.
+    conditions_: `dict`
+        Dictionary of conditions.
+    condition_keys_: `list`
+        List of condition keys.
+    conditions_combined_: `list`
+        List of combined conditions.
+    '''
+    if condition_keys is None:
+        condition_keys = 'tmp_batch'
+        # create a mock vector if there are no batch effect
+        tgt_adata_tmp.obs[condition_keys] = 1
+    if isinstance(condition_keys, str):
+        condition_keys_ = [condition_keys]
+    else:
+        condition_keys_ = condition_keys
+    if conditions is None:
+        if condition_keys is not None:
+            conditions_ = {}
+            for cond in condition_keys_:
+                conditions_[cond] = tgt_adata_tmp.obs[cond].unique().tolist()
+        else:
+            conditions_ = {}
+    else:
+        conditions_ = conditions
+    if conditions_combined is None:
+        if len(condition_keys_) > 1:
+            tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[
+                condition_keys
+            ].apply(lambda x: '_'.join(x), axis=1)
+        else:
+            tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[condition_keys]
+        conditions_combined_ = (
+            tgt_adata_tmp.obs['conditions_combined'].unique().tolist()
+        )
+    else:
+        conditions_combined_ = conditions_combined
+    condition_encodings: Dict[str, Dict[str, int]] = {
+        cond: {k: v for k, v in zip(conditions_[cond], range(len(conditions_[cond])))}
+        for cond in conditions_.keys()
+    }
+    conditions_combined_encodings = {
+        k: v for k, v in zip(conditions_combined_, range(len(conditions_combined_)))
+    }
+    if (condition_encodings is not None) and (condition_keys_ is not None):
+        conditions_tmp = [
+            label_encoder(
+                tgt_adata_tmp,
+                encoder=condition_encodings[condition_keys_[i]],
+                condition_key=condition_keys_[i],
+            )
+            for i in range(len(condition_encodings))
+        ]
+        conditions = torch.tensor(conditions_tmp, dtype=torch.long).T
+        conditions_combined = label_encoder(
+            tgt_adata_tmp,
+            encoder=conditions_combined_encodings,
+            condition_key='conditions_combined',
+        )
+        conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
+    return (
+        conditions,
+        condition_encodings,
+        conditions_combined,
+        conditions_,
+        condition_keys_,
+        conditions_combined_,
+    )
+
+
+def compute_rouge_score(
+    rouge,
+    pred_ids: np.ndarray,
+    tgt_ids: np.ndarray,
+    rouge_len_list: list[int],
+    max_seq_length: int,
+    test_dict: dict[str, list],
+) -> dict[str, list[float]]:
+    # Convert predictions and targets to object type for string replacement
+    pred_ids = pred_ids.astype(object)
+    tgt_ids = tgt_ids.astype(object)
+
+    # Exclude task token (assumed to be the first token)
+    pred_ids = pred_ids[:, 1:]
+
+    # Define special tokens to remove (e.g., 0, 1, 2, 3)
+    special_tokens = np.array([0, 1, 2, 3])
+    pred_ids[np.isin(pred_ids, special_tokens)] = ''
+    tgt_ids[np.isin(tgt_ids, special_tokens)] = ''
+
+    # Convert all integers to strings
+    pred_ids_ = pred_ids.astype(str)
+    tgt_ids_ = tgt_ids.astype(str)
+
+    for seq_len in rouge_len_list:
+        # Truncate sequences based on seq_len
+        if max_seq_length > seq_len:
+            pred_genes_short = pred_ids_[:, :seq_len]
+            true_genes_short = tgt_ids_[:, :seq_len]
+        else:
+            pred_genes_short = pred_ids_
+            true_genes_short = tgt_ids_
+
+        # Convert each row of token IDs to a string
+        pred_ids_str = np.apply_along_axis(
+            lambda row: ' '.join(row), axis=1, arr=pred_genes_short
+        )
+        tgt_ids_str = np.apply_along_axis(
+            lambda row: ' '.join(row), axis=1, arr=true_genes_short
+        )
+
+        # Remove extra spaces
+        pred_ids_str = np.array([' '.join(s.split()) for s in pred_ids_str])
+        tgt_ids_str = np.array([' '.join(s.split()) for s in tgt_ids_str])
+        # Compute ROUGE score for the entire batch at once
+        rouge_result = rouge.compute(
+            predictions=pred_ids_str.tolist(),
+            references=tgt_ids_str.tolist(),
+            rouge_types=['rouge1'],
+            use_aggregator=False,
+        )
+        # Extract the per-sample ROUGE scores
+        per_sample_scores = rouge_result['rouge1']
+        # Store the results in the test_dict
+        test_dict[f'rouge1_{seq_len}'].append(per_sample_scores)
+
+    return test_dict
+
+
 def compute_cos_similarity(
     outputs: dict,
     time_step: int,
@@ -127,8 +281,8 @@ def compute_cos_similarity(
     gene_embeddings: `torch.tensor`
     """
     # get cls position and dec_embedding (index = time_step-1)
-    dec_embedding = outputs['dec_embedding'][time_step]
-    cls_embeddings = outputs['mean_embedding'][time_step]
+    dec_embedding = outputs[time_step]['dec_embedding']
+    cls_embeddings = outputs[time_step]['mean_embedding']
     # exclude cls token from gene embeddings
     gene_embeddings = dec_embedding[:, 1:, :]
     cos_similarity = []
@@ -136,62 +290,53 @@ def compute_cos_similarity(
         # gene level cosine similarity
         cos_similarity_ = cosine_similarity(
             cls_embeddings[i],
-            gene_embeddings[i, :, :],
+            dec_embedding[i, :, :],
             dim=1,
         )
         cos_similarity.append(cos_similarity_)
     cos_similarity = torch.stack(cos_similarity)
 
-    return cos_similarity, cls_embeddings, gene_embeddings
+    return cos_similarity
 
 
-def return_cos_similarity(
-    cos_similarity: torch.tensor,
-    gene_embeddings: torch.tensor,
+def map_results_to_genes(
+    res: torch.tensor,
     mapping_dict: Dict,
     token_ids: torch.tensor,
-    marker_genes: Optional[List[str]] = None,
-
+    marker_genes: List[str] | None = None,
 ) -> torch.tensor:
     """
     Description:
     ------------
-    This function returns cosine similarity for all genes.
+    This function returns cosine similarity for marker genes.
     Parameters:
     -----------
-    all_genes: `List[str]`
-        List of all genes.
-    cos_similarity: `torch.tensor`
-        Tensor of cosine similarity between cls and gene embeddings.
-    gene_embeddings: `torch.tensor`
-        Tensor of gene embeddings.
+    marker_genes: `List[str]`
+        List of marker genes.
+    res: `torch.tensor`
+        Tensor containing results ordered by token ids.
     mapping_dict: `Dict`
         Dictionary mapping gene names to token ids.
     Returns:
     --------
-    cos_similarity_res: `torch.tensor`
-        Tensor of cosine similarity for marker genes.
+    res_: `torch.tensor`
+        Tensor reordered by gene names.
     marker_genes_dict: `Dict`
+        Dictionary of marker genes -> {gene: index}
     """
     # filter for marker genes and swap key value
     if marker_genes is not None:
-        marker_genes_ids = {v: k for k, v in mapping_dict.items() if v in marker_genes}
+        marker_genes_ids = {v: k for v, k in mapping_dict.items() if v in marker_genes}
     else:
         # exclude special tokens from marker genes
         special_tokens = ['<cls>', '<mask>', '<pad>', '<eos>']
         marker_genes_ids = {
-            v: k for k, v in mapping_dict.items() if v not in special_tokens
+            v: k for v, k in mapping_dict.items() if v not in special_tokens
         }
-    cos_similarity_res = torch.zeros(
-        cos_similarity.shape[0],
+    res_ = torch.zeros(
+        res.shape[0],
         len(marker_genes_ids.keys()),
-        device=gene_embeddings.device,
-    )
-    marker_genes_dict = {}
-    cos_similarity_res = torch.zeros(
-        cos_similarity.shape[0],
-        len(marker_genes_ids.keys()),
-        device=gene_embeddings.device,
+        device=res.device,
     )
     marker_genes_dict = {}
     for i, gene in enumerate(marker_genes_ids.keys()):
@@ -199,24 +344,226 @@ def return_cos_similarity(
         # ---------------------
         cond_embs_to_fill = (token_ids == marker_genes_ids[gene]).sum(1) > 0
         cond_select_markers = torch.where(token_ids == marker_genes_ids[gene])
-        cos_similarity_res[cond_embs_to_fill, i] = cos_similarity[
-            cond_select_markers[0], cond_select_markers[1]
-        ]
+        res_[cond_embs_to_fill, i] = res[cond_select_markers[0], cond_select_markers[1]]
         marker_genes_dict[gene] = i
-    return cos_similarity_res, marker_genes_dict
+    return res_, marker_genes_dict
+
+
+def return_attn_weights(
+    outputs: dict,
+    src_mapping_dict: Dict,
+    tgt_mapping_dict: Dict,
+    time_step: int,
+    token_ids: torch.tensor,
+    pad_token_id: List[str],
+    marker_genes: Optional[List[str]] = None,
+    context_token_ids: Optional[torch.tensor] = None,
+):
+    """
+    Description:
+    ------------
+    This function maps token ids to gene names for attention weights.
+
+    Parameters:
+    -----------
+    outputs: `dict`
+        Dictionary containing outputs from the model.
+    src_mapping_dict: `Dict`
+        Dictionary mapping gene names to token ids.
+    time_step: `int`
+        Time step to compute cosine similarity.
+    token_ids: `torch.tensor`
+        Tensor of token ids from target tensor.
+    marker_genes: `List[str]`
+        List of marker genes.
+    pad_token_id: int
+        exclude pad token from attention weights results.
+
+    Returns:
+    --------
+    attn_weights_res: `torch.tensor`
+    """
+
+    # filter for marker genes and swap key value
+    # if marker_genes is not None:
+    #     marker_genes_ids = {
+    #         v: k for v, k in tgt_mapping_dict.items() if v in marker_genes
+    #     }
+    # else:
+
+    # map self attention weights
+    pad_token_id = torch.tensor(pad_token_id, device=token_ids.device)
+    self_attn_weights = outputs[time_step]['self_attn_weights']
+    self_attn_weights = _map_attn_weights(
+        attn_weights=self_attn_weights,
+        tgt_mapping_dict=tgt_mapping_dict,
+        token_ids=token_ids,
+        pad_token_id=pad_token_id,
+    )
+    # map cross attention weights
+    cross_attn_weights = outputs[time_step]['cross_attn_weights']
+    cross_attn_weights = _map_attn_weights(
+        attn_weights=cross_attn_weights,
+        src_mapping_dict=src_mapping_dict,
+        tgt_mapping_dict=tgt_mapping_dict,
+        token_ids=token_ids,
+        pad_token_id=pad_token_id,
+        context_token_ids=context_token_ids,
+    )
+
+    return self_attn_weights, cross_attn_weights
+
+
+def _map_attn_weights(
+    attn_weights: torch.tensor,
+    tgt_mapping_dict: Dict,
+    token_ids: torch.tensor,
+    pad_token_id: torch.tensor,
+    context_token_ids: Optional[torch.tensor] = None,
+    src_mapping_dict: Optional[Dict] = None,
+):
+    batch_size = attn_weights.shape[0]
+    # exclude cls token from gene embeddings
+    tgt_n_genes = len(tgt_mapping_dict.keys())
+    if (src_mapping_dict is not None) and (context_token_ids is not None):
+        # remap token ids to new token ids for multidimensional tensor
+        src_token_ids = context_token_ids[0]
+        src_token_ids = torch.tensor(
+            [src_mapping_dict[int(token)] for token in src_token_ids.flatten()],
+            device=src_token_ids.device,
+        ).reshape(src_token_ids.shape)
+        context_token_ids[0] = src_token_ids
+        context_n_genes = len(src_mapping_dict.keys()) + len(
+            tgt_mapping_dict.keys()
+        ) * (
+            len(context_token_ids) - 1
+        )  # exlude src
+    else:
+        context_n_genes = tgt_n_genes
+
+    attn_weights_res = torch.zeros(
+        size=(batch_size, tgt_n_genes, context_n_genes),
+        device=attn_weights.device,
+        dtype=attn_weights.dtype,
+    )
+
+    for i in range(batch_size):
+        token_idx = token_ids[i]  # Shape (seq_len)
+        attn_weights_ = attn_weights[i]  # Shape (seq_len, seq_len)
+        # sort token indices
+        if context_token_ids is None:
+            sorted_tokens, sorted_indices = torch.sort(token_idx)
+            # remove special tokens from sorted tokens and indices
+            sorted_tokens_ = sorted_tokens[~torch.isin(sorted_tokens, pad_token_id)]
+            sorted_indices_ = sorted_indices[~torch.isin(sorted_tokens, pad_token_id)]
+            sorted_attn_matrix = attn_weights_[sorted_indices_][:, sorted_indices_]
+            attn_weights_res = attn_weights_res.clone()
+            tgt_indices_0 = sorted_tokens_.unsqueeze(1).expand(
+                -1, sorted_attn_matrix.shape[1]
+            )
+            tgt_indices_1 = sorted_tokens_.unsqueeze(0).expand(
+                sorted_attn_matrix.shape[0], -1
+            )
+            attn_weights_res[i, tgt_indices_0, tgt_indices_1] = sorted_attn_matrix
+        else:
+            sorted_tgt_tokens, sorted_tgt_indices = torch.sort(token_idx)
+            sorted_tgt_tokens_ = sorted_tgt_tokens[
+                ~torch.isin(sorted_tgt_tokens, pad_token_id)
+            ]
+            sorted_tgt_indices_ = sorted_tgt_indices[
+                ~torch.isin(sorted_tgt_tokens, pad_token_id)
+            ]
+            # adjust for second cross attention provided as context
+            context_seq_len = 0
+            # adjust to fill in at correct location in attn_weights_res
+            context_vocab_size = 0
+            for context_token in context_token_ids:
+                context_token_idx = context_token[i]
+                sorted_context_tokens, sorted_context_indices = torch.sort(
+                    context_token_idx
+                )
+                sorted_context_tokens_ = sorted_context_tokens[
+                    ~torch.isin(sorted_context_tokens, pad_token_id)
+                ]
+                sorted_context_indices_ = sorted_context_indices[
+                    ~torch.isin(sorted_context_tokens, pad_token_id)
+                ]
+                sorted_attn_matrix = attn_weights_[sorted_tgt_indices_][
+                    :, context_seq_len + sorted_context_indices_
+                ]
+                # adjust context token indices by context_seq_len
+
+                tgt_indices = sorted_tgt_tokens_.unsqueeze(1).expand(
+                    -1, sorted_attn_matrix.shape[1]
+                )
+                adjusted_context_tokens = sorted_context_tokens_ + context_vocab_size
+                context_indices = adjusted_context_tokens.unsqueeze(0).expand(
+                    sorted_attn_matrix.shape[0], -1
+                )
+                attn_weights_res[
+                    i,
+                    tgt_indices,
+                    context_indices,
+                ] = sorted_attn_matrix
+                context_seq_len += len(context_token_idx)
+                if (context_vocab_size == 0) and (src_mapping_dict is not None):
+                    # add src mapping dict fist
+                    context_vocab_size += len(src_mapping_dict.keys())
+                else:
+                    context_vocab_size += len(tgt_mapping_dict.keys())
+        return attn_weights_res
+
+
+def aggregate_attn_weights(
+    attn_weights: torch.tensor,
+    tgt_gene_names: List[str],
+    output_dir: str,
+    file_name: str,
+    src_gene_names: Optional[List[str]] = None,
+):
+    """
+    attn_weights: `torch.tensor`
+        Tensor of attention weights.
+    output_dir: `str`
+        Directory to save files in
+    file_name: `str`
+        Filename for output file
+    """
+    # take the mean of attention weights
+    attn_weights_mean = attn_weights.mean(0).T
+    # create a dataframe of attention weights
+
+    if src_gene_names is not None:
+        tgt_len = attn_weights_mean.shape[0] - len(src_gene_names)
+        repeat_factor = tgt_len // len(tgt_gene_names)
+        context_gene_names = src_gene_names + tgt_gene_names * repeat_factor
+    else:
+        context_gene_names = tgt_gene_names
+
+    attn_weights_df = pd.DataFrame(
+        attn_weights_mean.cpu().numpy(),
+        index=context_gene_names,
+        columns=tgt_gene_names,
+    )
+    # remove all zero rows and columns
+    attn_weights_df = attn_weights_df.loc[
+        (attn_weights_df != 0).any(axis=1), (attn_weights_df != 0).any(axis=0)
+    ]
+    print(f'Saving attention weights to {output_dir}/{file_name} ...')
+    attn_weights_df.to_csv(os.path.join(output_dir, f'{file_name}.csv'))
 
 
 def return_gene_embeddings(
-    marker_genes: List[str],
     gene_embeddings: torch.tensor,
     mapping_dict: Dict,
     token_ids: torch.tensor,
+    marker_genes: Optional[List[str]] = None,
 ) -> torch.tensor:
     """
     Description:
     ------------
     This function returns gene embeddings from a list of marker genes.
-    Parameters:
+    # Parameters:
     -----------
     marker_genes: `List[str]`
         List of marker genes.
@@ -230,13 +577,26 @@ def return_gene_embeddings(
     --------
     gene_embeddings_res: `torch.tensor`
     """
+    if marker_genes is not None:
+        marker_genes_ids = {v: k for v, k in mapping_dict.items() if v in marker_genes}
+    else:
+        # exclude special tokens from marker genes
+        special_tokens = ['<cls>', '<mask>', '<pad>', '<eos>']
+        marker_genes_ids = {
+            v: k for v, k in mapping_dict.items() if v not in special_tokens
+        }
+        # exclude all tokens starting with cls
+        marker_genes_ids = {
+            v: k for v, k in marker_genes_ids.items() if not v.startswith('cls')
+        }
     # filter for marker genes and swap key value
-    marker_genes_ids = {v: k for k, v in mapping_dict.items() if v in marker_genes}
+    # marker_genes_ids = {v: k for v, k in mapping_dict.items() if v in marker_genes}
     gene_embeddings_res = torch.zeros(
         gene_embeddings.shape[0],
         len(marker_genes_ids.keys()),
         gene_embeddings.shape[2],
         device=gene_embeddings.device,
+        dtype=gene_embeddings.dtype,
     )
     marker_genes_dict = {}
     for i, gene in enumerate(marker_genes_ids.keys()):
@@ -248,6 +608,7 @@ def return_gene_embeddings(
             cond_select_markers[0], cond_select_markers[1], :
         ]
         marker_genes_dict[gene] = i
+
     return gene_embeddings_res
 
 
@@ -257,8 +618,7 @@ def return_prediction_adata(
     marker_genes: dict,
     output_dir: str,
     file_name: str,
-    #gene_names: list,
-    gene_names: list = None,  # Hardcoded or provided gene names
+    gene_names: list,
 ):
     """
     Description:
@@ -301,57 +661,23 @@ def return_prediction_adata(
     true_counts = torch.cat(test_dict['true_counts'], dim=0).numpy()
     # adata.obsm
     cls_embeddings = torch.cat(test_dict['cls_embeddings'], dim=0).numpy()
-    ##gene_embeddings = torch.cat(test_dict['gene_embeddings'], dim=0).numpy()
-    cos_similarity = torch.cat(test_dict['cosine_similarities'], dim=0).numpy()
-    #print('cos_similarity shape', cos_similarity.shape[0])
-    cell_idx = torch.cat(test_dict['cell_idx'], dim=0).numpy()  # Concatenate cell_idx values
-    #print('cell_idx shape', cell_idx.shape[0])
-    cos_similarity_df = pd.DataFrame(cos_similarity, columns=marker_genes.keys())
-    cos_similarity_df.index = cell_idx  # Set cell_idx as index for cos_similarity_df
-    #print('cos_similarity_df before removing', cos_similarity_df)
-    # remove all non-expressed genes
-    cos_similarity_df = cos_similarity_df.loc[:, (cos_similarity_df != 0).any(axis=0)]
-    #print('cos_similarity_df after removing', cos_similarity_df)
-    
-    # Save cosine similarity DataFrame to a separate file
-    cos_similarity_csv_path = os.path.join(output_dir, 'cos_similarity_df_time_6h_cell_ind_e15_10k.csv')
-    cos_similarity_df.to_csv(cos_similarity_csv_path, index=True)
-    #print(f'Saved cos_similarity_df to {cos_similarity_csv_path}')
-
-    # add condition from additional obs_key
-    # to cos_similarity_df to rank cosine similarity
-    # cos_similarity_df_ = cos_similarity_df.replace(0, np.nan)
-    # print(cos_similarity_df_)
-    # cos_similarity_df_['diff_state'] = np.concatenate(test_dict['diff_state'])
-
-    # # group by diff_state and calculate non-zero mean cosine similarity
-    # cos_similarity_df_mean = cos_similarity_df_.groupby(
-    #     'diff_state'
-    #     ).mean(numeric_only=True)
-
-    # print(cos_similarity_df_mean)
-    # raise
     # adata.obs
-    # Filter gene_names to include only non-zero genes in cos_similarity_df
-    #non_zero_genes = cos_similarity_df.columns.tolist()
-    #gene_names = [gene for gene in gene_names if gene in non_zero_genes]
-    #print('Number of non-zero expressed genes_names:', len(gene_names))
-
-
     obs_dict = {obs: np.concatenate(test_dict[obs]) for obs in obs_key}
     test_obs = pd.DataFrame(obs_dict)
-    #print('obs', test_obs)
-    #print('gene_names', gene_names)
     # adata.var
     if gene_names is not None:
         test_var = pd.DataFrame(gene_names, columns=['gene_name'])
-        print('gene_name', test_var)
-    
-    #print('true_counts', true_counts)
-    #print('test_obs', test_obs)
-    #print('var',test_var if gene_names is not None else None)
-    #print('cls', cls_embeddings)
-    #print('marker_genes', marker_genes)
+    if len(test_dict['gene_embeddings']) > 0:
+        gene_embeddings_dict = {}
+        gene_embeddings = torch.cat(test_dict['gene_embeddings'], dim=0).numpy()
+        gene_embeddings_dict['gene_embeddings'] = gene_embeddings
+
+        # save as pkl file for downstream analysis
+        with open(
+            os.path.join(output_dir, f'{file_name}_gene_embeddings.pkl'), 'wb'
+        ) as f:
+            pickle.dump(gene_embeddings_dict, f)
+        del gene_embeddings_dict
 
     adata = ad.AnnData(
         X=true_counts,
@@ -359,21 +685,202 @@ def return_prediction_adata(
         var=test_var if gene_names is not None else None,
         obsm={
             'cls_embeddings': cls_embeddings,
-            # 'gene_embeddings': gene_embeddings,
         },
         uns={
-            'marker_genes': marker_genes,
+            'marker_genes': marker_genes if marker_genes is not None else {},
         },
     )
-    #print('adata', adata)
-    #if gene_names is not None:
     if gene_names is not None:
         adata.var_names = adata.var['gene_name']
         adata.var = adata.var.drop(columns=['gene_name'])
-    ##cos_similarity_df.index = adata.obs.index
-    ##adata.obsm['cosine_similarity'] = cos_similarity_df
-    adata.write_h5ad(os.path.join(output_dir, file_name))
+    adata.write_h5ad(os.path.join(output_dir, f'{file_name}.h5ad'))
+    if len(test_dict['cosine_similarities']) > 0:
+        # save cosine similarity separately due to large size
+        cos_similarity = torch.cat(test_dict['cosine_similarities'], dim=0).numpy()
+        cos_similarity_df = pd.DataFrame(cos_similarity, columns=marker_genes.keys())
+        # remove all non-expressed genes
+        cos_similarity_df = cos_similarity_df.loc[:, cos_similarity_df.sum() != 0]
+        # save as csv file for downstream analysis
+        cos_similarity_df.index = adata.obs.index
+        cos_similarity_df.to_csv(
+            os.path.join(output_dir, f'{file_name}_cosine_similarity.csv')
+        )
+    # adata.obsm['cosine_similarity'] = cos_similarity_df
     print('End saving embeddings---')
+
+
+def return_generation_adata(
+    test_dict: dict,
+    obs_key: list,
+    output_dir: str,
+    file_name: str,
+):
+    """
+    Description:
+    ------------
+    This function returns anndata object with predicted counts.
+    Parameters:
+    -----------
+    test_dict: `dict`
+        Dictionary containing test data.
+    obs_key: `list`
+        List of keys to include in adata.obs.
+    output_dir: `str`
+        Directory to save files in
+    file_name: `str`
+        Filename for output file
+    Returns:
+    --------
+    adata: `~anndata.AnnData` \n
+        Annotated data matrix with predicted counts. \n
+        - adata.X: `~numpy.ndarray`
+            Array of predicted counts.
+        - adata.obs: `~pandas.DataFrame`
+            DataFrame of obs_key.
+        - adata.var: `~pandas.DataFrame`
+            DataFrame of gene names.
+        - adata.obsm: `dict`
+            'cls_embeddings': `~numpy.ndarray`
+                Array of cls embeddings.
+        - adata.layers: `~numpy.ndarray`
+                Array of true counts.
+    """
+    print('---Generating anndata')
+    # TODO: clean up no if and else needed
+    # adata.X
+    pred_counts = (test_dict['pred_counts']).numpy()
+    # adata.layers['counts']
+    true_counts = (test_dict['true_counts']).numpy()
+    # adata.obsm
+    cls_embeddings = (test_dict['cls_embeddings']).numpy()
+    # adata.obs
+    obs_dict = {obs: (test_dict[obs]).numpy() for obs in obs_key}
+    test_obs = pd.DataFrame(obs_dict)
+
+    # create adata
+    adata = ad.AnnData(
+        X=pred_counts,
+        obs=test_obs,
+        obsm={'cls_embeddings': cls_embeddings},
+        layers={'counts': true_counts},
+    )
+    adata.write_h5ad(os.path.join(output_dir, file_name))
+    print('anndata generation completed---')
+    return adata
+
+
+def return_perturbation_adata(
+    test_dict: dict,
+    obs_key: list,
+    output_dir: str,
+    marker_genes: dict,
+    file_name: str,
+    mode: Literal['inference', 'generate'],
+) -> ad.AnnData:
+    """
+    Description:
+    ------------
+    This function returns anndata object with predicted counts.
+    Parameters:
+    -----------
+    test_dict: `dict`
+        Dictionary containing test data.
+    obs_key: `list`
+        List of keys to include in adata.obs.
+    output_dir: `str`
+        Directory to save files in
+    file_name: `str`
+        Filename for output file
+    mode: `Literal['inference', 'generation']`
+        Mode of test_step.
+    Returns:
+    --------
+    adata: `~anndata.AnnData` \n
+        Annotated data matrix with predicted counts. \n
+        - adata.X: `~pd.DataFrame`
+            pd.DataFrame of cosine similarities between true and predicted embeddings.
+        - adata.obs: `~pandas.DataFrame`
+            DataFrame of obs_key.
+        - adata.var: `~pandas.DataFrame`
+            DataFrame of gene names.
+        - adata.obsm: `dict`
+            'cosine_similarity': `~pandas.DataFrame`
+                DataFrame of cosine similarities between true and predicted embeddings.
+            'rouge_scores': `~pandas.DataFrame`
+                DataFrame of rouge scores between true and predicted sequences.
+        - adata.layers: `~numpy.ndarray`
+                Array of true counts.
+    """
+    print('---Generating anndata')
+    # adata.obsm
+    true_cls = torch.cat(test_dict['true_cls']).numpy()
+    perturbed_cls = torch.cat(test_dict['perturbed_cls']).numpy()
+    cls_cos_similarity = torch.cat(test_dict['cls_cosine_similarity']).numpy()
+    mean_cos_similarity = torch.cat(test_dict['mean_cosine_similarity']).numpy()
+    # delta_probs = torch.cat(test_dict['delta_probs']).numpy()
+    # wasserstein_distance = np.concatenate(test_dict['wasserstein_distance'])
+    # adata.varm
+    gene_cos_similarity = torch.cat(test_dict['gene_cosine_similarity'], dim=0).numpy()
+    cos_similarity_df = pd.DataFrame(gene_cos_similarity, columns=marker_genes.keys())
+    # cos_similarity_df = cos_similarity_df.T
+    # cos_similarity_df.columns = cos_similarity_df.columns.astype(str)
+    # delta_gene_probs = torch.cat(test_dict['delta_gene_probs'], dim=0).numpy()
+    # delta_gene_probs_df = pd.DataFrame(
+    #     delta_gene_probs, columns=marker_genes.keys()
+    # )
+
+    # create dataframe to store perturbation results
+    obsm_dict = {
+        'true_cls': true_cls,
+        'perturbed_cls': perturbed_cls,
+        'cls_cos_similarity': cls_cos_similarity,
+        'mean_cos_similarity': mean_cos_similarity,
+        # 'delta_probs': delta_probs,
+    }
+    # varm_dict = {
+    #     'gene_cos_similarity': cos_similarity_df,
+    #     # 'delta_gene_probs': delta_gene_probs_df.T,
+    # }
+
+    if mode == 'generate':
+        rouge_dict = {
+            key: np.concatenate(test_dict[key])
+            for key in test_dict.keys()
+            if key.startswith('rouge')
+        }
+        obsm_dict.update(rouge_dict)
+
+    # adata.obs
+    obs_dict = {obs: np.concatenate(test_dict[obs]) for obs in obs_key}
+    test_obs = pd.DataFrame(obs_dict)
+    # create adata
+    adata = ad.AnnData(
+        obs=test_obs,
+        obsm=obsm_dict,
+        var=pd.DataFrame(marker_genes.keys(), columns=['gene_name']),
+    )
+    adata.var_names = adata.var['gene_name']
+    adata.X = cos_similarity_df
+    adata.write_h5ad(os.path.join(output_dir, file_name))
+    print('anndata generation completed---')
+    return adata
+
+
+def scale_pca(adata):
+    '''
+    Description
+    ------------
+    This function returns scaled PCA on log-normalised counts
+    to compute EMD and MMD.
+    '''
+    sc.pp.normalize_total(adata, target_sum=1e4)
+    sc.pp.log1p(adata)
+    sc.tl.pca(adata, svd_solver='arpack', n_comps=5)
+    # scale PCA
+    coords = adata.obsm['X_pca']
+    coords = (coords - coords.mean(axis=0)) / coords.std(axis=0)
+    adata.obsm['X_pca_scaled'] = coords
+    return adata
 
 
 def modify_ckpt_state_dict(
@@ -421,7 +928,7 @@ def pearson(
         pred_counts = pred_counts - ctrl_counts
         true_counts = true_counts - ctrl_counts
     num_outputs = true_counts.shape[0]
-    pearson = PearsonCorrCoef(num_outputs=num_outputs).to('cuda')
+    pearson = PearsonCorrCoef(num_outputs=num_outputs).to(pred_counts.device)
     pred_counts_t = pred_counts.transpose(0, 1)
     true_counts_t = true_counts.transpose(0, 1)
     pearson_output = pearson(pred_counts_t, true_counts_t)
@@ -519,7 +1026,6 @@ def tokenid_mapping(
         zip(special_tokens_dict.values(), special_tokens_dict.values())
     )
     row_id = row_id[~np.isin(row_id, list(special_tokens_dict.values()))]
-    print(row_id)
     adata_subset.var['row_id'] = row_id
     # create dictionary to map token_id to row_id
     token_id_to_row_id_dict = dict(
@@ -579,6 +1085,16 @@ def subset_adata(adata, cell_pairings):
     return adata_subsetted
 
 
+# Code adapte from lucidrains/muse-maskgit-pytorch
+# https://github.com/lucidrains/muse-maskgit-pytorch/blob/main/muse_maskgit_pytorch/muse_maskgit_pytorch.py#L26 # noqa
+
+# generation helper functions
+
+
+def uniform(shape, min=0, max=1, device=None):
+    return torch.zeros(shape, device=device).float().uniform_(min, max)
+
+
 def noise_schedule(
     ratio,
     method,
@@ -605,15 +1121,6 @@ def noise_schedule(
     return mask_ratio
 
 
-def prob_mask_like(shape, prob, device=None):
-    if prob == 1:
-        return torch.ones(shape, device=device, dtype=torch.bool)
-    elif prob == 0:
-        return torch.zeros(shape, device=device, dtype=torch.bool)
-    else:
-        return uniform(shape, device=device) < prob
-
-
 def top_k(logits, thres=0.9):
     k = math.ceil((1 - thres) * logits.shape[-1])
     val, ind = logits.topk(k, dim=-1)
@@ -634,10 +1141,6 @@ def gumbel_noise(t):
 
 def gumbel_sample(t, temperature=1.0, dim=-1):
     return ((t / max(temperature, 1e-10)) + gumbel_noise(t)).argmax(dim=dim)
-
-
-def uniform(shape, min=0, max=1, device=None):
-    return torch.zeros(shape, device=device).float().uniform_(min, max)
 
 
 def mean_nonpadding_embs(embs, pad, dim=1):
@@ -668,7 +1171,7 @@ def mean_nonpadding_embs(embs, pad, dim=1):
     return mean_embs
 
 
-def generate_pad(tgt):
+def generate_pad(input_ids):
     '''
     Description:
     ------------
@@ -678,15 +1181,16 @@ def generate_pad(tgt):
     where pad token is True and non-pad token is False.
     Can also be applied to generate source padding mask.
     '''
-    tgt_pad = tgt == 0
-    return tgt_pad
+    pad = input_ids == 0
+    return pad
 
 
 def pairing_src_to_tgt_cells(
     adata_subset: sc.AnnData,
-    pairing_mode: str,
+    pairing_mode: Literal['random', 'stratified'],
     pairing_obs: str,
     seed_no: int = 42,
+    mapping_df=Optional[pd.DataFrame],
 ):
     """
     Description:
@@ -716,42 +1220,70 @@ def pairing_src_to_tgt_cells(
     cell_pairings: Dict[str, List[str]] = {}
     max_rows = 0
     max_reference_time = None
-    for adata_tmp in adata_subset_.obs[pairing_obs].unique():
-        adata_dict[adata_tmp] = adata_subset_.obs.loc[
-            adata_subset_.obs[pairing_obs] == adata_tmp, :
+    for category in adata_subset_.obs[pairing_obs].unique():
+        adata_dict[category] = adata_subset_.obs.loc[
+            adata_subset_.obs[pairing_obs] == category, :
         ]
-        cell_pairings[adata_tmp] = []
-        # Check if this adata_tmp has more rows than the current maximum
-        if len(adata_dict[adata_tmp]) > max_rows:
-            max_rows = len(adata_dict[adata_tmp])
-            max_reference_time = adata_tmp
+        cell_pairings[category] = []
+        # Check if this category has more rows than the current maximum
+        if len(adata_dict[category]) > max_rows:
+            max_rows = len(adata_dict[category])
+            max_reference_time = category
     if pairing_mode == 'stratified':
-        # Drop donors if they do not have Cell_type, Donor in all the Time_points
+        # drop Donor if they do not have Cell_type, Donor in all the Time_points
         adata_grouped = adata_subset_.obs[
-            adata_subset_.obs.groupby(['cell_type_cellgen_harm'])[pairing_obs].transform(
+            adata_subset_.obs.groupby(['Donor', 'Cell_type'])[pairing_obs].transform(
                 'nunique'
             )
             == 4
         ]
-        # Downsample normal cells to 40%
-        resting_cells = adata_grouped.loc[adata_grouped[pairing_obs] == 'normal', :]
-        downsampled_resting_cells = resting_cells.sample(
-            frac=0.4, random_state=seed_no
-        )        
-        grouped = adata_grouped.groupby(['cell_type_cellgen_harm'])
+        dropped_donors = (
+            adata_subset.obs['Donor'].nunique() - adata_grouped['Donor'].nunique()
+        )
+        print(f'dropped {dropped_donors} donors')
+        resting_cells = adata_grouped.loc[adata_grouped[pairing_obs] == '0h', :]
+        grouped = adata_grouped.groupby(['Donor', 'Cell_type'])
         for idx, resting in tqdm.tqdm(
-            downsampled_resting_cells.iterrows(), total=downsampled_resting_cells.shape[0]
+            resting_cells.iterrows(), total=resting_cells.shape[0]
         ):
-            # Get the indices of the other time points for the same cell type and donor
-            group = grouped.get_group((resting['cell_type_cellgen_harm']))
-            indices_16h = group[group[pairing_obs] == '90m_LPS'].index
-            indices_40h = group[group[pairing_obs] == '6h_LPS'].index
-            indices_5d = group[group[pairing_obs] == '10h_LPS'].index
-            cell_pairings['normal'].append(idx)
-            cell_pairings['90m_LPS'].append(np.random.choice(indices_16h))
-            cell_pairings['6h_LPS'].append(np.random.choice(indices_40h))
-            cell_pairings['10h_LPS'].append(np.random.choice(indices_5d))
+            # get the indices of the other time points for the same cell type and donor
+            group = grouped.get_group((resting['Donor'], resting['Cell_type']))
+            indices_16h = group[group[pairing_obs] == '16h'].index
+            indices_40h = group[group[pairing_obs] == '40h'].index
+            indices_5d = group[group[pairing_obs] == '5d'].index
+            cell_pairings['0h'].append(idx)
+            cell_pairings['16h'].append(np.random.choice(indices_16h))
+            cell_pairings['40h'].append(np.random.choice(indices_40h))
+            cell_pairings['5d'].append(np.random.choice(indices_5d))
+    if pairing_mode == 'mapping':
+        for condition in mapping_df[max_reference_time].unique():
+            mapping_df_ = mapping_df[mapping_df[max_reference_time] == condition]
+            adata_ = adata_dict[max_reference_time]
+            cell_to_pair = adata_['celltype_v2'][
+                adata_['celltype_v2'].isin(mapping_df_[max_reference_time])
+            ].index
+            cell_pairings[max_reference_time].extend(cell_to_pair)
+            n_cells_to_pair = len(cell_to_pair)
 
+            for stage, adata_ in adata_dict.items():
+                if stage != max_reference_time:
+                    cell_to_pair = adata_['celltype_v2'][
+                        adata_['celltype_v2'].isin(mapping_df_[stage])
+                    ].index
+                    # only sample with replacement if needed
+                    if n_cells_to_pair > cell_to_pair.shape[0]:
+                        sample_with_replacement = True
+                    else:
+                        sample_with_replacement = False
+                    cell_pairings[stage].extend(
+                        np.random.choice(
+                            cell_to_pair,
+                            n_cells_to_pair,
+                            replace=sample_with_replacement,
+                        )
+                    )
+                else:
+                    continue
     elif pairing_mode == 'random':
         if max_reference_time is not None:
             # randomly sample from each time point
@@ -768,7 +1300,7 @@ def pairing_src_to_tgt_cells(
     return cell_pairings
 
 
-def label_encoder(adata, encoder, condition_key=None):
+def label_encoder(adata, encoder, condition_key=None) -> np.ndarray:
     """
     Description:
     ------------
@@ -814,8 +1346,6 @@ def label_encoder(adata, encoder, condition_key=None):
 def randomised_split(adata: ad.AnnData, train_prop: float, test_prop: float, seed: int):
     n_cells = adata.shape[0]
     indices = np.arange(n_cells)
-    print(len(indices))
-
     # define train, val and test size
     train_size = np.round(train_prop * n_cells).astype(int)
     test_size = np.round(test_prop * n_cells).astype(int)
@@ -990,23 +1520,31 @@ class non_sorted_EmbExtractor(EmbExtractor):
                 return embs_df
 
 
-class WarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
-    def __init__(self, optimizer: Optimizer, warmup_steps: int, initial_lr: float, end_lr: float, last_epoch: int = -1):
-        self.warmup_steps = warmup_steps
-        self.initial_lr = initial_lr
-        self.end_lr = end_lr
-        super(WarmupScheduler, self).__init__(optimizer, last_epoch)
+# class WarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
+#     def __init__(
+#             self,
+#             optimizer: Optimizer,
+#             warmup_steps: int,
+#             initial_lr: float,
+#             end_lr: float,
+#             last_epoch: int = -1
+#             ):
+#         self.warmup_steps = warmup_steps
+#         self.initial_lr = initial_lr
+#         self.end_lr = end_lr
+#         super(WarmupScheduler, self).__init__(optimizer, last_epoch)
 
-    def get_lr(self):
-        current_step = self.last_epoch + 1
+#     def get_lr(self):
+#         current_step = self.last_epoch + 1
 
-        if current_step < self.warmup_steps:
-            # Linear warmup phase: increase from initial_lr to end_lr
-            warmup_lr = [
-                self.initial_lr + (self.end_lr - self.initial_lr) * (current_step / self.warmup_steps) 
-                for _ in self.base_lrs
-            ]
-            return warmup_lr
-        else:
-            # After warmup, maintain the end_lr (constant LR)
-            return [self.end_lr for _ in self.base_lrs]
+#         if current_step < self.warmup_steps:
+#             # Linear warmup phase: increase from initial_lr to end_lr
+#             warmup_lr = [
+#                 self.initial_lr +
+#                 (self.end_lr - self.initial_lr) * (current_step / self.warmup_steps)
+#                 for _ in self.base_lrs
+#             ]
+#             return warmup_lr
+#         else:
+#             # After warmup, maintain the end_lr (constant LR)
+#             return [self.end_lr for _ in self.base_lrs]
