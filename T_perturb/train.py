@@ -8,26 +8,31 @@ from datetime import datetime
 import pytorch_lightning as pl
 import scanpy as sc
 import torch
-from datasets import load_from_disk
+from datasets import concatenate_datasets, load_from_disk
+
+# from pytorch_lightning import Callback
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.strategies import DDPStrategy
-##from pytorch_lightning.strategies import DeepSpeedStrategy
+from pytorch_lightning.strategies import DDPStrategy  # ,DeepSpeedStrategy
 
-
-from T_perturb.Dataloaders.datamodule import CellGenDataModule
-from T_perturb.Model.trainer import CellGenTrainer, CountDecoderTrainer
+from T_perturb.Dataloaders.datamodule import CytoMeisterDataModule
+from T_perturb.Model.trainer import CountDecoderTrainer, CytoMeisterTrainer
 from T_perturb.src.utils import (
-    label_encoder,
+    condition_for_count_loss,
     randomised_split,
     read_dataset_files,
     str2bool,
     stratified_split,
 )
 
-if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
+# from pytorch_lightning.utilities.deepspeed import (
+#     convert_zero_checkpoint_to_fp32_state_dict,
+# )
+
+
+if os.getcwd().split('/')[-1] != 't_generative':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team361/av13/T_perturb/T_perturb/')
+    os.chdir('/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb')
     print('Changed working directory to root of repository')
 
 
@@ -61,7 +66,13 @@ def get_args():
         choices=['random', 'stratified', 'unseen_cond'],
         help='splitting mode',
     )
-    parser.add_argument('--split_obs', type=str, default='Donor')
+    parser.add_argument(
+        '--split_obs',
+        type=str,
+        nargs='+',
+        # default=['Donor', 'Cell_type'],
+        default=['cell_type_cellgen_harm'],
+    )
     parser.add_argument('--split_value', type=str, default='D351')
     parser.add_argument(
         '--ckpt_masking_path',
@@ -115,14 +126,8 @@ def get_args():
         # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
         default='./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl',
     )
-    parser.add_argument(
-        '--encoder_path',
-        type=str,
-        # default='',
-        # default='/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output1/checkpoints/20250107_1024_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=08.ckpt'
-        default='/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output2/checkpoints/20250110_2325_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=01.ckpt',
-    )
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
+    parser.add_argument('--num_node', type=int, default=1)
     parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle')
     parser.add_argument(
         '--epochs', type=int, default=100, help='number of training epochs'
@@ -149,7 +154,7 @@ def get_args():
     parser.add_argument(
         '--cellgen_lr', type=float, default=0.0001, help='learning rate'
     )
-    
+
     parser.add_argument('--count_lr', type=float, default=0.00005, help='learning rate')
     parser.add_argument('--cellgen_wd', type=float, default=0.0001, help='weight decay')
     parser.add_argument('--count_wd', type=float, default=0.01, help='weight decay')
@@ -160,7 +165,7 @@ def get_args():
 
     parser.add_argument('--mlm_prob', type=float, default=0.15, help='mlm probability')
     parser.add_argument(
-        '--n_workers', type=int, default=32, help='number of workers'
+        '--n_workers', type=int, default=8, help='number of workers'
     )  # 64
     parser.add_argument(
         '--loss_mode', type=str, default='zinb', help='loss mode [zinb, nb, mse]'
@@ -188,12 +193,18 @@ def get_args():
         '--conditions_combined', type=list, default=None, help='conditions combined'
     )
     parser.add_argument(
-        '--time_steps',
-        # type=list,
+        '--pred_tps',
         nargs='+',
         type=int,
         default=[1, 3],
-        help='time steps to include during training',
+        help='time steps which are predicted',
+    )
+    parser.add_argument(
+        '--context_tps',
+        nargs='+',
+        type=int,
+        default=None,
+        help='context time steps in cross-attn',
     )
     parser.add_argument(
         '--var_list',
@@ -201,8 +212,15 @@ def get_args():
         nargs='+',
         type=str,
         # default=['Time_point'],
-        default=['cell_type_cellgen_harm', 'donor_cellgen_harm', 'time_after_LPS'],
+        # default=['Cell_population', 'Cell_type', 'Time_point', 'Donor'],
+        default=['cell_type_cellgen_harm', 'donor_cellgen_harm' ,'time_after_LPS'],
         help='List of variables to keep in the dataset',
+    )
+    parser.add_argument(
+        '--cond_list',
+        nargs='+',
+        type=str,
+        help='List of variables to form condition tokens',
     )
     parser.add_argument(
         '--train_prop',
@@ -215,21 +233,28 @@ def get_args():
         default=0.1,
     )
     parser.add_argument(
-        '--mode',
+        '--encoder',
         default='GF_frozen',
         type=str,
         choices=[
             'GF_fine_tuned',
             'GF_frozen',
             'Transformer_encoder',
+            'scmaskgit',
         ],
         help='mode of encoder',
     )
     parser.add_argument(
-        '--positional_encoding',
+        '--encoder_path',
+        default=None,
+        type=str,
+        help='mode of encoder',
+    )
+    parser.add_argument(
+        '--pos_encoding_mode',
         type=str,
         default='time_pos_sin',
-        choices=['time_pos_sin', 'comb_sin', 'sin_learnt'],
+        choices=['time_pos_sin', 'comb_sin', 'sin_learnt', 'time_pos_learnt'],
         help='positional encoding',
     )
     parser.add_argument(
@@ -243,6 +268,12 @@ def get_args():
         type=str2bool,
         default=True,
         help='context mode for timepoints',
+    )
+    parser.add_argument(
+        '--d_model',
+        type=int,
+        default=512,
+        help='embedding dimension',
     )
     args = parser.parse_args()
     return args
@@ -267,7 +298,7 @@ def main() -> None:
 
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
-    tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.time_steps[0]}']
+    tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.pred_tps[0]}']
     if args.split:
         if args.splitting_mode == 'stratified':
             # start preprocessing to avoid loading anndata into datamodule
@@ -275,10 +306,9 @@ def main() -> None:
                 tgt_adata=tgt_adata_tmp,
                 train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
                 test_prop=args.test_prop,
-                groups=['cell_type_cellgen_harm', 'donor_cellgen_harm'],
+                groups=args.split_obs,
                 seed=args.seed,
             )
-
             # check that indices are unique to avoid data leakage
             assert len(set(train_indices).intersection(val_indices)) == 0
             assert len(set(train_indices).intersection(test_indices)) == 0
@@ -307,12 +337,12 @@ def main() -> None:
         train_indices = list(range(len(src_dataset)))
         val_indices = None
         test_indices = list(
-            range(len(tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}']))
+            range(len(tgt_datasets[f'tgt_dataset_t{args.pred_tps[0]}']))
         )
     # check if the train indices are the same for both adata and dataset
     subset_adata = tgt_adata_tmp[train_indices]
 
-    subset_dataset = tgt_datasets[f'tgt_dataset_t{args.time_steps[0]}'].select(
+    subset_dataset = tgt_datasets[f'tgt_dataset_t{args.pred_tps[0]}'].select(
         train_indices
     )
     assert (
@@ -329,129 +359,84 @@ def main() -> None:
 
     # ZINB count loss preprocessing
     # ----------------------------------------------------------------------------------
-
-    if args.condition_keys is None:
-        args.condition_keys = 'tmp_batch'
-        # create a mock vector if there are no batch effect
-        tgt_adata_tmp.obs[args.condition_keys] = 1
-
-    if isinstance(args.condition_keys, str):
-        condition_keys_ = [args.condition_keys]
-    else:
-        condition_keys_ = args.condition_keys
-
-    if args.conditions is None:
-        if args.condition_keys is not None:
-            conditions_ = {}
-            for cond in condition_keys_:
-                conditions_[cond] = tgt_adata_tmp.obs[cond].unique().tolist()
-        else:
-            conditions_ = {}
-    else:
-        conditions_ = args.conditions
-
-    if args.conditions_combined is None:
-        if len(condition_keys_) > 1:
-            tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[
-                args.condition_keys
-            ].apply(lambda x: '_'.join(x), axis=1)
-        else:
-            tgt_adata_tmp.obs['conditions_combined'] = tgt_adata_tmp.obs[
-                args.condition_keys
-            ]
-        conditions_combined_ = (
-            tgt_adata_tmp.obs['conditions_combined'].unique().tolist()
-        )
-    else:
-        conditions_combined_ = args.conditions_combined
-
-    condition_encodings = {
-        cond: {k: v for k, v in zip(conditions_[cond], range(len(conditions_[cond])))}
-        for cond in conditions_.keys()
-    }
-    conditions_combined_encodings = {
-        k: v for k, v in zip(conditions_combined_, range(len(conditions_combined_)))
-    }
-
-    if (condition_encodings is not None) and (condition_keys_ is not None):
-        conditions = [
-            label_encoder(
-                tgt_adata_tmp,
-                encoder=condition_encodings[condition_keys_[i]],
-                condition_key=condition_keys_[i],
-            )
-            for i in range(len(condition_encodings))
-        ]
-        conditions = torch.tensor(conditions, dtype=torch.long).T
-        conditions_combined = label_encoder(
+    if args.train_mode == 'count':
+        (
+            conditions,
+            condition_encodings,
+            conditions_combined,
+            conditions_,
+            condition_keys_,
+            conditions_combined_,
+        ) = condition_for_count_loss(
+            args.condition_keys,
+            args.conditions,
+            args.conditions_combined,
             tgt_adata_tmp,
-            encoder=conditions_combined_encodings,
-            condition_key='conditions_combined',
         )
-        conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
-
-    print('Data loaded and preprocessed.')
     # count number of unique timepoints
-    n_total_timepoints = len(tgt_adatas)
+    n_total_tps = len(tgt_adatas)
+
+    # create dictionnary of metadata for classifier-free guidance
+    token_no = args.tgt_vocab_size
+
+    # create full dataset to extract metadata for conditioning
+    dataset_list = [src_dataset]
+    for dataset in tgt_datasets.values():
+        dataset_list.append(dataset)
+    full_dataset = concatenate_datasets(dataset_list)
+    if args.cond_list is not None:
+        condition_dict = {}
+        for condition in args.cond_list:
+            condition_dict[condition] = {
+                cell_type: i + token_no
+                for i, cell_type in enumerate(full_dataset.unique(condition))
+            }
+            token_no += len(condition_dict[condition])
+    else:
+        condition_dict = None
 
     # Initialize model module
     # ----------------------------------------------------------------------------------
+    trainer_kwargs = {
+        'tgt_vocab_size': token_no + 50,  # add 50 for extra tokens
+        'd_model': args.d_model,
+        'num_heads': 8,
+        'num_layers': args.num_layers,
+        'd_ff': args.d_ff,
+        'max_seq_length': args.max_len + 100,
+        'mask_scheduler': args.mask_scheduler,
+        'pred_tps': args.pred_tps,
+        'context_tps': args.context_tps,
+        'n_total_tps': n_total_tps,
+        'encoder': args.encoder,
+        'output_dir': args.output_dir,
+        'pos_encoding_mode': args.pos_encoding_mode,
+        'encoder_path': args.encoder_path,
+        'condition_dict': condition_dict,
+    }
     if args.train_mode == 'masking':
-        pretrained_module = CellGenTrainer(
-            # tgt_vocab_size=1820,  # 704 for degs, 1820 for tokenised
-            tgt_vocab_size=args.tgt_vocab_size,  # max token id + 1 for padding
-            d_model=768,
-            num_heads=8,
-            num_layers=args.num_layers,
-            d_ff=args.d_ff,
-            max_seq_length=args.max_len + 100,
-            dropout=args.cellgen_dropout,
-            mlm_probability=args.mlm_prob,
-            weight_decay=args.cellgen_wd,
-            end_lr=args.cellgen_lr,
-            mask_scheduler=args.mask_scheduler,
-            # lr_scheduler_patience=5.0,
-            # lr_scheduler_factor=0.8,
-            time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
-            mapping_dict_path=args.mapping_dict_path,
-            output_dir=args.output_dir,
-            mode=args.mode,
-            context_mode=args.context_mode,
-            positional_encoding=args.positional_encoding,
-            encoder_path=args.encoder_path,
-        )
+        trainer_kwargs['dropout'] = args.cellgen_dropout
+        trainer_kwargs['mlm_probability'] = args.mlm_prob
+        trainer_kwargs['end_lr'] = args.cellgen_lr
+        trainer_kwargs['weight_decay'] = args.cellgen_wd
+        trainer_kwargs['mapping_dict_path'] = args.mapping_dict_path
+        trainer_kwargs['context_mode'] = args.context_mode
+        pretrained_module = CytoMeisterTrainer(**trainer_kwargs)
     elif args.train_mode == 'count':
-        decoder_module = CountDecoderTrainer(
-            ckpt_masking_path=args.ckpt_masking_path,
-            ckpt_count_path=None,
-            tgt_vocab_size=args.tgt_vocab_size,
-            d_model=768,
-            num_heads=8,
-            num_layers=args.num_layers,
-            d_ff=args.d_ff,
-            max_seq_length=args.max_len + 100,
-            loss_mode=args.loss_mode,
-            lr=args.count_lr,
-            weight_decay=args.count_wd,
-            # lr_scheduler_patience=5.0,
-            # lr_scheduler_factor=0.8,
-            conditions=conditions_,
-            conditions_combined=conditions_combined_,
-            dropout=args.count_dropout,
-            tgt_adata=tgt_adatas,
-            time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
-            temperature=args.temperature,
-            iterations=args.iterations,
-            mask_scheduler=args.mask_scheduler,
-            output_dir=args.output_dir,
-            mode=args.mode,
-            seed=args.seed,
-            n_genes=src_adata.shape[1],
-            context_mode=args.context_mode,
-            positional_encoding=args.positional_encoding,
-        )
+        trainer_kwargs['ckpt_masking_path'] = args.ckpt_masking_path
+        trainer_kwargs['ckpt_count_path'] = None
+        trainer_kwargs['loss_mode'] = args.loss_mode
+        trainer_kwargs['lr'] = args.count_lr
+        trainer_kwargs['weight_decay'] = args.count_wd
+        trainer_kwargs['mapping_dict_path'] = args.mapping_dict_path
+        trainer_kwargs['conditions'] = conditions_
+        trainer_kwargs['conditions_combined'] = conditions_combined_
+        trainer_kwargs['tgt_adata'] = tgt_adatas
+        trainer_kwargs['temperature'] = args.temperature
+        trainer_kwargs['iterations'] = args.iterations
+        trainer_kwargs['seed'] = args.seed
+        trainer_kwargs['n_genes'] = src_adata.shape[1]
+        decoder_module = CountDecoderTrainer(**trainer_kwargs)
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
     # Initialize data module
@@ -468,47 +453,34 @@ def main() -> None:
     # determine global batch size to account for multiple GPUs
     gpu_number = max(torch.cuda.device_count(), 1)
     per_gpu_batch_size = args.batch_size // gpu_number
+    data_module_kwargs = {
+        'src_dataset': src_dataset,
+        'tgt_datasets': tgt_datasets,
+        'batch_size': per_gpu_batch_size,
+        'num_workers': args.n_workers,
+        'shuffle': args.shuffle,
+        'max_len': args.max_len,
+        'split': args.split,
+        'train_indices': train_indices,
+        'val_indices': val_indices,
+        'test_indices': test_indices,
+        'pred_tps': args.pred_tps,
+        'context_tps': args.context_tps,
+        'n_total_tps': n_total_tps,
+        'var_list': args.var_list,
+    }
     if args.train_mode == 'masking':
-        data_module = CellGenDataModule(
-            src_dataset=src_dataset,
-            tgt_datasets=tgt_datasets,
-            src_counts=src_counts,  # TODO: do not pass counts in datamodule
-            tgt_counts_dict=tgt_counts_dict,
-            batch_size=per_gpu_batch_size,
-            num_workers=args.n_workers,
-            shuffle=args.shuffle,
-            max_len=args.max_len,
-            split=args.split,
-            train_indices=train_indices,
-            val_indices=val_indices,
-            test_indices=test_indices,
-            time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
-            var_list=args.var_list,
-        )
+        # TODO: Do not pass src into DataModule
+        data_module = CytoMeisterDataModule(**data_module_kwargs)
 
     elif args.train_mode == 'count':
-        data_module = CellGenDataModule(
-            src_dataset=src_dataset,
-            tgt_datasets=tgt_datasets,
-            src_counts=src_counts,
-            tgt_counts_dict=tgt_counts_dict,
-            batch_size=per_gpu_batch_size,
-            num_workers=args.n_workers,
-            shuffle=args.shuffle,
-            max_len=args.max_len,
-            condition_keys=condition_keys_,
-            condition_encodings=condition_encodings,
-            conditions=conditions,
-            conditions_combined=conditions_combined,
-            split=args.split,
-            train_indices=train_indices,
-            val_indices=val_indices,
-            test_indices=test_indices,
-            time_steps=args.time_steps,
-            total_time_steps=n_total_timepoints,
-            var_list=args.var_list,
-        )
+        data_module_kwargs['src_counts'] = src_counts
+        data_module_kwargs['tgt_counts_dict'] = tgt_counts_dict
+        data_module_kwargs['condition_keys'] = condition_keys_
+        data_module_kwargs['condition_encodings'] = condition_encodings
+        data_module_kwargs['conditions'] = conditions
+        data_module_kwargs['conditions_combined'] = conditions_combined
+        data_module = CytoMeisterDataModule(**data_module_kwargs)
     # Setup trainer
     # ----------------------------------------------------------------------------------
     run_id = datetime.now().strftime('%Y%m%d_%H%M_cellgen')
@@ -518,16 +490,16 @@ def main() -> None:
     # Define Callbacks
     # This callback always keeps a checkpoint of the best model according to
     # validation accuracy.
-    time_steps_str_ = [str(i) for i in args.time_steps]
+    time_steps_str_ = [str(i) for i in args.pred_tps]
     time_steps_str = '-'.join(time_steps_str_)
     if args.train_mode == 'masking':
         filename = (
             f'{run_id}_train_{args.train_mode}_lr_{args.cellgen_lr}'
             f'_wd_{args.cellgen_wd}_batch_{args.batch_size}_'
-            f'p{args.positional_encoding}_m_{args.mask_scheduler}'
+            f'p{args.pos_encoding_mode}_m_{args.mask_scheduler}'
             f'_tp_{time_steps_str}_s_{args.seed}'
         )
-        if args.split:
+        if val_indices:
             monitor_metric = 'val/perplexity'
         else:
             monitor_metric = 'train/perplexity'
@@ -537,9 +509,9 @@ def main() -> None:
             f'{run_id}_train_{args.train_mode}_lr_{args.count_lr}_wd_{args.count_wd}_'
             f'batch_{args.batch_size}_'
             f'{args.loss_mode}_tp_{time_steps_str}_s_'
-            f'{args.seed}_pos_{args.positional_encoding}_m_{args.mask_scheduler}'
+            f'{args.seed}_pos_{args.pos_encoding_mode}_m_{args.mask_scheduler}'
         )
-        if args.split:
+        if val_indices:
             monitor_metric = 'val/mse'
             mode = 'min'
         else:
@@ -557,21 +529,13 @@ def main() -> None:
         mode=mode,
     )
     # The tensorboard logger allows for monitoring the progress of training
-    # if torch.cuda.device_count() > 1:
-    #     # multi gpu training with group logging
-    #     wandb_logger = WandbLogger(
-    #         project='ttransformer',
-    #         name=f'{run_id}_{str(uuid.uuid4())[:6]}',
-    #         save_dir=args.log_dir,
-    #         log_model='True',
-    #     )  # noqa
-    # else:
-    #     wandb_logger = WandbLogger(
-    #         project='ttransformer',
-    #         name=f'{run_id}',
-    #         save_dir=args.log_dir,
-    #         log_model='True',
-    #     )  # noqa
+    # Configure WandbLogger with unique name for each run
+    run_name = (
+        f'{run_id}_{str(uuid.uuid4())[:6]}' if torch.cuda.device_count() > 1 else run_id
+    )
+    wandb_logger = WandbLogger(
+        project='ttransformer', name=run_name, save_dir=args.log_dir, log_model=True
+    )
 
     # In this simple example we just check if a GPU is available.
     # For training larger models in a distributed settings, this needs more care.
@@ -591,9 +555,12 @@ def main() -> None:
     )
     accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
     print('Using device {}.'.format(accelerator))
-    ##deepspeed_strategy = DeepSpeedStrategy(
-    ##    stage=2,
-    ##)
+    # deepspeed_strategy = DeepSpeedStrategy(
+    #     stage=2,
+    #     # offload_optimizer=True,
+    #     # offload_parameters=True,
+    # )
+
     # if torch.cuda.is_available():
     #     cuda_device_name = torch.cuda.get_device_name()
     # if ('A100' in cuda_device_name) or ('NVIDIA H100 80GB HBM' in cuda_device_name):
@@ -601,26 +568,70 @@ def main() -> None:
     #     precision = 'bf16-mixed'
     # else:
     #     precision = '16-mixed'
+    # # After each epoch, convert DeepSpeed checkpoint to FP32 and save
+    # class DeepSpeedCheckpointConverter(Callback):
+    #     def __init__(self, checkpoint_path, filename, save_interval=5):
+    #         super().__init__()
+    #         self.checkpoint_path = checkpoint_path
+    #         print(f'Checkpoint path: {checkpoint_path}')
+    #         self.filename = filename
+    #         print(f'Filename: {filename}')
+    #         self.save_interval = save_interval
 
+    #     def on_train_epoch_end(self, trainer, pl_module):
+    #         # Only save at specified intervals
+    #         if trainer.current_epoch % self.save_interval == 0:
+    #             # Try accessing DeepSpeed through pl_module
+    #             deepspeed_engine = getattr(pl_module, 'deepspeed', None)
+
+    #             if isinstance(trainer.strategy, DeepSpeedStrategy):
+    #                 # Define DeepSpeed checkpoint path
+    #                 deepspeed_epoch_checkpoint_path = os.path.join(
+    #                     self.checkpoint_path, f'epoch_{trainer.current_epoch:02d}'
+    #                 )
+
+    #                 # Save the checkpoint using DeepSpeed’s save_checkpoint method
+    #                 deepspeed_engine.save_checkpoint(deepspeed_epoch_checkpoint_path)
+    #                 print(
+    #                     f'DeepSpeed checkpoint saved at'
+    #                     f'{deepspeed_epoch_checkpoint_path}'
+    #                 )
+
+    #                 # Convert the DeepSpeed checkpoint to FP32 format
+    #                 fp32_state_dict = os.path.join(
+    #                     self.checkpoint_path,
+    #                     f'{self.filename}-epoch={trainer.current_epoch:02d}-fp32.pth',
+    #                 )
+    #                 convert_zero_checkpoint_to_fp32_state_dict(
+    #                     zero_checkpoint_path=deepspeed_epoch_checkpoint_path,
+    #                     output_path=fp32_state_dict,
+    #                 )
+    #                 print(f'FP32 checkpoint saved at {fp32_state_dict}')
+    #             else:
+    #                 print('DeepSpeed not initialized in pl_module')
+
+    # deepspeed_convert_ckpt = DeepSpeedCheckpointConverter(
+    #     checkpoint_path=checkpoint_path, filename=filename
+    # )
     # If the device is an A100, set the precision for matrix multiplication
-    ddp_strategy = DDPStrategy(find_unused_parameters=True)
+    ddp_strategy = DDPStrategy(find_unused_parameters=False)
+
     trainer = pl.Trainer(
-        # logger=wandb_logger,
+        logger=wandb_logger,
         callbacks=[
             TQDMProgressBar(refresh_rate=10),
-            checkpoint_callback,
             early_stop_callback,
+            checkpoint_callback,
         ],
+        # accumulate_grad_batches=10,
         max_epochs=args.epochs,
-        accelerator='auto',
+        accelerator=accelerator,
+        # precision=precision,
+        # gradient_clip_val=1.0,
         devices=-1 if torch.cuda.is_available() else 0,
-        strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto', ## changed to deepspeed_strategy
+        num_nodes=args.num_node,
+        strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
     )
-    print('Starting training...')
-    if os.getcwd().split('/')[-1] != 'T_perturb':  # Change to match your directory name
-        # set working directory to your new path
-        os.chdir('/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb')
-        print('Changed working directory to T_perturb')
 
     if args.train_mode == 'masking':
         # Finally, kick of the training process.
@@ -629,12 +640,21 @@ def main() -> None:
         trainer.fit(decoder_module, data_module)
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
-    # #collate deepzero checkpoint
+
+    # # #collate deepzero checkpoint
     # if torch.cuda.device_count() > 1:
-    #     save_path = f'./Model/checkpoints/{filename}'
+    #     checkpoint_path = os.path.join(
+    #         checkpoint_path,
+    #         f'{filename}-epoch={trainer.current_epoch}.ckpt'
+    #     )
+    #     print(f'Saving checkpoint to {checkpoint_path}')
+    # # check if checkpoint path exists
+    # if os.path.exists(checkpoint_path):
+
     #     convert_zero_checkpoint_to_fp32_state_dict(
-    #         save_path,
-    #         f'{save_path}.pt'
+    #         zero_checkpoint_path=checkpoint_path,
+    #         output_path=checkpoint_path,
+    #         tag='fp32'
     #     )
 
 
