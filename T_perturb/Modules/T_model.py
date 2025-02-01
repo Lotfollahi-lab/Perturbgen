@@ -18,6 +18,7 @@ from torch import einsum, nn
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from torch.nn.attention import SDPBackend, sdpa_kernel
 from torch.nn.functional import scaled_dot_product_attention
+import torch.nn.functional as F
 from transformers import BertForMaskedLM
 
 from T_perturb.src.utils import (
@@ -27,6 +28,7 @@ from T_perturb.src.utils import (
     noise_schedule,
     top_k,
     uniform,
+    prob_mask_like
 )
 
 # def drop_path(x, drop_prob: float = 0.0, training: bool = False):
@@ -667,6 +669,7 @@ class CytoMeister(nn.Module):
         return_attn: bool = False,
         pad_token: int = 0,
         context_mode: bool = True,
+        classifier_free_guidance: bool = True,
         context_tps: List[int] | None = None,
         encoder_path: str | None = None,
         condition_dict: Dict[str, Dict] | None = None,
@@ -786,6 +789,7 @@ class CytoMeister(nn.Module):
 
         self.pad_token = pad_token
         self.context_mode = context_mode
+        self.classifier_free_guidance = classifier_free_guidance
         self.mask_scheduler = mask_scheduler
         # self.condition_dict = condition_dict
         # if self.condition_dict is not None:
@@ -794,6 +798,14 @@ class CytoMeister(nn.Module):
         #         key: max(lst.values()) for key, lst in self.condition_dict.items()
         #     }
         #     cond_vocab_size = max(max_dict.values())
+        # classifier-free guidance
+        # add <null> token for uncoditional generation
+        if self.classifier_free_guidance:
+            condition_dict_ = condition_dict.copy()
+            condition_dict_['uncondition'] = {'<null>': 0}
+            print('Added "uncondition" to the condition_dict')
+            cond_vocab_size = sum(len(v) for v in condition_dict_.values())
+            self.cond_embedding = nn.Embedding(cond_vocab_size, d_model)
 
     def generate_mask(
         self,
@@ -978,19 +990,7 @@ class CytoMeister(nn.Module):
                 context_pad = torch.cat(context_pad_list, dim=1)
                 tgt_input_id = tgt_input_id_dict[f'tgt_input_ids_t{time_step}']
                 tgt_pad = tgt_pad_dict[f'tgt_pad_t{time_step}']
-
                 with torch.no_grad():
-                    # # ---classifier-free guidance---
-                    # if cond_dict is not None:
-                    #     cond_ids = cond_dict[time_step]
-                    #     # concatenate condition tokens with target tokens
-                    #     tgt_input_id = torch.cat(
-                    #         [cond_ids,
-                    #          tgt_input_id.clone()
-                    #          ], dim=1)
-                    #     # no padding for condition tokens
-                    #     cond_pad = torch.zeros_like(cond_ids, dtype=torch.bool)
-                    #     tgt_pad = torch.cat([cond_pad, tgt_pad.clone()], dim=1)
                     tgt_embedding = self.token_embedding(tgt_input_id)
                     dec_embedding = self.pos_embedding(
                         tgt_embedding, tgt_time_step=time_step
@@ -1010,6 +1010,30 @@ class CytoMeister(nn.Module):
         context_pad = torch.cat(context_pad_list, dim=1)
         return context_embedding, context_pad
 
+    def forward_with_cond_scale(self, cond_scale=0.0, *args, **kwargs):
+        # ---classifier-free guidance---
+        # run two fwd passes with the same time step
+        # one with conditional and one unconditional
+        random_tps = [np.random.choice(self.pred_tps)]
+
+        conditional_out = self.forward(
+            cond_drop_prob=0.0, tgt_time_step=random_tps[0], *args, **kwargs
+        )
+        unconditional_out = self.forward(
+            cond_drop_prob=1.0, tgt_time_step=random_tps[0], *args, **kwargs
+        )
+        if cond_scale == 1:
+            return conditional_out
+        elif cond_scale == 0:
+            return unconditional_out
+        else:
+            for t in conditional_out.keys():
+                null_logits = unconditional_out[t]['dec_logits']
+                logits = conditional_out[t]['dec_logits']
+                scaled_logits = null_logits + (logits - null_logits) * cond_scale
+                conditional_out[t]['dec_logits'] = scaled_logits
+            return conditional_out
+    
     def forward(
         self,
         src_input_id: torch.Tensor,
@@ -1019,6 +1043,7 @@ class CytoMeister(nn.Module):
         generate_id_dict: dict | None = None,
         generate_pad_dict: dict | None = None,
         cond_dict: torch.Tensor | None = None,
+        cond_drop_prob: float = 0.0,
     ):
         '''
         Description:
@@ -1068,6 +1093,9 @@ class CytoMeister(nn.Module):
                 # MASKGIT generation
                 tgt_input_id_dict = generate_id_dict
                 sorted_time_steps = [tgt_time_step]
+            else:
+                # classifier-free guidance
+                sorted_time_steps = [tgt_time_step]
         all_outputs = {}
         for tgt_time_step in sorted_time_steps:
             tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
@@ -1088,7 +1116,7 @@ class CytoMeister(nn.Module):
                     tgt_pad_dict=tgt_pad_dict,
                     cond_dict=cond_dict,
                 )
-
+            
             # # ---conditioning---
             # if cond_dict is not None:
             #     # add condition tokens to the target tokens for masking
@@ -1111,8 +1139,20 @@ class CytoMeister(nn.Module):
                 labels = None
 
             tgt_embedding = self.token_embedding(tgt_input_id)
-            dec_embedding = self.pos_embedding(tgt_embedding, tgt_time_step)
 
+            # ---classifier-free guidance---
+            if self.classifier_free_guidance:
+                cond_token_emb = self.cond_embedding(cond_dict)
+                cond_len = cond_token_emb.shape[1]
+                tgt_embedding = torch.cat([cond_token_emb, tgt_embedding], dim=1)
+                cond_pad = prob_mask_like(
+                    cond_dict.shape, cond_drop_prob, device=cond_dict.device
+                )
+                tgt_pad = torch.cat([cond_pad, tgt_pad], dim=1)
+                if labels is not None:
+                    # add -100 to ignore condition tokens in CE loss
+                    labels = F.pad(labels, (cond_len, 0), value=-100)
+            dec_embedding = self.pos_embedding(tgt_embedding, tgt_time_step)
             # does not include any context
             outputs = self.call_decoder(
                 enc_output=context_output if self.context_mode else enc_output,

@@ -69,6 +69,7 @@ class CytoMeisterTrainer(LightningModule):
     def __init__(
         self,
         tgt_vocab_size: int = 25000,
+        token_no: int = 25000, # number of tokens excluding conditions
         d_model: int = 256,
         num_heads: int = 8,
         num_layers: int = 1,
@@ -96,12 +97,13 @@ class CytoMeisterTrainer(LightningModule):
         encoder: str = 'GF_fine_tuned',
         mask_scheduler: str = 'cosine',
         context_mode: bool = True,
+        classifier_free_guidance: bool = True,
         pos_encoding_mode: Literal[
             'time_pos_sin', 'comb_sin', 'sin_learnt'
         ] = 'time_pos_sin',
         precision: Literal['high', 'medium'] = 'medium',
         tokenid_to_rowid_path: str = (
-            'T_perturb/T_perturb/pp/res/hspc/tokenid_to_rowid_hvg.pkl'
+            'T_perturb/pp/res/hspc/tokenid_to_rowid_hvg.pkl'
         ),
         encoder_path: str | None = None,
         deg_pkl_path: str | None = None,
@@ -126,6 +128,7 @@ class CytoMeisterTrainer(LightningModule):
         self.pred_tps = pred_tps
         self.n_total_tps = n_total_tps
         self.context_tps = context_tps
+        self.token_no = token_no
 
         self.transformer = CytoMeister(
             tgt_vocab_size=tgt_vocab_size,
@@ -145,6 +148,7 @@ class CytoMeisterTrainer(LightningModule):
             pos_encoding_mode=pos_encoding_mode,
             return_attn=return_attn,
             context_mode=context_mode,
+            classifier_free_guidance=classifier_free_guidance,
             condition_dict=condition_dict,
         )
         self.masking_loss = nn.CrossEntropyLoss()
@@ -183,6 +187,7 @@ class CytoMeisterTrainer(LightningModule):
         self.tgt_vocab_size = tgt_vocab_size
 
         self.context_mode = context_mode
+        self.classifier_free_guidance = classifier_free_guidance
 
         self.test_dict: Dict[str, List[Any]] = {
             'true_counts': [],
@@ -288,7 +293,7 @@ class CytoMeisterTrainer(LightningModule):
             time_points = self.total_tps
         else:
             time_points = self.pred_tps
-        tgt_input_id_dict = concat_cond_tokens(
+        tgt_input_id_dict, cond_ids = concat_cond_tokens(
             time_points=time_points,
             condition_dict=self.condition_dict,
             batch=batch,
@@ -296,11 +301,19 @@ class CytoMeisterTrainer(LightningModule):
         if generate:
             outputs = None
         else:
-            outputs = self.transformer(
-                src_input_id=batch['src_input_ids'],
-                tgt_input_id_dict=tgt_input_id_dict,
-                not_masked=self.return_embeddings,
-            )
+            if self.classifier_free_guidance:
+                outputs = self.transformer.forward_with_cond_scale(
+                    src_input_id=batch['src_input_ids'],
+                    tgt_input_id_dict=tgt_input_id_dict,
+                    not_masked=self.return_embeddings,
+                    cond_dict=cond_ids-self.token_no,
+                )
+            else:
+                outputs = self.transformer(
+                    src_input_id=batch['src_input_ids'],
+                    tgt_input_id_dict=tgt_input_id_dict,
+                    not_masked=self.return_embeddings,
+                )
         return outputs, tgt_input_id_dict
 
     def configure_optimizers(self):
