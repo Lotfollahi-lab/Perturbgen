@@ -30,11 +30,11 @@ from T_perturb.src.utils import (
 # )
 
 
-if os.getcwd().split('/')[-1] != 't_generative':
-    # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative')
-    print('Changed working directory to root of repository')
-
+# if os.getcwd().split('/')[-1] != 't_generative':
+#     # set working directory to root of repository
+#     os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative')
+#     print('Changed working directory to root of repository')
+os.chdir('/lustre/scratch126/cellgen/team205/ha11/new/perturb/T_perturb')
 
 def get_args():
     """Get command line arguments."""
@@ -211,8 +211,8 @@ def get_args():
         nargs='+',
         type=str,
         # default=['Time_point'],
-        default=['Cell_population', 'Cell_type', 'Time_point', 'Donor'],
-        # default=['celltype_v2', 'sex', 'phase', 'tissue', 'diff_state'],
+        # default=['Cell_population', 'Cell_type', 'Time_point', 'Donor'],
+        default=['celltype_v2', 'sex', 'phase', 'tissue', 'diff_state'],
         help='List of variables to keep in the dataset',
     )
     parser.add_argument(
@@ -265,7 +265,7 @@ def get_args():
     parser.add_argument(
         '--context_mode',
         type=str2bool,
-        default=True,
+        default=False,
         help='context mode for timepoints',
     )
     parser.add_argument(
@@ -273,6 +273,12 @@ def get_args():
         type=int,
         default=512,
         help='embedding dimension',
+    )
+    parser.add_argument(
+        '--classifier_free_guidance',
+        type=str2bool,
+        default=True,
+        help='context mode for timepoints',
     )
     args = parser.parse_args()
     return args
@@ -284,6 +290,7 @@ def main() -> None:
     # torch.backends.cudnn.deterministic = True
     """Run training."""
     args = get_args()
+    print(args)
     # PyTorch Lightning allows to set all necessary seeds in one function call.
     pl.seed_everything(args.seed)
     torch.manual_seed(args.seed)
@@ -398,6 +405,7 @@ def main() -> None:
     # Initialize model module
     # ----------------------------------------------------------------------------------
     trainer_kwargs = {
+        'token_no': args.tgt_vocab_size,
         'tgt_vocab_size': token_no + 50,  # add 50 for extra tokens
         'd_model': args.d_model,
         'num_heads': 8,
@@ -423,6 +431,7 @@ def main() -> None:
         trainer_kwargs['weight_decay'] = args.cellgen_wd
         trainer_kwargs['mapping_dict_path'] = args.mapping_dict_path
         trainer_kwargs['context_mode'] = args.context_mode
+        trainer_kwargs['classifier_free_guidance'] = args.classifier_free_guidance
         pretrained_module = CytoMeisterTrainer(**trainer_kwargs)
     elif args.train_mode == 'count':
         trainer_kwargs['ckpt_masking_path'] = args.ckpt_masking_path
