@@ -128,6 +128,10 @@ def get_args():
     )
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--num_node', type=int, default=1)
+    parser.add_argument('--use_positional_encoding', type=str2bool, default=False)
+    parser.add_argument('--layer_norm', type=str2bool, default=False)
+    parser.add_argument('--dropout', type=float, default=0.1)
+
     parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle')
     parser.add_argument(
         '--epochs', type=int, default=100, help='number of training epochs'
@@ -183,7 +187,7 @@ def get_args():
     parser.add_argument(
         '--mask_scheduler',
         type=str,
-        default='pow',
+        default='cosine',
         help='mask scheduler [cosine, exp, pow]',
     )
     parser.add_argument('--temperature', type=float, default=1.5, help='temperature')
@@ -196,7 +200,7 @@ def get_args():
         '--pred_tps',
         nargs='+',
         type=int,
-        default=[1, 3],
+        default=[1, 2, 3],
         help='time steps which are predicted',
     )
     parser.add_argument(
@@ -270,6 +274,18 @@ def get_args():
         help='context mode for timepoints',
     )
     parser.add_argument(
+        '--d_condc',
+        type=int,
+        default=1,
+        help='One Hot dimension',
+    )
+    parser.add_argument(
+        '--d_condt',
+        type=int,
+        default=1,
+        help='One Hot dimension',
+    )
+    parser.add_argument(
         '--d_model',
         type=int,
         default=512,
@@ -335,6 +351,7 @@ def main() -> None:
     else:
         # return all the indices
         train_indices = list(range(len(src_dataset)))
+        #train_indices = list(range(100))
         val_indices = None
         test_indices = list(
             range(len(tgt_datasets[f'tgt_dataset_t{args.pred_tps[0]}']))
@@ -345,9 +362,10 @@ def main() -> None:
     subset_dataset = tgt_datasets[f'tgt_dataset_t{args.pred_tps[0]}'].select(
         train_indices
     )
-    assert (
-        subset_adata.obs['cell_pairing_index'].tolist()
-        == subset_dataset['cell_pairing_index']
+    adata_idx = subset_adata.obs['index'].tolist()
+    dataset_idx = list(map(str, subset_dataset['cell_pairing_index']))
+    assert adata_idx == dataset_idx, (
+        'Cell pairing indices do not match ' 'between AnnData and Dataset objects'
     )
     if args.loss_mode == 'mse':
         # log normalize data only for mse loss
@@ -394,6 +412,7 @@ def main() -> None:
             token_no += len(condition_dict[condition])
     else:
         condition_dict = None
+    print('prepare condition dict', condition_dict)
 
     # Initialize model module
     # ----------------------------------------------------------------------------------
@@ -413,6 +432,8 @@ def main() -> None:
         'pos_encoding_mode': args.pos_encoding_mode,
         'encoder_path': args.encoder_path,
         'condition_dict': condition_dict,
+        'temperature': args.temperature,
+        'iterations': args.iterations,
     }
     if args.train_mode == 'masking':
         trainer_kwargs['dropout'] = args.cellgen_dropout
@@ -426,6 +447,9 @@ def main() -> None:
         trainer_kwargs['ckpt_masking_path'] = args.ckpt_masking_path
         trainer_kwargs['ckpt_count_path'] = None
         trainer_kwargs['loss_mode'] = args.loss_mode
+        trainer_kwargs['d_condc'] = args.d_condc
+        trainer_kwargs['d_condt'] = args.d_condt
+        trainer_kwargs['layer_norm'] = args.layer_norm
         trainer_kwargs['lr'] = args.count_lr
         trainer_kwargs['weight_decay'] = args.count_wd
         trainer_kwargs['mapping_dict_path'] = args.mapping_dict_path
@@ -436,6 +460,9 @@ def main() -> None:
         trainer_kwargs['iterations'] = args.iterations
         trainer_kwargs['seed'] = args.seed
         trainer_kwargs['n_genes'] = src_adata.shape[1]
+        trainer_kwargs['dropout'] = args.dropout
+        trainer_kwargs['use_positional_encoding'] = args.use_positional_encoding
+        trainer_kwargs['seed'] = args.seed
         decoder_module = CountDecoderTrainer(**trainer_kwargs)
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
@@ -499,7 +526,7 @@ def main() -> None:
             f'p{args.pos_encoding_mode}_m_{args.mask_scheduler}'
             f'_tp_{time_steps_str}_s_{args.seed}'
         )
-        if val_indices:
+        if val_indices is not None:
             monitor_metric = 'val/perplexity'
         else:
             monitor_metric = 'train/perplexity'
@@ -523,7 +550,7 @@ def main() -> None:
         dirpath=checkpoint_path,
         filename=f'{filename}-' + '{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=1,
+        every_n_epochs=4,
         verbose=True,
         monitor=monitor_metric,
         mode=mode,
@@ -534,7 +561,7 @@ def main() -> None:
         f'{run_id}_{str(uuid.uuid4())[:6]}' if torch.cuda.device_count() > 1 else run_id
     )
     wandb_logger = WandbLogger(
-        project='ttransformer', name=run_name, save_dir=args.log_dir, log_model=True
+        project='ttransformer', name=run_name, save_dir=args.log_dir, log_model=False
     )
 
     # In this simple example we just check if a GPU is available.
@@ -614,7 +641,7 @@ def main() -> None:
     #     checkpoint_path=checkpoint_path, filename=filename
     # )
     # If the device is an A100, set the precision for matrix multiplication
-    ddp_strategy = DDPStrategy(find_unused_parameters=False)
+    ddp_strategy = DDPStrategy(find_unused_parameters=True)
 
     trainer = pl.Trainer(
         logger=wandb_logger,
