@@ -23,5 +23,5 @@ echo "--- Start computing model"
 
 # python3 $cwd/train.py \
 python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb/Perturb/val.py \
---config T_perturb/T_perturb/configs/eval/HSPC/overexpress_tgt_inference_perturbation.yaml
+--config T_perturb/T_perturb/configs/eval/HSPC/mask_src_inference_perturbation.yaml
  echo "--- Completed perturbation"

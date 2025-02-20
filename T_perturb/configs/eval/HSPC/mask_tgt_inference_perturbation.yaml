@@ -26,10 +26,8 @@ trainer:
   pos_encoding_mode: 'time_pos_sin'
   return_attn: false
   perturbation_mode: 'mask'
-  # genes_to_perturb:
-  #   - 'DNTT'
-  tokens_to_perturb:
-    - 3981
+  genes_to_perturb:
+    - 'DNTT'
   validation_mode: 'inference'
   perturbation_sequence:
     - 'tgt'

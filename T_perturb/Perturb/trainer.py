@@ -37,9 +37,7 @@ class PerturberTrainer(CytoMeisterTrainer):
         perturbation_mode: Literal['mask', 'pad', 'delete', 'overexpress']
         | None = None,
         perturbation_sequence: Literal['src', 'tgt'] | None = None,
-        tokenid_to_rowid_path: str = (
-            'T_perturb/T_perturb/pp/res/hspc/tokenid_to_rowid_hvg.pkl'
-        ),
+        tokenid_to_rowid_path: str | None = None,
         # gene_module_list: List[str] | None = None,
         # num_of_background_genes: int | None = None,
         *args,
@@ -111,26 +109,38 @@ class PerturberTrainer(CytoMeisterTrainer):
             special_tokens = [k for k, v in rowid_to_gene.items() if v.startswith('<')]
             self.special_tokens = special_tokens
         # dictionary to map gene names to row ids in src
-        with open(
-            tokenid_to_rowid_path,
-            'rb',
-        ) as f:
-            tokenid_to_rowid = pickle.load(f)
-            rowid_to_tokenid = {v: k for k, v in tokenid_to_rowid.items()}
-            # map back rowid to original tokenid
-            gene_to_srcid = {
-                k: rowid_to_tokenid[gene_to_rowid[k]]
-                for k in gene_to_rowid
-                if gene_to_rowid[k] in rowid_to_tokenid
-            }
-
+        if tokenid_to_rowid_path is not None:
+            with open(
+                tokenid_to_rowid_path,
+                'rb',
+            ) as f:
+                tokenid_to_rowid = pickle.load(f)
+                rowid_to_tokenid = {v: k for k, v in tokenid_to_rowid.items()}
+                # map back rowid to original tokenid
+                gene_to_srcid = {
+                    k: rowid_to_tokenid[gene_to_rowid[k]]
+                    for k in gene_to_rowid
+                    if gene_to_rowid[k] in rowid_to_tokenid
+                }
+        else:
+            gene_to_srcid = None
         if perturbation_sequence is not None:
             if 'src' in perturbation_sequence:
                 tgt_pert_tokens = None
                 self.tgt_pert_tokens = tgt_pert_tokens
                 if genes_to_perturb is not None:
-                    src_pert_tokens = [gene_to_srcid[gene] for gene in genes_to_perturb]
-                    src_pert_tokens = torch.tensor(src_pert_tokens, dtype=torch.long)
+                    if gene_to_srcid is not None:
+                        src_pert_tokens = [
+                            gene_to_srcid[gene] for gene in genes_to_perturb
+                        ]
+                        src_pert_tokens = torch.tensor(
+                            src_pert_tokens, dtype=torch.long
+                        )
+                    else:
+                        raise ValueError(
+                            'Please specify the tokenid_to_rowid_path path '
+                            'to map the perturbation token'
+                        )
                 elif src_tokens_to_perturb is not None:
                     src_pert_tokens = torch.tensor(
                         src_tokens_to_perturb, dtype=torch.long
