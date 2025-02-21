@@ -92,7 +92,6 @@ class CytoMeisterTrainer(LightningModule):
         iterations: int = 18,
         sequence_length: int = 2048,
         return_rouge_score: bool = True,
-        return_true_embs: bool = True,
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         encoder: str = 'GF_fine_tuned',
         mask_scheduler: str = 'cosine',
@@ -127,20 +126,7 @@ class CytoMeisterTrainer(LightningModule):
         self.pred_tps = pred_tps
         self.n_total_tps = n_total_tps
         self.context_tps = context_tps
-        gene_to_rowid: Dict[Any, Any] | None = {}
-        if mapping_dict_path is not None:
-            with open(
-                mapping_dict_path,
-                'rb',
-            ) as f:
-                mapping_dict = pickle.load(f)
-                # swap key and value
-                mapping_dict = {v: k for k, v in mapping_dict.items()}
-                gene_to_rowid = mapping_dict
-        else:
-            gene_to_rowid = None
 
-        self.gene_to_rowid = gene_to_rowid
         self.transformer = CytoMeister(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
@@ -160,7 +146,6 @@ class CytoMeisterTrainer(LightningModule):
             return_attn=return_attn,
             context_mode=context_mode,
             condition_dict=condition_dict,
-            gene_to_rowid=gene_to_rowid,
         )
         self.masking_loss = nn.CrossEntropyLoss()
 
@@ -171,7 +156,18 @@ class CytoMeisterTrainer(LightningModule):
         self.warmup_epochs = warmup_epochs
         self.perplexity = Perplexity(ignore_index=-100)
         self.mse = MeanSquaredError()
-
+        if mapping_dict_path is not None:
+            with open(
+                mapping_dict_path,
+                'rb',
+            ) as f:
+                gene_to_rowid = pickle.load(f)
+                # swap key and value
+                self.gene_to_rowid: Dict[Any, Any] | None = {
+                    v: k for k, v in gene_to_rowid.items()
+                }
+        else:
+            self.gene_to_rowid = None
         with open(
             tokenid_to_rowid_path,
             'rb',
@@ -189,7 +185,6 @@ class CytoMeisterTrainer(LightningModule):
         self.context_mode = context_mode
 
         self.test_dict: Dict[str, List[Any]] = {
-            'true_embeddings': [],
             'true_counts': [],
             'cls_embeddings': [],
             'cosine_similarities': [],
@@ -253,7 +248,6 @@ class CytoMeisterTrainer(LightningModule):
 
         # generation parameters
         self.return_rouge_score = return_rouge_score
-        self.return_true_embs = return_true_embs
         self.temperature = temperature
         self.iterations = iterations
         self.sequence_length = sequence_length
@@ -297,9 +291,10 @@ class CytoMeisterTrainer(LightningModule):
                 time_step=i,
                 condition_dict=self.condition_dict,
             )
-            tgt_input_id_ = batch[f'tgt_input_ids_t{i}']
+            tgt_input_id_ = batch[f'tgt_input_ids_t{i}'].clone()
             tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
             tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
+
         if generate:
             outputs = None
         else:
@@ -453,10 +448,6 @@ class CytoMeisterTrainer(LightningModule):
         else:
             cond_length = 0
         if self.generate:
-            outputs, tgt_input_id_dict = self.forward(
-                batch,
-                generate=self.generate,
-            )
             decoder_kwargs = {
                 'src_input_id': batch['src_input_ids'],
                 'tgt_input_id_dict': tgt_input_id_dict,
@@ -475,13 +466,12 @@ class CytoMeisterTrainer(LightningModule):
 
         for t in self.pred_tps:
             token_ids = tgt_input_id_dict[f'tgt_input_ids_t{t}']
-            gene_embeddings = outputs[t]['dec_embedding'][:, cond_length:, :]
-            mean_embedding = outputs[t]['mean_embedding']
+
             if self.return_gene_embs:
                 # take the non zero mean of the gene embeddings
                 gene_embeddings = return_gene_embeddings(
                     # marker_genes=marker_genes,
-                    gene_embeddings=gene_embeddings,
+                    gene_embeddings=outputs[t]['dec_embedding'][:, cond_length:, :],
                     mapping_dict=(
                         self.gene_to_rowid if self.gene_to_rowid is not None else None
                     ),
@@ -525,10 +515,7 @@ class CytoMeisterTrainer(LightningModule):
             )
             if self.return_embeddings:
                 # 1. compute cosine similarity
-                cos_similarity = compute_cos_similarity(
-                    gene_embeddings=gene_embeddings,
-                    mean_embedding=mean_embedding,
-                )
+                cos_similarity = compute_cos_similarity(outputs=outputs, time_step=t)
                 # 2. map cosine similarity to corresponding genes
                 marker_cos_similarity, marker_genes_dict = map_results_to_genes(
                     res=cos_similarity,
@@ -573,16 +560,6 @@ class CytoMeisterTrainer(LightningModule):
             # self.test_dict['gene_embeddings'].append(gene_embeddings)
             # cosine similarity
             if self.generate:
-                if self.return_true_embs:
-                    true_outputs, _ = self.forward(
-                        batch,
-                        generate=False,
-                    )
-                    true_embs = true_outputs[t]['mean_embedding'].detach().cpu()
-                    true_embs = true_embs[dupl_outside_batch]
-                    true_embs = true_embs[dupl_within_batch]
-                    self.test_dict['true_embeddings'].append(true_embs)
-
                 if self.return_rouge_score:
                     pred_ids = (
                         tgt_input_id_dict[f'tgt_input_ids_t{t}'].detach().cpu().numpy()
@@ -603,7 +580,7 @@ class CytoMeisterTrainer(LightningModule):
                     )
                     self.test_dict = test_dict
             true_counts = batch[f'tgt_counts_t{t}'].detach().cpu()
-            cls_embeddings = mean_embedding.detach().cpu()
+            cls_embeddings = outputs[t]['mean_embedding'].detach().cpu()
             combined_batch = batch['combined_batch'].detach().cpu()
             # remove duplicates
             true_counts = true_counts[dupl_outside_batch]
@@ -640,7 +617,6 @@ class CytoMeisterTrainer(LightningModule):
                 output_dir=self.output_dir,
                 file_name=f'{self.date}_self_attn_weights',
             )
-            # TODO: exclude condition tokens
             aggregate_attn_weights(
                 attn_weights=cross_attn_weights,
                 tgt_gene_names=tgt_gene_order,
@@ -725,9 +701,6 @@ class CountDecoderTrainer(LightningModule):
         precision: Literal['high', 'medium'] = 'medium',
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         encoder: str = 'GF_fine_tuned',
-        mapping_dict_path: str = (
-            './T_perturb/Geneformer/geneformer/' 'token_dictionary_gc95M.pkl'
-        ),
         seed: int = 42,
         n_genes: int = 25426,
         pos_encoding_mode: Literal[
@@ -755,14 +728,6 @@ class CountDecoderTrainer(LightningModule):
         # only set precision for GPU
 
         set_matmul_precision_for_device(precision)
-        if mapping_dict_path is not None:
-            with open(
-                mapping_dict_path,
-                'rb',
-            ) as f:
-                ensembl_to_token_id = pickle.load(f)
-        # change to token_id to gene name
-        self.token_id_to_ensembl = {v: k for k, v in ensembl_to_token_id.items()}
         self.pretrained_model = CytoMeister(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
@@ -779,7 +744,7 @@ class CountDecoderTrainer(LightningModule):
             condition_dict=condition_dict,
         )
         self.pos_encoding_mode = pos_encoding_mode
-        # load PETRA checkpoint
+        # load CellMeister checkpoint
         if ckpt_masking_path is not None:
             checkpoint = torch.load(ckpt_masking_path, map_location='cpu')
             state_dict_ = modify_ckpt_state_dict(checkpoint, 'transformer.')
@@ -892,9 +857,11 @@ class CountDecoderTrainer(LightningModule):
                 time_step=i,
                 condition_dict=self.condition_dict,
             )
-            tgt_input_id_ = batch[f'tgt_input_ids_t{i}']
+            tgt_input_id_ = batch[f'tgt_input_ids_t{i}'].clone()
             tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
             tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
+            print(tgt_input_id_dict)
+            raise
         if generate:
             outputs = None
         else:
@@ -1036,63 +1003,6 @@ class CountDecoderTrainer(LightningModule):
         mean_mse = total_mse / len(time_steps)
         return mean_mse, res_dict
 
-    def map_token_to_ensembl(self, val):
-        return self.token_id_to_ensembl.get(
-            val, val
-        )  # Return mapped value, or original if not in dict
-
-    # def compute_rouge_score(
-    #     self,
-    #     pred_ids: np.ndarray,
-    #     tgt_ids: np.ndarray,
-    #     rouge_len_list: list[int],
-    #     max_seq_length: int,
-    #     test_dict: dict[str, list],
-    # ) -> tuple[dict[str, list[Any]], dict[Any, Any]]:
-    #     rouge_score = {}
-    #     pred_ids = pred_ids.astype(object)
-    #     pred_ids = pred_ids[:, 1:]  # exclude task token
-    #     tgt_ids = tgt_ids.astype(object)
-    #     special_tokens = np.array([0, 1, 2, 3])
-    #     pred_ids[np.isin(pred_ids, special_tokens)] = ''
-    #     tgt_ids[np.isin(tgt_ids, special_tokens)] = ''
-    #     # convert all int to str
-    #     pred_ids_ = pred_ids.astype(str)
-    #     tgt_ids_ = tgt_ids.astype(str)
-    #     # # Vectorize the function to apply to the entire matrix
-    #     # vectorized_map = np.vectorize(self.map_token_to_ensembl)
-    #     # # TODO: rewrite the function without mapping dict
-    #     # # Apply the mapping
-    #     # pred_ids_ = vectorized_map(pred_ids)
-    #     # tgt_ids_ = vectorized_map(tgt_ids)
-    #     for seq_len in rouge_len_list:
-    #         if max_seq_length > seq_len:
-    #             pred_genes_short = pred_ids_[:, :seq_len]
-    #             true_genes_short = tgt_ids_[:, :seq_len]
-    #         else:
-    #             pred_genes_short = pred_ids_
-    #             true_genes_short = tgt_ids_
-    #         pred_ids_str = np.apply_along_axis(
-    #             lambda row: ' '.join(row), axis=1, arr=pred_genes_short
-    #         )
-    #         tgt_ids_str = np.apply_along_axis(
-    #             lambda row: ' '.join(row), axis=1, arr=true_genes_short
-    #         )
-    #         # remove all the trailing spaces
-    #         pred_ids_str = np.array([' '.join(s.split()) for s in pred_ids_str])
-    #         tgt_ids_str = np.array([' '.join(s.split()) for s in tgt_ids_str])
-    #         # create a list of strings
-    #         pred_ids_str = pred_ids_str.tolist()
-    #         tgt_ids_str = tgt_ids_str.tolist()
-    #         # compute rouge score
-    #         rouge_score = self.rouge.compute(
-    #             predictions=pred_ids_str,
-    #             references=tgt_ids_str,
-    #             rouge_types=['rouge1'],
-    #         )
-    #         test_dict[f'rouge1_{seq_len}'].append(rouge_score['rouge1'])
-    #     return test_dict, rouge_score
-
     def training_step(self, batch, *args, **kwargs):
         outputs, _ = self.forward(batch)
         count_loss, pred_counts_dict = self.compute_count_loss(outputs, batch)
@@ -1198,7 +1108,6 @@ class CountDecoderTrainer(LightningModule):
             batch,
             generate=self.generate,
         )
-
         if self.condition_dict is not None:
             cond_length = len(self.condition_dict)
 

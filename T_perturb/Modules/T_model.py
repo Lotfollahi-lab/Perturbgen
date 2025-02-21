@@ -1009,7 +1009,7 @@ class CytoMeister(nn.Module):
                         dec_embedding=dec_embedding,
                         tgt_pad=tgt_pad,
                         labels=None,
-                        tgt_input_id_dict=None,
+                        tgt_input_id=None,
                     )
                     context_embs_list.append(dec_outputs['dec_embedding'])
                     context_pad_list.append(tgt_pad)

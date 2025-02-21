@@ -902,8 +902,8 @@ def return_perturbation_adata(
     """
     print('---Generating anndata')
     # adata.obsm
-    # true_cls = torch.cat(test_dict['true_cls']).numpy()
-    # perturbed_cls = torch.cat(test_dict['perturbed_cls']).numpy()
+    true_cls = torch.cat(test_dict['true_cls']).numpy()
+    perturbed_cls = torch.cat(test_dict['perturbed_cls']).numpy()
     # cls_cos_similarity = torch.cat(test_dict['cls_cosine_similarity']).numpy()
     mean_cos_similarity = torch.cat(test_dict['mean_cosine_similarity']).numpy()
     # delta_probs = torch.cat(test_dict['delta_probs']).numpy()
@@ -920,8 +920,8 @@ def return_perturbation_adata(
 
     # create dataframe to store perturbation results
     obsm_dict = {
-        # 'true_cls': true_cls,
-        # 'perturbed_cls': perturbed_cls,
+        'true_cls': true_cls,
+        'perturbed_cls': perturbed_cls,
         # 'cls_cos_similarity': cls_cos_similarity,
         'mean_cos_similarity': mean_cos_similarity,
         # 'delta_probs': delta_probs,
