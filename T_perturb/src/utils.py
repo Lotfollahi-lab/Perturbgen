@@ -198,6 +198,39 @@ def condition_for_count_loss(
     )
 
 
+def get_idx_for_filtering(
+    dataset: DatasetDict,
+    condition: list[str],
+    variable: str,
+):
+    return [i for i, val in enumerate(dataset[variable]) if val in condition]
+
+
+def concat_cond_tokens(
+    batch: dict,
+    time_step: int,
+    condition_dict: dict[str, dict] | None = None,
+):
+    tgt_input_ids = batch[f'tgt_input_ids_t{time_step}']
+    device = tgt_input_ids.device
+    batch_size = tgt_input_ids.shape[0]
+    if condition_dict is not None:
+        cond_ids = torch.zeros(
+            (batch_size, len(condition_dict)), dtype=torch.long, device=device
+        )
+        for j, condition in enumerate(condition_dict.keys()):
+            condition_tokens = [
+                condition_dict[condition][id]
+                for id in batch[f'{condition}_t{time_step}']
+            ]
+            # j+1 to skip time token
+            cond_ids[:, j] = torch.tensor(
+                condition_tokens, dtype=torch.long, device=device
+            )
+
+    return cond_ids
+
+
 def compute_rouge_score(
     rouge,
     pred_ids: np.ndarray,
@@ -205,16 +238,18 @@ def compute_rouge_score(
     rouge_len_list: list[int],
     max_seq_length: int,
     test_dict: dict[str, list],
+    cond_length: int | None = None,
 ) -> dict[str, list[float]]:
     # Convert predictions and targets to object type for string replacement
     pred_ids = pred_ids.astype(object)
     tgt_ids = tgt_ids.astype(object)
 
-    # Exclude task token (assumed to be the first token)
-    pred_ids = pred_ids[:, 1:]
+    # # Exclude task token (assumed to be the first token)
+    pred_ids = pred_ids[:, cond_length:]
 
     # Define special tokens to remove (e.g., 0, 1, 2, 3)
     special_tokens = np.array([0, 1, 2, 3])
+
     pred_ids[np.isin(pred_ids, special_tokens)] = ''
     tgt_ids[np.isin(tgt_ids, special_tokens)] = ''
 
@@ -241,11 +276,14 @@ def compute_rouge_score(
 
         # Remove extra spaces
         pred_ids_str = np.array([' '.join(s.split()) for s in pred_ids_str])
+        pred_ids_str = pred_ids_str.tolist()
         tgt_ids_str = np.array([' '.join(s.split()) for s in tgt_ids_str])
+        tgt_ids_str = tgt_ids_str.tolist()
+
         # Compute ROUGE score for the entire batch at once
         rouge_result = rouge.compute(
-            predictions=pred_ids_str.tolist(),
-            references=tgt_ids_str.tolist(),
+            predictions=pred_ids_str,
+            references=tgt_ids_str,
             rouge_types=['rouge1'],
             use_aggregator=False,
         )
@@ -258,8 +296,8 @@ def compute_rouge_score(
 
 
 def compute_cos_similarity(
-    outputs: dict,
-    time_step: int,
+    gene_embeddings: torch.tensor,
+    mean_embedding: torch.tensor,
 ):
     """
     Description:
@@ -267,30 +305,22 @@ def compute_cos_similarity(
     This function computes cosine similarity between cls and gene embeddings.
     Parameters:
     -----------
-    outputs: `dict`
-        Dictionary containing outputs from the model.
-    time_step: `int`
-        Time step to compute cosine similarity.
-    all_time_steps: `list[int]`
-        List of all time steps.
+    gene_embeddings: `torch.tensor`
+        Tensor of gene embeddings.
+    mean_embedding: `torch.tensor`
+        Tensor of mean aggregated cls embeddings.
     Returns:
     --------
     cos_similarity: `torch.tensor`
         Tensor of cosine similarity between cls and gene embeddings.
-    cls_embeddings: `torch.tensor`
-    gene_embeddings: `torch.tensor`
     """
-    # get cls position and dec_embedding (index = time_step-1)
-    dec_embedding = outputs[time_step]['dec_embedding']
-    cls_embeddings = outputs[time_step]['mean_embedding']
-    # exclude cls token from gene embeddings
-    gene_embeddings = dec_embedding[:, 1:, :]
     cos_similarity = []
+    # iterate over batch/cell dimension
     for i in range(gene_embeddings.shape[0]):
         # gene level cosine similarity
         cos_similarity_ = cosine_similarity(
-            cls_embeddings[i],
-            dec_embedding[i, :, :],
+            mean_embedding[i],
+            gene_embeddings[i, :, :],
             dim=1,
         )
         cos_similarity.append(cos_similarity_)
@@ -553,6 +583,62 @@ def aggregate_attn_weights(
     attn_weights_df.to_csv(os.path.join(output_dir, f'{file_name}.csv'))
 
 
+def exclude_special_tokens(
+    mapping_dict: dict,
+    marker_genes: list[str] | None = None,
+):
+    if marker_genes is not None:
+        marker_genes_ids = {v: k for v, k in mapping_dict.items() if v in marker_genes}
+    else:
+        special_tokens = ['<cls>', '<mask>', '<pad>', '<eos>']
+        marker_genes_ids = {
+            v: k for v, k in mapping_dict.items() if v not in special_tokens
+        }
+        # exclude all tokens starting with cls
+        marker_genes_ids = {
+            v: k for v, k in marker_genes_ids.items() if not v.startswith('cls')
+        }
+    return marker_genes_ids
+
+
+def mask_duplicates_across_batches(
+    aggregate_cell_idx: np.array,
+    cell_idx: np.array,
+):
+    if len(aggregate_cell_idx) == 0:
+        return (
+            np.ones(len(cell_idx), dtype=bool),
+            cell_idx,
+        )
+    else:
+        intersect = np.intersect1d(cell_idx, aggregate_cell_idx)
+        if len(intersect) > 0:
+            mask = np.isin(cell_idx, intersect)
+            inv_mask = ~mask
+            cell_idx = cell_idx[inv_mask]
+            # invert mask to exclude duplicates
+            return inv_mask, cell_idx
+        else:
+            return (
+                np.ones(len(cell_idx), dtype=bool),
+                cell_idx,
+            )
+
+
+def mask_duplicates_within_batches(
+    cell_idx: np.array,
+):
+    if len(set(cell_idx)) < len(cell_idx):
+        _, first_indices = np.unique(cell_idx, return_index=True)
+        # Create a mask where the first occurrence of each element is True
+        mask = np.zeros(len(cell_idx), dtype=bool)
+        mask[first_indices] = True
+
+        return mask, cell_idx[mask]
+    else:
+        return (np.ones(len(cell_idx), dtype=bool), cell_idx)
+
+
 def return_gene_embeddings(
     gene_embeddings: torch.tensor,
     mapping_dict: Dict,
@@ -577,18 +663,7 @@ def return_gene_embeddings(
     --------
     gene_embeddings_res: `torch.tensor`
     """
-    if marker_genes is not None:
-        marker_genes_ids = {v: k for v, k in mapping_dict.items() if v in marker_genes}
-    else:
-        # exclude special tokens from marker genes
-        special_tokens = ['<cls>', '<mask>', '<pad>', '<eos>']
-        marker_genes_ids = {
-            v: k for v, k in mapping_dict.items() if v not in special_tokens
-        }
-        # exclude all tokens starting with cls
-        marker_genes_ids = {
-            v: k for v, k in marker_genes_ids.items() if not v.startswith('cls')
-        }
+    marker_genes_ids = exclude_special_tokens(mapping_dict, marker_genes)
     # filter for marker genes and swap key value
     # marker_genes_ids = {v: k for v, k in mapping_dict.items() if v in marker_genes}
     gene_embeddings_res = torch.zeros(
@@ -619,6 +694,7 @@ def return_prediction_adata(
     output_dir: str,
     file_name: str,
     gene_names: list,
+    sum_gene_embs: dict | None = None,
 ):
     """
     Description:
@@ -667,17 +743,17 @@ def return_prediction_adata(
     # adata.var
     if gene_names is not None:
         test_var = pd.DataFrame(gene_names, columns=['gene_name'])
-    if len(test_dict['gene_embeddings']) > 0:
-        gene_embeddings_dict = {}
-        gene_embeddings = torch.cat(test_dict['gene_embeddings'], dim=0).numpy()
-        gene_embeddings_dict['gene_embeddings'] = gene_embeddings
+    # if len(test_dict['gene_embeddings']) > 0:
+    #     gene_embeddings_dict = {}
+    #     gene_embeddings = torch.cat(test_dict['gene_embeddings'], dim=0).numpy()
+    #     gene_embeddings_dict['gene_embeddings'] = gene_embeddings
 
-        # save as pkl file for downstream analysis
-        with open(
-            os.path.join(output_dir, f'{file_name}_gene_embeddings.pkl'), 'wb'
-        ) as f:
-            pickle.dump(gene_embeddings_dict, f)
-        del gene_embeddings_dict
+    #     # save as pkl file for downstream analysis
+    #     with open(
+    #         os.path.join(output_dir, f'{file_name}_gene_embeddings.pkl'), 'wb'
+    #     ) as f:
+    #         pickle.dump(gene_embeddings_dict, f)
+    #     del gene_embeddings_dict
 
     adata = ad.AnnData(
         X=true_counts,
@@ -690,6 +766,9 @@ def return_prediction_adata(
             'marker_genes': marker_genes if marker_genes is not None else {},
         },
     )
+    if sum_gene_embs is not None:
+        for condition in sum_gene_embs.keys():
+            adata.varm[condition] = sum_gene_embs[condition]
     if gene_names is not None:
         adata.var_names = adata.var['gene_name']
         adata.var = adata.var.drop(columns=['gene_name'])
@@ -748,21 +827,32 @@ def return_generation_adata(
     print('---Generating anndata')
     # TODO: clean up no if and else needed
     # adata.X
-    pred_counts = torch.cat(test_dict['pred_counts']).numpy()
+    if 'pred_counts' in test_dict.keys():
+        pred_counts = torch.cat(test_dict['pred_counts']).numpy()
     # adata.layers['counts']
-    true_counts = torch.cat(test_dict['true_counts']).numpy()
+    if 'true_counts' in test_dict.keys():
+        true_counts = torch.cat(test_dict['true_counts']).numpy()
     # adata.obsm
     cls_embeddings = torch.cat(test_dict['cls_embeddings']).numpy()
     # adata.obs
     obs_dict = {obs: np.concatenate(test_dict[obs]) for obs in obs_key}
     test_obs = pd.DataFrame(obs_dict)
     # create adata
-    adata = ad.AnnData(
-        X=pred_counts,
-        obs=test_obs,
-        obsm={'cls_embeddings': cls_embeddings},
-        layers={'counts': true_counts},
-    )
+    if 'pred_counts' in test_dict.keys() and 'true_counts' in test_dict.keys():
+        adata = ad.AnnData(
+            X=pred_counts,
+            obs=test_obs,
+            obsm={'cls_embeddings': cls_embeddings},
+            layers={'counts': true_counts},
+        )
+    else:
+        adata = ad.AnnData(
+            obs=test_obs,
+            obsm={'cls_embeddings': cls_embeddings},
+        )
+    if 'true_embeddings' in test_dict.keys():
+        true_embeddings = torch.cat(test_dict['true_embeddings']).numpy()
+        adata.obsm['true_embeddings'] = true_embeddings
     adata.write_h5ad(os.path.join(output_dir, file_name))
     print('anndata generation completed---')
     return adata
@@ -814,7 +904,7 @@ def return_perturbation_adata(
     # adata.obsm
     true_cls = torch.cat(test_dict['true_cls']).numpy()
     perturbed_cls = torch.cat(test_dict['perturbed_cls']).numpy()
-    cls_cos_similarity = torch.cat(test_dict['cls_cosine_similarity']).numpy()
+    #cls_cos_similarity = torch.cat(test_dict['cls_cosine_similarity']).numpy()
     mean_cos_similarity = torch.cat(test_dict['mean_cosine_similarity']).numpy()
     # delta_probs = torch.cat(test_dict['delta_probs']).numpy()
     # wasserstein_distance = np.concatenate(test_dict['wasserstein_distance'])
@@ -832,7 +922,7 @@ def return_perturbation_adata(
     obsm_dict = {
         'true_cls': true_cls,
         'perturbed_cls': perturbed_cls,
-        'cls_cos_similarity': cls_cos_similarity,
+        #'cls_cos_similarity': cls_cos_similarity,
         'mean_cos_similarity': mean_cos_similarity,
         # 'delta_probs': delta_probs,
     }
@@ -1142,16 +1232,44 @@ def gumbel_sample(t, temperature=1.0, dim=-1):
     return ((t / max(temperature, 1e-10)) + gumbel_noise(t)).argmax(dim=dim)
 
 
-def mean_nonpadding_embs(embs, pad, dim=1):
+def mean_nonpadding_embs(
+    embs: torch.Tensor,
+    input_ids: torch.Tensor,
+    mapping_dict: dict,
+    condition_dict: dict,
+    dim: int = 1,
+    perturbation_tokens: torch.Tensor | None = None,
+    perturbation_mode: Literal['mask', 'pad', 'delete', 'overexpress'] | None = None,
+):
     '''
     Compute the mean of the non-padding embeddings.
     Modified from Geneformer:
     https://huggingface.co/ctheodoris/Geneformer/blob/main/geneformer/perturber_utils.py # noqa
     Accessed: 2024-05-14
     '''
-    pad_mask = pad.clone()
-    # mask should be opposite of pad
-    pad_mask[:, 0] = True
+    # create a mask to exclude special and perturbation tokens
+    special_token_names = ['<cls>', '<mask>', '<pad>', '<eos>']
+    special_tokens = [mapping_dict[token] for token in special_token_names]
+    if condition_dict is not None:
+        cond_tokens = []
+        for condition in condition_dict:
+            cond_tokens.extend(list(condition_dict[condition].values()))
+        special_tokens.extend(cond_tokens)
+    special_tokens = torch.tensor(special_tokens, device=embs.device)
+    if perturbation_mode is not None:
+        if perturbation_mode in ['delete', 'overexpress']:
+            # do not mask tokens as they are deleted
+            perturbation_tokens = None
+
+    if perturbation_tokens is not None:
+        tokens_to_exclude = torch.cat([special_tokens, perturbation_tokens])
+    else:
+        tokens_to_exclude = special_tokens
+
+    pad_mask = torch.isin(input_ids, tokens_to_exclude)
+    if (perturbation_mode is not None) and (perturbation_mode == 'overexpress'):
+        # mask overexpressed tokens at first position
+        pad_mask[:, 0] = True
     # our mask is the opposite of BERT mask
     pad_mask = ~pad_mask
     # create a tensor of original lengths
@@ -1231,43 +1349,39 @@ def pairing_src_to_tgt_cells(
     if pairing_mode == 'stratified':
         # drop Donor if they do not have Cell_type, Donor in all the Time_points
         adata_grouped = adata_subset_.obs[
-            adata_subset_.obs.groupby(['Donor', 'Cell_type'])[pairing_obs].transform(
+            adata_subset_.obs.groupby(['cell_type_cellgen_harm'])[pairing_obs].transform(
                 'nunique'
             )
             == 4
         ]
-        dropped_donors = (
-            adata_subset.obs['Donor'].nunique() - adata_grouped['Donor'].nunique()
-        )
-        print(f'dropped {dropped_donors} donors')
-        resting_cells = adata_grouped.loc[adata_grouped[pairing_obs] == '0h', :]
-        grouped = adata_grouped.groupby(['Donor', 'Cell_type'])
+        resting_cells = adata_grouped.loc[adata_grouped[pairing_obs] == 'normal', :]
+        grouped = adata_grouped.groupby(['cell_type_cellgen_harm'])
         for idx, resting in tqdm.tqdm(
             resting_cells.iterrows(), total=resting_cells.shape[0]
         ):
             # get the indices of the other time points for the same cell type and donor
-            group = grouped.get_group((resting['Donor'], resting['Cell_type']))
-            indices_16h = group[group[pairing_obs] == '16h'].index
-            indices_40h = group[group[pairing_obs] == '40h'].index
-            indices_5d = group[group[pairing_obs] == '5d'].index
-            cell_pairings['0h'].append(idx)
-            cell_pairings['16h'].append(np.random.choice(indices_16h))
-            cell_pairings['40h'].append(np.random.choice(indices_40h))
-            cell_pairings['5d'].append(np.random.choice(indices_5d))
-    if pairing_mode == 'mapping':
+            group = grouped.get_group(resting['cell_type_cellgen_harm'])
+            indices_16h = group[group[pairing_obs] == '90m_LPS'].index
+            indices_40h = group[group[pairing_obs] == '6h_LPS'].index
+            indices_5d = group[group[pairing_obs] == '10h_LPS'].index
+            cell_pairings['normal'].append(idx)
+            cell_pairings['90m_LPS'].append(np.random.choice(indices_16h))
+            cell_pairings['6h_LPS'].append(np.random.choice(indices_40h))
+            cell_pairings['10h_LPS'].append(np.random.choice(indices_5d))
+    elif pairing_mode == 'mapping':
         for condition in mapping_df[max_reference_time].unique():
             mapping_df_ = mapping_df[mapping_df[max_reference_time] == condition]
             adata_ = adata_dict[max_reference_time]
-            cell_to_pair = adata_['celltype_v2'][
-                adata_['celltype_v2'].isin(mapping_df_[max_reference_time])
+            cell_to_pair = adata_['cell_type_cellgen_harm'][
+                adata_['cell_type_cellgen_harm'].isin(mapping_df_[max_reference_time])
             ].index
             cell_pairings[max_reference_time].extend(cell_to_pair)
             n_cells_to_pair = len(cell_to_pair)
 
             for stage, adata_ in adata_dict.items():
                 if stage != max_reference_time:
-                    cell_to_pair = adata_['celltype_v2'][
-                        adata_['celltype_v2'].isin(mapping_df_[stage])
+                    cell_to_pair = adata_['cell_type_cellgen_harm'][
+                        adata_['cell_type_cellgen_harm'].isin(mapping_df_[stage])
                     ].index
                     # only sample with replacement if needed
                     if n_cells_to_pair > cell_to_pair.shape[0]:
@@ -1413,26 +1527,26 @@ def unseen_donor_split(
     test_prop: float,
 ):
     # define groups for stratified split by Time_point and Cell_type
-    groups = adata.obs[['Donor']]
+    groups = adata.obs[['donor_cellgen_harm']]
     # define train, val and test size based on unique donors
-    train_size = np.round(train_prop * len(groups['Donor'].unique())).astype(int)
-    test_size = np.round(test_prop * len(groups['Donor'].unique())).astype(int)
-    val_size = len(groups['Donor'].unique()) - train_size - test_size
+    train_size = np.round(train_prop * len(groups['donor_cellgen_harm'].unique())).astype(int)
+    test_size = np.round(test_prop * len(groups['donor_cellgen_harm'].unique())).astype(int)
+    val_size = len(groups['donor_cellgen_harm'].unique()) - train_size - test_size
     # sample from groups based on unique donors using numpy random choice
     test_donors = np.random.choice(
-        groups['Donor'].unique(), size=test_size, replace=False
+        groups['donor_cellgen_harm'].unique(), size=test_size, replace=False
     )
     # exclude test donors from train and val set
-    train_val_donors = np.setdiff1d(groups['Donor'].unique(), test_donors)
+    train_val_donors = np.setdiff1d(groups['donor_cellgen_harm'].unique(), test_donors)
     # sample from remaining donors based on unique donors using numpy random choice
     val_donors = np.random.choice(train_val_donors, size=val_size, replace=False)
     # use remaining donors as train set
     train_donors = np.setdiff1d(train_val_donors, val_donors)
     # split dataset to create dataset subset not tuple
     # get indices of train, val and test set
-    train = Subset(adata, np.where(groups['Donor'].isin(train_donors))[0])
-    val = Subset(adata, np.where(groups['Donor'].isin(val_donors))[0])
-    test = Subset(adata, np.where(groups['Donor'].isin(test_donors))[0])
+    train = Subset(adata, np.where(groups['donor_cellgen_harm'].isin(train_donors))[0])
+    val = Subset(adata, np.where(groups['donor_cellgen_harm'].isin(val_donors))[0])
+    test = Subset(adata, np.where(groups['donor_cellgen_harm'].isin(test_donors))[0])
 
     return train, val, test
 

@@ -1,0 +1,74 @@
+method: grid
+metric:
+  goal: minimize
+  name: train/mse_epoch
+name: tune_count
+parameters:
+  train_mode:
+    value: 'count'
+  split:
+    value: False
+  splitting_mode:
+    value: 'stratified'
+  epochs:
+   value: 3
+  mask_scheduler:
+    value: 'cosine'
+  output_dir:
+    value: './T_perturb/plt/res/LPS'
+  ckpt_masking_path:
+    value: "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/results/lps/interpolation_2k_no_cond/res/checkpoints/20250213_1424_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_ptime_pos_sin_m_cosine_tp_1-3_s_42-epoch=15.ckpt"
+  src_dataset:
+    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED/dataset_2000_hvg_src/normal.dataset'
+  tgt_dataset_folder:
+    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED/dataset_2000_hvg_tgt'
+  src_adata:
+    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED/h5ad_pairing_2000_hvg_src/normal.h5ad'
+  tgt_adata_folder:
+    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED/h5ad_pairing_2000_hvg_tgt'
+  mapping_dict_path:
+    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED/token_id_to_genename_2000_hvg.pkl'
+  max_len:
+    value: 692
+  tgt_vocab_size:
+    value: 20274
+  cellgen_lr:
+    value: 0.0001
+  cellgen_wd:
+    value: 0.0001
+  num_layers:
+    value: 6
+  d_ff:
+    value: 32
+  mlm_prob:
+    value: 0.3
+  loss_mode:
+    value: 'zinb'
+  count_lr:
+    values: [0.001, 0.0001, 0.00001]
+  count_wd:
+    value: 0.001
+  batch_size:
+    value: 16
+  n_workers:
+    value: 32
+  encoder:
+    value: 'scmaskgit'
+  encoder_path:
+    value: "/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt"
+  num_node:
+    value: 1
+  d_model:
+    value: 768
+  d_condc:
+    values: [64, 128, 256, 512, 768]
+  d_condt:
+    values: [64, 128, 256, 512, 768]
+  dropout:
+    values: [0.1, 0.3]
+  layer_norm:
+    values: [True, False]
+
+program: /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/train.py
+project: ttransformer_sweep
+

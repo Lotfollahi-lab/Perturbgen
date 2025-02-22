@@ -1,0 +1,64 @@
+# masking attention
+method: grid
+metric:
+  goal: minimize
+  name: val/perplexity_epoch
+name: tune_masking_LPS
+parameters:
+  train_mode:
+    value: 'masking'
+  split:
+    value: True
+  splitting_mode:
+    value: stratified
+  epochs:
+    value: 2
+  output_dir:
+    value: './T_perturb/plt/res/LPS/masking'
+  src_dataset:
+    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/pp/res/lps_10k_ds_ourMED_adib/dataset_hvg_subsetted_src/normal.dataset'
+  tgt_dataset_folder:
+    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/pp/res/lps_10k_ds_ourMED_adib/dataset_hvg_subsetted_tgt'
+  src_adata:
+    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/pp/res/lps_10k_ds_ourMED_adib/h5ad_pairing_10000_hvg_src/normal.h5ad'
+  tgt_adata_folder:
+    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/pp/res/lps_10k_ds_ourMED_adib/h5ad_pairing_10000_hvg_tgt'
+  mapping_dict_path:
+    value: "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/pp/res/token_id_to_genename_hvg_10k_ourMED_final.pkl"
+  batch_size:
+    value: 16
+  encoder_path:
+    value: "/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt"
+  encoder: 
+    value: "Transformer_encoder"
+  context_mode:
+    value: True
+  max_len:
+    value: 3500
+  tgt_vocab_size:
+    value: 20274
+  cellgen_lr:
+    values: [0.001, 0.0001, 0.00001, 0.00005]
+  num_layers:
+    value: 6
+  d_ff:
+    values: [64, 96]
+  mlm_prob:
+    value: 0.15
+  cellgen_wd:
+    values: [0.0001, 0.00001]
+  mask_scheduler:
+    value: 'cosine'
+  n_workers:
+    value: 32
+  seed:
+    value: 42
+  pos_encoding_mode:
+    value: 'time_pos_sin'
+  d_model:
+    value: 768
+  num_node:
+    value: 1
+
+program: /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/train.py
+project: ttransformer_sweep

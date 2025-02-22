@@ -131,8 +131,11 @@ dmypy.json
 
 # Custom
 .idea
+.history
 data
+log
 logs
+results
 res
 wandb
 checkpoints
