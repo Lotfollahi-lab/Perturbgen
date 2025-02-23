@@ -1,15 +1,15 @@
 #make a date directory if it does not exist
 #!/bin/bash
-#BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-cellgeni-a100)
-#BSUB -gpu 'mode=exclusive_process:num=2:gmodel=NVIDIAA100_SXM4_80GB' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
-#BSUB -n 8 # number of cores
-#BSUB -G teamtrynka # groupname for billing
+#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-cellgeni-a100)
+#BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
+#BSUB -n 4 # number of cores
+#BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
-#BSUB -o logs/eb_masking_extra_%J.out # output file
-#BSUB -e logs/eb_masking_extra_%J.err # error file
+#BSUB -o logs/eb_masking_extra_topk_%J.out # output file
+#BSUB -e logs/eb_masking_extra_topk_%J.err # error file
 #BSUB -M 20000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>20000] rusage[mem=20000]' # RAM memory part 1. Default: 100MB
-#BSUB -J eb_masking_extra # job name
+#BSUB -J eb_masking_extra_topk # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -52,7 +52,7 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --cellgen_lr 0.001 \
 --cellgen_wd 0.0001 \
 --mlm_prob 0.15 \
---n_workers 8 \
+--n_workers 4 \
 --num_layers 3 \
 --d_ff 32 \
 --pred_tps 1 2 3 \

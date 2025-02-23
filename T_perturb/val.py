@@ -12,6 +12,7 @@ import torch
 from datasets import concatenate_datasets, load_from_disk
 from pytorch_lightning.callbacks import TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.strategies import DDPStrategy  # DeepSpeedStrategy
 
 from T_perturb.Dataloaders.datamodule import CytoMeisterDataModule
 from T_perturb.Model.trainer import CountDecoderTrainer, CytoMeisterTrainer
@@ -78,6 +79,23 @@ def get_args():
         # default=['celltype_v2'],
     )
     parser.add_argument('--split_value', type=str, default='D351')
+    parser.add_argument('--use_positional_encoding', type=str2bool, default=False)
+    parser.add_argument('--layer_norm', type=str2bool, default=False)
+    parser.add_argument('--dropout', type=float, default=0.1)
+    parser.add_argument('--add_cell_time', type=str2bool, default=False)
+
+    parser.add_argument(
+        '--d_condc',
+        type=int,
+        default=1,
+        help='One Hot dimension',
+    )
+    parser.add_argument(
+        '--d_condt',
+        type=int,
+        default=1,
+        help='One Hot dimension',
+    )
     parser.add_argument(
         '--generate',
         type=str2bool,
@@ -152,6 +170,7 @@ def get_args():
     )
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=False, help='shuffle')
+    parser.add_argument('--num_node', type=int, default=1)
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
     )
@@ -555,6 +574,12 @@ def main() -> None:
         test_kwargs['ckpt_masking_path'] = args.ckpt_masking_path
         test_kwargs['ckpt_count_path'] = args.ckpt_count_path
         test_kwargs['loss_mode'] = args.loss_mode
+        test_kwargs['d_condc'] = args.d_condc
+        test_kwargs['d_condt'] = args.d_condt
+        test_kwargs['layer_norm'] = args.layer_norm
+        test_kwargs['dropout'] = args.dropout
+        test_kwargs['use_positional_encoding'] = args.use_positional_encoding
+        test_kwargs['add_cell_time'] = args.add_cell_time
         test_kwargs['weight_decay'] = args.count_wd
         test_kwargs['lr'] = args.count_lr
         test_kwargs['conditions'] = conditions_
@@ -590,7 +615,7 @@ def main() -> None:
         'tgt_counts_dict': tgt_counts_dict,
         'train_indices': train_indices,
         'val_indices': val_indices,
-        'test_indices': train_indices,  # TODO: change back to test_indices
+        'test_indices': test_indices,
         'pred_tps': args.pred_tps,
         'context_tps': args.context_tps,
         'n_total_tps': n_total_tps,
@@ -652,12 +677,14 @@ def main() -> None:
     #     precision = 'bf16-mixed'
     # else:
     #     precision = '16-mixed'
+    ddp_strategy = DDPStrategy(find_unused_parameters=False)
     trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
-        devices=1,  # inference only on one gpu
-        limit_test_batches=25,
+        num_nodes=args.num_node,
+        devices=-1 if torch.cuda.is_available() else 0,  # inference only on one gpu
+        strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
     )
     # Finally, kick of the training process.
     if args.test_mode == 'masking':

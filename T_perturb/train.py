@@ -127,6 +127,12 @@ def get_args():
         default='./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl',
     )
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
+    parser.add_argument('--num_node', type=int, default=1)
+    parser.add_argument('--use_positional_encoding', type=str2bool, default=False)
+    parser.add_argument('--layer_norm', type=str2bool, default=False)
+    parser.add_argument('--add_cell_time', type=str2bool, default=False)
+    parser.add_argument('--dropout', type=float, default=0.1)
+
     parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle')
     parser.add_argument(
         '--epochs', type=int, default=100, help='number of training epochs'
@@ -182,7 +188,7 @@ def get_args():
     parser.add_argument(
         '--mask_scheduler',
         type=str,
-        default='pow',
+        default='cosine',
         help='mask scheduler [cosine, exp, pow]',
     )
     parser.add_argument('--temperature', type=float, default=1.5, help='temperature')
@@ -267,6 +273,18 @@ def get_args():
         type=str2bool,
         default=True,
         help='context mode for timepoints',
+    )
+    parser.add_argument(
+        '--d_condc',
+        type=int,
+        default=1,
+        help='One Hot dimension',
+    )
+    parser.add_argument(
+        '--d_condt',
+        type=int,
+        default=1,
+        help='One Hot dimension',
     )
     parser.add_argument(
         '--d_model',
@@ -416,19 +434,23 @@ def main() -> None:
         'condition_dict': condition_dict,
         'temperature': args.temperature,
         'iterations': args.iterations,
+        'mapping_dict_path': args.mapping_dict_path,
     }
     if args.train_mode == 'masking':
         trainer_kwargs['dropout'] = args.cellgen_dropout
         trainer_kwargs['mlm_probability'] = args.mlm_prob
         trainer_kwargs['end_lr'] = args.cellgen_lr
         trainer_kwargs['weight_decay'] = args.cellgen_wd
-        trainer_kwargs['mapping_dict_path'] = args.mapping_dict_path
         trainer_kwargs['context_mode'] = args.context_mode
         pretrained_module = CytoMeisterTrainer(**trainer_kwargs)
     elif args.train_mode == 'count':
         trainer_kwargs['ckpt_masking_path'] = args.ckpt_masking_path
         trainer_kwargs['ckpt_count_path'] = None
         trainer_kwargs['loss_mode'] = args.loss_mode
+        trainer_kwargs['d_condc'] = args.d_condc
+        trainer_kwargs['d_condt'] = args.d_condt
+        trainer_kwargs['layer_norm'] = args.layer_norm
+        trainer_kwargs['add_cell_time'] = args.add_cell_time
         trainer_kwargs['lr'] = args.count_lr
         trainer_kwargs['weight_decay'] = args.count_wd
         trainer_kwargs['conditions'] = conditions_
@@ -438,6 +460,9 @@ def main() -> None:
         trainer_kwargs['iterations'] = args.iterations
         trainer_kwargs['seed'] = args.seed
         trainer_kwargs['n_genes'] = src_adata.shape[1]
+        trainer_kwargs['dropout'] = args.dropout
+        trainer_kwargs['use_positional_encoding'] = args.use_positional_encoding
+        trainer_kwargs['seed'] = args.seed
         decoder_module = CountDecoderTrainer(**trainer_kwargs)
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
@@ -525,7 +550,7 @@ def main() -> None:
         dirpath=checkpoint_path,
         filename=f'{filename}-' + '{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=5,
+        every_n_epochs=10,
         verbose=True,
         monitor=monitor_metric,
         mode=mode,
@@ -536,7 +561,7 @@ def main() -> None:
         f'{run_id}_{str(uuid.uuid4())[:6]}' if torch.cuda.device_count() > 1 else run_id
     )
     wandb_logger = WandbLogger(
-        project='ttransformer', name=run_name, save_dir=args.log_dir, log_model=True
+        project='ttransformer', name=run_name, save_dir=args.log_dir, log_model=False
     )
 
     # In this simple example we just check if a GPU is available.
@@ -631,6 +656,7 @@ def main() -> None:
         # precision=precision,
         # gradient_clip_val=1.0,
         devices=-1 if torch.cuda.is_available() else 0,
+        num_nodes=args.num_node,
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
     )
 

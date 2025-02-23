@@ -226,7 +226,7 @@ class CytoMeisterDataModule(LightningDataModule):
     def test_dataloader(self):
         self.dataloader_kwargs['dataset'] = self.test_dataset
         self.dataloader_kwargs['collate_fn'] = self.collate
-        data = DataLoader(**self.dataloader_kwargs)
+        data = DataLoader(**self.dataloader_kwargs, drop_last=True)
         return data
 
     def collate(self, batch):

@@ -20,6 +20,8 @@ import torch.optim as optim
 
 # from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningModule
+
+# from pytorch_lightning.utilities import rank_zero_only
 from scvi.distributions import NegativeBinomial, ZeroInflatedNegativeBinomial
 from torchmetrics import MeanSquaredError
 from torchmetrics.text import Perplexity
@@ -93,7 +95,9 @@ class CytoMeisterTrainer(LightningModule):
         sequence_length: int = 2048,
         return_rouge_score: bool = True,
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
-        encoder: str = 'GF_fine_tuned',
+        encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
+            'GF_fine_tuned'
+        ),
         mask_scheduler: str = 'cosine',
         context_mode: bool = True,
         pos_encoding_mode: Literal[
@@ -126,7 +130,18 @@ class CytoMeisterTrainer(LightningModule):
         self.pred_tps = pred_tps
         self.n_total_tps = n_total_tps
         self.context_tps = context_tps
-
+        if mapping_dict_path is not None:
+            with open(
+                mapping_dict_path,
+                'rb',
+            ) as f:
+                gene_to_rowid = pickle.load(f)
+                # swap key and value
+                self.gene_to_rowid: Dict[Any, Any] | None = {
+                    v: k for k, v in gene_to_rowid.items()
+                }
+        else:
+            self.gene_to_rowid = None
         self.transformer = CytoMeister(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
@@ -146,6 +161,7 @@ class CytoMeisterTrainer(LightningModule):
             return_attn=return_attn,
             context_mode=context_mode,
             condition_dict=condition_dict,
+            gene_to_rowid=self.gene_to_rowid,
         )
         self.masking_loss = nn.CrossEntropyLoss()
 
@@ -156,18 +172,7 @@ class CytoMeisterTrainer(LightningModule):
         self.warmup_epochs = warmup_epochs
         self.perplexity = Perplexity(ignore_index=-100)
         self.mse = MeanSquaredError()
-        if mapping_dict_path is not None:
-            with open(
-                mapping_dict_path,
-                'rb',
-            ) as f:
-                gene_to_rowid = pickle.load(f)
-                # swap key and value
-                self.gene_to_rowid: Dict[Any, Any] | None = {
-                    v: k for k, v in gene_to_rowid.items()
-                }
-        else:
-            self.gene_to_rowid = None
+
         with open(
             tokenid_to_rowid_path,
             'rb',
@@ -689,6 +694,11 @@ class CountDecoderTrainer(LightningModule):
         d_ff=32,
         max_seq_length=2048,
         loss_mode: str = 'mse',
+        d_condc: int = 768,
+        d_condt: int = 768,
+        use_positional_encoding: bool = False,
+        layer_norm: bool = False,
+        add_cell_time: bool = False,
         lr: float = 1e-3,
         weight_decay: float = 0.0,
         dropout: float = 0.0,
@@ -700,7 +710,9 @@ class CountDecoderTrainer(LightningModule):
         n_samples: int = 1,
         precision: Literal['high', 'medium'] = 'medium',
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
-        encoder: str = 'GF_fine_tuned',
+        encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
+            'GF_fine_tuned'
+        ),
         seed: int = 42,
         n_genes: int = 25426,
         pos_encoding_mode: Literal[
@@ -720,6 +732,7 @@ class CountDecoderTrainer(LightningModule):
         unique_gene_list: Dict[Any, Any] | None = None,
         shared_gene_list: Dict[Any, Any] | None = None,
         context_tps: List[int] | None = None,
+        mapping_dict_path: str | None = None,
         *args,
         **kwargs,
     ):
@@ -728,6 +741,19 @@ class CountDecoderTrainer(LightningModule):
         # only set precision for GPU
 
         set_matmul_precision_for_device(precision)
+
+        if mapping_dict_path is not None:
+            with open(
+                mapping_dict_path,
+                'rb',
+            ) as f:
+                gene_to_rowid = pickle.load(f)
+                # swap key and value
+                self.gene_to_rowid: Dict[Any, Any] | None = {
+                    v: k for k, v in gene_to_rowid.items()
+                }
+        else:
+            self.gene_to_rowid = None
         self.pretrained_model = CytoMeister(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
@@ -742,6 +768,7 @@ class CountDecoderTrainer(LightningModule):
             encoder_path=encoder_path,
             pos_encoding_mode=pos_encoding_mode,
             condition_dict=condition_dict,
+            gene_to_rowid=self.gene_to_rowid,
         )
         self.pos_encoding_mode = pos_encoding_mode
         # load CellMeister checkpoint
@@ -756,6 +783,14 @@ class CountDecoderTrainer(LightningModule):
         self.decoder = CountDecoder(
             pretrained_model=self.pretrained_model,
             loss_mode=loss_mode,
+            d_condc=d_condc,
+            d_condt=d_condt,
+            layer_norm=layer_norm,
+            max_seq_length=max_seq_length,
+            use_positional_encoding=use_positional_encoding,
+            encoder=encoder,
+            pos_encoding_mode=pos_encoding_mode,
+            add_cell_time=add_cell_time,
             d_model=d_model,
             dropout=dropout,
             pred_tps=pred_tps,
@@ -771,6 +806,8 @@ class CountDecoderTrainer(LightningModule):
         self.weight_decay = weight_decay
         self.lr = lr
         self.loss_mode = loss_mode
+        self.d_condc = d_condc
+        self.d_condt = d_condt
         self.max_seq_length = max_seq_length
         if (
             (self.loss_mode in ['nb', 'zinb'])
@@ -826,6 +863,8 @@ class CountDecoderTrainer(LightningModule):
             'cls_embeddings': [],
             'cell_idx': [],
         }
+        self.val_true_counts_list: List[torch.Tensor] = []
+        self.val_pred_counts_list: List[torch.Tensor] = []
         if self.return_rouge_score:
             # load rouge
             self.rouge = evaluate.load('rouge')
@@ -860,8 +899,6 @@ class CountDecoderTrainer(LightningModule):
             tgt_input_id_ = batch[f'tgt_input_ids_t{i}'].clone()
             tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
             tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
-            print(tgt_input_id_dict)
-            raise
         if generate:
             outputs = None
         else:
@@ -1077,6 +1114,13 @@ class CountDecoderTrainer(LightningModule):
             self.val_dict,
         )
         self.val_dict = res_dict
+
+        for true_count, pred_count in zip(
+            res_dict['true_counts'], res_dict['pred_counts']
+        ):
+            self.val_true_counts_list.append(true_count)
+            self.val_pred_counts_list.append(pred_count)
+
         self.log(
             'val/mse',
             mean_mse,

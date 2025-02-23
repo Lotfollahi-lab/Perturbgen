@@ -1212,9 +1212,11 @@ def noise_schedule(
 
 def top_k(logits, thres=0.9):
     k = math.ceil((1 - thres) * logits.shape[-1])
+    # print('logits', logits[:5,:7, :10])
     val, ind = logits.topk(k, dim=-1)
     probs = torch.full_like(logits, float('-inf'))
     probs.scatter_(2, ind, val)
+    # print('probs', probs[:5,:7, :10])
     return probs
 
 
@@ -1229,6 +1231,7 @@ def gumbel_noise(t):
 
 
 def gumbel_sample(t, temperature=1.0, dim=-1):
+    print('temperature', temperature)
     return ((t / max(temperature, 1e-10)) + gumbel_noise(t)).argmax(dim=dim)
 
 
