@@ -1231,7 +1231,6 @@ def gumbel_noise(t):
 
 
 def gumbel_sample(t, temperature=1.0, dim=-1):
-    print('temperature', temperature)
     return ((t / max(temperature, 1e-10)) + gumbel_noise(t)).argmax(dim=dim)
 
 

@@ -131,7 +131,6 @@ def get_args():
     parser.add_argument('--use_positional_encoding', type=str2bool, default=False)
     parser.add_argument('--layer_norm', type=str2bool, default=False)
     parser.add_argument('--add_cell_time', type=str2bool, default=False)
-    parser.add_argument('--dropout', type=float, default=0.1)
 
     parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle')
     parser.add_argument(
@@ -283,7 +282,7 @@ def get_args():
     parser.add_argument(
         '--d_condt',
         type=int,
-        default=1,
+        default=768,
         help='One Hot dimension',
     )
     parser.add_argument(
@@ -412,7 +411,6 @@ def main() -> None:
             token_no += len(condition_dict[condition])
     else:
         condition_dict = None
-    print('prepare condition dict', condition_dict)
 
     # Initialize model module
     # ----------------------------------------------------------------------------------
@@ -450,6 +448,7 @@ def main() -> None:
         trainer_kwargs['d_condc'] = args.d_condc
         trainer_kwargs['d_condt'] = args.d_condt
         trainer_kwargs['layer_norm'] = args.layer_norm
+        trainer_kwargs['use_positional_encoding'] = args.use_positional_encoding
         trainer_kwargs['add_cell_time'] = args.add_cell_time
         trainer_kwargs['lr'] = args.count_lr
         trainer_kwargs['weight_decay'] = args.count_wd
@@ -460,8 +459,8 @@ def main() -> None:
         trainer_kwargs['iterations'] = args.iterations
         trainer_kwargs['seed'] = args.seed
         trainer_kwargs['n_genes'] = src_adata.shape[1]
-        trainer_kwargs['dropout'] = args.dropout
-        trainer_kwargs['use_positional_encoding'] = args.use_positional_encoding
+        trainer_kwargs['dropout'] = args.count_dropout
+        # trainer_kwargs['use_positional_encoding'] = args.use_positional_encoding
         trainer_kwargs['seed'] = args.seed
         decoder_module = CountDecoderTrainer(**trainer_kwargs)
     else:

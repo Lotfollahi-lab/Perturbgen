@@ -81,19 +81,18 @@ def get_args():
     parser.add_argument('--split_value', type=str, default='D351')
     parser.add_argument('--use_positional_encoding', type=str2bool, default=False)
     parser.add_argument('--layer_norm', type=str2bool, default=False)
-    parser.add_argument('--dropout', type=float, default=0.1)
     parser.add_argument('--add_cell_time', type=str2bool, default=False)
 
     parser.add_argument(
         '--d_condc',
         type=int,
-        default=1,
+        default=None,
         help='One Hot dimension',
     )
     parser.add_argument(
         '--d_condt',
         type=int,
-        default=1,
+        default=768,
         help='One Hot dimension',
     )
     parser.add_argument(
@@ -334,6 +333,11 @@ def get_args():
         default=None,
         help='covariate to filter tgt datasets',
     )
+    parser.add_argument(
+        '--n_samples',
+        type=int,
+        default=3,
+    )
     args = parser.parse_args()
     return args
 
@@ -554,13 +558,13 @@ def main() -> None:
         'temperature': args.temperature,
         'iterations': args.iterations,
         'sequence_length': args.sequence_length,
+        'mapping_dict_path': args.mapping_dict_path,
     }
     if args.test_mode == 'masking':
         test_kwargs['weight_decay'] = args.cellgen_wd
         test_kwargs['end_lr'] = args.cellgen_lr
         test_kwargs['return_embeddings'] = args.return_embeddings
         test_kwargs['return_gene_embs'] = args.return_gene_embs
-        test_kwargs['mapping_dict_path'] = args.mapping_dict_path
         test_kwargs['gene_names'] = tgt_adata_tmp.var['gene_name']
         test_kwargs['context_mode'] = args.context_mode
         test_kwargs['return_attn'] = args.return_attn
@@ -577,7 +581,7 @@ def main() -> None:
         test_kwargs['d_condc'] = args.d_condc
         test_kwargs['d_condt'] = args.d_condt
         test_kwargs['layer_norm'] = args.layer_norm
-        test_kwargs['dropout'] = args.dropout
+        test_kwargs['dropout'] = args.count_dropout
         test_kwargs['use_positional_encoding'] = args.use_positional_encoding
         test_kwargs['add_cell_time'] = args.add_cell_time
         test_kwargs['weight_decay'] = args.count_wd
@@ -585,7 +589,7 @@ def main() -> None:
         test_kwargs['conditions'] = conditions_
         test_kwargs['conditions_combined'] = conditions_combined_
         test_kwargs['tgt_adata'] = tgt_adatas
-        test_kwargs['n_samples'] = 3
+        test_kwargs['n_samples'] = args.n_samples
         test_kwargs['seed'] = args.seed
         test_kwargs['n_genes'] = src_adata.shape[1]
         decoder_module = CountDecoderTrainer(**test_kwargs)

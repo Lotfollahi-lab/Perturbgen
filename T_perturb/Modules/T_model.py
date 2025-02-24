@@ -1321,7 +1321,7 @@ class CytoMeister(nn.Module):
         batch_size, seq_len = tmp_ids.shape
         # find total_tokens by find the numbers of 1s in the mask
         total_tokens = torch.sum(tmp_ids == 1, dim=1)
-        # ids_to_keep = torch.zeros_like(tmp_ids, dtype=torch.long)
+        ids_to_keep = torch.zeros_like(tmp_ids, dtype=torch.long)
         # # keep indices which are not masked except for the CLS token
 
         iteration_ratios = torch.linspace(0, 1, iterations)
@@ -1350,12 +1350,12 @@ class CytoMeister(nn.Module):
             for i in range(batch_size):
                 mask[i, indices_to_mask[i, : num_tokens_to_mask[i]]] = True
             tmp_ids.masked_fill_(mask, self.mask_token)
-            # keep indices which are not masked except for the CLS token
-            # ids_to_keep = torch.where(
-            #     mask,
-            #     torch.tensor(0, dtype=tmp_ids.dtype, device=tmp_ids.device),
-            #     tmp_ids,
-            # )
+            # # keep indices which are not masked except for the CLS token
+            ids_to_keep = torch.where(
+                mask,
+                torch.tensor(0, dtype=tmp_ids.dtype, device=tmp_ids.device),
+                tmp_ids,
+            )
             generate_id_dict[f'tgt_input_ids_t{tgt_time_step}'] = tmp_ids
             outputs = demask_fn.forward(
                 src_input_id=src_input_id,  # target
@@ -1369,12 +1369,12 @@ class CytoMeister(nn.Module):
             # exclude cls token
             tmp_ids_ = tmp_ids[:, cond_length:].clone()
             scores_ = scores[:, cond_length:].clone()
-            # ids_to_keep_ = ids_to_keep[:, cond_length:].clone()
-            # # Create a mask of already predicted tokens
-            # indices = ids_to_keep_.unsqueeze(1).expand(-1, seq_len - cond_length, -1)
-            # logits.scatter_(2, indices, max_neg_value)
+            ids_to_keep_ = ids_to_keep[:, cond_length:].clone()
+            # Create a mask of already predicted tokens
+            indices = ids_to_keep_.unsqueeze(1).expand(-1, seq_len - cond_length, -1)
+            logits.scatter_(2, indices, max_neg_value)
             # disable padding prediction
-            # logits[:, :, 0] = max_neg_value
+            logits[:, :, 0] = max_neg_value
 
             filtered_logits = top_k(logits.clone(), topk_filter_thres)
             temperature = starting_temperature * (
@@ -1493,7 +1493,7 @@ class CountDecoder(nn.Module):
             'time_pos_sin', 'comb_sin', 'sin_learnt'
         ] = 'time_pos_sin',
         layer_norm: bool = False,
-        add_cell_time: bool = False,
+        add_cell_time: bool = True,
         dropout: float = 0.0,
         pred_tps: list = [1, 2],
         n_total_tps: int = 3,
@@ -1578,9 +1578,8 @@ class CountDecoder(nn.Module):
                 # Create a list with i ones, then (max_value - i) zeros
                 vector = [1.0] * i + [0.0] * (n_total_tps - i)
                 self.condition_dict_oh[i] = torch.tensor(vector, dtype=torch.float32)
-                print(self.condition_dict_oh[i])
             self.condition_layer_time = Mlp(
-                in_features=3,
+                in_features=n_total_tps,
                 hidden_features=int(d_condt / 2),
                 out_features=d_condt,
                 drop=dropout,
@@ -1617,6 +1616,9 @@ class CountDecoder(nn.Module):
                     ).device  # Get the device of the model
                     condition_emb_time = self.condition_layer_time(
                         self.condition_dict_oh[t].to(device)
+                    )
+                    condition_emb_time = condition_emb_time.unsqueeze(0).expand(
+                        cls_embedding.shape[0], -1
                     )
                 cls_embedding = torch.cat((cls_embedding, condition_emb_time), dim=1)
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
