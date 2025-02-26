@@ -489,6 +489,7 @@ class Geneformerwrapper(nn.Module):
 class scmaskgitwrapper(nn.Module):
     def __init__(
         self,
+        # model_path='/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output1/checkpoints/20250107_1024_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=08.ckpt',
         model_path=(
             '/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/'
             'output2/checkpoints/20250110_2325_cellgen_train_masking_lr_5e'
@@ -662,7 +663,9 @@ class CytoMeister(nn.Module):
         ],
         n_total_tps: int = 3,
         mask_scheduler: str = 'cosine',
-        encoder='GF_frozen',
+        encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
+            'GF_fine_tuned'
+        ),
         pos_encoding_mode: Literal[
             'time_pos_sin', 'comb_sin', 'sin_learnt', 'time_pos_learnt'
         ] = 'time_pos_sin',
@@ -876,6 +879,7 @@ class CytoMeister(nn.Module):
                 (torch.mul(sample_length, rand_mask_probs)).round().clamp(min=1)
             )
             rand_int = torch.rand(batch, seq_len, device=device)
+            # # exclude CLS token and set pad token to 1 to exclude from masking
             rand_int[tgt_pad] = 1
             batch_randperm = rand_int.argsort(dim=-1)
             mask = batch_randperm < rearrange(num_token_masked, 'b -> b 1')
@@ -954,7 +958,6 @@ class CytoMeister(nn.Module):
             'cross_attn_weights': cross_attn_weights,
             'dec_logits': decoder_logits,
             'labels': labels,
-            #'mean_embedding': mean_nonpadding_embs(embs=dec_embedding, pad=tgt_pad),
             'mean_embedding': mean_embedding,
         }
         return outputs
@@ -1107,9 +1110,7 @@ class CytoMeister(nn.Module):
             # if cond_dict is not None:
             #     # add condition tokens to the target tokens for masking
             #     cond_ids = cond_dict[tgt_time_step]
-            #     print('cond_ids', cond_ids)
             #     tgt_input_id = torch.cat([cond_ids, tgt_input_id.clone()], dim=1)
-            #     print('tgt_input_id after concatenating', tgt_input_id)
             #     # no padding for condition tokens
             #     cond_pad = torch.zeros_like(cond_ids, dtype=torch.bool)
             #     tgt_pad = torch.cat([cond_pad, tgt_pad.clone()], dim=1)
@@ -1213,12 +1214,16 @@ class CytoMeister(nn.Module):
         for time_step in self.pred_tps:
             tgt_input_id_dict_ = {k: v.clone() for k, v in tgt_input_id_dict.items()}
             tgt_pad_dict_ = {k: v.clone() for k, v in tgt_pad_dict.items()}
-            # use max shape instead of genes you like to generate
-            ##pad_tensor = torch.ones_like(tgt_pad_dict_[f'tgt_pad_t{time_step}'])
-            # pass sequence length for generation
-            ##pad_tensor[:, sequence_length:] = 0
-            ##tgt_pad = generate_pad(pad_tensor)
-            ##tgt_pad_dict_[f'tgt_pad_t{time_step}'] = tgt_pad
+            if sequence_length is not None:
+                # use max shape instead of genes you like to generate
+                pad_tensor = torch.ones_like(tgt_pad_dict_[f'tgt_pad_t{time_step}'])
+                # pass sequence length for generation
+                pad_tensor[:, sequence_length:] = 0
+            else:
+                # use sequence length from original input
+                pad_tensor = tgt_pad_dict_[f'tgt_pad_t{time_step}']
+            tgt_pad = generate_pad(pad_tensor)
+            tgt_pad_dict_[f'tgt_pad_t{time_step}'] = tgt_pad
             tgt_input_id_key = f'tgt_input_ids_t{time_step}'
             tgt_input_id = tgt_input_id_dict[tgt_input_id_key]
 
@@ -1229,7 +1234,6 @@ class CytoMeister(nn.Module):
                 ids[:, :cond_length] = tgt_input_id[:, :cond_length]
 
             # replace the rest of the tokens with pad token
-            ##ids[:, sequence_length:] = 0
             ids[tgt_pad_dict[f'tgt_pad_t{time_step}']] = self.pad_token
             tgt_input_id_dict_[tgt_input_id_key] = ids
             # pad ids
@@ -1266,6 +1270,8 @@ class CytoMeister(nn.Module):
         iterations: int = 18,
         tgt_time_step: int = 1,
         cond_length: int = 0,
+        generate_mode: Literal['topk', 'topk-margin'] = 'topk-margin',
+        **kwargs,
     ):
         '''
         Description:
@@ -1363,23 +1369,28 @@ class CytoMeister(nn.Module):
             tmp_ids_ = tmp_ids[:, cond_length:].clone()
             scores_ = scores[:, cond_length:].clone()
             ids_to_keep_ = ids_to_keep[:, cond_length:].clone()
-            # Create a mask of already predicted tokens
+            # # Create a mask of already predicted tokens
             indices = ids_to_keep_.unsqueeze(1).expand(-1, seq_len - cond_length, -1)
             logits.scatter_(2, indices, max_neg_value)
             filtered_logits = top_k(logits.clone(), topk_filter_thres)
             temperature = starting_temperature * (
-                steps_until_x0 / iteration
+                steps_until_x0 / iterations
             )  # temperature is annealed
             pred_ids = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
-
             is_mask = tmp_ids_ == self.mask_token
             tmp_ids_ = torch.where(is_mask, pred_ids, tmp_ids_)
             probs_without_temperature = logits.softmax(dim=-1)
-            top2_probs, _ = torch.topk(probs_without_temperature, k=2, dim=-1)  # Get top-2 probabilities
-            uncertainty_scores = torch.abs(top2_probs[:, :, 0] - top2_probs[:, :, 1])
-            scores_ = -uncertainty_scores
-            scores_ = scores_.unsqueeze(-1)  # Now scores_ has shape [16, 692, 1]
-            ##scores_ = 1 - probs_without_temperature.gather(2, pred_ids[..., None])
+            if generate_mode == 'topk-margin':
+                # Get top-2 probabilities
+                top2_probs, top2_indices = torch.topk(probs_without_temperature, k=2, dim=-1)
+                uncertainty_scores = torch.abs(
+                    top2_probs[:, :, 0] - top2_probs[:, :, 1]
+                )
+                scores_ = 1 - uncertainty_scores
+                scores_ = scores_.unsqueeze(-1)  # Now scores_ has shape [b, seq, 1]
+
+            else:
+                scores_ = 1 - probs_without_temperature.gather(2, pred_ids[..., None])
             scores_ = rearrange(scores_, '... 1 -> ...')
 
             if not can_remask_prev_masked:
@@ -1387,90 +1398,7 @@ class CytoMeister(nn.Module):
             # add cls token to the ids and update scores and ids
             scores[:, cond_length:] = scores_
             tmp_ids[:, cond_length:] = tmp_ids_
-            #print('tmp_ids', tmp_ids)
         return outputs[tgt_time_step], tmp_ids
-    # def generate_sequence(
-    #     self,
-    #     generate_id_dict: dict,
-    #     generate_pad_dict: dict,
-    #     src_input_id: torch.Tensor,
-    #     demask_fn: nn.Module,
-    #     mask_scheduler: str,
-    #     scores: torch.Tensor,
-    #     can_remask_prev_masked: bool = False,
-    #     topk_filter_thres: float = 0.9,
-    #     starting_temperature: float = 2.0,
-    #     iterations: int = 18,
-    #     tgt_time_step: int = 1,
-    #     cond_length: int = 0,
-    # ):
-    #     max_neg_value = -torch.finfo(scores.dtype).max
-    #     scores[:, :cond_length] = max_neg_value
-    #     tmp_ids = generate_id_dict[f'tgt_input_ids_t{tgt_time_step}'].clone()
-    #     batch_size, seq_len = tmp_ids.shape
-
-    #     total_tokens = torch.sum(tmp_ids == 1, dim=1)
-    #     ids_to_keep = torch.zeros_like(tmp_ids, dtype=torch.long)
-    #     iteration_ratios = torch.linspace(0, 1, iterations)
-    #     all_steps = reversed(range(iterations))
-    #     for iteration, steps_until_x0 in zip(
-    #         iteration_ratios,
-    #         all_steps,
-    #     ):
-    #         # Mask scheduling function
-    #         rand_mask_prob = noise_schedule(
-    #             ratio=iteration,
-    #             total_tokens=total_tokens,
-    #             method=mask_scheduler,
-    #         )
-    #         # Set scores for padding tokens to -inf
-    #         scores.masked_fill_(
-    #             generate_pad_dict[f'tgt_pad_t{tgt_time_step}'], max_neg_value
-    #         )
-    #         unmasked = (scores != max_neg_value).sum(dim=1)
-    #         num_tokens_to_mask = (unmasked.float() * rand_mask_prob).long()
-    #         # Masking selection based on uncertainty (Top-2 probability margin)
-    #         mask = torch.zeros_like(scores, dtype=torch.bool)
-    #         indices_to_mask = torch.topk(scores, num_tokens_to_mask.max(), dim=-1).indices
-
-    #         for i in range(batch_size):
-    #             mask[i, indices_to_mask[i, : num_tokens_to_mask[i]]] = True
-
-    #         tmp_ids.masked_fill_(mask, self.mask_token)
-    #         ids_to_keep = torch.where(mask, torch.tensor(0, dtype=tmp_ids.dtype, device=tmp_ids.device), tmp_ids)
-
-    #         generate_id_dict[f'tgt_input_ids_t{tgt_time_step}'] = tmp_ids
-    #         outputs = demask_fn.forward(
-    #             src_input_id=src_input_id,
-    #             generate_id_dict=generate_id_dict,
-    #             generate_pad_dict=generate_pad_dict,
-    #             not_masked=False,
-    #             tgt_time_step=tgt_time_step,
-    #         )
-
-    #         logits = outputs[tgt_time_step]['dec_logits'][:, cond_length:, :]
-
-    #         # Token sampling (without top-k filtering)
-    #         temperature = starting_temperature * (steps_until_x0 / iteration)  # Annealed temperature
-    #         pred_ids = gumbel_sample(logits, temperature=temperature, dim=-1)
-
-    #         is_mask = tmp_ids[:, cond_length:] == self.mask_token
-    #         tmp_ids[:, cond_length:] = torch.where(is_mask, pred_ids, tmp_ids[:, cond_length:])
-
-    #         # Compute Top-2 probability margin for uncertainty
-    #         probs_without_temperature = logits.softmax(dim=-1)
-    #         top2_probs, _ = torch.topk(probs_without_temperature, k=2, dim=-1)
-    #         uncertainty_scores = torch.abs(top2_probs[:, :, 0] - top2_probs[:, :, 1])
-    #         scores_ = -uncertainty_scores  # Lower values = higher confidence
-
-    #         if not can_remask_prev_masked:
-    #             scores_.masked_fill_(~is_mask, max_neg_value)
-
-    #         # Update scores for next iteration
-    #         scores[:, cond_length:] = scores_
-    #         tmp_ids[:, cond_length:] = tmp_ids[:, cond_length:]
-
-    #     return outputs[tgt_time_step], tmp_ids
 
 class CountHead(nn.Module):
     def __init__(
@@ -1479,7 +1407,7 @@ class CountHead(nn.Module):
         n_genes: int = 25426,
         d_model: int = 256,  # 256
         dropout: float = 0.0,
-        layer_norm: bool = False, #args
+        layer_norm: bool = False,  # args
     ):
         '''
         Description:
@@ -1508,26 +1436,28 @@ class CountHead(nn.Module):
         self.input_dim = d_model  # Expecting concatenated input
 
         self.mlp = Mlp(
-            in_features=self.input_dim,
-            hidden_features=self.input_dim,
+            in_features=d_model,
+            hidden_features=d_model,
             drop=dropout,
-            layer_norm = layer_norm,
+            layer_norm=layer_norm,
         )
         if self.loss_mode == 'mse':
-            self.relu_output = nn.Sequential(nn.Linear(self.input_dim , n_genes), nn.ReLU())
+            self.relu_output = nn.Sequential(nn.Linear(d_model, n_genes), nn.ReLU())
         elif self.loss_mode == 'zinb':
-            self.linear_output = nn.Linear(self.input_dim, n_genes)
+            self.linear_output = nn.Linear(d_model, n_genes)
             self.softmax_output = nn.Sequential(
-                nn.Linear(self.input_dim, n_genes), nn.Softmax(dim=-1)
+                nn.Linear(d_model, n_genes), nn.Softmax(dim=-1)
             )
         elif self.loss_mode == 'nb':
             self.softmax_output = nn.Sequential(
-                nn.Linear(self.input_dim, n_genes), nn.Softmax(dim=-1)
+                nn.Linear(d_model, n_genes), nn.Softmax(dim=-1)
             )
 
     def forward(self, x):
         if x.shape[-1] != self.input_dim:
-            raise ValueError(f"Expected input with {self.input_dim} features, but got {x.shape[-1]}.")
+            raise ValueError(
+                f'Expected input with {self.input_dim} features, but got {x.shape[-1]}.'
+            )
         # use cls token for count prediction
         count_outputs = {}
         mlp_output = self.mlp(x)
@@ -1551,11 +1481,14 @@ class CountDecoder(nn.Module):
         max_seq_length: int = 2048,
         d_condc: int = 768,
         d_condt: int = 768,
-        encoder: str = 'scmaskgit',
-        mode: str = 'time_pos_sin',
+        encoder: Literal['GF_frozen', 'scmaskgit', 'GF_fine_tuned', 'Transformer_encoder'] = (
+            'scmaskgit'
+        ),
+        pos_encoding_mode: Literal[
+            'time_pos_sin', 'comb_sin', 'sin_learnt'
+        ] = 'time_pos_sin',
         layer_norm: bool = False,
-        add_cell_time: bool = False,
-        add_mask_id: bool = True,
+        add_cell_time: bool = True,
         dropout: float = 0.0,
         pred_tps: list = [1, 2],
         n_total_tps: int = 3,
@@ -1606,61 +1539,68 @@ class CountDecoder(nn.Module):
         self.loss_mode = loss_mode
         if self.add_cell_time:
             self.use_positional_encoding = use_positional_encoding
-            self.pos_embedding = PositionalEncoding(
-                d_model=d_model,
-                length=max_seq_length,
-                n_time_steps=n_total_tps,
-                encoder=encoder,
-                mode=mode,
-            ) if use_positional_encoding else None
+            self.pos_embedding = (
+                PositionalEncoding(
+                    d_model=d_model,
+                    length=max_seq_length,
+                    n_time_steps=n_total_tps,
+                    encoder=encoder,
+                    mode=pos_encoding_mode,
+                )
+                if use_positional_encoding
+                else None
+            )
+
+        # if self.add_cell_time:
+        #     if use_positional_encoding:
+        #         d_condc = d_model
 
         if self.add_cell_time:
-            if use_positional_encoding:
-                d_condc = d_model
-
-        if self.add_cell_time:
-            self.count_decoder = CountHead(loss_mode, n_genes, d_model + d_condt + d_condc, dropout)## # Adjust input size
+            self.count_decoder = CountHead(
+                loss_mode, n_genes, d_model + d_condt + d_condc, dropout
+            )  # Adjust input size
         else:
             self.count_decoder = CountHead(loss_mode, n_genes, d_model, dropout)
-        if add_mask_id:
-            self.mask_token = 1
 
         self.pred_tps = pred_tps
         self.context_tps = context_tps
         self.total_tps = list(range(1, n_total_tps + 1))
         self.cls_embedding = None
         if self.add_cell_time:
-            self.condition_dict_oh = {
-                1: torch.tensor([1, 0, 0], dtype=torch.float32),
-                2: torch.tensor([1, 1, 0], dtype=torch.float32),
-                3: torch.tensor([1, 1, 1], dtype=torch.float32),
-            }
-            self.condition_layer_time = Mlp(in_features=3, hidden_features=int(d_condt / 2), out_features=d_condt, drop = dropout, layer_norm = layer_norm)  # New MLP layer
-            self.condition_layer_celltype = Mlp(in_features=d_model, hidden_features=d_condc * 2, out_features=d_condc, drop = dropout, layer_norm = layer_norm)
+            self.condition_dict_oh = {}
+            # Dynamically create entries for each key in 1..max_value
+            for i in self.total_tps:
+                # Create a list with i ones, then (max_value - i) zeros
+                vector = [1.0] * i + [0.0] * (n_total_tps - i)
+                self.condition_dict_oh[i] = torch.tensor(vector, dtype=torch.float32)
+            self.condition_layer_time = Mlp(
+                in_features=n_total_tps,
+                hidden_features=int(d_condt / 2),
+                out_features=d_condt,
+                drop=dropout,
+                layer_norm=layer_norm,
+            )  # New MLP layer
+            self.condition_layer_celltype = Mlp(
+                in_features=d_model,
+                hidden_features=d_condc * 2,
+                out_features=d_condc,
+                drop=dropout,
+                layer_norm=layer_norm,
+            )
 
     def forward(
         self,
         src_input_id: torch.Tensor,
         tgt_input_id_dict: dict,
     ):
-        #print('tgt_input_id_dict', tgt_input_id_dict)
-        ##if not self.training:
-        ##    self.pretrained_model.pred_tps = [1,2,3] # To do: Remove after fine-tuning
-        ##else:
-        ##    self.pretrained_model.pred_tps = [1,3] # To do: Remove after fine-tuning
-        
         outputs = self.pretrained_model(
             src_input_id=src_input_id,
             tgt_input_id_dict=tgt_input_id_dict,
             not_masked=True,
         )
         count_outputs = {}
-        ##if not self.training:
-        ##    self.pred_tps = [1,2,3] # To do: Remove after fine-tuning
-        ##else:
-        ##    self.pred_tps = [1,3] # To do: Remove after fine-tuning
         for t in self.pred_tps:
-            cls_embedding = outputs[t]['mean_embedding']##
+            cls_embedding = outputs[t]['mean_embedding']
             if self.add_cell_time:
                 if self.use_positional_encoding:
                     condition_emb = self.pos_embedding.time_pe[:, t+1]  # Use time-based PE
@@ -1706,24 +1646,33 @@ class CountDecoder(nn.Module):
             # cls_embedding = outputs['dec_embedding'][:, 0, :]
             cls_embedding = outputs[t]['mean_embedding']
             if self.add_cell_time:
-                #print(f"t: {t}")
-                if self.use_positional_encoding:
-                    condition_emb = self.pos_embedding.time_pe[:, t+1].to(outputs[t]['mean_embedding'].device)
+                if self.use_positional_encoding and self.pos_embedding is not None:
+                    condition_emb = self.pos_embedding.time_pe[:, t + 1].to(
+                        outputs[t]['mean_embedding'].device
+                    )
                 else:
-                    #condition_emb = self.condition_layer(self.condition_dict_oh[t].to(outputs[t]['mean_embedding'].device))
                     device = cls_embedding.device
-                    condition_emb_time = self.condition_layer_time(self.condition_dict_oh[t].to(device))
-                    condition_emb_celltype = self.condition_layer_celltype(outputs[t]['dec_embedding'][:, 1, :])
-                    condition_emb_time = condition_emb_time.unsqueeze(0).expand(condition_emb_celltype.shape[0], -1)
-                    condition_emb = torch.cat((condition_emb_time, condition_emb_celltype), dim=1)
-                #cls_embedding = torch.cat((outputs[t]['mean_embedding'], condition_emb.expand(outputs[t]['mean_embedding'].shape[0], -1)), dim=1)
+                    condition_emb_time = self.condition_layer_time(
+                        self.condition_dict_oh[t].to(device)
+                    )
+                    condition_emb_celltype = self.condition_layer_celltype(
+                        outputs[t]['dec_embedding'][:, 1, :]
+                    )
+                    condition_emb_time = condition_emb_time.unsqueeze(0).expand(
+                        condition_emb_celltype.shape[0], -1
+                    )
+                    condition_emb = torch.cat(
+                        (condition_emb_time, condition_emb_celltype), dim=1
+                    )
                 cls_embedding = torch.cat((cls_embedding, condition_emb), dim=-1)
-                count_outputs[f'count_output_t{t}'] = self.count_decoder.forward(cls_embedding)
-                count_outputs[f'cls_embedding_t{t}'] = outputs[t]['dec_embedding'][:, 0, :] # to do: switch with mean_embedding
+                count_outputs[f'count_output_t{t}'] = self.count_decoder.forward(
+                    cls_embedding
+                )
+                count_outputs[f'cls_embedding_t{t}'] = outputs[t]['mean_embedding']
             else:
-                    # cls_embedding = outputs['dec_embedding'][:, 0, :]
+                # cls_embedding = outputs['dec_embedding'][:, 0, :]
                 count_outputs[f'count_output_t{t}'] = self.count_decoder.forward(
                     outputs[t]['mean_embedding']
                 )
-                count_outputs[f'cls_embedding_t{t}'] = outputs[t]['dec_embedding'][:, 0, :]
+                count_outputs[f'cls_embedding_t{t}'] = outputs[t]['mean_embedding']
         return count_outputs, generate_id_dict

@@ -864,6 +864,7 @@ def return_perturbation_adata(
     output_dir: str,
     marker_genes: dict,
     file_name: str,
+    use_count_decoder: bool,
     mode: Literal['inference', 'generate'],
 ) -> ad.AnnData:
     """
@@ -904,32 +905,16 @@ def return_perturbation_adata(
     # adata.obsm
     true_cls = torch.cat(test_dict['true_cls']).numpy()
     perturbed_cls = torch.cat(test_dict['perturbed_cls']).numpy()
-    #cls_cos_similarity = torch.cat(test_dict['cls_cosine_similarity']).numpy()
     mean_cos_similarity = torch.cat(test_dict['mean_cosine_similarity']).numpy()
-    # delta_probs = torch.cat(test_dict['delta_probs']).numpy()
-    # wasserstein_distance = np.concatenate(test_dict['wasserstein_distance'])
-    # adata.varm
     gene_cos_similarity = torch.cat(test_dict['gene_cosine_similarity'], dim=0).numpy()
     cos_similarity_df = pd.DataFrame(gene_cos_similarity, columns=marker_genes.keys())
-    # cos_similarity_df = cos_similarity_df.T
-    # cos_similarity_df.columns = cos_similarity_df.columns.astype(str)
-    # delta_gene_probs = torch.cat(test_dict['delta_gene_probs'], dim=0).numpy()
-    # delta_gene_probs_df = pd.DataFrame(
-    #     delta_gene_probs, columns=marker_genes.keys()
-    # )
 
     # create dataframe to store perturbation results
     obsm_dict = {
         'true_cls': true_cls,
         'perturbed_cls': perturbed_cls,
-        #'cls_cos_similarity': cls_cos_similarity,
         'mean_cos_similarity': mean_cos_similarity,
-        # 'delta_probs': delta_probs,
     }
-    # varm_dict = {
-    #     'gene_cos_similarity': cos_similarity_df,
-    #     # 'delta_gene_probs': delta_gene_probs_df.T,
-    # }
 
     if mode == 'generate':
         rouge_dict = {
@@ -950,6 +935,15 @@ def return_perturbation_adata(
     )
     adata.var_names = adata.var['gene_name']
     adata.X = cos_similarity_df
+    # Assign layers only if count decoder is used
+    if use_count_decoder and 'true_counts' in test_dict and 'pred_counts' in test_dict:
+        true_count_output = torch.cat(test_dict['true_counts']).numpy()
+        perturbed_count_output = torch.cat(test_dict['pred_counts']).numpy()
+        adata.layers['predicted_counts'] = true_count_output
+        adata.layers['perturbed_counts'] = perturbed_count_output
+    else:
+        print("WARNING: `true_counts` or `pred_counts` missing from `test_dict`. Skipping layer assignment.")
+
     adata.write_h5ad(os.path.join(output_dir, file_name))
     print('anndata generation completed---')
     return adata
@@ -1212,9 +1206,11 @@ def noise_schedule(
 
 def top_k(logits, thres=0.9):
     k = math.ceil((1 - thres) * logits.shape[-1])
+    # print('logits', logits[:5,:7, :10])
     val, ind = logits.topk(k, dim=-1)
     probs = torch.full_like(logits, float('-inf'))
     probs.scatter_(2, ind, val)
+    # print('probs', probs[:5,:7, :10])
     return probs
 
 

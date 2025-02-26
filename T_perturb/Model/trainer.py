@@ -23,7 +23,6 @@ from pytorch_lightning import LightningModule
 from scvi.distributions import NegativeBinomial, ZeroInflatedNegativeBinomial
 from torchmetrics import MeanSquaredError
 from torchmetrics.text import Perplexity
-from pytorch_lightning.utilities import rank_zero_only
 
 from T_perturb.Modules.T_model import CountDecoder, CytoMeister
 from T_perturb.src.losses import mse_loss
@@ -94,7 +93,9 @@ class CytoMeisterTrainer(LightningModule):
         sequence_length: int = 2048,
         return_rouge_score: bool = True,
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
-        encoder: str = 'GF_fine_tuned',
+        encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
+            'GF_fine_tuned'
+        ),
         mask_scheduler: str = 'cosine',
         context_mode: bool = True,
         pos_encoding_mode: Literal[
@@ -102,7 +103,7 @@ class CytoMeisterTrainer(LightningModule):
         ] = 'time_pos_sin',
         precision: Literal['high', 'medium'] = 'medium',
         tokenid_to_rowid_path: str = (
-            '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED/tokenid_to_rowid_2000_hvg.pkl'
+            '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED_all_tps/tokenid_to_rowid_2000_hvg.pkl'
         ),
         encoder_path: str | None = None,
         deg_pkl_path: str | None = None,
@@ -127,6 +128,18 @@ class CytoMeisterTrainer(LightningModule):
         self.pred_tps = pred_tps
         self.n_total_tps = n_total_tps
         self.context_tps = context_tps
+        if mapping_dict_path is not None:
+            with open(
+                mapping_dict_path,
+                'rb',
+            ) as f:
+                gene_to_rowid = pickle.load(f)
+                # swap key and value
+                self.gene_to_rowid: Dict[Any, Any] | None = {
+                    v: k for k, v in gene_to_rowid.items()
+                }
+        else:
+            self.gene_to_rowid = None
 
         self.transformer = CytoMeister(
             tgt_vocab_size=tgt_vocab_size,
@@ -147,6 +160,7 @@ class CytoMeisterTrainer(LightningModule):
             return_attn=return_attn,
             context_mode=context_mode,
             condition_dict=condition_dict,
+            gene_to_rowid=self.gene_to_rowid,
         )
         self.masking_loss = nn.CrossEntropyLoss()
 
@@ -157,18 +171,6 @@ class CytoMeisterTrainer(LightningModule):
         self.warmup_epochs = warmup_epochs
         self.perplexity = Perplexity(ignore_index=-100)
         self.mse = MeanSquaredError()
-        if mapping_dict_path is not None:
-            with open(
-                mapping_dict_path,
-                'rb',
-            ) as f:
-                gene_to_rowid = pickle.load(f)
-                # swap key and value
-                self.gene_to_rowid: Dict[Any, Any] | None = {
-                    v: k for k, v in gene_to_rowid.items()
-                }
-        else:
-            self.gene_to_rowid = None
         with open(
             tokenid_to_rowid_path,
             'rb',
@@ -287,13 +289,14 @@ class CytoMeisterTrainer(LightningModule):
     def forward(self, batch, generate: bool = False):
         tgt_input_id_dict = {}
         for i in self.total_tps:
-            cond_ids = concat_cond_tokens(
-                batch=batch,
-                time_step=i,
-                condition_dict=self.condition_dict,
-            )
             tgt_input_id_ = batch[f'tgt_input_ids_t{i}'].clone()
-            tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
+            if self.condition_dict is not None:
+                cond_ids = concat_cond_tokens(
+                    batch=batch,
+                    time_step=i,
+                    condition_dict=self.condition_dict,
+                )
+                tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
             tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
 
         if generate:
@@ -419,6 +422,24 @@ class CytoMeisterTrainer(LightningModule):
                 sync_dist=True,
             )
             return masking_loss
+
+    # def on_test_batch_start(self, batch, *args, **kwargs):
+    #     if self.return_gene_embs:
+    #         n_genes = exclude_special_tokens(
+    #             self.gene_to_rowid,
+    #             self.marker_genes,
+    #         )
+    #         self.sum_gene_embs = {
+    #             f'{condition}': torch.zeros(
+    #                 size=(len(n_genes), self.d_model), dtype=self.dtype
+    #             )
+    #             for condition in self.gene_embs_list
+    #         }
+    #         self.count_gene_embs = {
+    #             f'{condition}': torch.zeros(size=(len(n_genes), 1), dtype=self.dtype)
+    #             for condition in self.gene_embs_list
+    #         }
+    #         self.all_cell_idx = []
 
     def test_step(self, batch, *args, **kwargs):
         outputs, tgt_input_id_dict = self.forward(
@@ -688,10 +709,9 @@ class CountDecoderTrainer(LightningModule):
         n_samples: int = 1,
         precision: Literal['high', 'medium'] = 'medium',
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
-        encoder: str = 'GF_fine_tuned',
-        # mapping_dict_path: str = (
-        #     '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/Geneformer/geneformer/' 'token_dictionary_gc95M.pkl'
-        # ),
+        encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
+            'GF_fine_tuned'
+        ),
         seed: int = 42,
         n_genes: int = 25426,
         pos_encoding_mode: Literal[
@@ -711,6 +731,7 @@ class CountDecoderTrainer(LightningModule):
         unique_gene_list: Dict[Any, Any] | None = None,
         shared_gene_list: Dict[Any, Any] | None = None,
         context_tps: List[int] | None = None,
+        mapping_dict_path: str | None = None,
         *args,
         **kwargs,
     ):
@@ -719,15 +740,17 @@ class CountDecoderTrainer(LightningModule):
         # only set precision for GPU
 
         set_matmul_precision_for_device(precision)
-        # if mapping_dict_path is not None:
-        #     with open(
-        #         mapping_dict_path,
-        #         'rb',
-        #     ) as f:
-        #         ensembl_to_token_id = pickle.load(f)
-        # # change to token_id to gene name
-        # self.token_id_to_ensembl = {v: k for k, v in ensembl_to_token_id.items()}
-        # ##pred_tps = [1,2,3]
+        if mapping_dict_path is not None:
+            with open(
+                mapping_dict_path,
+                'rb',
+            ) as f:
+                gene_to_rowid = pickle.load(f)
+                # swap key and value
+                gene_to_rowid = {v: k for k, v in gene_to_rowid.items()}
+        else:
+            raise ValueError('mapping_dict_path is None')
+        # change to token_id to gene name
         self.pretrained_model = CytoMeister(
             tgt_vocab_size=tgt_vocab_size,
             d_model=d_model,
@@ -742,10 +765,10 @@ class CountDecoderTrainer(LightningModule):
             encoder_path=encoder_path,
             pos_encoding_mode=pos_encoding_mode,
             condition_dict=condition_dict,
+            gene_to_rowid=gene_to_rowid,
         )
-        ##pred_tps = [1,3]
         self.pos_encoding_mode = pos_encoding_mode
-        # load CellMeister checkpoint
+        # load PETRA checkpoint
         if ckpt_masking_path is not None:
             checkpoint = torch.load(ckpt_masking_path, map_location='cpu')
             state_dict_ = modify_ckpt_state_dict(checkpoint, 'transformer.')
@@ -761,14 +784,15 @@ class CountDecoderTrainer(LightningModule):
             d_condt=d_condt,
             layer_norm=layer_norm,
             max_seq_length=max_seq_length,
-            use_positional_encoding = use_positional_encoding,
+            use_positional_encoding=use_positional_encoding,
             encoder=encoder,
-            mode=pos_encoding_mode,
-            add_cell_time = add_cell_time,
+            pos_encoding_mode=pos_encoding_mode,
+            add_cell_time=add_cell_time,
             d_model=d_model,
             dropout=dropout,
             pred_tps=pred_tps,
             context_tps=context_tps,
+            n_total_tps=n_total_tps,
             n_genes=n_genes,
         )
         if ckpt_count_path is not None:
@@ -804,14 +828,6 @@ class CountDecoderTrainer(LightningModule):
             self.total_tps = pred_tps
         else:
             self.total_tps = context_tps + pred_tps
-        # for i in self.total_tps:
-        #     self.register_buffer(
-        #         f'cls_token_{str(i)}',
-        #         torch.tensor(
-        #             [total_vocab_size + (i - 1)],
-        #             dtype=torch.long,
-        #         ),
-        #     )
         self.generate = generate
         self.adata = tgt_adata
         # scheduler
@@ -837,8 +853,6 @@ class CountDecoderTrainer(LightningModule):
             'cls_embeddings': [],
             'cell_idx': [],
         }
-        self.val_true_counts_list: List[torch.Tensor] = []
-        self.val_pred_counts_list: List[torch.Tensor] = []
         if self.return_rouge_score:
             # load rouge
             self.rouge = evaluate.load('rouge')
@@ -863,23 +877,20 @@ class CountDecoderTrainer(LightningModule):
         self.condition_dict = condition_dict
 
     def forward(self, batch, generate: bool = False):
-        # tgt_input_id_dict = {}
-        # for i in self.total_tps:
-        #     cond_ids = concat_cond_tokens(
-        #         batch=batch,
-        #         time_step=i,
-        #         condition_dict=self.condition_dict,
-        #     )
-        #     tgt_input_id_ = batch[f'tgt_input_ids_t{i}'].clone()
-        #     tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
-        #     tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
-            
-        tgt_input_id_dict = concat_cond_tokens(
-            time_points=self.total_tps,
-            condition_dict=self.condition_dict,
-            batch=batch,
-        )
-        #print('self.total_tps', self.total_tps)
+        tgt_input_id_dict = {}
+        for i in self.total_tps:
+            tgt_input_id_ = batch[f'tgt_input_ids_t{i}'].clone()
+            if self.condition_dict is not None:
+                cond_ids = concat_cond_tokens(
+                    batch=batch,
+                    time_step=i,
+                    condition_dict=self.condition_dict,
+                )
+                tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
+
+            tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
+            tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
+
         if generate:
             outputs = None
         else:
@@ -1021,13 +1032,64 @@ class CountDecoderTrainer(LightningModule):
         mean_mse = total_mse / len(time_steps)
         return mean_mse, res_dict
 
-    # def map_token_to_ensembl(self, val):
-    #     return self.token_id_to_ensembl.get(
-    #         val, val
-    #     )  # Return mapped value, or original if not in dict
+    def map_token_to_ensembl(self, val):
+        return self.token_id_to_ensembl.get(
+            val, val
+        )  # Return mapped value, or original if not in dict
+
+    # def compute_rouge_score(
+    #     self,
+    #     pred_ids: np.ndarray,
+    #     tgt_ids: np.ndarray,
+    #     rouge_len_list: list[int],
+    #     max_seq_length: int,
+    #     test_dict: dict[str, list],
+    # ) -> tuple[dict[str, list[Any]], dict[Any, Any]]:
+    #     rouge_score = {}
+    #     pred_ids = pred_ids.astype(object)
+    #     pred_ids = pred_ids[:, 1:]  # exclude task token
+    #     tgt_ids = tgt_ids.astype(object)
+    #     special_tokens = np.array([0, 1, 2, 3])
+    #     pred_ids[np.isin(pred_ids, special_tokens)] = ''
+    #     tgt_ids[np.isin(tgt_ids, special_tokens)] = ''
+    #     # convert all int to str
+    #     pred_ids_ = pred_ids.astype(str)
+    #     tgt_ids_ = tgt_ids.astype(str)
+    #     # # Vectorize the function to apply to the entire matrix
+    #     # vectorized_map = np.vectorize(self.map_token_to_ensembl)
+    #     # # TODO: rewrite the function without mapping dict
+    #     # # Apply the mapping
+    #     # pred_ids_ = vectorized_map(pred_ids)
+    #     # tgt_ids_ = vectorized_map(tgt_ids)
+    #     for seq_len in rouge_len_list:
+    #         if max_seq_length > seq_len:
+    #             pred_genes_short = pred_ids_[:, :seq_len]
+    #             true_genes_short = tgt_ids_[:, :seq_len]
+    #         else:
+    #             pred_genes_short = pred_ids_
+    #             true_genes_short = tgt_ids_
+    #         pred_ids_str = np.apply_along_axis(
+    #             lambda row: ' '.join(row), axis=1, arr=pred_genes_short
+    #         )
+    #         tgt_ids_str = np.apply_along_axis(
+    #             lambda row: ' '.join(row), axis=1, arr=true_genes_short
+    #         )
+    #         # remove all the trailing spaces
+    #         pred_ids_str = np.array([' '.join(s.split()) for s in pred_ids_str])
+    #         tgt_ids_str = np.array([' '.join(s.split()) for s in tgt_ids_str])
+    #         # create a list of strings
+    #         pred_ids_str = pred_ids_str.tolist()
+    #         tgt_ids_str = tgt_ids_str.tolist()
+    #         # compute rouge score
+    #         rouge_score = self.rouge.compute(
+    #             predictions=pred_ids_str,
+    #             references=tgt_ids_str,
+    #             rouge_types=['rouge1'],
+    #         )
+    #         test_dict[f'rouge1_{seq_len}'].append(rouge_score['rouge1'])
+    #     return test_dict, rouge_score
+
     def training_step(self, batch, *args, **kwargs):
-        ##self.total_tps = [1, 3]
-        ##self.pred_tps = [1, 3]
         outputs, _ = self.forward(batch)
         count_loss, pred_counts_dict = self.compute_count_loss(outputs, batch)
         self.log(
@@ -1077,11 +1139,7 @@ class CountDecoderTrainer(LightningModule):
             self.train_pred_counts_list = []
 
     def validation_step(self, batch, *args, **kwargs):
-        #print('batch', batch)
-        ##self.total_tps = [1, 2, 3]
         outputs, _ = self.forward(batch)
-        #print('outputs', outputs)
-        ##self.pred_tps = [2]
         count_loss, pred_counts_dict = self.compute_count_loss(
             outputs,
             batch,
@@ -1105,11 +1163,6 @@ class CountDecoderTrainer(LightningModule):
             self.val_dict,
         )
         self.val_dict = res_dict
-
-        for true_count, pred_count in zip(res_dict['true_counts'], res_dict['pred_counts']):
-            self.val_true_counts_list.append(true_count)
-            self.val_pred_counts_list.append(pred_count)
-
         self.log(
             'val/mse',
             mean_mse,
@@ -1241,91 +1294,8 @@ class CountDecoderTrainer(LightningModule):
 
     def on_test_epoch_end(self):
         if self.generate:
-
-            
-        #     # Gather all test_dict data across GPUs
-        #     del self.test_dict['cell_type_cellgen_harm']
-        #     del self.test_dict['time_after_LPS']
-        #     del self.test_dict['donor_cellgen_harm']
-
-        #     print('TEST DICT',self.test_dict['cls_embeddings'][0].shape)
-        #     print('TEST DICT',len(self.test_dict['cls_embeddings']))
-
-        #     gathered_results = self.all_gather(self.test_dict)
-        #     print('Gather DICT',gathered_results['cls_embeddings'][0].shape)
-        #     print('Gather DICT',len(gathered_results['cls_embeddings']))
-        #     #print('GATHERED cell_type_cellgen_harm of GATHERD',gathered_results['cell_type_cellgen_harm'])
-
-        #     # Ensure data concatenation happens on the CPU
-        #     concatenated_results = {}
-        #     for key in self.test_dict:
-        #         ##print('KEY',key)
-        #         # Check if the value for this key is a list and contains tensors
-        #         if isinstance(gathered_results[key][0], list):
-        #             if isinstance(gathered_results[key][0][0], torch.Tensor):
-        #                 # Concatenate tensors from each item in the list
-        #                 concatenated_results[key] = torch.cat(gathered_results[key][0], dim=0).cpu()
-        #                 print('SHAPE OF concatenated_results LISTS',concatenated_results[key].shape)
-        #             else:
-        #                 if key not in concatenated_results:
-        #                     concatenated_results[key] = []  # Initialize the key with an empty list
-        #                 for i, sublist in enumerate(gathered_results[key]):
-        #                     concatenated_results[key].extend([str(x) for x in sublist])
-        #                     print('SHAPE OF concatenated_results LISTS',len(concatenated_results[key]))
-        #                     print('i',i)
-        #                     print('sublist',sublist)
-        #         else:
-        #             # If it's already a tensor, just concatenate directly
-        #             concatenated_results[key] = gathered_results[key][0].reshape(
-        #             -1 , gathered_results[key][0].shape[2]).cpu()
-        #             print('SHAPE OF concatenated_results TENSOR',concatenated_results[key].shape)
-        #     # Sort by index if necessary
-        #     if 'cell_idx' in concatenated_results.keys():
-        #         sorted_idx = torch.argsort(concatenated_results['cell_idx'], dim=0)
-        #         print(sorted_idx.shape)
-        #         # Ensure sorted_idx is valid for each key-value pair
-        #         for key, value in concatenated_results.items():
-        #             print(f"Key: {key}, sorted_idx length: {len(sorted_idx)}, value length: {len(value)}")
-        #             if isinstance(value, torch.Tensor):
-        #                 # For tensors, directly use the sorted_idx for indexing
-        #                 concatenated_results[key] = value[sorted_idx, ...]
-        #             else:
-        #                 # For lists, ensure sorted_idx is within bounds
-        #                 if len(sorted_idx) > len(value):
-        #                     print(f"Warning: sorted_idx exceeds bounds for key '{key}', clipping indices.")
-        #                     sorted_idx = sorted_idx[:len(value)]  # Clip sorted_idx to fit the length of value
-        #                 concatenated_results[key] = [value[i] for i in sorted_idx]
-
-        #         # Ensure sorted_idx is used correctly for advanced indexing
-        #         concatenated_results = {
-        #             key: value[sorted_idx, ...] if isinstance(value, torch.Tensor) else [value[i] for i in sorted_idx]
-        #             for key, value in concatenated_results.items()
-        #             }
-        #         # Remove duplicates based on 'cell_idx'
-        # #        unique_values, unique_idx = torch.unique(
-        # #            concatenated_results['cell_idx'], return_inverse=True
-        # #        )
-        #         #print('UNIQUE IDX', (unique_idx))
-        #         #print('UNIQUE Vals', (unique_values))
-        #         #print(concatenated_results['cell_idx'])
-        #         #print('concatenated_results', concatenated_results)
-
-        #         # Apply filtering to retain only unique indices
-        # #        concatenated_results_ = {
-        # #            key: value[unique_idx, ...] if isinstance(value, torch.Tensor) else [value[i] for i in unique_idx]
-        # #            for key, value in concatenated_results.items()
-        # #            }
-
-        #         # Debugging: Print shapes of all values
-        # #        print("SHAPE OF concatenated_results after processing:")
-        #         for key, value in concatenated_results.items(): #concatenated_results_
-        #             print(f"{key}: {value.shape if isinstance(value, torch.Tensor) else 'Not a tensor'}")
-        #     rank_zero_only(concatenated_results) #concatenated_results
-            # Create obs_key and pass it to return_generation_adata
             obs_key = self.var_list if len(self.var_list) > 0 else []
-        #    obs_key = []
             obs_key.extend(['cell_idx'])
-#            if self.global_rank == 0:  # Ensure only the main process writes the file              
             pred_adata = return_generation_adata(
                 test_dict=self.test_dict,
                 obs_key=obs_key,

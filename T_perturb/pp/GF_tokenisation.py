@@ -105,7 +105,7 @@ def get_args():
         '--reference_time',
         type=str,
         # default='0h',
-        default='normal',
+        default='90m_LPS',
         help='Control time point for cell pairing' 'which is feed into Geneformer',
     )
     parser.add_argument(
@@ -113,7 +113,7 @@ def get_args():
         type=str,
         nargs='+',
         default=[
-            'normal',
+            #'normal',
             '90m_LPS',
             '6h_LPS',
             '10h_LPS',
@@ -216,6 +216,7 @@ if args.gene_filtering_mode == 'hvg':
     #adata_6h_LPS = adata[adata.obs['time_after_LPS'] == '6h_LPS', :]
     #adata_6h_LPS = adata_6h_LPS[:, adata_no_6h.var_names].copy()  # Keep only HVGs in '6h_LPS'
     #adata = adata_no_6h.concatenate(adata_6h_LPS, join='inner')
+    adata = adata[adata.obs['time_after_LPS'] != 'normal', :].copy()
     adata.X = adata.layers['counts']  # need raw counts
 elif args.gene_filtering_mode == 'degs':
     # Filter adata for only DEGs

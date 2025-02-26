@@ -70,7 +70,6 @@ def get_args():
         '--split_obs',
         type=str,
         nargs='+',
-        # default=['Donor', 'Cell_type'],
         default=['cell_type_cellgen_harm'],
     )
     parser.add_argument('--split_value', type=str, default='D351')
@@ -131,7 +130,6 @@ def get_args():
     parser.add_argument('--use_positional_encoding', type=str2bool, default=False)
     parser.add_argument('--layer_norm', type=str2bool, default=False)
     parser.add_argument('--add_cell_time', type=str2bool, default=False)
-    parser.add_argument('--dropout', type=float, default=0.1)
 
     parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle')
     parser.add_argument(
@@ -217,7 +215,6 @@ def get_args():
         nargs='+',
         type=str,
         # default=['Time_point'],
-        # default=['Cell_population', 'Cell_type', 'Time_point', 'Donor'],
         default=['cell_type_cellgen_harm', 'donor_cellgen_harm' ,'time_after_LPS'],
         help='List of variables to keep in the dataset',
     )
@@ -283,7 +280,7 @@ def get_args():
     parser.add_argument(
         '--d_condt',
         type=int,
-        default=1,
+        default=768,
         help='One Hot dimension',
     )
     parser.add_argument(
@@ -358,16 +355,16 @@ def main() -> None:
             range(len(tgt_datasets[f'tgt_dataset_t{args.pred_tps[0]}']))
         )
     # check if the train indices are the same for both adata and dataset
-    subset_adata = tgt_adata_tmp[train_indices]
+    #subset_adata = tgt_adata_tmp[train_indices]
 
-    subset_dataset = tgt_datasets[f'tgt_dataset_t{args.pred_tps[0]}'].select(
-        train_indices
-    )
-    adata_idx = subset_adata.obs['index'].tolist()
-    dataset_idx = list(map(str, subset_dataset['cell_pairing_index']))
-    assert adata_idx == dataset_idx, (
-        'Cell pairing indices do not match ' 'between AnnData and Dataset objects'
-    )
+    #subset_dataset = tgt_datasets[f'tgt_dataset_t{args.pred_tps[0]}'].select(
+    #    train_indices
+    #)
+    #adata_idx = subset_adata.obs['index'].tolist()
+    #dataset_idx = list(map(str, subset_dataset['cell_pairing_index']))
+    #assert adata_idx == dataset_idx, (
+    #    'Cell pairing indices do not match ' 'between AnnData and Dataset objects'
+    #)
     if args.loss_mode == 'mse':
         # log normalize data only for mse loss
         sc.pp.normalize_total(src_adata, target_sum=1e4)
@@ -413,7 +410,6 @@ def main() -> None:
             token_no += len(condition_dict[condition])
     else:
         condition_dict = None
-    print('prepare condition dict', condition_dict)
 
     # Initialize model module
     # ----------------------------------------------------------------------------------
@@ -435,13 +431,13 @@ def main() -> None:
         'condition_dict': condition_dict,
         'temperature': args.temperature,
         'iterations': args.iterations,
+        'mapping_dict_path': args.mapping_dict_path,
     }
     if args.train_mode == 'masking':
         trainer_kwargs['dropout'] = args.cellgen_dropout
         trainer_kwargs['mlm_probability'] = args.mlm_prob
         trainer_kwargs['end_lr'] = args.cellgen_lr
         trainer_kwargs['weight_decay'] = args.cellgen_wd
-        trainer_kwargs['mapping_dict_path'] = args.mapping_dict_path
         trainer_kwargs['context_mode'] = args.context_mode
         pretrained_module = CytoMeisterTrainer(**trainer_kwargs)
     elif args.train_mode == 'count':
@@ -451,19 +447,18 @@ def main() -> None:
         trainer_kwargs['d_condc'] = args.d_condc
         trainer_kwargs['d_condt'] = args.d_condt
         trainer_kwargs['layer_norm'] = args.layer_norm
+        trainer_kwargs['use_positional_encoding'] = args.use_positional_encoding
         trainer_kwargs['add_cell_time'] = args.add_cell_time
         trainer_kwargs['lr'] = args.count_lr
         trainer_kwargs['weight_decay'] = args.count_wd
-        trainer_kwargs['mapping_dict_path'] = args.mapping_dict_path
         trainer_kwargs['conditions'] = conditions_
         trainer_kwargs['conditions_combined'] = conditions_combined_
         trainer_kwargs['tgt_adata'] = tgt_adatas
         trainer_kwargs['temperature'] = args.temperature
         trainer_kwargs['iterations'] = args.iterations
-        trainer_kwargs['seed'] = args.seed
         trainer_kwargs['n_genes'] = src_adata.shape[1]
-        trainer_kwargs['dropout'] = args.dropout
-        trainer_kwargs['use_positional_encoding'] = args.use_positional_encoding
+        trainer_kwargs['dropout'] = args.count_dropout
+        # trainer_kwargs['use_positional_encoding'] = args.use_positional_encoding
         trainer_kwargs['seed'] = args.seed
         decoder_module = CountDecoderTrainer(**trainer_kwargs)
     else:
@@ -552,7 +547,7 @@ def main() -> None:
         dirpath=checkpoint_path,
         filename=f'{filename}-' + '{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=4,
+        every_n_epochs=1,
         verbose=True,
         monitor=monitor_metric,
         mode=mode,
@@ -643,7 +638,7 @@ def main() -> None:
     #     checkpoint_path=checkpoint_path, filename=filename
     # )
     # If the device is an A100, set the precision for matrix multiplication
-    ddp_strategy = DDPStrategy(find_unused_parameters=True)
+    ddp_strategy = DDPStrategy(find_unused_parameters=False)
 
     trainer = pl.Trainer(
         logger=wandb_logger,

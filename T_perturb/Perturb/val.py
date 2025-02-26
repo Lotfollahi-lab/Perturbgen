@@ -13,7 +13,7 @@ from T_perturb.src.utils import get_idx_for_filtering, read_dataset_files
 # --- 1. Data pre-processing ---
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative/')
+    os.chdir('/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb')
 print(os.getcwd())
 # set seed for reproducibility
 seed_no = 42
@@ -97,9 +97,10 @@ def main() -> None:
     # remove tgt_vocab_size from config
     config['trainer'].pop('tgt_vocab_size')
     config['trainer'].pop('max_seq_length')
-
+    
     # Initialize model module
     # ----------------------------------------------------------------------------------
+
     decoder_module = PerturberTrainer(
         condition_dict=condition_dict,
         n_total_tps=n_total_tps,
@@ -107,6 +108,7 @@ def main() -> None:
         max_seq_length=max_seq_length,
         **config['trainer'],
     )
+
     data_module = CytoMeisterDataModule(
         n_total_tps=n_total_tps,
         src_dataset=src_dataset,
@@ -118,12 +120,14 @@ def main() -> None:
     accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
     trainer = pl.Trainer(
         logger=False,
+        limit_test_batches=1, 
         accelerator=accelerator,
         devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
         precision=precision,
     )
+
     trainer.test(
-        decoder_module, data_module, ckpt_path=config['model']['ckpt_masking_path']
+        decoder_module, data_module, ckpt_path=config['model']['ckpt_masking_path']  
     )
 
 

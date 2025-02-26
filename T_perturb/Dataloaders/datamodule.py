@@ -158,7 +158,6 @@ class CytoMeisterDataModule(LightningDataModule):
         }
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
-            #print("self.pred_tps", self.pred_tps)
             self.all_modelling_tps = self.pred_tps
             dataset_args['time_steps'] = self.pred_tps
             if self.condition_encodings is not None:
@@ -176,11 +175,7 @@ class CytoMeisterDataModule(LightningDataModule):
                     dataset_args['split_indices'] = self.val_indices
                     self.val_dataset = CytoMeisterDataset(**dataset_args)
                 else:
-                    ##self.all_modelling_tps = self.total_tps
-                    #print("self.all_modelling_tps", self.all_modelling_tps)
-                    ##dataset_args['time_steps'] = self.all_modelling_tps
-                    self.val_dataset = None 
-                    ##self.val_dataset = CytoMeisterDataset(**dataset_args)
+                    self.val_dataset = None
             else:
                 dataset_args['split_indices'] = self.train_indices
                 self.train_dataset = CytoMeisterDataset(**dataset_args)
@@ -188,12 +183,7 @@ class CytoMeisterDataModule(LightningDataModule):
                     dataset_args['split_indices'] = self.val_indices
                     self.val_dataset = CytoMeisterDataset(**dataset_args)
                 else:
-                    #print("it is here")
-                    ##self.all_modelling_tps = self.total_tps
-                    ##dataset_args['time_steps'] = self.all_modelling_tps
-                    self.val_dataset = None 
-                    ##self.val_dataset = CytoMeisterDataset(**dataset_args)
-                    #print("self.val_dataset", self.val_dataset)
+                    self.val_dataset = None
         if stage == 'test' or stage is None:
             if self.context_tps is not None:
                 # use only defined time steps for modelling to avoid data leakage
@@ -218,29 +208,25 @@ class CytoMeisterDataModule(LightningDataModule):
                 self.test_dataset = CytoMeisterDataset(**dataset_args)
 
     def train_dataloader(self):
-        ##self.all_modelling_tps = self.pred_tps
         self.dataloader_kwargs['dataset'] = self.train_dataset
         self.dataloader_kwargs['collate_fn'] = self.collate
         data = DataLoader(**self.dataloader_kwargs)
         return data
 
     def val_dataloader(self):
-        ##self.all_modelling_tps = self.total_tps
-        #print('in val', self.all_modelling_tps)
         self.dataloader_kwargs['dataset'] = self.val_dataset
-        #print(f"self.val_dataset: {self.val_dataset[0]}")
         self.dataloader_kwargs['shuffle'] = False
         self.dataloader_kwargs['collate_fn'] = self.collate
         if self.split:
             data = DataLoader(**self.dataloader_kwargs)
             return data
         else:
-            return [] ##DataLoader(**self.dataloader_kwargs)
+            return []
 
     def test_dataloader(self):
         self.dataloader_kwargs['dataset'] = self.test_dataset
         self.dataloader_kwargs['collate_fn'] = self.collate
-        data = DataLoader(**self.dataloader_kwargs , drop_last=True)
+        data = DataLoader(**self.dataloader_kwargs, drop_last=True)
         return data
 
     def collate(self, batch):
@@ -275,15 +261,9 @@ class CytoMeisterDataModule(LightningDataModule):
             'batch': condition,
             'combined_batch': condition_combined,
         }
-        ##if f'tgt_counts_t{2}' in batch[0].keys():
-        ##    self.all_modelling_tps = [1,2,3]
-        ##else:
-        ##    self.all_modelling_tps = [1,3]
-            
-        #print(f"self.all_modelling_tps in colate: {self.all_modelling_tps}")
+
         for time_step in self.all_modelling_tps:
             if batch[0]['tgt_counts_t1'] is not None:
-                #print(f"Available keys in batch[0]: {batch[0].keys()}")
                 if isinstance(batch[0][f'tgt_counts_t{time_step}'], csr_matrix):
                     tgt_counts = [
                         torch.tensor(d[f'tgt_counts_t{time_step}'].toarray())
@@ -332,3 +312,4 @@ class CytoMeisterDataModule(LightningDataModule):
             )
 
         return out
+

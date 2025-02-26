@@ -43,14 +43,14 @@ python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb
 --split False \
 --splitting_mode stratified \
 --output_dir $RES_DIR/$RES_NAME \
---ckpt_masking_path "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/results/lps/interpolation_2k_all_tps_cond_celltype/res/checkpoints/20250216_1825_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_ptime_pos_sin_m_cosine_tp_1-2-3_s_42-epoch=15.ckpt" \
---src_dataset "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED_all_tps/dataset_2000_hvg_src/normal.dataset" \
---tgt_dataset_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED_all_tps/dataset_2000_hvg_tgt" \
---src_adata "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_src/normal.h5ad" \
---tgt_adata_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_tgt" \
---mapping_dict_path "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED_all_tps/token_id_to_genename_2000_hvg.pkl" \
+--ckpt_masking_path "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/results/lps/interpolation_2k_conditional/res/checkpoints/20250210_1425_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_ptime_pos_sin_m_cosine_tp_1-3_s_42-epoch=15.ckpt" \
+--src_dataset "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED/dataset_2000_hvg_src/normal.dataset" \
+--tgt_dataset_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED/dataset_2000_hvg_tgt" \
+--src_adata "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED/h5ad_pairing_2000_hvg_src/normal.h5ad" \
+--tgt_adata_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED/h5ad_pairing_2000_hvg_tgt" \
+--mapping_dict_path "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED/token_id_to_genename_2000_hvg.pkl" \
 --batch_size 16 \
---max_len 666 \
+--max_len 692 \
 --epochs 16 \
 --tgt_vocab_size 20274 \
 --count_lr 0.001 \
@@ -62,14 +62,14 @@ python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb
 --num_layers 6 \
 --d_ff 32 \
 --loss_mode zinb \
---pred_tps 1 2 3 \
+--pred_tps 1 3 \
 --var_list cell_type_cellgen_harm donor_cellgen_harm time_after_LPS \
 --cond_list cell_type_cellgen_harm \
 --encoder scmaskgit \
---add_cell_time False \
+--add_cell_time True \
 --d_condc 64 \
 --d_condt 768 \
---dropout 0.1 \
+--count_dropout 0.1 \
 --use_positional_encoding False \
 --layer_norm True \
 --context_mode True \
@@ -80,6 +80,4 @@ python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb
 --d_model 768
 
 echo '--- Finished computing model'
-
-#     --count_dropout 0.25 \
 
