@@ -8,7 +8,7 @@ from datasets import concatenate_datasets, load_from_disk
 
 from T_perturb.Dataloaders.datamodule import CytoMeisterDataModule
 from T_perturb.Perturb.trainer import PerturberTrainer
-from T_perturb.src.utils import get_idx_for_filtering, read_dataset_files
+from T_perturb.src.utils import get_idx_for_filtering, read_dataset_files, condition_for_count_loss
 
 # --- 1. Data pre-processing ---
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
@@ -90,6 +90,20 @@ def main() -> None:
             # else:
             #     filtered_dataset = dataset.select(idx_)
             filter_idx.extend(idx_)
+    if len(filter_idx) > 0:
+        # apply condition filter to all datasets
+        filter_idx = list(set(filter_idx))
+        for i in range(len(tgt_datasets)):
+            t = i + 1
+            tgt_dataset = tgt_datasets[f'tgt_dataset_t{t}']
+            tgt_adata = tgt_adatas[f'tgt_h5ad_t{t}']
+            tgt_dataset = tgt_dataset.select(filter_idx)
+            tgt_datasets[f'tgt_dataset_t{t}'] = tgt_dataset
+            tgt_adata = tgt_adata[filter_idx, :]
+            tgt_adatas[f'tgt_h5ad_t{t}'] = tgt_adata
+        # for i, dataset in tgt_datasets.items():
+        #     tgt_datasets[i] = dataset.select(filter_idx)
+        src_dataset = src_dataset.select(filter_idx)
 
     # Define path to load checkpoint
     n_total_tps = len(tgt_adatas)
@@ -97,6 +111,19 @@ def main() -> None:
     # remove tgt_vocab_size from config
     config['trainer'].pop('tgt_vocab_size')
     config['trainer'].pop('max_seq_length')
+
+    tgt_adata_tmp = tgt_adatas[f"tgt_h5ad_t{config['trainer']['pred_tps'][0]}"].copy()
+                    
+    (
+    conditions,
+    condition_encodings,
+    conditions_combined,
+    conditions_,
+    condition_keys_,
+    conditions_combined_,
+    ) = condition_for_count_loss(
+        None, None, None, tgt_adata_tmp
+    )
     
     # Initialize model module
     # ----------------------------------------------------------------------------------
@@ -106,13 +133,25 @@ def main() -> None:
         n_total_tps=n_total_tps,
         tgt_vocab_size=token_no + 50,
         max_seq_length=max_seq_length,
+        conditions = conditions_,
+        conditions_combined = conditions_combined_,
         **config['trainer'],
     )
+
+    tgt_counts_dict = {}
+    for keys, tgt_adata in tgt_adatas.items():
+        tgt_counts_dict[keys] = tgt_adata.X
+    #src_counts = src_adata.X
 
     data_module = CytoMeisterDataModule(
         n_total_tps=n_total_tps,
         src_dataset=src_dataset,
         tgt_datasets=tgt_datasets,
+        condition_keys = condition_keys_,
+        condition_encodings = condition_encodings,
+        tgt_counts_dict = tgt_counts_dict,
+        conditions = conditions,
+        conditions_combined = conditions_combined,
         **config['datamodule'],
     )
     data_module.setup()

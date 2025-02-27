@@ -920,6 +920,9 @@ class CytoMeister(nn.Module):
     ):
         self_attn_list = []
         cross_attn_list = []
+        decoder_embedding_l1 = []
+        decoder_embedding_lmid = []
+        decoder_l = 1
         for dec_layer in self.decoder_block:
             # see if concatenation of cls embedding
             dec_embedding, self_attn_weights, cross_attn_weights = dec_layer(
@@ -928,11 +931,15 @@ class CytoMeister(nn.Module):
                 tgt_mask=tgt_pad,
                 enc_output=enc_output,
             )
+            if decoder_l == 1:
+                decoder_embedding_l1.append(dec_embedding)
+            elif decoder_l == self.num_layers // 2:
+                decoder_embedding_lmid.append(dec_embedding)
             if self_attn_weights is not None:
                 self_attn_list.append(self_attn_weights)
             if cross_attn_weights is not None:
                 cross_attn_list.append(cross_attn_weights)
-        # also convert to float 16 for memory efficiency
+            decoder_l += 1
         if len(self_attn_list) > 0:
             self_attn_weights = (
                 torch.stack(self_attn_list).mean(dim=0).to(torch.float16)
