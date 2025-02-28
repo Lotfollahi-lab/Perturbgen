@@ -178,7 +178,6 @@ def main() -> None:
         accelerator=accelerator,
         devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
         precision=precision,
-        limit_test_batches=5.0,
     )
     trainer.test(
         decoder_module, data_module, ckpt_path=config['model']['ckpt_masking_path']
