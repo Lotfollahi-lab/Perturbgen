@@ -886,8 +886,8 @@ def return_perturbation_adata(
     --------
     adata: `~anndata.AnnData` \n
         Annotated data matrix with predicted counts. \n
-        - adata.X: `~pd.DataFrame`
-            pd.DataFrame of cosine similarities between true and predicted embeddings.
+        - adata.X: `~numpy.ndarray`
+            Array of perturbed counts.
         - adata.obs: `~pandas.DataFrame`
             DataFrame of obs_key.
         - adata.var: `~pandas.DataFrame`
@@ -905,15 +905,16 @@ def return_perturbation_adata(
     true_cls = torch.cat(test_dict['true_cls']).numpy()
     perturbed_cls = torch.cat(test_dict['perturbed_cls']).numpy()
     # adata.X
+    pert_counts = None
     if 'pert_counts' in test_dict.keys():
-        pert_counts = torch.cat(test_dict['pert_counts']).numpy()
-    else:
-        pert_counts = None
+        if len(test_dict['pert_counts']) > 0:
+            pert_counts = torch.cat(test_dict['pert_counts']).numpy()
     # adata.layers['counts']
+    true_counts = None
     if 'true_counts' in test_dict.keys():
-        true_counts = torch.cat(test_dict['true_counts']).numpy()
-    else:
-        true_counts = None
+        if len(test_dict['true_counts']) > 0:
+            true_counts = torch.cat(test_dict['true_counts']).numpy()
+
     # cls_cos_similarity = torch.cat(test_dict['cls_cosine_similarity']).numpy()
     mean_cos_similarity = torch.cat(test_dict['mean_cosine_similarity']).numpy()
     if 'mean_cosine_similarity_l1' in test_dict.keys():
@@ -950,8 +951,13 @@ def return_perturbation_adata(
         'mean_cos_similarity_lmid': mean_cos_similarity_lmid,
         # 'delta_probs': delta_probs,
     }
-    # varm_dict = {
-    #     'gene_cos_similarity': cos_similarity_df,
+    cos_similarity_df_ = cos_similarity_df.T
+    # convert columns to string
+    cos_similarity_df_.columns = cos_similarity_df_.columns.astype(str)
+    varm_dict = {
+        'gene_cos_similarity': cos_similarity_df_,
+    }
+
     #     # 'delta_gene_probs': delta_gene_probs_df.T,
     # }
 
@@ -962,7 +968,6 @@ def return_perturbation_adata(
             if key.startswith('rouge')
         }
         obsm_dict.update(rouge_dict)
-
     # adata.obs
     obs_dict = {obs: np.concatenate(test_dict[obs]) for obs in obs_key}
     test_obs = pd.DataFrame(obs_dict)
@@ -971,11 +976,12 @@ def return_perturbation_adata(
         X=pert_counts,
         obs=test_obs,
         obsm=obsm_dict,
-        var=pd.DataFrame(marker_genes.keys(), columns=['gene_name']),
+        varm=varm_dict,
+        var=pd.DataFrame(
+            index=cos_similarity_df.columns,
+        ),
         layers={'counts': true_counts},
     )
-    adata.var_names = adata.var['gene_name']
-    adata.X = cos_similarity_df
     adata.write_h5ad(os.path.join(output_dir, file_name))
     print('anndata generation completed---')
     return adata

@@ -27,7 +27,7 @@ trainer:
   pos_encoding_mode: 'time_pos_sin'
   perturbation_mode: 'delete'
   genes_to_perturb:
-    - 'C1QTNF4'
+    - 'MPO'
   validation_mode: 'inference'
   perturbation_sequence:
     - 'tgt'

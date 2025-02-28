@@ -689,6 +689,7 @@ def main() -> None:
         num_nodes=args.num_node,
         devices=-1 if torch.cuda.is_available() else 0,  # inference only on one gpu
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
+        limit_test_batches=5,
     )
     # Finally, kick of the training process.
     if args.test_mode == 'masking':
