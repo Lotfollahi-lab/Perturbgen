@@ -1620,8 +1620,8 @@ class CountDecoder(nn.Module):
         for t in self.pred_tps:
             cls_embedding = outputs[t]['mean_embedding']
             if self.add_cell_time:
-                if self.use_positional_encoding:
-                    condition_emb = self.pos_embedding.time_pe[:, t + 1] 
+                if self.use_positional_encoding and self.pos_embedding is not None:
+                    condition_emb_time = self.pos_embedding.time_pe[:, t + 1] 
                 else:
                     device = next(self.parameters()).device  # Get the device of the model
                     condition_emb_time = self.condition_layer_time(self.condition_dict_oh[t].to(device))
