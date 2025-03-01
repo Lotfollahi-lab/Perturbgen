@@ -694,7 +694,7 @@ class CountDecoderTrainer(LightningModule):
         d_ff=32,
         max_seq_length=2048,
         loss_mode: str = 'mse',
-        d_condc: int = 64,
+        d_condc: int | None = None,
         d_condt: int = 768,
         use_positional_encoding: bool = False,
         layer_norm: bool = False,
