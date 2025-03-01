@@ -1484,6 +1484,7 @@ class CountHead(nn.Module):
         return count_outputs
 
 
+
 class CountDecoder(nn.Module):
     def __init__(
         self,
@@ -1491,7 +1492,7 @@ class CountDecoder(nn.Module):
         loss_mode: str = 'zinb',
         d_model: int = 128,
         max_seq_length: int = 2048,
-        d_condc: int = 768,
+        d_condc: int | None = None,
         d_condt: int = 768,
         encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
             'GF_fine_tuned'
@@ -1568,9 +1569,11 @@ class CountDecoder(nn.Module):
         #         d_condc = d_model
 
         if self.add_cell_time:
-            self.count_decoder = CountHead(
-                loss_mode, n_genes, d_model + d_condt, dropout
-            )  # Adjust input size
+            input_size = d_model + d_condt
+            if d_condc is not None:
+                input_size += d_condc
+
+            self.count_decoder = CountHead(loss_mode, n_genes, input_size, dropout)
         else:
             self.count_decoder = CountHead(loss_mode, n_genes, d_model, dropout)
 
@@ -1592,13 +1595,16 @@ class CountDecoder(nn.Module):
                 drop=dropout,
                 layer_norm=layer_norm,
             )  # New MLP layer
-            # self.condition_layer_celltype = Mlp(
-            #     in_features=d_model,
-            #     hidden_features=d_condc * 2,
-            #     out_features=d_condc,
-            #     drop=dropout,
-            #     layer_norm=layer_norm,
-            # )
+            if d_condc is not None:
+                self.condition_layer_celltype = Mlp(
+                    in_features=d_model,
+                    hidden_features=d_condc * 2,
+                    out_features=d_condc,
+                    drop=dropout,
+                    layer_norm=layer_norm,
+                )
+            else:
+                self.condition_layer_celltype = None
 
     def forward(
         self,
@@ -1614,20 +1620,18 @@ class CountDecoder(nn.Module):
         for t in self.pred_tps:
             cls_embedding = outputs[t]['mean_embedding']
             if self.add_cell_time:
-                if self.use_positional_encoding and self.pos_embedding is not None:
-                    # Use time-based PE
-                    condition_emb_time = self.pos_embedding.time_pe[:, t + 1]
+                if self.use_positional_encoding:
+                    condition_emb = self.pos_embedding.time_pe[:, t + 1] 
                 else:
-                    device = next(
-                        self.parameters()
-                    ).device  # Get the device of the model
-                    condition_emb_time = self.condition_layer_time(
-                        self.condition_dict_oh[t].to(device)
-                    )
-                    condition_emb_time = condition_emb_time.unsqueeze(0).expand(
-                        cls_embedding.shape[0], -1
-                    )
-                cls_embedding = torch.cat((cls_embedding, condition_emb_time), dim=1)
+                    device = next(self.parameters()).device  # Get the device of the model
+                    condition_emb_time = self.condition_layer_time(self.condition_dict_oh[t].to(device))
+                    if self.condition_layer_celltype is not None:
+                        condition_emb_celltype = self.condition_layer_celltype(outputs[t]['dec_embedding'][:, 1, :])  # Use one-hot
+                        condition_emb_time = condition_emb_time.unsqueeze(0).expand(condition_emb_celltype.shape[0], -1)
+                        condition_emb = torch.cat((condition_emb_time, condition_emb_celltype), dim=1)
+                    else:
+                        condition_emb = condition_emb_time 
+                cls_embedding = torch.cat((cls_embedding, condition_emb), dim=1)
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
             count_outputs[f'count_output_t{t}'] = count_outputs_tmp
 
@@ -1664,7 +1668,7 @@ class CountDecoder(nn.Module):
             cls_embedding = outputs[t]['mean_embedding']
             if self.add_cell_time:
                 if self.use_positional_encoding and self.pos_embedding is not None:
-                    condition_emb_time = self.pos_embedding.time_pe[:, t + 1].to(
+                    condition_emb = self.pos_embedding.time_pe[:, t + 1].to(
                         outputs[t]['mean_embedding'].device
                     )
                 else:
@@ -1672,16 +1676,19 @@ class CountDecoder(nn.Module):
                     condition_emb_time = self.condition_layer_time(
                         self.condition_dict_oh[t].to(device)
                     )
-                    # condition_emb_celltype = self.condition_layer_celltype(
-                    #     outputs[t]['dec_embedding'][:, 1, :]
-                    # )
-                    condition_emb_time = condition_emb_time.unsqueeze(0).expand(
-                        cls_embedding.shape[0], -1
-                    )
-                    # condition_emb = torch.cat(
-                    #     (condition_emb_time, condition_emb_celltype), dim=1
-                    # )
-                cls_embedding = torch.cat((cls_embedding, condition_emb_time), dim=-1)
+                    if self.condition_layer_celltype is not None:
+                        condition_emb_celltype = self.condition_layer_celltype(
+                            outputs[t]['dec_embedding'][:, 1, :]
+                        )
+                        condition_emb_time = condition_emb_time.unsqueeze(0).expand(
+                            condition_emb_celltype.shape[0], -1
+                        )
+                        condition_emb = torch.cat(
+                            (condition_emb_time, condition_emb_celltype), dim=1
+                        )
+                    else:
+                        condition_emb = condition_emb_time
+                cls_embedding = torch.cat((cls_embedding, condition_emb), dim=-1)
                 count_outputs[f'count_output_t{t}'] = self.count_decoder.forward(
                     cls_embedding
                 )
