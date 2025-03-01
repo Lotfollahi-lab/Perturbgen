@@ -71,6 +71,7 @@ def get_args():
         type=str,
         nargs='+',
         default=['cell_type_cellgen_harm'],
+        # default=['celltype_v2'],
     )
     parser.add_argument('--split_value', type=str, default='D351')
     parser.add_argument(
@@ -216,6 +217,7 @@ def get_args():
         type=str,
         # default=['Time_point'],
         default=['cell_type_cellgen_harm', 'donor_cellgen_harm' ,'time_after_LPS'],
+        # default=['celltype_v2', 'sex', 'phase', 'tissue', 'diff_state'],
         help='List of variables to keep in the dataset',
     )
     parser.add_argument(

@@ -1,9 +1,9 @@
 #make a date directory if it does not exist
 #!/bin/bash
 #BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=shared:num=4' # request for exclusive access to gpu
-#BSUB -n 32 # number of cores
-#BSUB -R "span[ptile=32]"     # split X cores per host
+#BSUB -gpu 'mode=shared:num=2' # request for exclusive access to gpu
+#BSUB -n 8 # number of cores
+#BSUB -R "span[ptile=8]"     # split X cores per host
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb # working directory
 #BSUB -o T_perturb/log/count_interpolation_6h_out_%J.out # output file
@@ -24,7 +24,7 @@ echo "--- Start computing model"
 
 # # ----------------- Create folder to save results and copy the script -----------------
 RES_DIR="/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/results"
-RES_NAME="lps/count_interpolation_ourMED_ws_on2k_T_C_alltps"
+RES_NAME="lps/count_interpolation_ourMED_ws_on2k_T_C_alltps_ns3"
 # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
 # Get the current timestamp
@@ -73,6 +73,7 @@ python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb
 --use_positional_encoding False \
 --layer_norm True \
 --context_mode True \
+--n_samples 3 \
 --encoder_path "/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt" \
 --pos_encoding_mode time_pos_sin \
 --mask_scheduler 'cosine' \

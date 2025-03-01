@@ -171,6 +171,7 @@ class CytoMeisterTrainer(LightningModule):
         self.warmup_epochs = warmup_epochs
         self.perplexity = Perplexity(ignore_index=-100)
         self.mse = MeanSquaredError()
+
         with open(
             tokenid_to_rowid_path,
             'rb',
@@ -693,7 +694,7 @@ class CountDecoderTrainer(LightningModule):
         d_ff=32,
         max_seq_length=2048,
         loss_mode: str = 'mse',
-        d_condc: int = 768,
+        d_condc: int = 64,
         d_condt: int = 768,
         use_positional_encoding: bool = False,
         layer_norm: bool = False,
@@ -719,7 +720,8 @@ class CountDecoderTrainer(LightningModule):
         ] = 'time_pos_sin',
         mask_scheduler: str = 'cosine',
         sequence_length: int = 2048,
-        return_rouge_score=True,
+        return_rouge_score: bool = True,
+        context_mode: bool = True,
         encoder_path: str | None = None,
         var_list: List[str] | None = None,
         tgt_adata: ad.AnnData | None = None,
@@ -740,6 +742,8 @@ class CountDecoderTrainer(LightningModule):
         # only set precision for GPU
 
         set_matmul_precision_for_device(precision)
+        print('encoder_path', encoder_path)
+        print('mapping_dict_path', mapping_dict_path)
         if mapping_dict_path is not None:
             with open(
                 mapping_dict_path,
@@ -766,6 +770,7 @@ class CountDecoderTrainer(LightningModule):
             pos_encoding_mode=pos_encoding_mode,
             condition_dict=condition_dict,
             gene_to_rowid=gene_to_rowid,
+            context_mode=context_mode,
         )
         self.pos_encoding_mode = pos_encoding_mode
         # load PETRA checkpoint
@@ -887,10 +892,7 @@ class CountDecoderTrainer(LightningModule):
                     condition_dict=self.condition_dict,
                 )
                 tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
-
-            tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
             tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
-
         if generate:
             outputs = None
         else:

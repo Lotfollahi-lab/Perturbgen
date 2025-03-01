@@ -2,13 +2,18 @@ import argparse
 import os
 
 import pytorch_lightning as pl
+import scanpy as sc
 import torch
 import yaml  # type: ignore
 from datasets import concatenate_datasets, load_from_disk
 
 from T_perturb.Dataloaders.datamodule import CytoMeisterDataModule
 from T_perturb.Perturb.trainer import PerturberTrainer
-from T_perturb.src.utils import get_idx_for_filtering, read_dataset_files, condition_for_count_loss
+from T_perturb.src.utils import (
+    condition_for_count_loss,
+    get_idx_for_filtering,
+    read_dataset_files,
+)
 
 # --- 1. Data pre-processing ---
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
@@ -45,6 +50,12 @@ def main() -> None:
     src_dataset = load_from_disk(config['data']['src_dataset_file'])
     tgt_datasets = read_dataset_files(config['data']['tgt_dataset_folder'], 'dataset')
 
+    if 'loss_mode' in config['trainer']:
+        if config['trainer']['loss_mode'] == 'mse':
+            for _, tgt_adata in tgt_adatas.items():
+                sc.pp.normalize_total(tgt_adata, target_sum=1e4)
+                sc.pp.log1p(tgt_adata)
+
     # change precision for inference to 16-bit
     if config['model']['precision'] == 16:
         device_name = torch.cuda.get_device_name(0)
@@ -71,6 +82,31 @@ def main() -> None:
     else:
         condition_dict = None
 
+    tgt_adata_tmp = tgt_adatas[f"tgt_h5ad_t{config['trainer']['pred_tps'][0]}"].copy()
+    condition_keys = (
+        config['data']['condition_keys'] if 'condition_keys' in config['data'] else None
+    )
+    conditions_combined = (
+        config['data']['conditions_combined']
+        if 'conditions_combined' in config['data']
+        else None
+    )
+    conditions = (
+        config['data']['conditions'] if 'conditions' in config['data'] else None
+    )
+    (
+        conditions,
+        condition_encodings,
+        conditions_combined,
+        conditions_,
+        condition_keys_,
+        conditions_combined_,
+    ) = condition_for_count_loss(
+        condition_keys=condition_keys,
+        conditions=conditions,
+        conditions_combined=conditions_combined,
+        tgt_adata_tmp=tgt_adata_tmp,
+    )
     # 1. Filter datasets based on condition, if available
     # 2. Extract condition to return gene embeddings
     # ---------------------------------------------------
@@ -107,51 +143,31 @@ def main() -> None:
 
     # Define path to load checkpoint
     n_total_tps = len(tgt_adatas)
-    max_seq_length = config['trainer']['max_seq_length'] + 100
-    # remove tgt_vocab_size from config
-    config['trainer'].pop('tgt_vocab_size')
-    config['trainer'].pop('max_seq_length')
-
-    tgt_adata_tmp = tgt_adatas[f"tgt_h5ad_t{config['trainer']['pred_tps'][0]}"].copy()
-                    
-    (
-    conditions,
-    condition_encodings,
-    conditions_combined,
-    conditions_,
-    condition_keys_,
-    conditions_combined_,
-    ) = condition_for_count_loss(
-        None, None, None, tgt_adata_tmp
-    )
-    
-    # Initialize model module
-    # ----------------------------------------------------------------------------------
-
-    decoder_module = PerturberTrainer(
-        condition_dict=condition_dict,
-        n_total_tps=n_total_tps,
-        tgt_vocab_size=token_no + 50,
-        max_seq_length=max_seq_length,
-        conditions = conditions_,
-        conditions_combined = conditions_combined_,
-        **config['trainer'],
-    )
+    config['trainer']['max_seq_length'] = config['trainer']['max_seq_length'] + 100
+    config['trainer']['tgt_vocab_size'] = token_no + 50
 
     tgt_counts_dict = {}
     for keys, tgt_adata in tgt_adatas.items():
         tgt_counts_dict[keys] = tgt_adata.X
-    #src_counts = src_adata.X
-
+    config['trainer']['n_genes'] = tgt_adata_tmp.shape[1]
+    # Initialize model module
+    # ----------------------------------------------------------------------------------
+    decoder_module = PerturberTrainer(
+        condition_dict=condition_dict,
+        n_total_tps=n_total_tps,
+        conditions=conditions_,
+        conditions_combined=conditions_combined_,
+        **config['trainer'],
+    )
     data_module = CytoMeisterDataModule(
         n_total_tps=n_total_tps,
         src_dataset=src_dataset,
         tgt_datasets=tgt_datasets,
-        condition_keys = condition_keys_,
-        condition_encodings = condition_encodings,
-        tgt_counts_dict = tgt_counts_dict,
-        conditions = conditions,
-        conditions_combined = conditions_combined,
+        condition_keys=condition_keys_,
+        condition_encodings=condition_encodings,
+        tgt_counts_dict=tgt_counts_dict,
+        conditions=conditions,
+        conditions_combined=conditions_combined,
         **config['datamodule'],
     )
     data_module.setup()
@@ -159,14 +175,13 @@ def main() -> None:
     accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
     trainer = pl.Trainer(
         logger=False,
-        limit_test_batches=1, 
         accelerator=accelerator,
         devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
         precision=precision,
+        limit_test_batches=5,
     )
-
     trainer.test(
-        decoder_module, data_module, ckpt_path=config['model']['ckpt_masking_path']  
+        decoder_module, data_module, ckpt_path=config['model']['ckpt_masking_path']
     )
 
 

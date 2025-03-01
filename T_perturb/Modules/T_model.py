@@ -987,9 +987,6 @@ class CytoMeister(nn.Module):
         for time_step in all_time_steps:
             # exclude tgt_time_step from the context
             if time_step != tgt_time_step:
-                # if (generate is True) and (time_step in self.time_steps):
-                # only provide previous time steps as context
-                # if len(context_embedding_dict) > 1:
                 context = torch.cat(context_embs_list, dim=1)
                 # else:
                 #     context = enc_output
@@ -999,16 +996,6 @@ class CytoMeister(nn.Module):
 
                 with torch.no_grad():
                     # # ---classifier-free guidance---
-                    # if cond_dict is not None:
-                    #     cond_ids = cond_dict[time_step]
-                    #     # concatenate condition tokens with target tokens
-                    #     tgt_input_id = torch.cat(
-                    #         [cond_ids,
-                    #          tgt_input_id.clone()
-                    #          ], dim=1)
-                    #     # no padding for condition tokens
-                    #     cond_pad = torch.zeros_like(cond_ids, dtype=torch.bool)
-                    #     tgt_pad = torch.cat([cond_pad, tgt_pad.clone()], dim=1)
                     tgt_embedding = self.token_embedding(tgt_input_id)
                     dec_embedding = self.pos_embedding(
                         tgt_embedding, tgt_time_step=time_step
@@ -1112,15 +1099,6 @@ class CytoMeister(nn.Module):
                     tgt_pad_dict=tgt_pad_dict,
                     cond_dict=cond_dict,
                 )
-
-            # # ---conditioning---
-            # if cond_dict is not None:
-            #     # add condition tokens to the target tokens for masking
-            #     cond_ids = cond_dict[tgt_time_step]
-            #     tgt_input_id = torch.cat([cond_ids, tgt_input_id.clone()], dim=1)
-            #     # no padding for condition tokens
-            #     cond_pad = torch.zeros_like(cond_ids, dtype=torch.bool)
-            #     tgt_pad = torch.cat([cond_pad, tgt_pad.clone()], dim=1)
             if (not_masked is False) and (generate_id_dict is None):
                 # apply masking during first stage of MLM training
                 tgt_input_id, labels = self.generate_mask(
@@ -1330,6 +1308,7 @@ class CytoMeister(nn.Module):
         # find total_tokens by find the numbers of 1s in the mask
         total_tokens = torch.sum(tmp_ids == 1, dim=1)
         ids_to_keep = torch.zeros_like(tmp_ids, dtype=torch.long)
+        # # keep indices which are not masked except for the CLS token
         iteration_ratios = torch.linspace(0, 1, iterations)
         all_steps = reversed(range(iterations))
         for iteration, steps_until_x0 in zip(
@@ -1356,7 +1335,7 @@ class CytoMeister(nn.Module):
             for i in range(batch_size):
                 mask[i, indices_to_mask[i, : num_tokens_to_mask[i]]] = True
             tmp_ids.masked_fill_(mask, self.mask_token)
-            # keep indices which are not masked except for the CLS token
+            # # keep indices which are not masked except for the CLS token
             ids_to_keep = torch.where(
                 mask,
                 torch.tensor(0, dtype=tmp_ids.dtype, device=tmp_ids.device),
@@ -1376,7 +1355,7 @@ class CytoMeister(nn.Module):
             tmp_ids_ = tmp_ids[:, cond_length:].clone()
             scores_ = scores[:, cond_length:].clone()
             ids_to_keep_ = ids_to_keep[:, cond_length:].clone()
-            # # Create a mask of already predicted tokens
+            # Create a mask of already predicted tokens
             indices = ids_to_keep_.unsqueeze(1).expand(-1, seq_len - cond_length, -1)
             logits.scatter_(2, indices, max_neg_value)
             filtered_logits = top_k(logits.clone(), topk_filter_thres)
@@ -1389,13 +1368,12 @@ class CytoMeister(nn.Module):
             probs_without_temperature = logits.softmax(dim=-1)
             if generate_mode == 'topk-margin':
                 # Get top-2 probabilities
-                top2_probs, top2_indices = torch.topk(probs_without_temperature, k=2, dim=-1)
+                top2_probs, _ = torch.topk(probs_without_temperature, k=2, dim=-1)
                 uncertainty_scores = torch.abs(
                     top2_probs[:, :, 0] - top2_probs[:, :, 1]
                 )
                 scores_ = 1 - uncertainty_scores
                 scores_ = scores_.unsqueeze(-1)  # Now scores_ has shape [b, seq, 1]
-
             else:
                 scores_ = 1 - probs_without_temperature.gather(2, pred_ids[..., None])
             scores_ = rearrange(scores_, '... 1 -> ...')
@@ -1486,16 +1464,16 @@ class CountDecoder(nn.Module):
         loss_mode: str = 'zinb',
         d_model: int = 128,
         max_seq_length: int = 2048,
-        d_condc: int = 768,
+        d_condc: int | None = None,
         d_condt: int = 768,
-        encoder: Literal['GF_frozen', 'scmaskgit', 'GF_fine_tuned', 'Transformer_encoder'] = (
-            'scmaskgit'
+        encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
+            'GF_fine_tuned'
         ),
         pos_encoding_mode: Literal[
             'time_pos_sin', 'comb_sin', 'sin_learnt'
         ] = 'time_pos_sin',
         layer_norm: bool = False,
-        add_cell_time: bool = True,
+        add_cell_time: bool = False,
         dropout: float = 0.0,
         pred_tps: list = [1, 2],
         n_total_tps: int = 3,
@@ -1563,9 +1541,11 @@ class CountDecoder(nn.Module):
         #         d_condc = d_model
 
         if self.add_cell_time:
-            self.count_decoder = CountHead(
-                loss_mode, n_genes, d_model + d_condt + d_condc, dropout
-            )  # Adjust input size
+            input_size = d_model + d_condt
+            if d_condc is not None:
+                input_size += d_condc
+
+            self.count_decoder = CountHead(loss_mode, n_genes, input_size, dropout)
         else:
             self.count_decoder = CountHead(loss_mode, n_genes, d_model, dropout)
 
@@ -1587,13 +1567,16 @@ class CountDecoder(nn.Module):
                 drop=dropout,
                 layer_norm=layer_norm,
             )  # New MLP layer
-            self.condition_layer_celltype = Mlp(
-                in_features=d_model,
-                hidden_features=d_condc * 2,
-                out_features=d_condc,
-                drop=dropout,
-                layer_norm=layer_norm,
-            )
+            if d_condc is not None:
+                self.condition_layer_celltype = Mlp(
+                    in_features=d_model,
+                    hidden_features=d_condc * 2,
+                    out_features=d_condc,
+                    drop=dropout,
+                    layer_norm=layer_norm,
+                )
+            else:
+                self.condition_layer_celltype = None
 
     def forward(
         self,
@@ -1609,14 +1592,17 @@ class CountDecoder(nn.Module):
         for t in self.pred_tps:
             cls_embedding = outputs[t]['mean_embedding']
             if self.add_cell_time:
-                if self.use_positional_encoding:
-                    condition_emb = self.pos_embedding.time_pe[:, t+1]  # Use time-based PE
+                if self.use_positional_encoding and self.pos_embedding is not None:
+                    condition_emb_time = self.pos_embedding.time_pe[:, t + 1]
                 else:
                     device = next(self.parameters()).device  # Get the device of the model
                     condition_emb_time = self.condition_layer_time(self.condition_dict_oh[t].to(device))
-                    condition_emb_celltype = self.condition_layer_celltype(outputs[t]['dec_embedding'][:,1,:])  # Use one-hot
-                    condition_emb_time = condition_emb_time.unsqueeze(0).expand(condition_emb_celltype.shape[0], -1)
-                    condition_emb = torch.cat((condition_emb_time, condition_emb_celltype), dim=1)
+                    if self.condition_layer_celltype is not None:
+                        condition_emb_celltype = self.condition_layer_celltype(outputs[t]['dec_embedding'][:, 1, :])  # Use one-hot
+                        condition_emb_time = condition_emb_time.unsqueeze(0).expand(condition_emb_celltype.shape[0], -1)
+                        condition_emb = torch.cat((condition_emb_time, condition_emb_celltype), dim=1)
+                    else:
+                        condition_emb = condition_emb_time 
                 cls_embedding = torch.cat((cls_embedding, condition_emb), dim=1)
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
             count_outputs[f'count_output_t{t}'] = count_outputs_tmp
@@ -1662,15 +1648,18 @@ class CountDecoder(nn.Module):
                     condition_emb_time = self.condition_layer_time(
                         self.condition_dict_oh[t].to(device)
                     )
-                    condition_emb_celltype = self.condition_layer_celltype(
-                        outputs[t]['dec_embedding'][:, 1, :]
-                    )
-                    condition_emb_time = condition_emb_time.unsqueeze(0).expand(
-                        condition_emb_celltype.shape[0], -1
-                    )
-                    condition_emb = torch.cat(
-                        (condition_emb_time, condition_emb_celltype), dim=1
-                    )
+                    if self.condition_layer_celltype is not None:
+                        condition_emb_celltype = self.condition_layer_celltype(
+                            outputs[t]['dec_embedding'][:, 1, :]
+                        )
+                        condition_emb_time = condition_emb_time.unsqueeze(0).expand(
+                            condition_emb_celltype.shape[0], -1
+                        )
+                        condition_emb = torch.cat(
+                            (condition_emb_time, condition_emb_celltype), dim=1
+                        )
+                    else:
+                        condition_emb = condition_emb_time
                 cls_embedding = torch.cat((cls_embedding, condition_emb), dim=-1)
                 count_outputs[f'count_output_t{t}'] = self.count_decoder.forward(
                     cls_embedding

@@ -102,9 +102,9 @@ def map_ensembl_to_genename(
 
 
 def condition_for_count_loss(
-    condition_keys: str,
-    conditions: dict,
-    conditions_combined: list,
+    condition_keys: str | list[str] | None,
+    conditions: dict | None,
+    conditions_combined: list | None,
     tgt_adata_tmp: ad.AnnData,
 ):
     '''
@@ -864,7 +864,6 @@ def return_perturbation_adata(
     output_dir: str,
     marker_genes: dict,
     file_name: str,
-    use_count_decoder: bool,
     mode: Literal['inference', 'generate'],
 ) -> ad.AnnData:
     """
@@ -887,8 +886,8 @@ def return_perturbation_adata(
     --------
     adata: `~anndata.AnnData` \n
         Annotated data matrix with predicted counts. \n
-        - adata.X: `~pd.DataFrame`
-            pd.DataFrame of cosine similarities between true and predicted embeddings.
+        - adata.X: `~numpy.ndarray`
+            Array of perturbed counts.
         - adata.obs: `~pandas.DataFrame`
             DataFrame of obs_key.
         - adata.var: `~pandas.DataFrame`
@@ -905,16 +904,62 @@ def return_perturbation_adata(
     # adata.obsm
     true_cls = torch.cat(test_dict['true_cls']).numpy()
     perturbed_cls = torch.cat(test_dict['perturbed_cls']).numpy()
+    # adata.X
+    pert_counts = None
+    if 'pert_counts' in test_dict.keys():
+        if len(test_dict['pert_counts']) > 0:
+            pert_counts = torch.cat(test_dict['pert_counts']).numpy()
+    # adata.layers['counts']
+    true_counts = None
+    if 'true_counts' in test_dict.keys():
+        if len(test_dict['true_counts']) > 0:
+            true_counts = torch.cat(test_dict['true_counts']).numpy()
+
+    # cls_cos_similarity = torch.cat(test_dict['cls_cosine_similarity']).numpy()
     mean_cos_similarity = torch.cat(test_dict['mean_cosine_similarity']).numpy()
+    if 'mean_cosine_similarity_l1' in test_dict.keys():
+        mean_cos_similarity_l1 = torch.cat(
+            test_dict['mean_cosine_similarity_l1']
+        ).numpy()
+    else:
+        mean_cos_similarity_l1 = None
+    if 'mean_cosine_similarity_lmid' in test_dict.keys():
+        mean_cos_similarity_lmid = torch.cat(
+            test_dict['mean_cosine_similarity_lmid']
+        ).numpy()
+    else:
+        mean_cos_similarity_lmid = None
+    # delta_probs = torch.cat(test_dict['delta_probs']).numpy()
+    # wasserstein_distance = np.concatenate(test_dict['wasserstein_distance'])
+    # adata.varm
     gene_cos_similarity = torch.cat(test_dict['gene_cosine_similarity'], dim=0).numpy()
     cos_similarity_df = pd.DataFrame(gene_cos_similarity, columns=marker_genes.keys())
+    # cos_similarity_df = cos_similarity_df.T
+    # cos_similarity_df.columns = cos_similarity_df.columns.astype(str)
+    # delta_gene_probs = torch.cat(test_dict['delta_gene_probs'], dim=0).numpy()
+    # delta_gene_probs_df = pd.DataFrame(
+    #     delta_gene_probs, columns=marker_genes.keys()
+    # )
 
     # create dataframe to store perturbation results
     obsm_dict = {
         'true_cls': true_cls,
         'perturbed_cls': perturbed_cls,
+        # 'cls_cos_similarity': cls_cos_similarity,
         'mean_cos_similarity': mean_cos_similarity,
+        'mean_cos_similarity_l1': mean_cos_similarity_l1,
+        'mean_cos_similarity_lmid': mean_cos_similarity_lmid,
+        # 'delta_probs': delta_probs,
     }
+    cos_similarity_df_ = cos_similarity_df.T
+    # convert columns to string
+    cos_similarity_df_.columns = cos_similarity_df_.columns.astype(str)
+    varm_dict = {
+        'gene_cos_similarity': cos_similarity_df_,
+    }
+
+    #     # 'delta_gene_probs': delta_gene_probs_df.T,
+    # }
 
     if mode == 'generate':
         rouge_dict = {
@@ -923,27 +968,20 @@ def return_perturbation_adata(
             if key.startswith('rouge')
         }
         obsm_dict.update(rouge_dict)
-
     # adata.obs
     obs_dict = {obs: np.concatenate(test_dict[obs]) for obs in obs_key}
     test_obs = pd.DataFrame(obs_dict)
     # create adata
     adata = ad.AnnData(
+        X=pert_counts,
         obs=test_obs,
         obsm=obsm_dict,
-        var=pd.DataFrame(marker_genes.keys(), columns=['gene_name']),
+        varm=varm_dict,
+        var=pd.DataFrame(
+            index=cos_similarity_df.columns,
+        ),
+        layers={'counts': true_counts},
     )
-    adata.var_names = adata.var['gene_name']
-    adata.X = cos_similarity_df
-    # Assign layers only if count decoder is used
-    if use_count_decoder and 'true_counts' in test_dict and 'pred_counts' in test_dict:
-        true_count_output = torch.cat(test_dict['true_counts']).numpy()
-        perturbed_count_output = torch.cat(test_dict['pred_counts']).numpy()
-        adata.layers['predicted_counts'] = true_count_output
-        adata.layers['perturbed_counts'] = perturbed_count_output
-    else:
-        print("WARNING: `true_counts` or `pred_counts` missing from `test_dict`. Skipping layer assignment.")
-
     adata.write_h5ad(os.path.join(output_dir, file_name))
     print('anndata generation completed---')
     return adata
@@ -1206,11 +1244,9 @@ def noise_schedule(
 
 def top_k(logits, thres=0.9):
     k = math.ceil((1 - thres) * logits.shape[-1])
-    # print('logits', logits[:5,:7, :10])
     val, ind = logits.topk(k, dim=-1)
     probs = torch.full_like(logits, float('-inf'))
     probs.scatter_(2, ind, val)
-    # print('probs', probs[:5,:7, :10])
     return probs
 
 
@@ -1364,7 +1400,7 @@ def pairing_src_to_tgt_cells(
             cell_pairings['90m_LPS'].append(np.random.choice(indices_16h))
             cell_pairings['6h_LPS'].append(np.random.choice(indices_40h))
             cell_pairings['10h_LPS'].append(np.random.choice(indices_5d))
-    elif pairing_mode == 'mapping':
+    elif pairing_mode == 'mapping': # ELIF
         for condition in mapping_df[max_reference_time].unique():
             mapping_df_ = mapping_df[mapping_df[max_reference_time] == condition]
             adata_ = adata_dict[max_reference_time]
@@ -1530,10 +1566,10 @@ def unseen_donor_split(
     val_size = len(groups['donor_cellgen_harm'].unique()) - train_size - test_size
     # sample from groups based on unique donors using numpy random choice
     test_donors = np.random.choice(
-        groups['donor_cellgen_harm'].unique(), size=test_size, replace=False
+        groups['Donor'].unique(), size=test_size, replace=False
     )
     # exclude test donors from train and val set
-    train_val_donors = np.setdiff1d(groups['donor_cellgen_harm'].unique(), test_donors)
+    train_val_donors = np.setdiff1d(groups['Donor'].unique(), test_donors)
     # sample from remaining donors based on unique donors using numpy random choice
     val_donors = np.random.choice(train_val_donors, size=val_size, replace=False)
     # use remaining donors as train set

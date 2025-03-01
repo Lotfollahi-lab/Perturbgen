@@ -16,7 +16,7 @@ trainer:
   layer_norm: true
   use_positional_encoding: false
   add_cell_time: true
-  dropout: 0.1
+  dropout: 0
   n_genes: 1988
   num_heads: 8
   num_layers: 6
@@ -35,14 +35,22 @@ trainer:
   temperature: 1
   iterations: 19
   pos_encoding_mode: 'time_pos_sin'
-  return_attn: false
-  exclude_src: true  #(true means containing control)
-  perturbation_mode: 'delete'
+  exclude_src: true
+  perturbation_mode: 'mask'
   genes_to_perturb:
-    - 'ENSG00000203747'
+    - 'ENSG00000144802'
+    - 'ENSG00000125538'
+    - 'ENSG00000136689'
+    - 'ENSG00000188290'
+    - 'ENSG00000186891'
+    - 'ENSG00000187730'
+    - 'ENSG00000049249'
+    - 'ENSG00000280969'
+    - 'ENSG00000154620'
+
   validation_mode: 'inference'
   perturbation_sequence:
-    - 'src'
+    - 'tgt'
   var_list:
     - 'cell_type_cellgen_harm'
     - 'donor_cellgen_harm'
@@ -53,8 +61,11 @@ trainer:
     - 3
   pert_tps:
     - 1
-    - 2
-    - 3
+    #count decoder
+  use_count_decoder: true
+  loss_mode: 'zinb'
+  n_samples: 3
+
     
 datamodule:
   batch_size: 64

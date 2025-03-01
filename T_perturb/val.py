@@ -9,7 +9,7 @@ from datetime import datetime
 import pytorch_lightning as pl
 import scanpy as sc
 import torch
-from datasets import concatenate_datasets, load_from_disk, Dataset
+from datasets import concatenate_datasets, load_from_disk
 from pytorch_lightning.callbacks import TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy  # DeepSpeedStrategy
@@ -684,12 +684,12 @@ def main() -> None:
     ddp_strategy = DDPStrategy(find_unused_parameters=False)
     trainer = pl.Trainer(
         logger=wandb_logger,
-        #limit_test_batches=4, 
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
         num_nodes=args.num_node,
         devices=-1 if torch.cuda.is_available() else 0,  # inference only on one gpu
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
+        limit_test_batches=100,
     )
     # Finally, kick of the training process.
     if args.test_mode == 'masking':
