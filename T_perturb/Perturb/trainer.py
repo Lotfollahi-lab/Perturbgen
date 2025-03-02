@@ -284,7 +284,7 @@ class PerturberTrainer(CountDecoderTrainer):
         token_to_perturb: torch.Tensor,
     ):
         # Create a mask for elements not equal to the target token
-        mask = input_ids != token_to_perturb
+        mask = ~torch.isin(input_ids, token_to_perturb)
         # add padding mask
         pad_mask = input_ids != self.pad_token_id
         mask_ = mask & pad_mask
@@ -292,10 +292,8 @@ class PerturberTrainer(CountDecoderTrainer):
         valid_counts = mask_.sum(dim=1)
         # Get indices for valid tokens
         valid_tokens = input_ids[mask_]
-
         # Initialize the result tensor filled with pad_token_id
         input_ids = torch.full_like(input_ids, self.pad_token_id)
-
         # Use advanced indexing to fill the valid tokens
         # into the input_ids tensor
         batch_indices = torch.arange(
@@ -399,6 +397,7 @@ class PerturberTrainer(CountDecoderTrainer):
                     batch=batch,
                     time_step=i,
                     condition_dict=self.condition_dict,
+                    pad_condition=True,
                 )
                 tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
             tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
@@ -425,7 +424,7 @@ class PerturberTrainer(CountDecoderTrainer):
                 perturbed_src = batch['src_input_ids']
 
         if self.validation_mode == 'inference':
-            if (perturbation is False) or (self.use_count_decoder is False):
+            if self.use_count_decoder is False:
                 # true counts do not need to be computed
                 outputs = self.pretrained_model(
                     src_input_id=perturbed_src,
@@ -443,7 +442,7 @@ class PerturberTrainer(CountDecoderTrainer):
                 )
 
         else:
-            if (perturbation is False) or (self.use_count_decoder is False):
+            if self.use_count_decoder is False:
                 outputs = self.pretrained_model.forward(
                     src_input_id=perturbed_src,
                     tgt_input_id_dict=tgt_input_id_dict,
@@ -526,7 +525,7 @@ class PerturberTrainer(CountDecoderTrainer):
             }
 
             if self.validation_mode == 'inference':
-                true_outputs, _, true_ids_dict, _ = self.forward(
+                (true_outputs, _, true_ids_dict, pred_counts) = self.forward(
                     filtered_batch, perturbation=False
                 )
                 (
@@ -687,7 +686,7 @@ class PerturberTrainer(CountDecoderTrainer):
                 self.test_dict['perturbed_cls'].append(perturbed_mean_embs)
                 if self.use_count_decoder:
                     if t in pert_counts:
-                        true_counts_ = filtered_batch[f'tgt_counts_t{t}'].detach().cpu()
+                        true_counts_ = pred_counts[t].detach().cpu()
                         pert_counts_ = pert_counts[t].detach().cpu()
                         true_counts_ = true_counts_[dupl_outside_batch]
                         pert_counts_ = pert_counts_[dupl_outside_batch]

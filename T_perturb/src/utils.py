@@ -210,6 +210,7 @@ def concat_cond_tokens(
     batch: dict,
     time_step: int,
     condition_dict: dict[str, dict] | None = None,
+    pad_condition: bool = False,
 ):
     tgt_input_ids = batch[f'tgt_input_ids_t{time_step}']
     device = tgt_input_ids.device
@@ -218,16 +219,16 @@ def concat_cond_tokens(
         cond_ids = torch.zeros(
             (batch_size, len(condition_dict)), dtype=torch.long, device=device
         )
-        for j, condition in enumerate(condition_dict.keys()):
-            condition_tokens = [
-                condition_dict[condition][id]
-                for id in batch[f'{condition}_t{time_step}']
-            ]
-            # j+1 to skip time token
-            cond_ids[:, j] = torch.tensor(
-                condition_tokens, dtype=torch.long, device=device
-            )
-
+        if pad_condition is False:
+            for j, condition in enumerate(condition_dict.keys()):
+                condition_tokens = [
+                    condition_dict[condition][id]
+                    for id in batch[f'{condition}_t{time_step}']
+                ]
+                # j+1 to skip time token
+                cond_ids[:, j] = torch.tensor(
+                    condition_tokens, dtype=torch.long, device=device
+                )
     return cond_ids
 
 
