@@ -320,7 +320,7 @@ class PerturberTrainer(CountDecoderTrainer):
             input_ids = self.delete_token(input_ids, token_to_perturb)
             if perturbation_mode == 'overexpress':
                 # exclude padding token to keep the same sequence length
-                input_ids = input_ids[:, :-1]
+                input_ids = input_ids[:, : -len(token_to_perturb)]
                 token_to_perturb = token_to_perturb.expand(input_ids.shape[0], -1)
                 if perturbation_sequence == 'tgt':
                     input_ids = torch.cat(
@@ -607,16 +607,50 @@ class PerturberTrainer(CountDecoderTrainer):
                 #     mapping_dict=self.gene_to_tgtid,
                 #     token_ids=batch[f'tgt_input_ids_t{t}'],
                 # )
+                true_ids = true_ids_dict[f'tgt_input_ids_t{t}'][:, cond_len:]
+                perturbed_ids = perturbed_ids_dict[f'tgt_input_ids_t{t}'][:, cond_len:]
+                if (self.perturbation_mode == 'delete') or (
+                    self.perturbation_mode == 'overexpress'
+                ):
+                    # TODO: see ChatGPT and complete the code
+                    # create a mask for perturbed gene
+                    if self.perturbation_mode == 'overexpress':
+                        # remove overexpressed genes from true_gene and perturbed_gene
+                        perturbed_ids[
+                            :, : len(self.tgt_pert_tokens)
+                        ] = self.pad_token_id
+
+                    match_mask = true_ids.unsqueeze(1) == perturbed_ids.unsqueeze(
+                        2
+                    )  # (batch_size, seq_len, seq_len)
+                    true_indices = match_mask.float().argmax(dim=2)  # shape: [B, T]
+                    b, seq, emb_dim = true_gene.shape
+                    true_ids = torch.gather(true_ids, 1, true_indices)
+                    true_gene = torch.gather(
+                        true_gene, 1, true_indices.unsqueeze(2).expand(b, seq, emb_dim)
+                    )
+                    if self.perturbation_mode == 'overexpress':
+                        # remove overexpressed genes from true_gene and perturbed_gene
+                        true_gene = true_gene[:, len(self.tgt_pert_tokens) :, :]
+                        true_ids = true_ids[:, len(self.tgt_pert_tokens) :]
+                        perturbed_gene = perturbed_gene[
+                            :, len(self.tgt_pert_tokens) :, :
+                        ]
+                        perturbed_ids = perturbed_ids[:, len(self.tgt_pert_tokens) :]
+
+                    # check if true_gene_ids is equal to perturbed_gene_ids
+                    torch.allclose(true_ids, perturbed_ids)
+
                 gene_cos_sim = cosine_similarity(
                     true_gene,
                     perturbed_gene,
                     dim=-1,
                 )
-
                 gene_cos_sim, self.marker_genes = map_results_to_genes(
                     gene_cos_sim,
                     mapping_dict=self.gene_to_tgtid,
-                    token_ids=filtered_batch[f'tgt_input_ids_t{t}'],
+                    token_ids=perturbed_ids,  # pass perturbed ids
+                    perturbation_token=self.tgt_pert_tokens,
                 )
                 mean_cos_sim = cosine_similarity(
                     perturbed_mean_embs,

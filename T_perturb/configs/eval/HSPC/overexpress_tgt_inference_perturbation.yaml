@@ -28,6 +28,8 @@ trainer:
   perturbation_mode: 'overexpress'
   genes_to_perturb:
     - 'MPO'
+    - 'C1QTNF4'
+    - 'AZU1'
   validation_mode: 'inference'
   perturbation_sequence:
     - 'tgt'
@@ -49,7 +51,7 @@ trainer:
   n_samples: 3
 
 datamodule:
-  batch_size: 64
+  batch_size: 32
   num_workers: 4
   shuffle: False
   split: False

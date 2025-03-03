@@ -6,6 +6,9 @@ data:
   cond_list:
     - 'celltype_v2'
     - 'diff_state'
+  filter_cond: 'GMP'
+  filter_var: 'celltype_v2'
+
 trainer:
   tgt_vocab_size: 5710
   d_model: 768
@@ -27,6 +30,7 @@ trainer:
   perturbation_mode: 'delete'
   genes_to_perturb:
     - 'MPO'
+    - 'AZU1'
   validation_mode: 'inference'
   perturbation_sequence:
     - 'tgt'

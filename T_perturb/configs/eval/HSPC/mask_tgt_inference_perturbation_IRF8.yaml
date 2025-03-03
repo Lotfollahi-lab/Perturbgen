@@ -7,6 +7,7 @@ data:
     - 'celltype_v2'
     - 'diff_state'
 
+
 trainer:
   tgt_vocab_size: 5710
   d_model: 768
@@ -27,9 +28,7 @@ trainer:
   pos_encoding_mode: 'time_pos_sin'
   perturbation_mode: 'mask'
   genes_to_perturb:
-    - 'TAL1'
-    - 'GATA1'
-    - 'GATA2'
+    - 'IRF8'
   validation_mode: 'inference'
   perturbation_sequence:
     - 'tgt'
