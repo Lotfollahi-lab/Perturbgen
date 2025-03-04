@@ -452,7 +452,7 @@ class PerturberTrainer(CountDecoderTrainer):
 
             else:
                 outputs, count_outputs = self.decoder(
-                    src_input_id=batch['src_input_ids'],
+                    src_input_id=perturbed_src,
                     tgt_input_id_dict=tgt_input_id_dict,
                 )
                 _, count_output = self.compute_count_loss(
@@ -528,6 +528,7 @@ class PerturberTrainer(CountDecoderTrainer):
                 (true_outputs, _, true_ids_dict, pred_counts) = self.forward(
                     filtered_batch, perturbation=False
                 )
+                raise
                 (
                     perturbed_outputs,
                     _,

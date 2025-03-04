@@ -28,7 +28,7 @@ trainer:
   pos_encoding_mode: 'time_pos_sin'
   perturbation_mode: 'mask'
   genes_to_perturb:
-    - 'VPREB1'
+    - 'IGFBP2'
   validation_mode: 'inference'
   perturbation_sequence:
     - 'tgt'
