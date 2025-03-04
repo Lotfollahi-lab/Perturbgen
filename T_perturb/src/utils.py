@@ -210,6 +210,7 @@ def concat_cond_tokens(
     batch: dict,
     time_step: int,
     condition_dict: dict[str, dict] | None = None,
+    pad_condition: bool = False,
 ):
     tgt_input_ids = batch[f'tgt_input_ids_t{time_step}']
     device = tgt_input_ids.device
@@ -218,16 +219,16 @@ def concat_cond_tokens(
         cond_ids = torch.zeros(
             (batch_size, len(condition_dict)), dtype=torch.long, device=device
         )
-        for j, condition in enumerate(condition_dict.keys()):
-            condition_tokens = [
-                condition_dict[condition][id]
-                for id in batch[f'{condition}_t{time_step}']
-            ]
-            # j+1 to skip time token
-            cond_ids[:, j] = torch.tensor(
-                condition_tokens, dtype=torch.long, device=device
-            )
-
+        if pad_condition is False:
+            for j, condition in enumerate(condition_dict.keys()):
+                condition_tokens = [
+                    condition_dict[condition][id]
+                    for id in batch[f'{condition}_t{time_step}']
+                ]
+                # j+1 to skip time token
+                cond_ids[:, j] = torch.tensor(
+                    condition_tokens, dtype=torch.long, device=device
+                )
     return cond_ids
 
 
@@ -334,6 +335,7 @@ def map_results_to_genes(
     mapping_dict: Dict,
     token_ids: torch.tensor,
     marker_genes: List[str] | None = None,
+    perturbation_token: List[str] | None = None,
 ) -> torch.tensor:
     """
     Description:
@@ -370,12 +372,15 @@ def map_results_to_genes(
     )
     marker_genes_dict = {}
     for i, gene in enumerate(marker_genes_ids.keys()):
-        # extract cosine similarity for marker genes
-        # ---------------------
-        cond_embs_to_fill = (token_ids == marker_genes_ids[gene]).sum(1) > 0
-        cond_select_markers = torch.where(token_ids == marker_genes_ids[gene])
-        res_[cond_embs_to_fill, i] = res[cond_select_markers[0], cond_select_markers[1]]
-        marker_genes_dict[gene] = i
+        if perturbation_token is not None:
+            # extract cosine similarity for marker genes
+            # ---------------------
+            cond_embs_to_fill = (token_ids == marker_genes_ids[gene]).sum(1) > 0
+            cond_select_markers = torch.where(token_ids == marker_genes_ids[gene])
+            res_[cond_embs_to_fill, i] = res[
+                cond_select_markers[0], cond_select_markers[1]
+            ]
+            marker_genes_dict[gene] = i
     return res_, marker_genes_dict
 
 
@@ -933,6 +938,7 @@ def return_perturbation_adata(
     # wasserstein_distance = np.concatenate(test_dict['wasserstein_distance'])
     # adata.varm
     gene_cos_similarity = torch.cat(test_dict['gene_cosine_similarity'], dim=0).numpy()
+
     cos_similarity_df = pd.DataFrame(gene_cos_similarity, columns=marker_genes.keys())
     # cos_similarity_df = cos_similarity_df.T
     # cos_similarity_df.columns = cos_similarity_df.columns.astype(str)
@@ -1271,7 +1277,6 @@ def mean_nonpadding_embs(
     condition_dict: dict,
     dim: int = 1,
     perturbation_tokens: torch.Tensor | None = None,
-    perturbation_mode: Literal['mask', 'pad', 'delete', 'overexpress'] | None = None,
 ):
     '''
     Compute the mean of the non-padding embeddings.
@@ -1288,10 +1293,6 @@ def mean_nonpadding_embs(
             cond_tokens.extend(list(condition_dict[condition].values()))
         special_tokens.extend(cond_tokens)
     special_tokens = torch.tensor(special_tokens, device=embs.device)
-    if perturbation_mode is not None:
-        if perturbation_mode in ['delete', 'overexpress']:
-            # do not mask tokens as they are deleted
-            perturbation_tokens = None
 
     if perturbation_tokens is not None:
         tokens_to_exclude = torch.cat([special_tokens, perturbation_tokens])
@@ -1299,9 +1300,6 @@ def mean_nonpadding_embs(
         tokens_to_exclude = special_tokens
 
     pad_mask = torch.isin(input_ids, tokens_to_exclude)
-    if (perturbation_mode is not None) and (perturbation_mode == 'overexpress'):
-        # mask overexpressed tokens at first position
-        pad_mask[:, 0] = True
     # our mask is the opposite of BERT mask
     pad_mask = ~pad_mask
     # create a tensor of original lengths

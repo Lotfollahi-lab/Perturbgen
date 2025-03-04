@@ -284,7 +284,7 @@ class PerturberTrainer(CountDecoderTrainer):
         token_to_perturb: torch.Tensor,
     ):
         # Create a mask for elements not equal to the target token
-        mask = input_ids != token_to_perturb
+        mask = ~torch.isin(input_ids, token_to_perturb)
         # add padding mask
         pad_mask = input_ids != self.pad_token_id
         mask_ = mask & pad_mask
@@ -292,10 +292,8 @@ class PerturberTrainer(CountDecoderTrainer):
         valid_counts = mask_.sum(dim=1)
         # Get indices for valid tokens
         valid_tokens = input_ids[mask_]
-
         # Initialize the result tensor filled with pad_token_id
         input_ids = torch.full_like(input_ids, self.pad_token_id)
-
         # Use advanced indexing to fill the valid tokens
         # into the input_ids tensor
         batch_indices = torch.arange(
@@ -322,7 +320,7 @@ class PerturberTrainer(CountDecoderTrainer):
             input_ids = self.delete_token(input_ids, token_to_perturb)
             if perturbation_mode == 'overexpress':
                 # exclude padding token to keep the same sequence length
-                input_ids = input_ids[:, :-1]
+                input_ids = input_ids[:, : -len(token_to_perturb)]
                 token_to_perturb = token_to_perturb.expand(input_ids.shape[0], -1)
                 if perturbation_sequence == 'tgt':
                     input_ids = torch.cat(
@@ -399,6 +397,7 @@ class PerturberTrainer(CountDecoderTrainer):
                     batch=batch,
                     time_step=i,
                     condition_dict=self.condition_dict,
+                    pad_condition=True,
                 )
                 tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
             tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
@@ -425,7 +424,7 @@ class PerturberTrainer(CountDecoderTrainer):
                 perturbed_src = batch['src_input_ids']
 
         if self.validation_mode == 'inference':
-            if (perturbation is False) or (self.use_count_decoder is False):
+            if self.use_count_decoder is False:
                 # true counts do not need to be computed
                 outputs = self.pretrained_model(
                     src_input_id=perturbed_src,
@@ -443,7 +442,7 @@ class PerturberTrainer(CountDecoderTrainer):
                 )
 
         else:
-            if (perturbation is False) or (self.use_count_decoder is False):
+            if self.use_count_decoder is False:
                 outputs = self.pretrained_model.forward(
                     src_input_id=perturbed_src,
                     tgt_input_id_dict=tgt_input_id_dict,
@@ -453,7 +452,7 @@ class PerturberTrainer(CountDecoderTrainer):
 
             else:
                 outputs, count_outputs = self.decoder(
-                    src_input_id=batch['src_input_ids'],
+                    src_input_id=perturbed_src,
                     tgt_input_id_dict=tgt_input_id_dict,
                 )
                 _, count_output = self.compute_count_loss(
@@ -526,7 +525,7 @@ class PerturberTrainer(CountDecoderTrainer):
             }
 
             if self.validation_mode == 'inference':
-                true_outputs, _, true_ids_dict, _ = self.forward(
+                (true_outputs, _, true_ids_dict, pred_counts) = self.forward(
                     filtered_batch, perturbation=False
                 )
                 (
@@ -608,16 +607,50 @@ class PerturberTrainer(CountDecoderTrainer):
                 #     mapping_dict=self.gene_to_tgtid,
                 #     token_ids=batch[f'tgt_input_ids_t{t}'],
                 # )
+                true_ids = true_ids_dict[f'tgt_input_ids_t{t}'][:, cond_len:]
+                perturbed_ids = perturbed_ids_dict[f'tgt_input_ids_t{t}'][:, cond_len:]
+                if (self.perturbation_mode == 'delete') or (
+                    self.perturbation_mode == 'overexpress'
+                ):
+                    # TODO: see ChatGPT and complete the code
+                    # create a mask for perturbed gene
+                    if self.perturbation_mode == 'overexpress':
+                        # remove overexpressed genes from true_gene and perturbed_gene
+                        perturbed_ids[
+                            :, : len(self.tgt_pert_tokens)
+                        ] = self.pad_token_id
+
+                    match_mask = true_ids.unsqueeze(1) == perturbed_ids.unsqueeze(
+                        2
+                    )  # (batch_size, seq_len, seq_len)
+                    true_indices = match_mask.float().argmax(dim=2)  # shape: [B, T]
+                    b, seq, emb_dim = true_gene.shape
+                    true_ids = torch.gather(true_ids, 1, true_indices)
+                    true_gene = torch.gather(
+                        true_gene, 1, true_indices.unsqueeze(2).expand(b, seq, emb_dim)
+                    )
+                    if self.perturbation_mode == 'overexpress':
+                        # remove overexpressed genes from true_gene and perturbed_gene
+                        true_gene = true_gene[:, len(self.tgt_pert_tokens) :, :]
+                        true_ids = true_ids[:, len(self.tgt_pert_tokens) :]
+                        perturbed_gene = perturbed_gene[
+                            :, len(self.tgt_pert_tokens) :, :
+                        ]
+                        perturbed_ids = perturbed_ids[:, len(self.tgt_pert_tokens) :]
+
+                    # check if true_gene_ids is equal to perturbed_gene_ids
+                    torch.allclose(true_ids, perturbed_ids)
+
                 gene_cos_sim = cosine_similarity(
                     true_gene,
                     perturbed_gene,
                     dim=-1,
                 )
-
                 gene_cos_sim, self.marker_genes = map_results_to_genes(
                     gene_cos_sim,
                     mapping_dict=self.gene_to_tgtid,
-                    token_ids=filtered_batch[f'tgt_input_ids_t{t}'],
+                    token_ids=perturbed_ids,  # pass perturbed ids
+                    perturbation_token=self.tgt_pert_tokens,
                 )
                 mean_cos_sim = cosine_similarity(
                     perturbed_mean_embs,
@@ -687,7 +720,7 @@ class PerturberTrainer(CountDecoderTrainer):
                 self.test_dict['perturbed_cls'].append(perturbed_mean_embs)
                 if self.use_count_decoder:
                     if t in pert_counts:
-                        true_counts_ = filtered_batch[f'tgt_counts_t{t}'].detach().cpu()
+                        true_counts_ = pred_counts[t].detach().cpu()
                         pert_counts_ = pert_counts[t].detach().cpu()
                         true_counts_ = true_counts_[dupl_outside_batch]
                         pert_counts_ = pert_counts_[dupl_outside_batch]
