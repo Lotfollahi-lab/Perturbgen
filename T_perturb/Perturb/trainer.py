@@ -6,8 +6,8 @@ from typing import (
 )
 
 import evaluate
-import torch
 import numpy as np
+import torch
 
 # from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from torch.nn.functional import cosine_similarity
@@ -38,6 +38,8 @@ class PerturberTrainer(CountDecoderTrainer):
         exclude_src: bool = False,
         tokenid_to_rowid_path: str | None = None,
         use_count_decoder: bool = False,
+        pad_condition: bool = False,
+
         # gene_module_list: List[str] | None = None,
         # num_of_background_genes: int | None = None,
         *args,
@@ -46,6 +48,7 @@ class PerturberTrainer(CountDecoderTrainer):
         super().__init__(*args, **kwargs)
 
         self.validation_mode = validation_mode
+        self.pad_condition = pad_condition
         if validation_mode is not None:
             if perturbation_sequence is None:
                 raise ValueError(
@@ -56,6 +59,46 @@ class PerturberTrainer(CountDecoderTrainer):
 
             self.perturbation_sequence = perturbation_sequence
             self.perturbation_mode = perturbation_mode
+
+            # if gene_module_list is not None:
+            #     self.gene_module_list: List[str] | None = gene_module_list
+            #     if num_of_background_genes is None:
+            #         raise ValueError('Please specify the number of background genes')
+            #     # exclude special tokens from self.gene_to_tgtid
+            #     gene_tokens_filtered = {
+            #         gene: token
+            #         for gene, token in self.gene_to_tgtid.items()
+            #         if gene not in self.special_tokens
+            #     }
+            #     # exclude perturbation tokens from gene_tokens_filtered
+            #     gene_tokens_filtered = {
+            #         gene: token
+            #         for gene, token in gene_tokens_filtered.items()
+            #         if token not in self.tgt_pert_tokens
+            #     }
+            #     self.gene_module_dict = {
+            #         gene: gene_tokens_filtered[gene] for gene in gene_module_list
+            #     }
+
+            #     # remove gene_module_tokens from selection of background genes
+            #     background_gene_dict = {
+            #         gene: token
+            #         for gene, token in gene_tokens_filtered.items()
+            #         if gene not in gene_module_list
+            #     }
+            #     # filter out all values which are >100 in background_gene_dict
+            #     background_gene_dict = {
+            #         gene: token
+            #         for gene, token in background_gene_dict.items()
+            #         if token < 100
+            #     }
+            #     random_entries = random.sample(
+            #         list(background_gene_dict.items()), num_of_background_genes
+            #     )
+            #     self.background_gene_dict = dict(random_entries)
+            # else:
+            #     self.gene_module_list = None
+        # dictionary to map gene names to row ids in tgt
         if kwargs['mapping_dict_path'] is not None:
             with open(
                 kwargs['mapping_dict_path'],
@@ -82,9 +125,6 @@ class PerturberTrainer(CountDecoderTrainer):
         else:
             gene_to_srcid = None
         if perturbation_sequence is not None:
-            #import scanpy as sc
-            #adata_new = sc.read("/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg/2k_hvg_ourMED_all_tps.h5ad")
-            #genes_to_perturb = adata_new.var.index.tolist()[:500]
             if 'src' in perturbation_sequence:
                 tgt_pert_tokens = None
                 if genes_to_perturb is not None:
@@ -247,10 +287,7 @@ class PerturberTrainer(CountDecoderTrainer):
         token_to_perturb: torch.Tensor,
     ):
         # Create a mask for elements not equal to the target token
-        #print('input_ids shape', input_ids.shape)
-        #print('token_to_perturb shape', token_to_perturb.shape)
-        mask = input_ids != token_to_perturb
-        #mask = torch.isin(input_ids, token_to_perturb)
+        mask = ~torch.isin(input_ids, token_to_perturb)
         # add padding mask
         pad_mask = input_ids != self.pad_token_id
         mask_ = mask & pad_mask
@@ -258,10 +295,8 @@ class PerturberTrainer(CountDecoderTrainer):
         valid_counts = mask_.sum(dim=1)
         # Get indices for valid tokens
         valid_tokens = input_ids[mask_]
-
         # Initialize the result tensor filled with pad_token_id
         input_ids = torch.full_like(input_ids, self.pad_token_id)
-
         # Use advanced indexing to fill the valid tokens
         # into the input_ids tensor
         batch_indices = torch.arange(
@@ -288,7 +323,7 @@ class PerturberTrainer(CountDecoderTrainer):
             input_ids = self.delete_token(input_ids, token_to_perturb)
             if perturbation_mode == 'overexpress':
                 # exclude padding token to keep the same sequence length
-                input_ids = input_ids[:, :-1]
+                input_ids = input_ids[:, : -len(token_to_perturb)]
                 token_to_perturb = token_to_perturb.expand(input_ids.shape[0], -1)
                 if perturbation_sequence == 'tgt':
                     input_ids = torch.cat(
@@ -365,6 +400,7 @@ class PerturberTrainer(CountDecoderTrainer):
                     batch=batch,
                     time_step=i,
                     condition_dict=self.condition_dict,
+                    pad_condition=self.pad_condition,
                 )
                 tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
             tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
@@ -391,7 +427,7 @@ class PerturberTrainer(CountDecoderTrainer):
                 perturbed_src = batch['src_input_ids']
 
         if self.validation_mode == 'inference':
-            if (perturbation is False) or (self.use_count_decoder is False):
+            if self.use_count_decoder is False:
                 # true counts do not need to be computed
                 outputs = self.pretrained_model(
                     src_input_id=perturbed_src,
@@ -409,7 +445,7 @@ class PerturberTrainer(CountDecoderTrainer):
                 )
 
         else:
-            if (perturbation is False) or (self.use_count_decoder is False):
+            if self.use_count_decoder is False:
                 outputs = self.pretrained_model.forward(
                     src_input_id=perturbed_src,
                     tgt_input_id_dict=tgt_input_id_dict,
@@ -419,13 +455,14 @@ class PerturberTrainer(CountDecoderTrainer):
 
             else:
                 outputs, count_outputs = self.decoder(
-                    src_input_id=batch['src_input_ids'],
+                    src_input_id=perturbed_src,
                     tgt_input_id_dict=tgt_input_id_dict,
                 )
                 _, count_output = self.compute_count_loss(
                     count_outputs, batch, n_samples=self.n_samples
                 )
         return (outputs, perturbed_src, tgt_input_id_dict, count_output)
+
     def apply_mask(self, x, mask):
         # If x is a PyTorch tensor:
         if isinstance(x, torch.Tensor):
@@ -489,8 +526,9 @@ class PerturberTrainer(CountDecoderTrainer):
                 for k, v in batch.items()
                 if v is not None
             }
+
             if self.validation_mode == 'inference':
-                true_outputs, _, true_ids_dict, _ = self.forward(
+                (true_outputs, _, true_ids_dict, pred_counts) = self.forward(
                     filtered_batch, perturbation=False
                 )
                 (
@@ -546,6 +584,7 @@ class PerturberTrainer(CountDecoderTrainer):
                     f'Invalid perturbation mode: {self.validation_mode}:'
                     f'Choose between "inference" or "generate"'
                 )
+
             for t in self.pred_tps:
                 # create a mask for special tokens to exlude
                 # them from the cosine similarity & logits and probs
@@ -560,16 +599,61 @@ class PerturberTrainer(CountDecoderTrainer):
                 perturbed_mean_embs_l1 = perturbed_outputs[t]['mean_embedding_l1']
                 perturbed_mean_embs_lmid = perturbed_outputs[t]['mean_embedding_lmid']
 
+                # perturbed_logits = perturbed_outputs[t]['dec_logits'][:, 1:, :]
+
+                # true_probs = torch.softmax(true_logits, dim=-1)
+                # perturbed_probs = torch.softmax(perturbed_logits, dim=-1)
+                # delta_probs = torch.abs(true_probs - perturbed_probs)
+                # token_probs_change = delta_probs.sum(dim=-1)
+                # delta_gene_probs, self.marker_genes = map_results_to_genes(
+                #     token_probs_change,
+                #     mapping_dict=self.gene_to_tgtid,
+                #     token_ids=batch[f'tgt_input_ids_t{t}'],
+                # )
+                true_ids = true_ids_dict[f'tgt_input_ids_t{t}'][:, cond_len:]
+                perturbed_ids = perturbed_ids_dict[f'tgt_input_ids_t{t}'][:, cond_len:]
+                if (self.perturbation_mode == 'delete') or (
+                    self.perturbation_mode == 'overexpress'
+                ):
+                    # TODO: see ChatGPT and complete the code
+                    # create a mask for perturbed gene
+                    if self.perturbation_mode == 'overexpress':
+                        # remove overexpressed genes from true_gene and perturbed_gene
+                        perturbed_ids[
+                            :, : len(self.tgt_pert_tokens)
+                        ] = self.pad_token_id
+
+                    match_mask = true_ids.unsqueeze(1) == perturbed_ids.unsqueeze(
+                        2
+                    )  # (batch_size, seq_len, seq_len)
+                    true_indices = match_mask.float().argmax(dim=2)  # shape: [B, T]
+                    b, seq, emb_dim = true_gene.shape
+                    true_ids = torch.gather(true_ids, 1, true_indices)
+                    true_gene = torch.gather(
+                        true_gene, 1, true_indices.unsqueeze(2).expand(b, seq, emb_dim)
+                    )
+                    if self.perturbation_mode == 'overexpress':
+                        # remove overexpressed genes from true_gene and perturbed_gene
+                        true_gene = true_gene[:, len(self.tgt_pert_tokens) :, :]
+                        true_ids = true_ids[:, len(self.tgt_pert_tokens) :]
+                        perturbed_gene = perturbed_gene[
+                            :, len(self.tgt_pert_tokens) :, :
+                        ]
+                        perturbed_ids = perturbed_ids[:, len(self.tgt_pert_tokens) :]
+
+                    # check if true_gene_ids is equal to perturbed_gene_ids
+                    torch.allclose(true_ids, perturbed_ids)
+
                 gene_cos_sim = cosine_similarity(
                     true_gene,
                     perturbed_gene,
                     dim=-1,
                 )
-
                 gene_cos_sim, self.marker_genes = map_results_to_genes(
                     gene_cos_sim,
                     mapping_dict=self.gene_to_tgtid,
-                    token_ids=filtered_batch[f'tgt_input_ids_t{t}'],
+                    token_ids=perturbed_ids,  # pass perturbed ids
+                    perturbation_token=self.tgt_pert_tokens,
                 )
                 mean_cos_sim = cosine_similarity(
                     perturbed_mean_embs,
@@ -597,10 +681,23 @@ class PerturberTrainer(CountDecoderTrainer):
                 (dupl_within_batch, cell_idx_filter_) = mask_duplicates_within_batches(
                     cell_idx_filter_
                 )
+                # # iterate over the batch and compute the wasserstein distance
+                # wd = []
+                # for i in range(true_cls.shape[0]):
+                #     print(true_cls[i].shape)
+                #     wd.append(wasserstein(
+                #         true_cls[i],
+                #         perturbed_cls[i],
+                #         power=1
+                #     ))
+
+                # cls_cos_sim = cls_cos_sim.detach().cpu().to(torch.float16)
                 mean_cos_sim = mean_cos_sim.detach().cpu().to(torch.float16)
                 mean_cos_sim_l1 = mean_cos_sim_l1.detach().cpu().to(torch.float16)
                 mean_cos_sim_lmid = mean_cos_sim_lmid.detach().cpu().to(torch.float16)
                 gene_cos_sim = gene_cos_sim.detach().cpu().to(torch.float16)
+                # true_cls = true_cls.detach().cpu().to(torch.float16)
+                # perturbed_cls = perturbed_cls.detach().cpu().to(torch.float16)
                 true_mean_embs = true_mean_embs.detach().cpu().to(torch.float16)
                 perturbed_mean_embs = (
                     perturbed_mean_embs.detach().cpu().to(torch.float16)
@@ -626,7 +723,7 @@ class PerturberTrainer(CountDecoderTrainer):
                 self.test_dict['perturbed_cls'].append(perturbed_mean_embs)
                 if self.use_count_decoder:
                     if t in pert_counts:
-                        true_counts_ = filtered_batch[f'tgt_counts_t{t}'].detach().cpu()
+                        true_counts_ = pred_counts[t].detach().cpu()
                         pert_counts_ = pert_counts[t].detach().cpu()
                         true_counts_ = true_counts_[dupl_outside_batch]
                         pert_counts_ = pert_counts_[dupl_outside_batch]
@@ -636,6 +733,43 @@ class PerturberTrainer(CountDecoderTrainer):
                         self.test_dict['pert_counts'].append(pert_counts_)
                     else:
                         Warning(f'Counts are not available for time step: {t}')
+                # if self.gene_module_list is not None:
+                #     true_gm_embs = return_gene_embeddings(
+                #         true_gene,
+                #         self.gene_module_dict,
+                #         batch[f'tgt_input_ids_t{t}'],
+                #     )
+                #     perturbed_gm_embs = return_gene_embeddings(
+                #         perturbed_gene,
+                #         self.gene_module_dict,
+                #         batch[f'tgt_input_ids_t{t}'],
+                #     )
+                #     true_background_embs = return_gene_embeddings(
+                #         true_gene,
+                #         self.background_gene_dict,
+                #         batch[f'tgt_input_ids_t{t}'],
+                #     )
+                #     perturbed_background_embs = return_gene_embeddings(
+                #         perturbed_gene,
+                #         self.background_gene_dict,
+                #         batch[f'tgt_input_ids_t{t}'],
+                #     )
+                # # convert float32 to calculate wasserstein distance
+                # true_gm_embs = true_gm_embs.detach().cpu().to(torch.float32)
+                # perturbed_gm_embs = perturbed_gm_embs.detach().cpu().to(torch.float32)
+                # true_background_embs = (
+                #     true_background_embs.detach().cpu().to(torch.float32)
+                # )
+                # perturbed_background_embs = (
+                #     perturbed_background_embs.detach().cpu().to(torch.float32)
+                # )
+                # self.test_dict['true_gm_embs'].append(true_gm_embs)
+                # self.test_dict['perturbed_gm_embs'].append(perturbed_gm_embs)
+                # self.test_dict['true_background_embs'].append(true_background_embs)
+                # self.test_dict['perturbed_background_embs'].append(
+                #     perturbed_background_embs
+                # )
+                # return obs_key
                 self.test_dict['cell_idx'].append(cell_idx_filter_)
                 if len(self.var_list) > 0:
                     for var in self.var_list:
@@ -648,6 +782,67 @@ class PerturberTrainer(CountDecoderTrainer):
             pass
 
     def on_test_epoch_end(self):
+        # # compute emd of gm_embs based on condition
+        # if self.gene_module_list is not None:
+        #     true_gm_embs = torch.cat(self.test_dict['true_gm_embs'], dim=0)
+        #     perturbed_gm_embs = torch.cat(self.test_dict['perturbed_gm_embs'], dim=0)
+        #     true_background_embs = torch.cat(
+        #         self.test_dict['true_background_embs'], dim=0
+        #     )
+        #     perturbed_background_embs = torch.cat(
+        #         self.test_dict['perturbed_background_embs'], dim=0
+        #     )
+        #     # compute the wasserstein distance per condition
+        #     gm_wd = {}
+        #     background_wd = {}
+        #     conditions = np.concatenate(self.test_dict['cell_type'])
+        #     for condition in np.unique(conditions):
+        #         true_gm_embs_cond = true_gm_embs[conditions == condition]
+        #         perturbed_gm_embs_cond = perturbed_gm_embs[conditions == condition]
+        #         true_background_embs_cond = true_background_embs[
+        #             conditions == condition
+        #         ]
+        #         perturbed_background_embs_cond = perturbed_background_embs[
+        #             conditions == condition
+        #         ]
+        #         # non-zero mean aggregation
+        #         true_gm_embs_cond = self.compute_non_zero_mean(true_gm_embs_cond)
+        #         perturbed_gm_embs_cond = self.compute_non_zero_mean(
+        #             perturbed_gm_embs_cond
+        #         )
+        #         true_background_embs_cond = self.compute_non_zero_mean(
+        #             true_background_embs_cond
+        #         )
+        #         perturbed_background_embs_cond = self.compute_non_zero_mean(
+        #             perturbed_background_embs_cond
+        #         )
+        #         # compute the wasserstein distance
+        #         gm_wd[condition] = wasserstein(
+        #             true_gm_embs_cond,
+        #             perturbed_gm_embs_cond,
+        #         )
+        #         background_wd[condition] = wasserstein(
+        #             true_background_embs_cond,
+        #             perturbed_background_embs_cond,
+        #         )
+        #         # store results as dataframes and merge them
+        #         gm_wd_df = pd.DataFrame.from_dict(
+        #             gm_wd, orient='index', columns=['gm_wd']
+        #         )
+        #         background_wd_df = pd.DataFrame.from_dict(
+        #             background_wd, orient='index', columns=['background_wd']
+        #         )
+        #         wd_df = pd.concat([gm_wd_df, background_wd_df], axis=1)
+        #         # plot the results
+        #         wd_df.plot(kind='bar')
+        #         wd_df.to_csv(f'{self.output_dir}/wasserstein_distance.csv')
+
+        #         del (
+        #             true_gm_embs_cond,
+        #             perturbed_gm_embs_cond,
+        #             true_background_embs_cond,
+        #             perturbed_background_embs_cond,
+        #         )
 
         obs_key = self.var_list if len(self.var_list) > 0 else []
         obs_key.extend(['cell_idx'])
@@ -669,7 +864,7 @@ class PerturberTrainer(CountDecoderTrainer):
             marker_genes=self.marker_genes,
             file_name=(
                 f'{self.date}_m{self.validation_mode}_adata'
-                #f'_g{genes_to_perturb}'
+                f'_g{genes_to_perturb}'
                 f'_s{perturbation_sequence}'
                 f'_t{self.perturbation_mode}.h5ad'
             ),

@@ -1640,7 +1640,7 @@ class CountDecoder(nn.Module):
             cls_embedding = outputs[t]['mean_embedding']
             if self.add_cell_time:
                 if self.use_positional_encoding and self.pos_embedding is not None:
-                    condition_emb = self.pos_embedding.time_pe[:, t + 1].to(
+                    condition_emb_time = self.pos_embedding.time_pe[:, t + 1].to(
                         outputs[t]['mean_embedding'].device
                     )
                 else:

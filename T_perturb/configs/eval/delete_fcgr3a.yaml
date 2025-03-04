@@ -36,17 +36,9 @@ trainer:
   iterations: 19
   pos_encoding_mode: 'time_pos_sin'
   exclude_src: true
-  perturbation_mode: 'mask'
+  perturbation_mode: 'overexpress'
   genes_to_perturb:
-    - 'ENSG00000144802'
     - 'ENSG00000125538'
-    - 'ENSG00000136689'
-    - 'ENSG00000188290'
-    - 'ENSG00000186891'
-    - 'ENSG00000187730'
-    - 'ENSG00000049249'
-    - 'ENSG00000280969'
-    - 'ENSG00000154620'
 
   validation_mode: 'inference'
   perturbation_sequence:
@@ -61,7 +53,7 @@ trainer:
     - 3
   pert_tps:
     - 1
-    #count decoder
+  #count decoder
   use_count_decoder: true
   loss_mode: 'zinb'
   n_samples: 3

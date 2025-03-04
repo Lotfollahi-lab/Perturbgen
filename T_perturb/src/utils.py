@@ -210,6 +210,7 @@ def concat_cond_tokens(
     batch: dict,
     time_step: int,
     condition_dict: dict[str, dict] | None = None,
+    pad_condition: bool = False,
 ):
     tgt_input_ids = batch[f'tgt_input_ids_t{time_step}']
     device = tgt_input_ids.device
@@ -218,16 +219,16 @@ def concat_cond_tokens(
         cond_ids = torch.zeros(
             (batch_size, len(condition_dict)), dtype=torch.long, device=device
         )
-        for j, condition in enumerate(condition_dict.keys()):
-            condition_tokens = [
-                condition_dict[condition][id]
-                for id in batch[f'{condition}_t{time_step}']
-            ]
-            # j+1 to skip time token
-            cond_ids[:, j] = torch.tensor(
-                condition_tokens, dtype=torch.long, device=device
-            )
-
+        if pad_condition is False:
+            for j, condition in enumerate(condition_dict.keys()):
+                condition_tokens = [
+                    condition_dict[condition][id]
+                    for id in batch[f'{condition}_t{time_step}']
+                ]
+                # j+1 to skip time token
+                cond_ids[:, j] = torch.tensor(
+                    condition_tokens, dtype=torch.long, device=device
+                )
     return cond_ids
 
 
@@ -334,6 +335,7 @@ def map_results_to_genes(
     mapping_dict: Dict,
     token_ids: torch.tensor,
     marker_genes: List[str] | None = None,
+    perturbation_token: List[str] | None = None,
 ) -> torch.tensor:
     """
     Description:
@@ -370,12 +372,15 @@ def map_results_to_genes(
     )
     marker_genes_dict = {}
     for i, gene in enumerate(marker_genes_ids.keys()):
-        # extract cosine similarity for marker genes
-        # ---------------------
-        cond_embs_to_fill = (token_ids == marker_genes_ids[gene]).sum(1) > 0
-        cond_select_markers = torch.where(token_ids == marker_genes_ids[gene])
-        res_[cond_embs_to_fill, i] = res[cond_select_markers[0], cond_select_markers[1]]
-        marker_genes_dict[gene] = i
+        if perturbation_token is not None:
+            # extract cosine similarity for marker genes
+            # ---------------------
+            cond_embs_to_fill = (token_ids == marker_genes_ids[gene]).sum(1) > 0
+            cond_select_markers = torch.where(token_ids == marker_genes_ids[gene])
+            res_[cond_embs_to_fill, i] = res[
+                cond_select_markers[0], cond_select_markers[1]
+            ]
+            marker_genes_dict[gene] = i
     return res_, marker_genes_dict
 
 
@@ -933,6 +938,7 @@ def return_perturbation_adata(
     # wasserstein_distance = np.concatenate(test_dict['wasserstein_distance'])
     # adata.varm
     gene_cos_similarity = torch.cat(test_dict['gene_cosine_similarity'], dim=0).numpy()
+
     cos_similarity_df = pd.DataFrame(gene_cos_similarity, columns=marker_genes.keys())
     # cos_similarity_df = cos_similarity_df.T
     # cos_similarity_df.columns = cos_similarity_df.columns.astype(str)
@@ -1271,7 +1277,6 @@ def mean_nonpadding_embs(
     condition_dict: dict,
     dim: int = 1,
     perturbation_tokens: torch.Tensor | None = None,
-    perturbation_mode: Literal['mask', 'pad', 'delete', 'overexpress'] | None = None,
 ):
     '''
     Compute the mean of the non-padding embeddings.
@@ -1288,10 +1293,6 @@ def mean_nonpadding_embs(
             cond_tokens.extend(list(condition_dict[condition].values()))
         special_tokens.extend(cond_tokens)
     special_tokens = torch.tensor(special_tokens, device=embs.device)
-    if perturbation_mode is not None:
-        if perturbation_mode in ['delete', 'overexpress']:
-            # do not mask tokens as they are deleted
-            perturbation_tokens = None
 
     if perturbation_tokens is not None:
         tokens_to_exclude = torch.cat([special_tokens, perturbation_tokens])
@@ -1299,9 +1300,6 @@ def mean_nonpadding_embs(
         tokens_to_exclude = special_tokens
 
     pad_mask = torch.isin(input_ids, tokens_to_exclude)
-    if (perturbation_mode is not None) and (perturbation_mode == 'overexpress'):
-        # mask overexpressed tokens at first position
-        pad_mask[:, 0] = True
     # our mask is the opposite of BERT mask
     pad_mask = ~pad_mask
     # create a tensor of original lengths
@@ -1386,34 +1384,38 @@ def pairing_src_to_tgt_cells(
             )
             == 4
         ]
-        resting_cells = adata_grouped.loc[adata_grouped[pairing_obs] == 'normal', :]
-        grouped = adata_grouped.groupby(['cell_type_cellgen_harm'])
+        dropped_donors = (
+            adata_subset.obs['Donor'].nunique() - adata_grouped['Donor'].nunique()
+        )
+        print(f'dropped {dropped_donors} donors')
+        resting_cells = adata_grouped.loc[adata_grouped[pairing_obs] == '0h', :]
+        grouped = adata_grouped.groupby(['Donor', 'Cell_type'])
         for idx, resting in tqdm.tqdm(
             resting_cells.iterrows(), total=resting_cells.shape[0]
         ):
             # get the indices of the other time points for the same cell type and donor
-            group = grouped.get_group(resting['cell_type_cellgen_harm'])
-            indices_16h = group[group[pairing_obs] == '90m_LPS'].index
-            indices_40h = group[group[pairing_obs] == '6h_LPS'].index
-            indices_5d = group[group[pairing_obs] == '10h_LPS'].index
-            cell_pairings['normal'].append(idx)
-            cell_pairings['90m_LPS'].append(np.random.choice(indices_16h))
-            cell_pairings['6h_LPS'].append(np.random.choice(indices_40h))
-            cell_pairings['10h_LPS'].append(np.random.choice(indices_5d))
-    elif pairing_mode == 'mapping': # ELIF
+            group = grouped.get_group((resting['Donor'], resting['Cell_type']))
+            indices_16h = group[group[pairing_obs] == '16h'].index
+            indices_40h = group[group[pairing_obs] == '40h'].index
+            indices_5d = group[group[pairing_obs] == '5d'].index
+            cell_pairings['0h'].append(idx)
+            cell_pairings['16h'].append(np.random.choice(indices_16h))
+            cell_pairings['40h'].append(np.random.choice(indices_40h))
+            cell_pairings['5d'].append(np.random.choice(indices_5d))
+    if pairing_mode == 'mapping':
         for condition in mapping_df[max_reference_time].unique():
             mapping_df_ = mapping_df[mapping_df[max_reference_time] == condition]
             adata_ = adata_dict[max_reference_time]
-            cell_to_pair = adata_['cell_type_cellgen_harm'][
-                adata_['cell_type_cellgen_harm'].isin(mapping_df_[max_reference_time])
+            cell_to_pair = adata_['celltype_v2'][
+                adata_['celltype_v2'].isin(mapping_df_[max_reference_time])
             ].index
             cell_pairings[max_reference_time].extend(cell_to_pair)
             n_cells_to_pair = len(cell_to_pair)
 
             for stage, adata_ in adata_dict.items():
                 if stage != max_reference_time:
-                    cell_to_pair = adata_['cell_type_cellgen_harm'][
-                        adata_['cell_type_cellgen_harm'].isin(mapping_df_[stage])
+                    cell_to_pair = adata_['celltype_v2'][
+                        adata_['celltype_v2'].isin(mapping_df_[stage])
                     ].index
                     # only sample with replacement if needed
                     if n_cells_to_pair > cell_to_pair.shape[0]:
@@ -1559,11 +1561,11 @@ def unseen_donor_split(
     test_prop: float,
 ):
     # define groups for stratified split by Time_point and Cell_type
-    groups = adata.obs[['donor_cellgen_harm']]
+    groups = adata.obs[['Donor']]
     # define train, val and test size based on unique donors
-    train_size = np.round(train_prop * len(groups['donor_cellgen_harm'].unique())).astype(int)
-    test_size = np.round(test_prop * len(groups['donor_cellgen_harm'].unique())).astype(int)
-    val_size = len(groups['donor_cellgen_harm'].unique()) - train_size - test_size
+    train_size = np.round(train_prop * len(groups['Donor'].unique())).astype(int)
+    test_size = np.round(test_prop * len(groups['Donor'].unique())).astype(int)
+    val_size = len(groups['Donor'].unique()) - train_size - test_size
     # sample from groups based on unique donors using numpy random choice
     test_donors = np.random.choice(
         groups['Donor'].unique(), size=test_size, replace=False
@@ -1576,9 +1578,9 @@ def unseen_donor_split(
     train_donors = np.setdiff1d(train_val_donors, val_donors)
     # split dataset to create dataset subset not tuple
     # get indices of train, val and test set
-    train = Subset(adata, np.where(groups['donor_cellgen_harm'].isin(train_donors))[0])
-    val = Subset(adata, np.where(groups['donor_cellgen_harm'].isin(val_donors))[0])
-    test = Subset(adata, np.where(groups['donor_cellgen_harm'].isin(test_donors))[0])
+    train = Subset(adata, np.where(groups['Donor'].isin(train_donors))[0])
+    val = Subset(adata, np.where(groups['Donor'].isin(val_donors))[0])
+    test = Subset(adata, np.where(groups['Donor'].isin(test_donors))[0])
 
     return train, val, test
 
