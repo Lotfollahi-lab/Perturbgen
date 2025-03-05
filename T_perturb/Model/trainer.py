@@ -707,7 +707,7 @@ class CountDecoderTrainer(LightningModule):
         n_total_tps: int = 3,
         temperature: float = 2.0,
         iterations: int = 18,
-        n_samples: int = 1,
+        n_samples: int = 3,
         precision: Literal['high', 'medium'] = 'medium',
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
@@ -936,7 +936,7 @@ class CountDecoderTrainer(LightningModule):
         self,
         outputs: Dict[str, torch.Tensor],
         batch: Dict[str, torch.Tensor],
-        n_samples: int = 1,
+        n_samples: int = 3,
     ):
         """
         Description:
@@ -1177,8 +1177,8 @@ class CountDecoderTrainer(LightningModule):
 
     def on_validation_epoch_end(self):
         # return Pearson correlation coefficient
-        true_counts = torch.cat(self.val_true_counts_list)
-        pred_counts = torch.cat(self.val_pred_counts_list)
+        true_counts = torch.cat(self.val_dict['true_counts'])
+        pred_counts = torch.cat(self.val_dict['pred_counts'])
         mean_pearson = pearson(pred_counts=pred_counts, true_counts=true_counts)
         self.log(
             'val/pearson',
@@ -1366,33 +1366,34 @@ class CountDecoderTrainer(LightningModule):
                 f'_s{self.seed}_s{self.sequence_length}_metrics.csv'
             )
 
-        # else:
-        #     var_dict = {}
-        #     for var in self.var_list:
-        #         var_dict[var] = np.concatenate(self.test_dict[var])
-        #     test_obs = pd.DataFrame(var_dict)
-        #     pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs)
-        #     pred_adata.layers['counts'] = true_counts.numpy()
-        #     pred_adata.write_h5ad(f'{self.output_dir}/pred_adata.h5ad')
-        #     # true counts are stored in the 'counts' layer
-        #     true_adata = pred_adata.copy()
-        #     true_adata.X = true_adata.layers['counts']
-        #     # ----------------- calculate metrics -----------------
-        #     # MSE
-        #     lin_reg_df = lin_reg_summary(true_adata, pred_adata)
-        #     mmd_df = evaluate_mmd(true_adata, pred_adata, n_cells=10000)
-        #     emd = evaluate_emd(true_adata, pred_adata)
-        #     metric_df = pd.concat([lin_reg_df, mmd_df, emd], axis=1)
-        #     metric_df.to_csv(f'{self.output_dir}/test_metrics.csv')
-        #     emd['metric'] = 'emd'
-        #     emd = emd.rename(columns={'emd': 'value'})
-        #     self.log(
-        #         'test/emd',
-        #         emd['value'].mean(),
-        #         on_epoch=True,
-        #         prog_bar=True,
-        #         logger=True,
-        #     )
+        else:
+            var_dict = {}
+            for var in self.var_list:
+                var_dict[var] = np.concatenate(self.test_dict[var])
+            test_obs = pd.DataFrame(var_dict)
+
+            pred_adata = ad.AnnData(X=torch.cat(self.test_dict['pred_counts']).cpu().numpy(), obs=test_obs)
+            pred_adata.layers['counts'] = torch.cat(self.test_dict['true_counts']).cpu().numpy()
+            pred_adata.write_h5ad(f'{self.output_dir}/pred_adata.h5ad')
+            # true counts are stored in the 'counts' layer
+            true_adata = pred_adata.copy()
+            true_adata.X = true_adata.layers['counts']
+            # ----------------- calculate metrics -----------------
+            # MSE
+            lin_reg_df = lin_reg_summary(true_adata, pred_adata)
+            #mmd_df = evaluate_mmd(true_adata, pred_adata, n_cells=10000)
+            #emd = evaluate_emd(true_adata, pred_adata)
+            metric_df = pd.concat([lin_reg_df], axis=1)
+            metric_df.to_csv(f'{self.output_dir}/test_metrics.csv')
+            #emd['metric'] = 'emd'
+            #emd = emd.rename(columns={'emd': 'value'})
+            # self.log(
+            #     'test/emd',
+            #     emd['value'].mean(),
+            #     on_epoch=True,
+            #     prog_bar=True,
+            #     logger=True,
+            # )
 
     def configure_optimizers(self):
         # optimizer = FusedAdam(
