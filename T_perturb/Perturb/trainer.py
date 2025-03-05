@@ -400,7 +400,7 @@ class PerturberTrainer(CountDecoderTrainer):
                     batch=batch,
                     time_step=i,
                     condition_dict=self.condition_dict,
-                    pad_condition=self.pad_condition
+                    pad_condition=self.pad_condition,
                 )
                 tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
             tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
@@ -737,42 +737,6 @@ class PerturberTrainer(CountDecoderTrainer):
                         self.test_dict['pert_counts'].append(pert_counts_)
                     else:
                         Warning(f'Counts are not available for time step: {t}')
-                # if self.gene_module_list is not None:
-                #     true_gm_embs = return_gene_embeddings(
-                #         true_gene,
-                #         self.gene_module_dict,
-                #         batch[f'tgt_input_ids_t{t}'],
-                #     )
-                #     perturbed_gm_embs = return_gene_embeddings(
-                #         perturbed_gene,
-                #         self.gene_module_dict,
-                #         batch[f'tgt_input_ids_t{t}'],
-                #     )
-                #     true_background_embs = return_gene_embeddings(
-                #         true_gene,
-                #         self.background_gene_dict,
-                #         batch[f'tgt_input_ids_t{t}'],
-                #     )
-                #     perturbed_background_embs = return_gene_embeddings(
-                #         perturbed_gene,
-                #         self.background_gene_dict,
-                #         batch[f'tgt_input_ids_t{t}'],
-                #     )
-                # # convert float32 to calculate wasserstein distance
-                # true_gm_embs = true_gm_embs.detach().cpu().to(torch.float32)
-                # perturbed_gm_embs = perturbed_gm_embs.detach().cpu().to(torch.float32)
-                # true_background_embs = (
-                #     true_background_embs.detach().cpu().to(torch.float32)
-                # )
-                # perturbed_background_embs = (
-                #     perturbed_background_embs.detach().cpu().to(torch.float32)
-                # )
-                # self.test_dict['true_gm_embs'].append(true_gm_embs)
-                # self.test_dict['perturbed_gm_embs'].append(perturbed_gm_embs)
-                # self.test_dict['true_background_embs'].append(true_background_embs)
-                # self.test_dict['perturbed_background_embs'].append(
-                #     perturbed_background_embs
-                # )
                 # return obs_key
                 self.test_dict['cell_idx'].append(cell_idx_filter_)
                 if len(self.var_list) > 0:
@@ -786,68 +750,6 @@ class PerturberTrainer(CountDecoderTrainer):
             pass
 
     def on_test_epoch_end(self):
-        # # compute emd of gm_embs based on condition
-        # if self.gene_module_list is not None:
-        #     true_gm_embs = torch.cat(self.test_dict['true_gm_embs'], dim=0)
-        #     perturbed_gm_embs = torch.cat(self.test_dict['perturbed_gm_embs'], dim=0)
-        #     true_background_embs = torch.cat(
-        #         self.test_dict['true_background_embs'], dim=0
-        #     )
-        #     perturbed_background_embs = torch.cat(
-        #         self.test_dict['perturbed_background_embs'], dim=0
-        #     )
-        #     # compute the wasserstein distance per condition
-        #     gm_wd = {}
-        #     background_wd = {}
-        #     conditions = np.concatenate(self.test_dict['cell_type'])
-        #     for condition in np.unique(conditions):
-        #         true_gm_embs_cond = true_gm_embs[conditions == condition]
-        #         perturbed_gm_embs_cond = perturbed_gm_embs[conditions == condition]
-        #         true_background_embs_cond = true_background_embs[
-        #             conditions == condition
-        #         ]
-        #         perturbed_background_embs_cond = perturbed_background_embs[
-        #             conditions == condition
-        #         ]
-        #         # non-zero mean aggregation
-        #         true_gm_embs_cond = self.compute_non_zero_mean(true_gm_embs_cond)
-        #         perturbed_gm_embs_cond = self.compute_non_zero_mean(
-        #             perturbed_gm_embs_cond
-        #         )
-        #         true_background_embs_cond = self.compute_non_zero_mean(
-        #             true_background_embs_cond
-        #         )
-        #         perturbed_background_embs_cond = self.compute_non_zero_mean(
-        #             perturbed_background_embs_cond
-        #         )
-        #         # compute the wasserstein distance
-        #         gm_wd[condition] = wasserstein(
-        #             true_gm_embs_cond,
-        #             perturbed_gm_embs_cond,
-        #         )
-        #         background_wd[condition] = wasserstein(
-        #             true_background_embs_cond,
-        #             perturbed_background_embs_cond,
-        #         )
-        #         # store results as dataframes and merge them
-        #         gm_wd_df = pd.DataFrame.from_dict(
-        #             gm_wd, orient='index', columns=['gm_wd']
-        #         )
-        #         background_wd_df = pd.DataFrame.from_dict(
-        #             background_wd, orient='index', columns=['background_wd']
-        #         )
-        #         wd_df = pd.concat([gm_wd_df, background_wd_df], axis=1)
-        #         # plot the results
-        #         wd_df.plot(kind='bar')
-        #         wd_df.to_csv(f'{self.output_dir}/wasserstein_distance.csv')
-
-        #         del (
-        #             true_gm_embs_cond,
-        #             perturbed_gm_embs_cond,
-        #             true_background_embs_cond,
-        #             perturbed_background_embs_cond,
-        #         )
-
         obs_key = self.var_list if len(self.var_list) > 0 else []
         obs_key.extend(['cell_idx'])
         if self.genes_to_perturb is not None:

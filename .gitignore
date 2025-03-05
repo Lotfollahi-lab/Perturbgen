@@ -141,3 +141,7 @@ Geneformer/
 .torch25/
 *.h5ad
 final_results/
+results
+T_perturb/results
+log
+

@@ -27,7 +27,7 @@ from T_perturb.src.utils import (
 
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative')
+    os.chdir('/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb')
     print('Changed working directory to root of repository')
 
 
@@ -689,6 +689,7 @@ def main() -> None:
         num_nodes=args.num_node,
         devices=-1 if torch.cuda.is_available() else 0,  # inference only on one gpu
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
+        #limit_test_batches=100,
     )
     # Finally, kick of the training process.
     if args.test_mode == 'masking':

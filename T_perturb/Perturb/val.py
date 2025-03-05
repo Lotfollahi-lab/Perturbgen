@@ -18,7 +18,7 @@ from T_perturb.src.utils import (
 # --- 1. Data pre-processing ---
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative/')
+    os.chdir('/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb')
 print(os.getcwd())
 # set seed for reproducibility
 seed_no = 42
@@ -178,7 +178,7 @@ def main() -> None:
         accelerator=accelerator,
         devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
         precision=precision,
-        limit_test_batches=5.0,
+        #limit_test_batches=10,
     )
     trainer.test(
         decoder_module, data_module, ckpt_path=config['model']['ckpt_masking_path']

@@ -222,23 +222,6 @@ class CytoMeisterTrainer(LightningModule):
             self.marker_genes: List[str] | None = marker_genes_all
         else:
             self.marker_genes = None
-        # total_vocab_size = tgt_vocab_size
-        # register buffer for CLS
-        # initialize cls token for all time steps
-
-        # for i in self.total_tps:
-        #     # i-1, as first token is tgt_vocab_size
-        #     self.register_buffer(
-        #         f'cls_token_{str(i)}',
-        #         torch.tensor(
-        #             [total_vocab_size + (i - 1)],
-        #             dtype=torch.long,
-        #         ),
-        #     )
-        #     print(f'cls_token_{str(i)}', getattr(self, f'cls_token_{str(i)}'))
-        #     # update mapping_dict to include cls token
-        #     if self.gene_to_rowid is not None:
-        #         self.gene_to_rowid[f'cls_token_{str(i)}'] = total_vocab_size + (i - 1)
         self.output_dir = output_dir
         # create directory if not exist
         if not os.path.exists(self.output_dir):
@@ -313,31 +296,9 @@ class CytoMeisterTrainer(LightningModule):
         parameters = [{'params': self.transformer.parameters(), 'lr': self.initial_lr}]
         optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
 
-        # number_of_batches_per_epoch = len(self.trainer.datamodule.train_dataloader())
-        # total_steps = self.num_epochs * number_of_batches_per_epoch
-        # warmup_steps = self.warmup_epochs * number_of_batches_per_epoch
-        # scheduler = WarmupScheduler(
-
-        #     optimizer,
-        #     warmup_steps=warmup_steps,
-        #     initial_lr=self.initial_lr,
-        #     end_lr=self.end_lr,
-        # )
-
-        # optimizer = FusedAdam(
-        #     self.transformer.parameters(),
-        #     lr=self.initial_lr,
-        #     weight_decay=self.weight_decay,
-        #     adam_w_mode=False,
-        # )
         return {
             'optimizer': optimizer,
             'monitor': 'train/masking_loss',
-            # 'lr_scheduler': {
-            #     'scheduler': scheduler,
-            #     'interval': 'step',
-            #     'frequency': 1
-            # }
         }
 
     def training_step(self, batch, *args, **kwargs):
@@ -423,23 +384,6 @@ class CytoMeisterTrainer(LightningModule):
             )
             return masking_loss
 
-    # def on_test_batch_start(self, batch, *args, **kwargs):
-    #     if self.return_gene_embs:
-    #         n_genes = exclude_special_tokens(
-    #             self.gene_to_rowid,
-    #             self.marker_genes,
-    #         )
-    #         self.sum_gene_embs = {
-    #             f'{condition}': torch.zeros(
-    #                 size=(len(n_genes), self.d_model), dtype=self.dtype
-    #             )
-    #             for condition in self.gene_embs_list
-    #         }
-    #         self.count_gene_embs = {
-    #             f'{condition}': torch.zeros(size=(len(n_genes), 1), dtype=self.dtype)
-    #             for condition in self.gene_embs_list
-    #         }
-    #         self.all_cell_idx = []
 
     def test_step(self, batch, *args, **kwargs):
         outputs, tgt_input_id_dict = self.forward(
@@ -474,7 +418,6 @@ class CytoMeisterTrainer(LightningModule):
             if self.return_gene_embs:
                 # take the non zero mean of the gene embeddings
                 gene_embeddings = return_gene_embeddings(
-                    # marker_genes=marker_genes,
                     gene_embeddings=outputs[t]['dec_embedding'][:, cond_length:, :],
                     mapping_dict=(
                         self.gene_to_rowid if self.gene_to_rowid is not None else None
@@ -693,7 +636,7 @@ class CountDecoderTrainer(LightningModule):
         d_ff=32,
         max_seq_length=2048,
         loss_mode: str = 'mse',
-        d_condc: int = 768,
+        d_condc: int | None = None,
         d_condt: int = 768,
         use_positional_encoding: bool = False,
         layer_norm: bool = False,
@@ -706,7 +649,7 @@ class CountDecoderTrainer(LightningModule):
         n_total_tps: int = 3,
         temperature: float = 2.0,
         iterations: int = 18,
-        n_samples: int = 1,
+        n_samples: int = 3,
         precision: Literal['high', 'medium'] = 'medium',
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
@@ -935,7 +878,7 @@ class CountDecoderTrainer(LightningModule):
         self,
         outputs: Dict[str, torch.Tensor],
         batch: Dict[str, torch.Tensor],
-        n_samples: int = 1,
+        n_samples: int = 3,
     ):
         """
         Description:
@@ -1038,57 +981,6 @@ class CountDecoderTrainer(LightningModule):
             val, val
         )  # Return mapped value, or original if not in dict
 
-    # def compute_rouge_score(
-    #     self,
-    #     pred_ids: np.ndarray,
-    #     tgt_ids: np.ndarray,
-    #     rouge_len_list: list[int],
-    #     max_seq_length: int,
-    #     test_dict: dict[str, list],
-    # ) -> tuple[dict[str, list[Any]], dict[Any, Any]]:
-    #     rouge_score = {}
-    #     pred_ids = pred_ids.astype(object)
-    #     pred_ids = pred_ids[:, 1:]  # exclude task token
-    #     tgt_ids = tgt_ids.astype(object)
-    #     special_tokens = np.array([0, 1, 2, 3])
-    #     pred_ids[np.isin(pred_ids, special_tokens)] = ''
-    #     tgt_ids[np.isin(tgt_ids, special_tokens)] = ''
-    #     # convert all int to str
-    #     pred_ids_ = pred_ids.astype(str)
-    #     tgt_ids_ = tgt_ids.astype(str)
-    #     # # Vectorize the function to apply to the entire matrix
-    #     # vectorized_map = np.vectorize(self.map_token_to_ensembl)
-    #     # # TODO: rewrite the function without mapping dict
-    #     # # Apply the mapping
-    #     # pred_ids_ = vectorized_map(pred_ids)
-    #     # tgt_ids_ = vectorized_map(tgt_ids)
-    #     for seq_len in rouge_len_list:
-    #         if max_seq_length > seq_len:
-    #             pred_genes_short = pred_ids_[:, :seq_len]
-    #             true_genes_short = tgt_ids_[:, :seq_len]
-    #         else:
-    #             pred_genes_short = pred_ids_
-    #             true_genes_short = tgt_ids_
-    #         pred_ids_str = np.apply_along_axis(
-    #             lambda row: ' '.join(row), axis=1, arr=pred_genes_short
-    #         )
-    #         tgt_ids_str = np.apply_along_axis(
-    #             lambda row: ' '.join(row), axis=1, arr=true_genes_short
-    #         )
-    #         # remove all the trailing spaces
-    #         pred_ids_str = np.array([' '.join(s.split()) for s in pred_ids_str])
-    #         tgt_ids_str = np.array([' '.join(s.split()) for s in tgt_ids_str])
-    #         # create a list of strings
-    #         pred_ids_str = pred_ids_str.tolist()
-    #         tgt_ids_str = tgt_ids_str.tolist()
-    #         # compute rouge score
-    #         rouge_score = self.rouge.compute(
-    #             predictions=pred_ids_str,
-    #             references=tgt_ids_str,
-    #             rouge_types=['rouge1'],
-    #         )
-    #         test_dict[f'rouge1_{seq_len}'].append(rouge_score['rouge1'])
-    #     return test_dict, rouge_score
 
     def training_step(self, batch, *args, **kwargs):
         outputs, _ = self.forward(batch)
@@ -1176,8 +1068,8 @@ class CountDecoderTrainer(LightningModule):
 
     def on_validation_epoch_end(self):
         # return Pearson correlation coefficient
-        true_counts = torch.cat(self.val_true_counts_list)
-        pred_counts = torch.cat(self.val_pred_counts_list)
+        true_counts = torch.cat(self.val_dict['true_counts'])
+        pred_counts = torch.cat(self.val_dict['pred_counts'])
         mean_pearson = pearson(pred_counts=pred_counts, true_counts=true_counts)
         self.log(
             'val/pearson',
@@ -1365,33 +1257,34 @@ class CountDecoderTrainer(LightningModule):
                 f'_s{self.seed}_s{self.sequence_length}_metrics.csv'
             )
 
-        # else:
-        #     var_dict = {}
-        #     for var in self.var_list:
-        #         var_dict[var] = np.concatenate(self.test_dict[var])
-        #     test_obs = pd.DataFrame(var_dict)
-        #     pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs)
-        #     pred_adata.layers['counts'] = true_counts.numpy()
-        #     pred_adata.write_h5ad(f'{self.output_dir}/pred_adata.h5ad')
-        #     # true counts are stored in the 'counts' layer
-        #     true_adata = pred_adata.copy()
-        #     true_adata.X = true_adata.layers['counts']
-        #     # ----------------- calculate metrics -----------------
-        #     # MSE
-        #     lin_reg_df = lin_reg_summary(true_adata, pred_adata)
-        #     mmd_df = evaluate_mmd(true_adata, pred_adata, n_cells=10000)
-        #     emd = evaluate_emd(true_adata, pred_adata)
-        #     metric_df = pd.concat([lin_reg_df, mmd_df, emd], axis=1)
-        #     metric_df.to_csv(f'{self.output_dir}/test_metrics.csv')
-        #     emd['metric'] = 'emd'
-        #     emd = emd.rename(columns={'emd': 'value'})
-        #     self.log(
-        #         'test/emd',
-        #         emd['value'].mean(),
-        #         on_epoch=True,
-        #         prog_bar=True,
-        #         logger=True,
-        #     )
+        else:
+            var_dict = {}
+            for var in self.var_list:
+                var_dict[var] = np.concatenate(self.test_dict[var])
+            test_obs = pd.DataFrame(var_dict)
+
+            pred_adata = ad.AnnData(X=torch.cat(self.test_dict['pred_counts']).cpu().numpy(), obs=test_obs)
+            pred_adata.layers['counts'] = torch.cat(self.test_dict['true_counts']).cpu().numpy()
+            pred_adata.write_h5ad(f'{self.output_dir}/pred_adata.h5ad')
+            # true counts are stored in the 'counts' layer
+            true_adata = pred_adata.copy()
+            true_adata.X = true_adata.layers['counts']
+            # ----------------- calculate metrics -----------------
+            # MSE
+            lin_reg_df = lin_reg_summary(true_adata, pred_adata)
+            #mmd_df = evaluate_mmd(true_adata, pred_adata, n_cells=10000)
+            #emd = evaluate_emd(true_adata, pred_adata)
+            metric_df = pd.concat([lin_reg_df], axis=1)
+            metric_df.to_csv(f'{self.output_dir}/test_metrics.csv')
+            #emd['metric'] = 'emd'
+            #emd = emd.rename(columns={'emd': 'value'})
+            # self.log(
+            #     'test/emd',
+            #     emd['value'].mean(),
+            #     on_epoch=True,
+            #     prog_bar=True,
+            #     logger=True,
+            # )
 
     def configure_optimizers(self):
         # optimizer = FusedAdam(

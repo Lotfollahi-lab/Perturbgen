@@ -32,7 +32,7 @@ from T_perturb.src.utils import (
 
 if os.getcwd().split('/')[-1] != 't_generative':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative')
+    os.chdir('/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb')
     print('Changed working directory to root of repository')
 
 
@@ -70,7 +70,7 @@ def get_args():
         '--split_obs',
         type=str,
         nargs='+',
-        default=['Donor', 'Cell_type'],
+        default=['cell_type_cellgen_harm'],
         # default=['celltype_v2'],
     )
     parser.add_argument('--split_value', type=str, default='D351')
@@ -200,7 +200,7 @@ def get_args():
         '--pred_tps',
         nargs='+',
         type=int,
-        default=[1, 2, 3, 4],
+        default=[1, 2, 3],
         help='time steps which are predicted',
     )
     parser.add_argument(
@@ -216,7 +216,7 @@ def get_args():
         nargs='+',
         type=str,
         # default=['Time_point'],
-        default=['Cell_population', 'Cell_type', 'Time_point', 'Donor'],
+        default=['cell_type_cellgen_harm', 'donor_cellgen_harm' ,'time_after_LPS'],
         # default=['celltype_v2', 'sex', 'phase', 'tissue', 'diff_state'],
         help='List of variables to keep in the dataset',
     )
@@ -351,22 +351,11 @@ def main() -> None:
     else:
         # return all the indices
         train_indices = list(range(len(src_dataset)))
+        #train_indices = list(range(100))
         val_indices = None
         test_indices = list(
             range(len(tgt_datasets[f'tgt_dataset_t{args.pred_tps[0]}']))
         )
-    # # check if the train indices are the same for both adata and dataset
-    # subset_adata = tgt_adata_tmp[train_indices]
-
-    # subset_dataset = tgt_datasets[f'tgt_dataset_t{args.pred_tps[0]}'].select(
-    #     train_indices
-    # )
-    # adata_idx = subset_adata.obs['index'].tolist()
-    # dataset_idx = list(map(str, subset_dataset['cell_pairing_index']))
-
-    # assert adata_idx == dataset_idx, (
-    #     'Cell pairing indices do not match ' 'between AnnData and Dataset objects'
-    # )
     if args.loss_mode == 'mse':
         # log normalize data only for mse loss
         sc.pp.normalize_total(src_adata, target_sum=1e4)
@@ -549,7 +538,7 @@ def main() -> None:
         dirpath=checkpoint_path,
         filename=f'{filename}-' + '{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=10,
+        every_n_epochs=1,
         verbose=True,
         monitor=monitor_metric,
         mode=mode,

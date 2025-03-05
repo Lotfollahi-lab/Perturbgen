@@ -374,26 +374,14 @@ class PerturberCountDecoder(CountDecoder):
                 if self.use_positional_encoding and self.pos_embedding is not None:
                     condition_emb_time = self.pos_embedding.time_pe[:, t + 1]
                 else:
-                    device = next(
-                        self.parameters()
-                    ).device  # Get the device of the model
-                    condition_emb_time = self.condition_layer_time(
-                        self.condition_dict_oh[t].to(device)
-                    )
+                    device = next(self.parameters()).device  # Get the device of the model
+                    condition_emb_time = self.condition_layer_time(self.condition_dict_oh[t].to(device))
                     if self.condition_layer_celltype is not None:
-                        condition_emb_celltype = self.condition_layer_celltype(
-                            outputs[t]['dec_embedding'][:, 1, :]
-                        )  # Use one-hot
-                        condition_emb_time = condition_emb_time.unsqueeze(0).expand(
-                            condition_emb_celltype.shape[0], -1
-                        )
-                        condition_emb = torch.cat(
-                            (condition_emb_time, condition_emb_celltype), dim=1
-                        )
+                        condition_emb_celltype = self.condition_layer_celltype(outputs[t]['dec_embedding'][:, 1, :])  # Use one-hot
+                        condition_emb_time = condition_emb_time.unsqueeze(0).expand(condition_emb_celltype.shape[0], -1)
+                        condition_emb = torch.cat((condition_emb_time, condition_emb_celltype), dim=1)
                     else:
-                        condition_emb = (
-                            condition_emb_time  # If cell type conditioning is not used
-                        )
+                        condition_emb = condition_emb_time  # If cell type conditioning is not used
                 cls_embedding = torch.cat((cls_embedding, condition_emb), dim=1)
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
             count_outputs[f'count_output_t{t}'] = count_outputs_tmp
