@@ -641,7 +641,7 @@ class CountDecoderTrainer(LightningModule):
         n_total_tps: int = 3,
         temperature: float = 2.0,
         iterations: int = 18,
-        n_samples: int = 3,
+        n_samples: int = 1,
         precision: Literal['high', 'medium'] = 'medium',
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
@@ -861,7 +861,7 @@ class CountDecoderTrainer(LightningModule):
         self,
         outputs: Dict[str, torch.Tensor],
         batch: Dict[str, torch.Tensor],
-        n_samples: int = 3,
+        n_samples: int = 1,
     ):
         """
         Description:
