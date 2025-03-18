@@ -1,6 +1,7 @@
 import argparse
 import os
 
+import pandas as pd
 import pytorch_lightning as pl
 import scanpy as sc
 import torch
@@ -16,9 +17,9 @@ from T_perturb.src.utils import (
 )
 
 # --- 1. Data pre-processing ---
-if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
+if os.getcwd().split('/')[-1] != 't_generative':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb')
+    os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative/')
 print(os.getcwd())
 # set seed for reproducibility
 seed_no = 42
@@ -49,6 +50,23 @@ def main() -> None:
     # load dataset
     src_dataset = load_from_disk(config['data']['src_dataset_file'])
     tgt_datasets = read_dataset_files(config['data']['tgt_dataset_folder'], 'dataset')
+
+    # read genes to perturb from file
+    if 'perturb_genes_file' in config['data']:
+        perturb_genes_df = pd.read_csv(
+            config['data']['perturb_genes_file'], header=None
+        )
+        # assign column names being the first row
+        perturb_genes_df.columns = perturb_genes_df.iloc[0]
+        # drop the first row
+        perturb_genes_df = perturb_genes_df.drop(0)
+        # filter based on cluster
+        if 'perturb_cluster' in config['data']:
+            filtered_df = perturb_genes_df[
+                perturb_genes_df['leiden_4'] == config['data']['perturb_cluster']
+            ]
+            genes_to_perturb = filtered_df['gene_name'].tolist()
+            config['trainer']['genes_to_perturb'] = genes_to_perturb
 
     if 'loss_mode' in config['trainer']:
         if config['trainer']['loss_mode'] == 'mse':
@@ -177,7 +195,6 @@ def main() -> None:
         accelerator=accelerator,
         devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
         precision=precision,
-        #limit_test_batches=1000,
     )
     trainer.test(
         decoder_module, data_module, ckpt_path=config['model']['ckpt_masking_path']

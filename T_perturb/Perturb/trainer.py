@@ -18,8 +18,6 @@ from T_perturb.src.utils import (
     compute_rouge_score,
     concat_cond_tokens,
     map_results_to_genes,
-    mask_duplicates_across_batches,
-    mask_duplicates_within_batches,
     return_perturbation_adata,
 )
 
@@ -481,7 +479,7 @@ class PerturberTrainer(CountDecoderTrainer):
         # if all cells are removed where boolean mask is all False
         if np.sum(remove_cells_wo_pert) > 0:
             # remove cells without perturbation
-            #filtered_batch = batch
+            # filtered_batch = batch
             filtered_batch = {
                 k: self.apply_mask(v, remove_cells_wo_pert)
                 for k, v in batch.items()
@@ -526,7 +524,9 @@ class PerturberTrainer(CountDecoderTrainer):
                 for t in self.pred_tps:
                     true_ids = true_ids_dict[t].detach().cpu().numpy()
                     # ground truth
-                    input_ids = filtered_batch[f'tgt_input_ids_t{t}'].detach().cpu().numpy()
+                    input_ids = (
+                        filtered_batch[f'tgt_input_ids_t{t}'].detach().cpu().numpy()
+                    )
                     test_dict = compute_rouge_score(
                         rouge=self.rouge,
                         pred_ids=true_ids,
@@ -613,17 +613,6 @@ class PerturberTrainer(CountDecoderTrainer):
 
                 cell_idx = np.array(filtered_batch[f'tgt_cell_idx_t{t}'])
 
-                if len(self.test_dict['cell_idx']) == 0:
-                    all_cell_idx = np.array([])
-                else:
-                    all_cell_idx = np.concatenate(self.test_dict['cell_idx'])
-                # remove duplicates
-                (dupl_outside_batch, cell_idx_filter_) = mask_duplicates_across_batches(
-                    all_cell_idx, cell_idx
-                )
-                (dupl_within_batch, cell_idx_filter_) = mask_duplicates_within_batches(
-                    cell_idx_filter_
-                )
                 mean_cos_sim = mean_cos_sim.detach().cpu().to(torch.float16)
                 mean_cos_sim_l1 = mean_cos_sim_l1.detach().cpu().to(torch.float16)
                 mean_cos_sim_lmid = mean_cos_sim_lmid.detach().cpu().to(torch.float16)
@@ -635,18 +624,18 @@ class PerturberTrainer(CountDecoderTrainer):
                     perturbed_mean_embs.detach().cpu().to(torch.float16)
                 )
 
-                mean_cos_sim = mean_cos_sim[dupl_outside_batch]
-                mean_cos_sim_l1 = mean_cos_sim_l1[dupl_outside_batch]
-                mean_cos_sim_lmid = mean_cos_sim_lmid[dupl_outside_batch]
-                gene_cos_sim = gene_cos_sim[dupl_outside_batch]
-                true_mean_embs = true_mean_embs[dupl_outside_batch]
-                perturbed_mean_embs = perturbed_mean_embs[dupl_outside_batch]
-                mean_cos_sim = mean_cos_sim[dupl_within_batch]
-                mean_cos_sim_l1 = mean_cos_sim_l1[dupl_within_batch]
-                mean_cos_sim_lmid = mean_cos_sim_lmid[dupl_within_batch]
-                gene_cos_sim = gene_cos_sim[dupl_within_batch]
-                true_mean_embs = true_mean_embs[dupl_within_batch]
-                perturbed_mean_embs = perturbed_mean_embs[dupl_within_batch]
+                # mean_cos_sim = mean_cos_sim[dupl_outside_batch]
+                # mean_cos_sim_l1 = mean_cos_sim_l1[dupl_outside_batch]
+                # mean_cos_sim_lmid = mean_cos_sim_lmid[dupl_outside_batch]
+                # gene_cos_sim = gene_cos_sim[dupl_outside_batch]
+                # true_mean_embs = true_mean_embs[dupl_outside_batch]
+                # perturbed_mean_embs = perturbed_mean_embs[dupl_outside_batch]
+                # mean_cos_sim = mean_cos_sim[dupl_within_batch]
+                # mean_cos_sim_l1 = mean_cos_sim_l1[dupl_within_batch]
+                # mean_cos_sim_lmid = mean_cos_sim_lmid[dupl_within_batch]
+                # gene_cos_sim = gene_cos_sim[dupl_within_batch]
+                # true_mean_embs = true_mean_embs[dupl_within_batch]
+                # perturbed_mean_embs = perturbed_mean_embs[dupl_within_batch]
                 self.test_dict['mean_cosine_similarity'].append(mean_cos_sim)
                 self.test_dict['mean_cosine_similarity_l1'].append(mean_cos_sim_l1)
                 self.test_dict['mean_cosine_similarity_lmid'].append(mean_cos_sim_lmid)
@@ -658,24 +647,24 @@ class PerturberTrainer(CountDecoderTrainer):
                         true_counts_ = filtered_batch[f'tgt_counts_t{t}'].detach().cpu()
                         pred_counts_ = pred_counts[t].detach().cpu()
                         pert_counts_ = pert_counts[t].detach().cpu()
-                        true_counts_ = true_counts_[dupl_outside_batch]
-                        pred_counts_ = pred_counts_[dupl_outside_batch]
-                        pert_counts_ = pert_counts_[dupl_outside_batch]
-                        true_counts_ = true_counts_[dupl_within_batch]
-                        pred_counts_ = pred_counts_[dupl_within_batch]
-                        pert_counts_ = pert_counts_[dupl_within_batch]
+                        # true_counts_ = true_counts_[dupl_outside_batch]
+                        # pred_counts_ = pred_counts_[dupl_outside_batch]
+                        # pert_counts_ = pert_counts_[dupl_outside_batch]
+                        # true_counts_ = true_counts_[dupl_within_batch]
+                        # pred_counts_ = pred_counts_[dupl_within_batch]
+                        # pert_counts_ = pert_counts_[dupl_within_batch]
                         self.test_dict['true_counts'].append(true_counts_)
                         self.test_dict['pred_counts'].append(pred_counts_)
                         self.test_dict['pert_counts'].append(pert_counts_)
                     else:
                         Warning(f'Counts are not available for time step: {t}')
-                self.test_dict['cell_idx'].append(cell_idx_filter_)
+                self.test_dict['cell_idx'].append(cell_idx)
                 if len(self.var_list) > 0:
                     for var in self.var_list:
                         # remove duplicates
                         var_values = np.array(filtered_batch[f'{var}_t{t}'])
-                        var_values = var_values[dupl_outside_batch]
-                        var_values = var_values[dupl_within_batch]
+                        # var_values = var_values[dupl_outside_batch]
+                        # var_values = var_values[dupl_within_batch]
                         self.test_dict[var].append(var_values)
         else:
             pass
@@ -685,7 +674,11 @@ class PerturberTrainer(CountDecoderTrainer):
         obs_key.extend(['cell_idx'])
         if self.genes_to_perturb is not None:
             if len(self.genes_to_perturb) > 1:
-                genes_to_perturb = '_'.join(self.genes_to_perturb)
+                # concatenate maximum 5 genes if more than 5 genes are perturbed
+                if len(self.genes_to_perturb) > 5:
+                    genes_to_perturb = '_'.join(self.genes_to_perturb[:5])
+                else:
+                    genes_to_perturb = '_'.join(self.genes_to_perturb)
             else:
                 genes_to_perturb = self.genes_to_perturb[0]
         else:

@@ -6,7 +6,8 @@ data:
   cond_list:
     - 'celltype_v2'
     - 'diff_state'
-
+  perturb_genes_file: 'T_perturb/T_perturb/plt/res/hspc/pbmc_median/gene_embedding/20250312_gene_clusters_LMPP_L4.csv'
+  perturb_cluster: '77'
 
 trainer:
   tgt_vocab_size: 5710
@@ -28,7 +29,9 @@ trainer:
   pos_encoding_mode: 'time_pos_sin'
   perturbation_mode: 'mask'
   genes_to_perturb:
-    - 'PRTN3'
+    - 'TAL1'
+    - 'GATA1'
+    - 'GATA2'
   validation_mode: 'inference'
   perturbation_sequence:
     - 'tgt'

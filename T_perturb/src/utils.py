@@ -863,6 +863,17 @@ def return_generation_adata(
     return adata
 
 
+def mean_duplicates(
+    obs: pd.DataFrame,
+    data: np.array,
+):
+    remove_duplicates = obs.drop_duplicates(subset='cell_idx')
+    data = pd.DataFrame(data, index=obs['cell_idx'])
+    data_aggregated = data.groupby(data.index).mean()
+    data_aggregated = data_aggregated.reindex(remove_duplicates['cell_idx'])
+    return data_aggregated.values
+
+
 def return_perturbation_adata(
     test_dict: dict,
     obs_key: list,
@@ -870,6 +881,7 @@ def return_perturbation_adata(
     marker_genes: dict,
     file_name: str,
     mode: Literal['inference', 'generate'],
+    aggregate: bool = True,
 ) -> ad.AnnData:
     """
     Description:
@@ -951,6 +963,31 @@ def return_perturbation_adata(
     #     delta_gene_probs, columns=marker_genes.keys()
     # )
 
+    cos_similarity_df_ = cos_similarity_df.T
+    # convert columns to string
+    cos_similarity_df_.columns = cos_similarity_df_.columns.astype(str)
+
+    #     # 'delta_gene_probs': delta_gene_probs_df.T,
+    # }
+
+    # adata.obs
+    obs_dict = {obs: np.concatenate(test_dict[obs]) for obs in obs_key}
+    test_obs = pd.DataFrame(obs_dict)
+
+    if (aggregate is True) and ('cell_idx' in test_obs.columns):
+        pert_counts = mean_duplicates(test_obs, pert_counts)
+        true_counts = mean_duplicates(test_obs, true_counts)
+        pred_counts = mean_duplicates(test_obs, pred_counts)
+        # cls_cos_similarity = mean_duplicates(test_obs, cls_cos_similarity)
+        mean_cos_similarity = mean_duplicates(test_obs, mean_cos_similarity)
+        mean_cos_similarity_l1 = mean_duplicates(test_obs, mean_cos_similarity_l1)
+        mean_cos_similarity_lmid = mean_duplicates(test_obs, mean_cos_similarity_lmid)
+        true_cls = mean_duplicates(test_obs, true_cls)
+        perturbed_cls = mean_duplicates(test_obs, perturbed_cls)
+        gene_cos_similarity = mean_duplicates(test_obs, cos_similarity_df_.T).T
+        test_obs = test_obs.drop_duplicates(subset='cell_idx')
+        print('unique cells:', len(test_obs['cell_idx'].unique()))
+
     # create dataframe to store perturbation results
     obsm_dict = {
         'true_cls': true_cls,
@@ -961,26 +998,19 @@ def return_perturbation_adata(
         'mean_cos_similarity_lmid': mean_cos_similarity_lmid,
         # 'delta_probs': delta_probs,
     }
-    cos_similarity_df_ = cos_similarity_df.T
-    # convert columns to string
-    cos_similarity_df_.columns = cos_similarity_df_.columns.astype(str)
-    varm_dict = {
-        'gene_cos_similarity': cos_similarity_df_,
-    }
-
-    #     # 'delta_gene_probs': delta_gene_probs_df.T,
-    # }
-
     if mode == 'generate':
         rouge_dict = {
             key: np.concatenate(test_dict[key])
             for key in test_dict.keys()
             if key.startswith('rouge')
         }
+        if (aggregate is True) and ('cell_idx' in test_obs.columns):
+            for key in rouge_dict.keys():
+                rouge_dict[key] = mean_duplicates(test_obs, rouge_dict[key])
         obsm_dict.update(rouge_dict)
-    # adata.obs
-    obs_dict = {obs: np.concatenate(test_dict[obs]) for obs in obs_key}
-    test_obs = pd.DataFrame(obs_dict)
+    varm_dict = {
+        'gene_cos_similarity': cos_similarity_df_,
+    }
     # create adata
     adata = ad.AnnData(
         X=pert_counts,
@@ -995,6 +1025,7 @@ def return_perturbation_adata(
             'true_counts': true_counts,
         },
     )
+    print(adata)
     adata.write_h5ad(os.path.join(output_dir, file_name))
     print('anndata generation completed---')
     return adata
@@ -1386,9 +1417,9 @@ def pairing_src_to_tgt_cells(
     if pairing_mode == 'stratified':
         # drop Donor if they do not have Cell_type, Donor in all the Time_points
         adata_grouped = adata_subset_.obs[
-            adata_subset_.obs.groupby(['cell_type_cellgen_harm'])[pairing_obs].transform(
-                'nunique'
-            )
+            adata_subset_.obs.groupby(['cell_type_cellgen_harm'])[
+                pairing_obs
+            ].transform('nunique')
             == 4
         ]
         dropped_donors = (

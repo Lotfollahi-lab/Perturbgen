@@ -384,7 +384,6 @@ class CytoMeisterTrainer(LightningModule):
             )
             return masking_loss
 
-
     def test_step(self, batch, *args, **kwargs):
         outputs, tgt_input_id_dict = self.forward(
             batch,
@@ -641,7 +640,7 @@ class CountDecoderTrainer(LightningModule):
         n_total_tps: int = 3,
         temperature: float = 2.0,
         iterations: int = 18,
-        n_samples: int = 3,
+        n_samples: int = 1,
         precision: Literal['high', 'medium'] = 'medium',
         output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
         encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
@@ -676,8 +675,7 @@ class CountDecoderTrainer(LightningModule):
         # only set precision for GPU
 
         set_matmul_precision_for_device(precision)
-        print('encoder_path', encoder_path)
-        print('mapping_dict_path', mapping_dict_path)
+
         if mapping_dict_path is not None:
             with open(
                 mapping_dict_path,
@@ -787,7 +785,6 @@ class CountDecoderTrainer(LightningModule):
         }
         self.test_dict: Dict[str, List[Any]] = {
             'true_counts': [],
-            #'ctrl_counts': [],
             'pred_counts': [],
             'cls_embeddings': [],
             'cell_idx': [],
@@ -837,7 +834,7 @@ class CountDecoderTrainer(LightningModule):
 
         return outputs, tgt_input_id_dict
 
-    def one_hot_encoder(self,idx, n_cls):
+    def one_hot_encoder(self, idx, n_cls):
         assert torch.max(idx).item() < n_cls
         if idx.dim() == 1:
             idx = idx.unsqueeze(1)
@@ -851,7 +848,7 @@ class CountDecoderTrainer(LightningModule):
             self.one_hot_encoder(
                 batch['combined_batch'],
                 self.n_conditions_combined,
-                #self.theta.dtype,
+                # self.theta.dtype,
             ),
             self.theta,
         )
@@ -861,7 +858,7 @@ class CountDecoderTrainer(LightningModule):
         self,
         outputs: Dict[str, torch.Tensor],
         batch: Dict[str, torch.Tensor],
-        n_samples: int = 3,
+        n_samples: int = 1,
     ):
         """
         Description:
@@ -965,7 +962,6 @@ class CountDecoderTrainer(LightningModule):
         return self.token_id_to_ensembl.get(
             val, val
         )  # Return mapped value, or original if not in dict
-
 
     def training_step(self, batch, *args, **kwargs):
         outputs, _ = self.forward(batch)
@@ -1248,8 +1244,12 @@ class CountDecoderTrainer(LightningModule):
                 var_dict[var] = np.concatenate(self.test_dict[var])
             test_obs = pd.DataFrame(var_dict)
 
-            pred_adata = ad.AnnData(X=torch.cat(self.test_dict['pred_counts']).cpu().numpy(), obs=test_obs)
-            pred_adata.layers['counts'] = torch.cat(self.test_dict['true_counts']).cpu().numpy()
+            pred_adata = ad.AnnData(
+                X=torch.cat(self.test_dict['pred_counts']).cpu().numpy(), obs=test_obs
+            )
+            pred_adata.layers['counts'] = (
+                torch.cat(self.test_dict['true_counts']).cpu().numpy()
+            )
             pred_adata.write_h5ad(f'{self.output_dir}/pred_adata.h5ad')
             # true counts are stored in the 'counts' layer
             true_adata = pred_adata.copy()
@@ -1257,12 +1257,12 @@ class CountDecoderTrainer(LightningModule):
             # ----------------- calculate metrics -----------------
             # MSE
             lin_reg_df = lin_reg_summary(true_adata, pred_adata)
-            #mmd_df = evaluate_mmd(true_adata, pred_adata, n_cells=10000)
-            #emd = evaluate_emd(true_adata, pred_adata)
+            # mmd_df = evaluate_mmd(true_adata, pred_adata, n_cells=10000)
+            # emd = evaluate_emd(true_adata, pred_adata)
             metric_df = pd.concat([lin_reg_df], axis=1)
             metric_df.to_csv(f'{self.output_dir}/test_metrics.csv')
-            #emd['metric'] = 'emd'
-            #emd = emd.rename(columns={'emd': 'value'})
+            # emd['metric'] = 'emd'
+            # emd = emd.rename(columns={'emd': 'value'})
             # self.log(
             #     'test/emd',
             #     emd['value'].mean(),

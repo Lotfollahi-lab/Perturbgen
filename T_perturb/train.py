@@ -32,7 +32,7 @@ from T_perturb.src.utils import (
 
 if os.getcwd().split('/')[-1] != 't_generative':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb')
+    os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative/')
     print('Changed working directory to root of repository')
 
 
@@ -216,7 +216,7 @@ def get_args():
         nargs='+',
         type=str,
         # default=['Time_point'],
-        default=['cell_type_cellgen_harm', 'donor_cellgen_harm' ,'time_after_LPS'],
+        default=['cell_type_cellgen_harm', 'donor_cellgen_harm', 'time_after_LPS'],
         # default=['celltype_v2', 'sex', 'phase', 'tissue', 'diff_state'],
         help='List of variables to keep in the dataset',
     )
@@ -351,7 +351,7 @@ def main() -> None:
     else:
         # return all the indices
         train_indices = list(range(len(src_dataset)))
-        #train_indices = list(range(100))
+        # train_indices = list(range(100))
         val_indices = None
         test_indices = list(
             range(len(tgt_datasets[f'tgt_dataset_t{args.pred_tps[0]}']))
@@ -538,7 +538,7 @@ def main() -> None:
         dirpath=checkpoint_path,
         filename=f'{filename}-' + '{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=6,
+        every_n_epochs=5,
         verbose=True,
         monitor=monitor_metric,
         mode=mode,

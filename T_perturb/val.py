@@ -25,9 +25,9 @@ from T_perturb.src.utils import (
     stratified_split,
 )
 
-if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
+if os.getcwd().split('/')[-1] != 't_generative':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb')
+    os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative/')
     print('Changed working directory to root of repository')
 
 
