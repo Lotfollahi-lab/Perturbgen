@@ -587,9 +587,8 @@ class PerturberTrainer(CountDecoderTrainer):
                     # check if true_gene_ids is equal to perturbed_gene_ids
                     torch.allclose(true_ids, perturbed_ids)
 
-                gene_cos_sim = cosine_similarity(
-                    true_gene,
-                    perturbed_gene,
+                gene_cos_sim = torch.sum(
+                    true_gene * perturbed_gene,
                     dim=-1,
                 )
                 gene_cos_sim, self.marker_genes = map_results_to_genes(
