@@ -335,7 +335,6 @@ def map_results_to_genes(
     mapping_dict: Dict,
     token_ids: torch.tensor,
     marker_genes: List[str] | None = None,
-    perturbation_token: List[str] | None = None,
 ) -> torch.tensor:
     """
     Description:
@@ -372,15 +371,12 @@ def map_results_to_genes(
     )
     marker_genes_dict = {}
     for i, gene in enumerate(marker_genes_ids.keys()):
-        if perturbation_token is not None:
-            # extract cosine similarity for marker genes
-            # ---------------------
-            cond_embs_to_fill = (token_ids == marker_genes_ids[gene]).sum(1) > 0
-            cond_select_markers = torch.where(token_ids == marker_genes_ids[gene])
-            res_[cond_embs_to_fill, i] = res[
-                cond_select_markers[0], cond_select_markers[1]
-            ]
-            marker_genes_dict[gene] = i
+        # extract cosine similarity for marker genes
+        # ---------------------
+        cond_embs_to_fill = (token_ids == marker_genes_ids[gene]).sum(1) > 0
+        cond_select_markers = torch.where(token_ids == marker_genes_ids[gene])
+        res_[cond_embs_to_fill, i] = res[cond_select_markers[0], cond_select_markers[1]]
+        marker_genes_dict[gene] = i
     return res_, marker_genes_dict
 
 
@@ -954,7 +950,6 @@ def return_perturbation_adata(
     # wasserstein_distance = np.concatenate(test_dict['wasserstein_distance'])
     # adata.varm
     gene_cos_similarity = torch.cat(test_dict['gene_cosine_similarity'], dim=0).numpy()
-
     cos_similarity_df = pd.DataFrame(gene_cos_similarity, columns=marker_genes.keys())
     # cos_similarity_df = cos_similarity_df.T
     # cos_similarity_df.columns = cos_similarity_df.columns.astype(str)
@@ -984,10 +979,14 @@ def return_perturbation_adata(
         mean_cos_similarity_lmid = mean_duplicates(test_obs, mean_cos_similarity_lmid)
         true_cls = mean_duplicates(test_obs, true_cls)
         perturbed_cls = mean_duplicates(test_obs, perturbed_cls)
-        gene_cos_similarity = mean_duplicates(test_obs, cos_similarity_df_.T).T
+        remove_duplicates = test_obs.drop_duplicates(subset='cell_idx')
+        cos_similarity_df_ = cos_similarity_df_.T
+        cos_similarity_df_.index = test_obs['cell_idx']
+        cos_similarity_df_ = cos_similarity_df_.groupby(cos_similarity_df_.index).mean()
+        cos_similarity_df_ = cos_similarity_df_.reindex(remove_duplicates['cell_idx'])
         test_obs = test_obs.drop_duplicates(subset='cell_idx')
-        print('unique cells:', len(test_obs['cell_idx'].unique()))
-
+        cos_similarity_df_.index = test_obs.index
+        cos_similarity_df_ = cos_similarity_df_.T
     # create dataframe to store perturbation results
     obsm_dict = {
         'true_cls': true_cls,
@@ -1009,7 +1008,7 @@ def return_perturbation_adata(
                 rouge_dict[key] = mean_duplicates(test_obs, rouge_dict[key])
         obsm_dict.update(rouge_dict)
     varm_dict = {
-        'gene_cos_similarity': cos_similarity_df_,
+        'gene_cos_similarity': cos_similarity_df_.values,
     }
     # create adata
     adata = ad.AnnData(
@@ -1025,7 +1024,6 @@ def return_perturbation_adata(
             'true_counts': true_counts,
         },
     )
-    print(adata)
     adata.write_h5ad(os.path.join(output_dir, file_name))
     print('anndata generation completed---')
     return adata

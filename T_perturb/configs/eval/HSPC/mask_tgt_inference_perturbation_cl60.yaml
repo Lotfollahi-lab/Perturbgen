@@ -7,7 +7,7 @@ data:
     - 'celltype_v2'
     - 'diff_state'
   perturb_genes_file: 'T_perturb/T_perturb/plt/res/hspc/pbmc_median/gene_embedding/20250312_gene_clusters_LMPP_L4.csv'
-  perturb_cluster: '45'
+  perturb_cluster: '60'
 
 trainer:
   tgt_vocab_size: 5710
@@ -53,7 +53,7 @@ trainer:
   n_samples: 3
 
 datamodule:
-  batch_size: 32
+  batch_size: 64
   num_workers: 4
   shuffle: False
   split: False

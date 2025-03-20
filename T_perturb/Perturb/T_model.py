@@ -4,12 +4,14 @@ from typing import (
     Literal,
 )
 
+import numpy as np
 import torch
 from einops import rearrange
 from torch import nn
 
 from T_perturb.Modules.T_model import CountDecoder, CytoMeister
 from T_perturb.src.utils import (
+    generate_pad,
     gumbel_sample,
     mean_nonpadding_embs,
     noise_schedule,
@@ -20,13 +22,11 @@ from T_perturb.src.utils import (
 class PerturberMasking(CytoMeister):
     def __init__(
         self,
-        tgt_pert_tokens,
         *args,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.mask_scheduler = kwargs['mask_scheduler']
-        self.register_buffer('tgt_pert_tokens', tgt_pert_tokens, persistent=False)
 
     def generate(
         self,
@@ -273,6 +273,7 @@ class PerturberMasking(CytoMeister):
         tgt_pad,
         labels=None,
         tgt_input_id=None,
+        tgt_pert_tokens=None,
     ):
         self_attn_list = []
         cross_attn_list = []
@@ -311,7 +312,7 @@ class PerturberMasking(CytoMeister):
                 input_ids=tgt_input_id,
                 mapping_dict=self.gene_to_rowid,
                 condition_dict=self.condition_dict,
-                perturbation_tokens=self.tgt_pert_tokens,
+                perturbation_tokens=tgt_pert_tokens,
             )
             if dec_embedding_l1 is not None:
                 mean_embedding_l1 = mean_nonpadding_embs(
@@ -319,7 +320,7 @@ class PerturberMasking(CytoMeister):
                     input_ids=tgt_input_id,
                     mapping_dict=self.gene_to_rowid,
                     condition_dict=self.condition_dict,
-                    perturbation_tokens=self.tgt_pert_tokens,
+                    perturbation_tokens=tgt_pert_tokens,
                 )
             if dec_embedding_lmid is not None:
                 mean_embedding_lmid = mean_nonpadding_embs(
@@ -327,7 +328,7 @@ class PerturberMasking(CytoMeister):
                     input_ids=tgt_input_id,
                     mapping_dict=self.gene_to_rowid,
                     condition_dict=self.condition_dict,
-                    perturbation_tokens=self.tgt_pert_tokens,
+                    perturbation_tokens=tgt_pert_tokens,
                 )
         else:
             mean_embedding = None
@@ -346,6 +347,119 @@ class PerturberMasking(CytoMeister):
         }
         return outputs
 
+    def forward(
+        self,
+        src_input_id: torch.Tensor,
+        not_masked: bool = False,
+        tgt_time_step: int | None = None,
+        tgt_input_id_dict: dict | None = None,
+        generate_id_dict: dict | None = None,
+        generate_pad_dict: dict | None = None,
+        cond_dict: torch.Tensor | None = None,
+        tgt_pert_tokens: List[int] | None = None,
+        **kwargs,
+    ):
+        '''
+        Description:
+        ------------
+        Forward pass for the Seq2Seq model.
+        Parameters:
+        -----------
+        src_input_id: `torch.Tensor`
+            Source token input.
+        not_masked: `bool`
+            Whether to mask tokens. Should not be masked for testing and generation.
+        tgt_time_step: `int`
+            Target time step.
+        tgt_input_id_dict: `Optional[dict]`
+            Dictionary of target token inputs from different time steps.
+        generate_id_dict: `Optional[dict]`
+            Dictionary of target token inputs for generation.
+        generate_pad_dict: `Optional[dict]`
+            Dictionary of target padding masks for generation.
+        Returns:
+        --------
+        outputs: `dict`
+            Output dictionary
+        '''
+        if self.context_tps is None:
+            all_modelling_tps = self.pred_tps
+        else:
+            all_modelling_tps = self.context_tps + self.pred_tps
+        if tgt_input_id_dict:
+            tgt_pad_dict = self.call_padding(
+                tgt_input_id_dict,
+                all_modelling_tps,
+            )
+        else:
+            tgt_pad_dict = generate_pad_dict
+        src_attention_mask = generate_pad(src_input_id)
+        enc_output = self.call_encoder(src_input_id, src_attention_mask)
+        if (not_masked) and (tgt_input_id_dict is not None):
+            # not masked for count prediction and predicted embeddings
+            sorted_time_steps = sorted(self.pred_tps)
+            context_time_steps = (
+                sorted(self.context_tps) if self.context_tps else sorted_time_steps
+            )
+        if not_masked is False:
+            context_time_steps = (
+                sorted(self.context_tps) if self.context_tps else sorted(self.pred_tps)
+            )
+            if tgt_time_step is None:
+                # randomly select a time step for training
+                sorted_time_steps = [np.random.choice(self.pred_tps)]
+            elif generate_id_dict is not None:
+                # MASKGIT generation
+                tgt_input_id_dict = generate_id_dict
+                sorted_time_steps = [tgt_time_step]
+        all_outputs = {}
+        for tgt_time_step in sorted_time_steps:
+            tgt_pad = tgt_pad_dict[f'tgt_pad_t{tgt_time_step}']
+            if tgt_input_id_dict is not None:
+                tgt_input_id = tgt_input_id_dict[f'tgt_input_ids_t{tgt_time_step}']
+            else:
+                raise ValueError(
+                    'tgt_input_id_dict or generate_id_dict must be provided'
+                )
+            if self.context_mode:
+                # distinction between selected time step and rest time steps
+                context_output, context_mask = self.generate_context(
+                    enc_output=enc_output,
+                    src_attention_mask=src_attention_mask,
+                    tgt_time_step=tgt_time_step,
+                    all_time_steps=context_time_steps,
+                    tgt_input_id_dict=tgt_input_id_dict,
+                    tgt_pad_dict=tgt_pad_dict,
+                    cond_dict=cond_dict,
+                )
+            if (not_masked is False) and (generate_id_dict is None):
+                # apply masking during first stage of MLM training
+                tgt_input_id, labels = self.generate_mask(
+                    tgt_input_id,
+                    tgt_pad,
+                    mask_mode='MASKGIT',
+                )
+            else:
+                # no true labels for MLM loss
+                labels = None
+
+            tgt_embedding = self.token_embedding(tgt_input_id)
+            dec_embedding = self.pos_embedding(tgt_embedding, tgt_time_step)
+            # does not include any context
+            outputs = self.call_decoder(
+                enc_output=context_output if self.context_mode else enc_output,
+                src_attention_mask=context_mask
+                if self.context_mode
+                else src_attention_mask,
+                dec_embedding=dec_embedding,
+                tgt_pad=tgt_pad,
+                labels=labels,
+                tgt_input_id=tgt_input_id_dict[f'tgt_input_ids_t{tgt_time_step}'],
+                tgt_pert_tokens=tgt_pert_tokens,
+            )
+            all_outputs[tgt_time_step] = outputs
+        return all_outputs
+
 
 class PerturberCountDecoder(CountDecoder):
     def __init__(
@@ -361,11 +475,13 @@ class PerturberCountDecoder(CountDecoder):
         self,
         src_input_id: torch.Tensor,
         tgt_input_id_dict: dict,
+        tgt_pert_tokens: List[int] | None = None,
     ):
         outputs = self.pretrained_model(
             src_input_id=src_input_id,
             tgt_input_id_dict=tgt_input_id_dict,
             not_masked=True,
+            tgt_pert_tokens=tgt_pert_tokens,
         )
         count_outputs = {}
         for t in self.pred_tps:
@@ -374,14 +490,26 @@ class PerturberCountDecoder(CountDecoder):
                 if self.use_positional_encoding and self.pos_embedding is not None:
                     condition_emb_time = self.pos_embedding.time_pe[:, t + 1]
                 else:
-                    device = next(self.parameters()).device  # Get the device of the model
-                    condition_emb_time = self.condition_layer_time(self.condition_dict_oh[t].to(device))
+                    device = next(
+                        self.parameters()
+                    ).device  # Get the device of the model
+                    condition_emb_time = self.condition_layer_time(
+                        self.condition_dict_oh[t].to(device)
+                    )
                     if self.condition_layer_celltype is not None:
-                        condition_emb_celltype = self.condition_layer_celltype(outputs[t]['dec_embedding'][:, 1, :])  # Use one-hot
-                        condition_emb_time = condition_emb_time.unsqueeze(0).expand(condition_emb_celltype.shape[0], -1)
-                        condition_emb = torch.cat((condition_emb_time, condition_emb_celltype), dim=1)
+                        condition_emb_celltype = self.condition_layer_celltype(
+                            outputs[t]['dec_embedding'][:, 1, :]
+                        )  # Use one-hot
+                        condition_emb_time = condition_emb_time.unsqueeze(0).expand(
+                            condition_emb_celltype.shape[0], -1
+                        )
+                        condition_emb = torch.cat(
+                            (condition_emb_time, condition_emb_celltype), dim=1
+                        )
                     else:
-                        condition_emb = condition_emb_time  # If cell type conditioning is not used
+                        condition_emb = (
+                            condition_emb_time  # If cell type conditioning is not used
+                        )
                 cls_embedding = torch.cat((cls_embedding, condition_emb), dim=1)
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
             count_outputs[f'count_output_t{t}'] = count_outputs_tmp

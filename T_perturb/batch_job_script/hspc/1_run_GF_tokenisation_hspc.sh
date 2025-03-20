@@ -2,7 +2,7 @@
 #!/bin/bash
 #BSUB -q normal # run CPU job
 #BSUB -n 8 # number of cores
-#BSUB -G teamtrynka # groupname for billing
+#BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
 #BSUB -o logs/GF_tokenisation_hspc_%J.out # output file
 #BSUB -e logs/GF_tokenisation_hspc_%J.err # error file
@@ -26,8 +26,8 @@ python3 $cwd/pp/GF_tokenisation.py \
 --pairing_mode mapping \
 --pairing_obs 'diff_state' \
 --nproc 8 \
---reference_time stem \
---time_point_order stem intermediate terminal \
+--reference_time intermediate \
+--time_point_order intermediate terminal \
 --n_hvg 10000 \
 --gene_median_path '/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/filtered_trace_median.pkl' \
 --token_dict_path '/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/trace_filtered_tokenid.pkl' \

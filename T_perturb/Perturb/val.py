@@ -63,7 +63,7 @@ def main() -> None:
         # filter based on cluster
         if 'perturb_cluster' in config['data']:
             filtered_df = perturb_genes_df[
-                perturb_genes_df['leiden_4'] == config['data']['perturb_cluster']
+                perturb_genes_df['leiden_4'].isin(config['data']['perturb_cluster'])
             ]
             genes_to_perturb = filtered_df['gene_name'].tolist()
             config['trainer']['genes_to_perturb'] = genes_to_perturb

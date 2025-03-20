@@ -173,7 +173,6 @@ class PerturberTrainer(CountDecoderTrainer):
             context_mode=kwargs['context_mode'],
             condition_dict=kwargs['condition_dict'],
             gene_to_rowid=gene_to_rowid,
-            tgt_pert_tokens=tgt_pert_tokens,
         )
         if use_count_decoder:
             self.decoder = PerturberCountDecoder(
@@ -386,7 +385,7 @@ class PerturberTrainer(CountDecoderTrainer):
                     perturbed_src = batch['src_input_ids']
             else:
                 perturbed_src = batch['src_input_ids']
-
+        tgt_pert_tokens_ = self.tgt_pert_tokens if perturbation else None
         if self.validation_mode == 'inference':
             if self.use_count_decoder is False:
                 # true counts do not need to be computed
@@ -394,12 +393,14 @@ class PerturberTrainer(CountDecoderTrainer):
                     src_input_id=perturbed_src,
                     tgt_input_id_dict=tgt_input_id_dict,
                     not_masked=True,
+                    tgt_pert_tokens=tgt_pert_tokens_,
                 )
                 count_output = None
             else:
                 outputs, count_outputs = self.decoder(
                     src_input_id=perturbed_src,
                     tgt_input_id_dict=tgt_input_id_dict,
+                    tgt_pert_tokens=tgt_pert_tokens_,
                 )
                 _, count_output = self.compute_count_loss(
                     count_outputs, batch, n_samples=self.n_samples
@@ -411,6 +412,7 @@ class PerturberTrainer(CountDecoderTrainer):
                     src_input_id=perturbed_src,
                     tgt_input_id_dict=tgt_input_id_dict,
                     not_masked=self.return_embeddings,
+                    tgt_pert_tokens=tgt_pert_tokens_,
                 )
                 count_output = None
 
@@ -418,6 +420,7 @@ class PerturberTrainer(CountDecoderTrainer):
                 outputs, count_outputs = self.decoder(
                     src_input_id=perturbed_src,
                     tgt_input_id_dict=tgt_input_id_dict,
+                    tgt_pert_tokens=tgt_pert_tokens_,
                 )
                 _, count_output = self.compute_count_loss(
                     count_outputs, batch, n_samples=self.n_samples
@@ -454,6 +457,7 @@ class PerturberTrainer(CountDecoderTrainer):
         if self.tgt_pert_tokens is not None:
             pert_tps_ = self.pert_tps
             # remove cells where perturbed gene is not present
+
             tgt_mask_list = []
             for t in pert_tps_:
                 tgt_mask = torch.isin(
@@ -596,7 +600,6 @@ class PerturberTrainer(CountDecoderTrainer):
                     gene_cos_sim,
                     mapping_dict=self.gene_to_tgtid,
                     token_ids=perturbed_ids,  # pass perturbed ids
-                    perturbation_token=self.tgt_pert_tokens,
                 )
                 mean_cos_sim = cosine_similarity(
                     perturbed_mean_embs,

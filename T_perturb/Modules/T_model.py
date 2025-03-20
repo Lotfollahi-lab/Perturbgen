@@ -1026,6 +1026,7 @@ class CytoMeister(nn.Module):
         generate_id_dict: dict | None = None,
         generate_pad_dict: dict | None = None,
         cond_dict: torch.Tensor | None = None,
+        **kwargs,
     ):
         '''
         Description:
@@ -1113,7 +1114,6 @@ class CytoMeister(nn.Module):
 
             tgt_embedding = self.token_embedding(tgt_input_id)
             dec_embedding = self.pos_embedding(tgt_embedding, tgt_time_step)
-
             # does not include any context
             outputs = self.call_decoder(
                 enc_output=context_output if self.context_mode else enc_output,
