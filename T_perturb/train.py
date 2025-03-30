@@ -4,6 +4,7 @@ import argparse
 import os
 import uuid
 from datetime import datetime
+from typing import Optional
 
 import pytorch_lightning as pl
 import scanpy as sc
@@ -273,12 +274,12 @@ def get_args():
         default=True,
         help='context mode for timepoints',
     )
-    parser.add_argument(
-        '--d_condc',
-        type=int,
-        default=1,
-        help='One Hot dimension',
-    )
+    def none_or_int(value):
+        if value.lower() == 'none':
+            return None
+        return int(value)
+    parser.add_argument('--d_condc', type=none_or_int, default=None)
+    
     parser.add_argument(
         '--d_condt',
         type=int,
