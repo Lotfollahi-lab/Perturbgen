@@ -4,11 +4,11 @@
 #BSUB -n 8 # number of cores
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/ # working directory
-#BSUB -o T_perturb/logs/perturb_cluster_mpo%J.out # output file
-#BSUB -e T_perturb/logs/perturb_cluster_mpo%J.err # error file
+#BSUB -o T_perturb/logs/perturb_cluster_spink2_%J.out # output file
+#BSUB -e T_perturb/logs/perturb_cluster_spink2_%J.err # error file
 #BSUB -M 80000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>80000] rusage[mem=80000]' # RAM memory part 1. Default: 100MB
-#BSUB -J hspc_perturb_cluster_mpo # job name
+#BSUB -J hspc_perturb_cluster_spink2 # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -23,5 +23,5 @@ echo "--- Start computing model"
 
 # python3 $cwd/train.py \
 python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb/Perturb/val.py \
---config /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb/configs/eval/HSPC/overexpress_src_inference_perturbation.yaml
+--config /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb/configs/eval/HSPC/mask_src_stem_inference_perturbation_SPINK2.yaml
 echo "--- Completed perturbation"

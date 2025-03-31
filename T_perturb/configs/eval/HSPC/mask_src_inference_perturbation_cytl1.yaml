@@ -34,9 +34,9 @@ trainer:
   temperature: 1.5
   iterations: 19
   pos_encoding_mode: 'time_pos_sin'
-  perturbation_mode: 'overexpress'
+  perturbation_mode: 'mask'
   genes_to_perturb:
-    - 'MPO'
+    - 'CYTL1'
   validation_mode: 'inference'
   perturbation_sequence:
     - 'src'

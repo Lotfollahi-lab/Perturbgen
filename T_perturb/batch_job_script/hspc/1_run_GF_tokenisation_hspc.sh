@@ -18,21 +18,21 @@ echo "--- Start tokenisation"
 
 python3 $cwd/pp/GF_tokenisation.py \
 --h5ad_path './data/20241026_HSPC/cd34.h5ad' \
---dataset hspc_pbmc_median \
+--dataset hspc_pbmc_median_tissue \
 --gene_filtering_mode hvg \
 --var_list assignment_id sex tissue phase\
  celltype_v2 donor_tissue diff_state dataset\
  cell_pairing_index \
 --pairing_mode mapping \
---pairing_obs 'diff_state' \
+--time_obs 'diff_state' \
+--opt_pairing_obs 'tissue' \
 --nproc 8 \
---reference_time intermediate \
---time_point_order intermediate terminal \
+--reference_time stem \
+--time_point_order stem intermediate terminal \
 --n_hvg 10000 \
 --gene_median_path '/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/filtered_trace_median.pkl' \
 --token_dict_path '/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/trace_filtered_tokenid.pkl' \
 # --gene_mapping_path '/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/filtered_trace_geneid.pkl'
-
 echo "--- Finished tokenisation"
 
 # hspc_GF_26k_median

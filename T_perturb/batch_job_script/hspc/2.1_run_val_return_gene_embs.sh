@@ -1,8 +1,8 @@
 #!/bin/bash
-#BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu "mode=exclusive_process:num=1:gmodel=NVIDIAA100_SXM4_80GB" # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB :gmodel=NVIDIA_H100_HBM3_80GB
+#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -gpu "mode=exclusive_process:num=1" # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB :gmodel=NVIDIA_H100_HBM3_80GB
 #BSUB -n 8 # number of cores
-#BSUB -G teamtrynka # groupname for billing
+#BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
 #BSUB -o logs/return_gene_embed_%J.out # output file
 #BSUB -e logs/return_gene_embed_%J.err # error file
@@ -41,7 +41,7 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --return_embed True \
 --return_attn False \
 --generate False \
---ckpt_masking_path "T_perturb/T_perturb/plt/res/hspc/pbmc_median/checkpoints/20250123_1633_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_cosine_tp_1-2_s_42-epoch=19.ckpt" \
+--ckpt_masking_path "T_perturb/T_perturb/plt/res/hspc/pbmc_median/checkpoints/20250325_1751_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1-2_s_42-epoch=19.ckpt" \
 --output_dir $RES_DIR/$RES_NAME/embeddings \
 --src_dataset "T_perturb/T_perturb/pp/res/hspc_pbmc_median/dataset_10000_hvg_src/stem.dataset" \
 --tgt_dataset_folder "T_perturb/T_perturb/pp/res/hspc_pbmc_median/dataset_10000_hvg_tgt" \
@@ -60,12 +60,11 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --n_workers 8 \
 --pred_tps 1 2 \
 --var_list sex phase tissue celltype_v2 diff_state \
---cond_list celltype_v2 diff_state \
 --encoder scmaskgit \
 --encoder_path "/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt" \
 --tokenid_to_rowid 'T_perturb/T_perturb/pp/res/hspc_pbmc_median/tokenid_to_rowid_10000_hvg.pkl' \
 --context_mode True \
---mask_scheduler 'cosine' \
+--mask_scheduler 'pow' \
 --pos_encoding_mode 'time_pos_sin' \
 --d_model 768 \
 --return_gene_embs True \

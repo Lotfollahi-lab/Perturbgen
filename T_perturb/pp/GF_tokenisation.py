@@ -12,6 +12,7 @@ from geneformer import TranscriptomeTokenizer
 from scipy.sparse import csr_matrix, issparse
 
 from T_perturb.src.utils import (  # tokenid_mapping,;
+    annotate_hspc_metadata,
     map_ensembl_to_genename,
     map_input_ids_to_row_id,
     pairing_src_to_tgt_cells,
@@ -42,18 +43,18 @@ def get_args():
         '--dataset',
         type=str,
         # default='cytoimmgen',
-        default='hspc_pbmc_median',
-        choices=[
-            'cytoimmgen',
-            'cytoimmgen_pbmc_median',
-            'eb',
-            'eb_pbmc_median',
-            'eb_GF_26k_median',
-            'mnc',
-            'hspc',
-            'hspc_pbmc_median',
-            'hspc_GF_26k_median',
-        ],
+        default='hspc_pbmc_median_tissue',
+        # choices=[
+        #     'cytoimmgen',
+        #     'cytoimmgen_pbmc_median',
+        #     'eb',
+        #     'eb_pbmc_median',
+        #     'eb_GF_26k_median',
+        #     'mnc',
+        #     'hspc',
+        #     'hspc_pbmc_median',
+        #     'hspc_GF_26k_median',
+        # ],
     )
     parser.add_argument(
         '--gene_filtering_mode',
@@ -100,11 +101,19 @@ def get_args():
         help='Cell pairing mode',
     )
     parser.add_argument(
-        '--pairing_obs',
+        '--time_obs',
         type=str,
+        # default='Time_point',
         default='diff_state',
         help='Observation to use for cell pairing'
         'and encoding the different states (e.g. time, hierarchy).',
+    )
+    parser.add_argument(
+        '--opt_pairing_obs',
+        type=str,
+        nargs='+',
+        default=['tissue'],
+        help='Additional obs for cell pairing',
     )
     parser.add_argument(
         '--nproc',
@@ -209,6 +218,9 @@ else:
     adata.var['gene_name'] = adata.var_names
     adata.var_names = adata.var['ensembl_id']
 
+if args.dataset.startswith('hspc'):
+    adata = annotate_hspc_metadata(adata)
+
 # gene_filtering_mode = 'degs'
 if args.gene_filtering_mode == 'hvg':
     if 'counts' not in adata.layers:
@@ -217,9 +229,7 @@ if args.gene_filtering_mode == 'hvg':
         adata.X = adata.layers['counts'].copy()
     sc.pp.normalize_total(adata, target_sum=1e4)
     sc.pp.log1p(adata)
-    sc.pp.highly_variable_genes(
-        adata, n_top_genes=args.n_hvg, batch_key=args.pairing_obs
-    )
+    sc.pp.highly_variable_genes(adata, n_top_genes=args.n_hvg, batch_key=args.time_obs)
     adata = adata[:, adata.var['highly_variable']].copy()
     adata.X = adata.layers['counts']  # need raw counts
 elif args.gene_filtering_mode == 'degs':
@@ -300,6 +310,7 @@ if not (issparse(adata.X)):
 # adata.obs = adata.obs[args.var_list]
 adata.var = adata.var[['gene_name', 'ensembl_id']]
 adata.obs['n_counts'] = adata.X.sum(axis=1)
+
 # save adata
 adata.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
 
@@ -376,15 +387,16 @@ if args.pairing_mode == 'mapping':
 else:
     mapping_df = None
 adata_subset = sc.read_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
-
 # # Pairing resting to activated cells and tokenise individual datasets
 cell_pairings = pairing_src_to_tgt_cells(
     adata_subset=adata_subset,
     pairing_mode=args.pairing_mode,
-    pairing_obs=args.pairing_obs,
+    time_obs=args.time_obs,
     seed_no=seed_no,
     mapping_df=mapping_df,
+    opt_pairing_obs=args.opt_pairing_obs,
 )
+
 
 paired_dataset_dir = (
     f'./T_perturb/T_perturb/res/{args.dataset}/' f'dataset_{gene_filter_mode_suffix}'

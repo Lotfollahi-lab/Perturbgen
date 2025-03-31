@@ -3,18 +3,18 @@ data:
   src_dataset_file: "T_perturb/T_perturb/pp/res/hspc_pbmc_median/dataset_10000_hvg_src_pert/intermediate.dataset"
   src_adata_file: "T_perturb/T_perturb/pp/res/hspc_pbmc_median/h5ad_pairing_10000_hvg_src_pert/intermediate.h5ad"
   tgt_adata_folder: "T_perturb/T_perturb/pp/res/hspc_pbmc_median/h5ad_pairing_10000_hvg_tgt_pert"
-  cond_list:
-    - 'celltype_v2'
-    - 'diff_state'
-  filter_var: 'celltype_v2'
-  filter_cond:
-  - 'DC_pre'
-  - 'Mono_Pre'
-  - 'DC_pre'
-  - 'Macrophage'
-  perturb_genes_file: 'T_perturb/T_perturb/plt/res/hspc/pbmc_median/gene_embedding/20250312_gene_clusters_LMPP_L4.csv'
-  perturb_cluster:
-  - '75'
+  # cond_list:
+  #   - 'celltype_v2'
+  #   - 'diff_state'
+  # filter_var: 'celltype_v2'
+  # filter_cond:
+  # - 'DC_pre'
+  # - 'Mono_Pre'
+  # - 'DC_pre'
+  # - 'Macrophage'
+  # perturb_genes_file: 'T_perturb/T_perturb/plt/res/hspc/pbmc_median/gene_embedding/20250312_gene_clusters_LMPP_L4.csv'
+  # perturb_cluster:
+  # - '75'
 
 trainer:
   tgt_vocab_size: 5710
@@ -36,7 +36,7 @@ trainer:
   pos_encoding_mode: 'time_pos_sin'
   perturbation_mode: 'mask'
   genes_to_perturb:
-    - 'SPINK2'
+    - 'DUT'
   validation_mode: 'inference'
   perturbation_sequence:
     - 'src'
@@ -70,4 +70,4 @@ datamodule:
     - 1
 model:
   precision: 16
-  ckpt_masking_path: "T_perturb/T_perturb/plt/res/hspc/pbmc_median/checkpoints/20250321_0448_cellgen_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1_s_42_pos_time_pos_sin_m_cosine-epoch=19.ckpt"
+  ckpt_masking_path: "T_perturb/T_perturb/plt/res/hspc/pbmc_median/checkpoints/20250321_2317_cellgen_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1_s_42_pos_time_pos_sin_m_pow-epoch=09.ckpt"

@@ -32,15 +32,11 @@ from T_perturb.src.metric import (
     evaluate_mmd,
     lin_reg_summary,
 )
-from T_perturb.src.utils import (  # WarmupScheduler,;
+from T_perturb.src.utils import (  # WarmupScheduler
     aggregate_attn_weights,
-    compute_cos_similarity,
     compute_rouge_score,
     concat_cond_tokens,
     exclude_special_tokens,
-    map_results_to_genes,
-    mask_duplicates_across_batches,
-    mask_duplicates_within_batches,
     modify_ckpt_state_dict,
     pearson,
     return_attn_weights,
@@ -416,7 +412,7 @@ class CytoMeisterTrainer(LightningModule):
 
             if self.return_gene_embs:
                 # take the non zero mean of the gene embeddings
-                gene_embeddings = return_gene_embeddings(
+                gene_embeddings, marker_genes_dict = return_gene_embeddings(
                     gene_embeddings=outputs[t]['dec_embedding'][:, cond_length:, :],
                     mapping_dict=(
                         self.gene_to_rowid if self.gene_to_rowid is not None else None
@@ -424,6 +420,7 @@ class CytoMeisterTrainer(LightningModule):
                     token_ids=token_ids,
                     marker_genes=self.marker_genes,
                 )
+                self.marker_genes_dict = marker_genes_dict
             if self.return_attn:
                 context_tps = [tp for tp in self.context_tps if tp != t]
                 # extract context_ids
@@ -446,44 +443,45 @@ class CytoMeisterTrainer(LightningModule):
                 cross_attn_weights = cross_attn_weights.mean(dim=0).detach().cpu()
                 self.test_dict['self_attn_weights'].append(self_attn_weights)
                 self.test_dict['cross_attn_weights'].append(cross_attn_weights)
-            cell_idx = np.array(batch[f'tgt_cell_idx_t{t}'])
-            if len(self.test_dict['cell_idx']) == 0:
-                all_cell_idx = np.array([])
-            else:
-                all_cell_idx = np.concatenate(self.test_dict['cell_idx'])
-            (dupl_outside_batch, cell_idx_filter_) = mask_duplicates_across_batches(
-                all_cell_idx, cell_idx
-            )
-            (dupl_within_batch, cell_idx_filter_) = mask_duplicates_within_batches(
-                cell_idx_filter_
-            )
-            if self.return_embeddings:
-                # 1. compute cosine similarity
-                cos_similarity = compute_cos_similarity(outputs=outputs, time_step=t)
-                # 2. map cosine similarity to corresponding genes
-                marker_cos_similarity, marker_genes_dict = map_results_to_genes(
-                    res=cos_similarity,
-                    mapping_dict=(
-                        self.gene_to_rowid if self.gene_to_rowid is not None else None
-                    ),
-                    token_ids=token_ids,
-                    marker_genes=self.marker_genes,
-                )
-                cos_similarity = marker_cos_similarity.detach().cpu()
-                # remove duplicates
-                cos_similarity = cos_similarity[dupl_outside_batch]
-                cos_similarity = cos_similarity[dupl_within_batch]
-                self.test_dict['cosine_similarities'].append(cos_similarity)
-                self.marker_genes_dict = marker_genes_dict
+            # cell_idx = np.array(batch[f'tgt_cell_idx_t{t}'])
+            # if len(self.test_dict['cell_idx']) == 0:
+            #     all_cell_idx = np.array([])
+            # else:
+            #     all_cell_idx = np.concatenate(self.test_dict['cell_idx'])
+            # (dupl_outside_batch, cell_idx_filter_) = mask_duplicates_across_batches(
+            #     all_cell_idx, cell_idx
+            # )
+            # (dupl_within_batch, cell_idx_filter_) = mask_duplicates_within_batches(
+            #     cell_idx_filter_
+            # )
+            # if self.return_embeddings:
+            #     # 1. compute cosine similarity
+            #     # TODO: compute cosine similarity
+            #     cos_similarity = compute_cos_similarity(outputs=outputs, time_step=t)
+            #     # 2. map cosine similarity to corresponding genes
+            #     marker_cos_similarity, marker_genes_dict = map_results_to_genes(
+            #         res=cos_similarity,
+            #         mapping_dict=(
+            #             self.gene_to_rowid if self.gene_to_rowid is not None else None
+            #         ),
+            #         token_ids=token_ids,
+            #         marker_genes=self.marker_genes,
+            #     )
+            #     cos_similarity = marker_cos_similarity.detach().cpu()
+            #     # remove duplicates
+            #     cos_similarity = cos_similarity[dupl_outside_batch]
+            #     cos_similarity = cos_similarity[dupl_within_batch]
+            #     self.test_dict['cosine_similarities'].append(cos_similarity)
+            #     self.marker_genes_dict = marker_genes_dict
 
             if self.return_gene_embs:
                 gene_embeddings = gene_embeddings.detach().cpu()
                 condition_array = np.array(batch[f'{self.gene_embs_condition}_t{t}'])
                 # remove duplicates
-                gene_embeddings = gene_embeddings[dupl_outside_batch]
-                condition_array = condition_array[dupl_outside_batch]
-                gene_embeddings = gene_embeddings[dupl_within_batch]
-                condition_array = condition_array[dupl_within_batch]
+                # gene_embeddings = gene_embeddings[dupl_outside_batch]
+                # condition_array = condition_array[dupl_outside_batch]
+                # gene_embeddings = gene_embeddings[dupl_within_batch]
+                # condition_array = condition_array[dupl_within_batch]
                 for condition in self.gene_embs_list:
                     condition_mask = condition_array == condition
                     if any(condition_mask):
@@ -503,11 +501,11 @@ class CytoMeisterTrainer(LightningModule):
                         tgt_input_id_dict[f'tgt_input_ids_t{t}'].detach().cpu().numpy()
                     )
                     tgt_ids = batch[f'tgt_input_ids_t{t}'].detach().cpu().numpy()
-                    # remove duplicates
-                    pred_ids = pred_ids[dupl_outside_batch]
-                    tgt_ids = tgt_ids[dupl_outside_batch]
-                    pred_ids = pred_ids[dupl_within_batch]
-                    tgt_ids = tgt_ids[dupl_within_batch]
+                    # # TODO: take mean of duplicates
+                    # pred_ids = pred_ids[dupl_outside_batch]
+                    # tgt_ids = tgt_ids[dupl_outside_batch]
+                    # pred_ids = pred_ids[dupl_within_batch]
+                    # tgt_ids = tgt_ids[dupl_within_batch]
                     test_dict = compute_rouge_score(
                         rouge=self.rouge,
                         pred_ids=pred_ids,
@@ -520,24 +518,24 @@ class CytoMeisterTrainer(LightningModule):
             true_counts = batch[f'tgt_counts_t{t}'].detach().cpu()
             cls_embeddings = outputs[t]['mean_embedding'].detach().cpu()
             combined_batch = batch['combined_batch'].detach().cpu()
-            # remove duplicates
-            true_counts = true_counts[dupl_outside_batch]
-            cls_embeddings = cls_embeddings[dupl_outside_batch]
-            combined_batch = combined_batch[dupl_outside_batch]
-            true_counts = true_counts[dupl_within_batch]
-            cls_embeddings = cls_embeddings[dupl_within_batch]
-            combined_batch = combined_batch[dupl_within_batch]
+            # # remove duplicates
+            # true_counts = true_counts[dupl_outside_batch]
+            # cls_embeddings = cls_embeddings[dupl_outside_batch]
+            # combined_batch = combined_batch[dupl_outside_batch]
+            # true_counts = true_counts[dupl_within_batch]
+            # cls_embeddings = cls_embeddings[dupl_within_batch]
+            # combined_batch = combined_batch[dupl_within_batch]
 
             self.test_dict['true_counts'].append(true_counts)
             self.test_dict['cls_embeddings'].append(cls_embeddings)
             self.test_dict['batch'].append(combined_batch)
-            self.test_dict['cell_idx'].append(cell_idx_filter_)
+            self.test_dict['cell_idx'].append(np.array(batch[f'tgt_cell_idx_t{t}']))
             if len(self.var_list) > 0:
                 for var in self.var_list:
                     var_values = np.array(batch[f'{var}_t{t}'])
-                    # remove duplicates
-                    var_values = var_values[dupl_outside_batch]
-                    var_values = var_values[dupl_within_batch]
+                    # # remove duplicates
+                    # var_values = var_values[dupl_outside_batch]
+                    # var_values = var_values[dupl_within_batch]
                     self.test_dict[var].append(var_values)
 
     def on_test_epoch_end(self):
@@ -580,7 +578,7 @@ class CytoMeisterTrainer(LightningModule):
                 test_dict=self.test_dict,
                 obs_key=obs_key,
                 marker_genes=self.marker_genes_dict,
-                gene_names=self.gene_names,
+                # gene_names=self.gene_names,
                 output_dir=self.output_dir,
                 sum_gene_embs=self.sum_gene_embs,
                 file_name=f'{self.date}_inference_embs_'

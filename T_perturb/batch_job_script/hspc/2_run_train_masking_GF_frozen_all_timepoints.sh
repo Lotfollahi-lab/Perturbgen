@@ -1,13 +1,13 @@
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=4:block=yes' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
-#BSUB -n 16 # number of cores
-#BSUB -G teamtrynka # groupname for billing
+#BSUB -gpu 'mode=exclusive_process:num=3:block=yes' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
+#BSUB -n 8 # number of cores
+#BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
 #BSUB -o logs/hspc_masking_%J.out # output file
 #BSUB -e logs/hspc_masking_%J.err # error file
-#BSUB -M 20000  # RAM memory part 2. Default: 100MB
-#BSUB -R 'select[mem>20000] rusage[mem=20000]' # RAM memory part 1. Default: 100MB
+#BSUB -M 40000  # RAM memory part 2. Default: 100MB
+#BSUB -R 'select[mem>40000] rusage[mem=40000]' # RAM memory part 1. Default: 100MB
 #BSUB -J hspc_masking # job name
 
 # load cuda
@@ -54,16 +54,15 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --cellgen_lr 0.00001 \
 --cellgen_wd 0.00001 \
 --mlm_prob 0.15 \
---n_workers 16 \
+--n_workers 8 \
 --d_ff 64 \
 --num_layers 6 \
 --pred_tps 1 2 \
 --var_list sex phase tissue celltype_v2 diff_state \
 --encoder scmaskgit \
---cond_list celltype_v2 diff_state \
 --encoder_path "/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt" \
 --context_mode True \
---mask_scheduler 'cosine' \
+--mask_scheduler 'pow' \
 --pos_encoding_mode 'time_pos_sin' \
 --d_model 768
 echo "--- Finished computing model"
