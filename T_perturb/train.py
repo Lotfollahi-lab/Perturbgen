@@ -291,6 +291,18 @@ def get_args():
         default=512,
         help='embedding dimension',
     )
+    parser.add_argument(
+        '--sampling_keys',
+        nargs='+',
+        type=str,
+        help='List of variables to form condition tokens',
+    )
+    parser.add_argument(
+        '--use_weighted_sampler',
+        type=str2bool,
+        default=True,
+        help='use weighted sampler',
+    )
     args = parser.parse_args()
     return args
 
@@ -483,6 +495,9 @@ def main() -> None:
         'context_tps': args.context_tps,
         'n_total_tps': n_total_tps,
         'var_list': args.var_list,
+        'use_weighted_sampler': args.use_weighted_sampler,
+        'sampling_keys': args.sampling_keys,
+        'seed': args.seed,
     }
     if args.train_mode == 'masking':
         # TODO: Do not pass src into DataModule

@@ -628,6 +628,7 @@ def main() -> None:
         'condition_encodings': condition_encodings,
         'conditions': conditions,
         'conditions_combined': conditions_combined,
+        'use_weighted_sampler': False,
     }
 
     data_module = CytoMeisterDataModule(

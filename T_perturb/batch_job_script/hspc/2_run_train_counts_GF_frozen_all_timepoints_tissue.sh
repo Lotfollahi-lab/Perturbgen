@@ -4,11 +4,11 @@
 #BSUB -n 4 # number of cores
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
-#BSUB -o logs/hspc_count_%J.out # output file
-#BSUB -e logs/hspc_count_%J.err # error file
+#BSUB -o logs/hspc_counts_%J.out # output file
+#BSUB -e logs/hspc_counts_%J.err # error file
 #BSUB -M 40000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>40000] rusage[mem=40000]' # RAM memory part 1. Default: 100MB
-#BSUB -J hspc_count # job name
+#BSUB -J hspc_counts # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -42,12 +42,11 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --splitting_mode stratified \
 --split_obs celltype_v2 \
 --output_dir $RES_DIR/$RES_NAME/ \
---ckpt_masking_path "T_perturb/T_perturb/plt/res/hspc/pbmc_median/checkpoints/20250123_1633_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_cosine_tp_1-2_s_42-epoch=19.ckpt" \
---src_dataset "T_perturb/T_perturb/pp/res/hspc_pbmc_median/dataset_10000_hvg_src/stem.dataset" \
---tgt_dataset_folder "T_perturb/T_perturb/pp/res/hspc_pbmc_median/dataset_10000_hvg_tgt" \
---src_adata "T_perturb/T_perturb/pp/res/hspc_pbmc_median/h5ad_pairing_10000_hvg_src/stem.h5ad" \
---tgt_adata_folder "T_perturb/T_perturb/pp/res/hspc_pbmc_median/h5ad_pairing_10000_hvg_tgt" \
---mapping_dict_path  "T_perturb/T_perturb/pp/res/hspc_pbmc_median/token_id_to_genename_10000_hvg.pkl" \
+--src_dataset "T_perturb/T_perturb/pp/res/hspc_pbmc_median_tissue/dataset_10000_hvg_src/stem.dataset" \
+--tgt_dataset_folder "T_perturb/T_perturb/pp/res/hspc_pbmc_median_tissue/dataset_10000_hvg_tgt" \
+--src_adata "T_perturb/T_perturb/pp/res/hspc_pbmc_median_tissue/h5ad_pairing_10000_hvg_src/stem.h5ad" \
+--tgt_adata_folder "T_perturb/T_perturb/pp/res/hspc_pbmc_median_tissue/h5ad_pairing_10000_hvg_tgt" \
+--mapping_dict_path  "T_perturb/T_perturb/pp/res/hspc_pbmc_median_tissue/token_id_to_genename_10000_hvg.pkl" \
 --batch_size 64 \
 --max_len 2200 \
 --epochs 20 \
@@ -56,6 +55,7 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --cellgen_wd 0.00001 \
 --count_lr 0.005 \
 --count_wd 0.001  \
+--mlm_prob 0.15 \
 --n_workers 4 \
 --d_ff 64 \
 --num_layers 6 \
@@ -64,11 +64,13 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --var_list sex phase tissue celltype_v2 diff_state \
 --encoder scmaskgit \
 --encoder_path "/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt" \
---ckpt_masking_path "T_perturb/T_perturb/plt/res/hspc/pbmc_median/checkpoints/20250325_1751_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1-2_s_42-epoch=19.ckpt" \
+--ckpt_masking_path "T_perturb/T_perturb/plt/res/hspc/pbmc_median/checkpoints/20250403_1427_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1-2_s_42-epoch=19.ckpt" \
 --context_mode True \
 --mask_scheduler 'pow' \
 --pos_encoding_mode 'time_pos_sin' \
---d_model 768
+--d_model 768 \
+--sampling_keys celltype_v2 tissue \
+--use_weighted_sampler True
 echo "--- Finished computing model"
 
 # 2k hvgs

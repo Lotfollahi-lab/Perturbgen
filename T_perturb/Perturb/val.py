@@ -185,6 +185,7 @@ def main() -> None:
         tgt_counts_dict=tgt_counts_dict,
         conditions=conditions,
         conditions_combined=conditions_combined,
+        use_weighted_sampler=False,
         **config['datamodule'],
     )
 
