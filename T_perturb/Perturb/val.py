@@ -196,9 +196,24 @@ def main() -> None:
         devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
         precision=precision,
     )
-    trainer.test(
-        decoder_module, data_module, ckpt_path=config['model']['ckpt_masking_path']
-    )
+    if config['model']['ckpt_masking_path'] is not None:
+        # check if masking_path ends with .bin
+        if config['model']['ckpt_masking_path'].endswith('.bin'):
+            # load the model from the bin file
+            state_dict = torch.load(
+                config['model']['ckpt_masking_path'], map_location='cpu'
+            )
+            decoder_module.load_state_dict(state_dict, strict=False)
+            trainer.test(
+                decoder_module,
+                data_module,
+            )
+        else:
+            trainer.test(
+                decoder_module,
+                data_module,
+                ckpt_path=config['model']['ckpt_masking_path'],
+            )
 
 
 if __name__ == '__main__':

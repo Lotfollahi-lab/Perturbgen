@@ -521,9 +521,9 @@ class scmaskgitwrapper(nn.Module):
             max_seq_length=4096,
             dropout=0.03,
         )
-        pretrained_dict = torch.load(model_path, map_location='cpu', weights_only=True)[
-            'state_dict'
-        ]
+        pretrained_dict = torch.load(model_path, map_location='cpu', weights_only=True)
+        if 'state_dict' in pretrained_dict:
+            pretrained_dict = pretrained_dict['state_dict']
         corrected_dict = {
             k.replace('transformer.', ''): v for k, v in pretrained_dict.items()
         }
