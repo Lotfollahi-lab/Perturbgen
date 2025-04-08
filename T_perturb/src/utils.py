@@ -1043,8 +1043,10 @@ def modify_ckpt_state_dict(
 ):
     if 'module' in checkpoint.keys():
         state_dict = checkpoint['module']
-    else:
+    elif 'state_dict' in checkpoint.keys():
         state_dict = checkpoint['state_dict']
+    else:
+        state_dict = checkpoint
 
     new_state_dict = {}
     for k, v in state_dict.items():

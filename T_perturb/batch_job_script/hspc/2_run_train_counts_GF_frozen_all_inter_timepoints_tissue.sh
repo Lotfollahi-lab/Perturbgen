@@ -42,15 +42,15 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --splitting_mode stratified \
 --split_obs celltype_v2 \
 --output_dir $RES_DIR/$RES_NAME/ \
---src_dataset "T_perturb/T_perturb/pp/res/hspc_pbmc_median_tissue_all/dataset_all_src/stem.dataset" \
---tgt_dataset_folder "T_perturb/T_perturb/pp/res/hspc_pbmc_median_tissue_all/dataset_all_tgt" \
---src_adata "T_perturb/T_perturb/pp/res/hspc_pbmc_median_tissue_all/h5ad_pairing_all_src/stem.h5ad" \
---tgt_adata_folder "T_perturb/T_perturb/pp/res/hspc_pbmc_median_tissue_all/h5ad_pairing_all_tgt" \
---mapping_dict_path  "T_perturb/T_perturb/pp/res/hspc_pbmc_median_tissue_all/token_id_to_genename_all.pkl" \
+--src_dataset "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_all/dataset_all_src/intermediate.dataset" \
+--tgt_dataset_folder "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_all/dataset_all_tgt" \
+--src_adata "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_all/h5ad_pairing_all_src/intermediate.h5ad" \
+--tgt_adata_folder "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_all/h5ad_pairing_all_tgt" \
+--mapping_dict_path  "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_all/token_id_to_genename_all.pkl" \
 --batch_size 64 \
---max_len 4100 \
---epochs 20 \
---tgt_vocab_size 17458 \
+--max_len 4096 \
+--epochs 30 \
+--tgt_vocab_size 17856 \
 --cellgen_lr 0.00001 \
 --cellgen_wd 0.00001 \
 --count_lr 0.005 \
@@ -60,11 +60,11 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --d_ff 64 \
 --num_layers 6 \
 --loss_mode zinb \
---pred_tps 1 2 \
+--pred_tps 1 \
 --var_list sex phase tissue celltype_v2 diff_state \
 --encoder scmaskgit \
 --encoder_path "/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt" \
---ckpt_masking_path "T_perturb/T_perturb/plt/res/hspc/pbmc_median/checkpoints/20250403_1427_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1-2_s_42-epoch=19.ckpt" \
+--ckpt_masking_path "T_perturb/T_perturb/plt/res/hspc/pbmc_median/checkpoints/all_genes_inter_tissue.ckpt/pytorch_model.bin" \
 --context_mode True \
 --mask_scheduler 'pow' \
 --pos_encoding_mode 'time_pos_sin' \
