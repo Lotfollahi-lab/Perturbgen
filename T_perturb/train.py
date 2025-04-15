@@ -665,7 +665,24 @@ def main() -> None:
 
     if args.train_mode == 'masking':
         # Finally, kick of the training process.
-        trainer.fit(pretrained_module, data_module)
+        if args.ckpt_masking_path is not None:
+            # check if masking_path ends with .bin
+            if args.ckpt_masking_path.endswith('.bin'):
+                # load the model from the bin file
+                state_dict = torch.load(args.ckpt_masking_path, map_location='cpu')
+                pretrained_module.load_state_dict(state_dict, strict=False)
+                trainer.fit(
+                    pretrained_module,
+                    data_module,
+                )
+            else:
+                trainer.fit(
+                    pretrained_module,
+                    data_module,
+                    ckpt_path=args.ckpt_masking_path,
+                )
+        else:
+            trainer.fit(pretrained_module, data_module)
     elif args.train_mode == 'count':
         trainer.fit(decoder_module, data_module)
     else:

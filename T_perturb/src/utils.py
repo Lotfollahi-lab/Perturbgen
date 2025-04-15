@@ -1003,18 +1003,22 @@ def return_perturbation_adata(
     }
     # create adata
     adata = ad.AnnData(
-        X=pert_counts,
         obs=test_obs,
         obsm=obsm_dict,
         varm=varm_dict,
         var=pd.DataFrame(
             index=cos_similarity_df.columns,
         ),
-        layers={
-            'pred_counts': pred_counts,
-            'true_counts': true_counts,
-        },
     )
+    if pred_counts is not None:
+        if pred_counts.shape[1] > 0:
+            adata.X = pred_counts
+    if true_counts is not None:
+        if true_counts.shape[1] > 0:
+            adata.layers['true_counts'] = true_counts
+    if pred_counts is not None:
+        if pred_counts.shape[1] > 0:
+            adata.layers['pred_counts'] = pred_counts
     adata.write_h5ad(os.path.join(output_dir, file_name))
     print('anndata generation completed---')
     return adata
@@ -1156,20 +1160,30 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
-def tokenid_mapping(
-    adata: ad.AnnData,
+def filter_adata_for_GF_genes(
+    adata_subset: ad.AnnData,
     token_id_path: str,
     exclude_non_GF_genes: bool = False,
 ):
     with open(token_id_path, 'rb') as f:
         token_id_dict = pickle.load(f)
-    adata.var['token_id'] = adata.var_names.map(token_id_dict)
-    adata.var['token_id'] = adata.var['token_id'].astype('Int64')
+    adata_subset.var['token_id'] = adata_subset.var_names.map(token_id_dict)
+    adata_subset.var['token_id'] = adata_subset.var['token_id'].astype('Int64')
     if exclude_non_GF_genes:
-        adata_subset = adata[:, adata.var['token_id'].notna()].copy()
-        print(f'Number of genes dropped: {adata.n_vars - adata_subset.n_vars}')
+        adata_subset = adata_subset[:, adata_subset.var['token_id'].notna()].copy()
+        print(f'Number of genes dropped: {adata_subset.n_vars - adata_subset.n_vars}')
     else:
-        adata_subset = adata.copy()
+        adata_subset = adata_subset.copy()
+    return adata_subset
+
+
+def tokenid_mapping(
+    adata_subset: ad.AnnData,
+    token_id_path: str,
+):
+    with open(token_id_path, 'rb') as f:
+        token_id_dict = pickle.load(f)
+
     # keep special tokens and do not assign row_id
     pattern = re.compile(r'<[a-zA-Z]+>')
     special_tokens = [s for s in token_id_dict.keys() if pattern.match(s)]

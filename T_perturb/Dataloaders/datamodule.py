@@ -297,6 +297,8 @@ class CytoMeisterDataModule(LightningDataModule):
                 replacement=True,
                 generator=torch.Generator().manual_seed(self.seed),
             )
+        else:
+            sampler = None
 
         self.dataloader_kwargs['sampler'] = sampler
         self.dataloader_kwargs['dataset'] = self.train_dataset

@@ -34,7 +34,7 @@ trainer:
   pos_encoding_mode: 'time_pos_sin'
   perturbation_mode: 'mask'
   genes_to_perturb:
-    - 'GATA1'
+    - 'BCL11A'
   validation_mode: 'inference'
   perturbation_sequence:
     - 'src'

@@ -34,7 +34,7 @@ trainer:
   pos_encoding_mode: 'time_pos_sin'
   perturbation_mode: 'mask'
   genes_to_perturb:
-    - 'MPO'
+    - 'CEBPE'
   validation_mode: 'inference'
   perturbation_sequence:
     - 'src'
@@ -47,7 +47,7 @@ trainer:
   pred_tps:
     - 1
   #count decoder
-  use_count_decoder: true
+  use_count_decoder: false
   loss_mode: 'zinb'
   n_samples: 3
 
@@ -67,4 +67,4 @@ datamodule:
     - 1
 model:
   precision: 16
-  ckpt_masking_path: "T_perturb/T_perturb/plt/res/hspc/pbmc_median/checkpoints/all_genes_inter_tissue_counts.ckpt/pytorch_model.bin"
+  ckpt_masking_path: "T_perturb/T_perturb/plt/res/hspc/pbmc_median/checkpoints/all_gene_all_tps_tissue_masking_ep49.ckpt/pytorch_model.bin"

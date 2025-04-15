@@ -1,7 +1,7 @@
 #make a date directory if it does not exist
 #!/bin/bash
 #BSUB -q normal # run CPU job
-#BSUB -n 8 # number of cores
+#BSUB -n 4 # number of cores
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
 #BSUB -o logs/GF_tokenisation_hspc_%J.out # output file
@@ -18,15 +18,16 @@ echo "--- Start tokenisation"
 
 python3 $cwd/pp/GF_tokenisation.py \
 --h5ad_path './data/20241026_HSPC/cd34.h5ad' \
---dataset hspc_pbmc_median_inter_tissue_all \
+--dataset hspc_pbmc_median_inter_tissue_seuratv3_b \
 --var_list assignment_id sex tissue phase\
  celltype_v2 donor_tissue diff_state dataset\
  cell_pairing_index \
---gene_filtering_mode all \
 --pairing_mode mapping \
 --time_obs 'diff_state' \
 --opt_pairing_obs 'tissue' \
---nproc 8 \
+--gene_filtering_mode 'hvg' \
+--n_hvg 10000 \
+--nproc 4 \
 --reference_time intermediate \
 --time_point_order intermediate terminal \
 --gene_median_path '/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/filtered_trace_median.pkl' \

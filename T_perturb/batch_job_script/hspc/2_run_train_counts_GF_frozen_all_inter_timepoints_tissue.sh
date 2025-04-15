@@ -49,7 +49,7 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --mapping_dict_path  "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_all/token_id_to_genename_all.pkl" \
 --batch_size 64 \
 --max_len 4096 \
---epochs 30 \
+--epochs 50 \
 --tgt_vocab_size 17856 \
 --cellgen_lr 0.00001 \
 --cellgen_wd 0.00001 \

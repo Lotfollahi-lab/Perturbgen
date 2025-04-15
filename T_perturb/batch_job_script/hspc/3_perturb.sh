@@ -1,14 +1,14 @@
 #!/bin/bash
-#BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu "mode=exclusive_process:num=1:gmodel=NVIDIAA100_SXM4_80GB" # request for exclusive access to gpu  :gmodel=NVIDIA_H100_HBM3_80GB
+#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -gpu "mode=exclusive_process:num=1" # request for exclusive access to gpu  :gmodel=NVIDIA_H100_HBM3_80GB
 #BSUB -n 8 # number of cores
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/ # working directory
-#BSUB -o T_perturb/logs/perturb_cluster_c1qtnf4_%J.out # output file
-#BSUB -e T_perturb/logs/perturb_cluster_c1qtnf4_%J.err # error file
+#BSUB -o T_perturb/logs/perturb_cluster_cebpa_%J.out # output file
+#BSUB -e T_perturb/logs/perturb_cluster_cebpa_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
-#BSUB -J hspc_perturb_cluster_c1qtnf4 # job name
+#BSUB -J hspc_perturb_cluster_cebpa # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -23,5 +23,5 @@ echo "--- Start computing model"
 
 # python3 $cwd/train.py \
 python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb/Perturb/val.py \
---config /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb/configs/eval/HSPC/mask_src_inference_perturbation_c1qtnf4.yaml
+--config /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb/configs/eval/HSPC/mask_src_inference_perturbation_cebpa.yaml
 echo "--- Completed perturbation"

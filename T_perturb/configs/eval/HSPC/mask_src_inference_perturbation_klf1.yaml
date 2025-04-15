@@ -34,7 +34,7 @@ trainer:
   pos_encoding_mode: 'time_pos_sin'
   perturbation_mode: 'mask'
   genes_to_perturb:
-    - 'NF1'
+    - 'KLF1'
   validation_mode: 'inference'
   perturbation_sequence:
     - 'src'

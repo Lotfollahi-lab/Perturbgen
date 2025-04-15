@@ -13,6 +13,7 @@ from scipy.sparse import csr_matrix, issparse
 
 from T_perturb.src.utils import (  # tokenid_mapping,;
     annotate_hspc_metadata,
+    filter_adata_for_GF_genes,
     map_ensembl_to_genename,
     map_input_ids_to_row_id,
     pairing_src_to_tgt_cells,
@@ -152,6 +153,12 @@ def get_args():
         help='Exclude genes in anndata that are not in Geneformer dictionary',
     )
     parser.add_argument(
+        '--remove_mito_ribo_genes',
+        type=str2bool,
+        default=True,
+        help='Exclude mitochondrial and ribosomal genes',
+    )
+    parser.add_argument(
         '--src_mode',
         type=str,
         default='Geneformer',
@@ -221,18 +228,12 @@ else:
 if args.dataset.startswith('hspc'):
     adata = annotate_hspc_metadata(adata)
 
-# gene_filtering_mode = 'degs'
-if args.gene_filtering_mode == 'hvg':
-    if 'counts' not in adata.layers:
-        adata.layers['counts'] = adata.X.copy()
-    else:
-        adata.X = adata.layers['counts'].copy()
-    sc.pp.normalize_total(adata, target_sum=1e4)
-    sc.pp.log1p(adata)
-    sc.pp.highly_variable_genes(adata, n_top_genes=args.n_hvg, batch_key=args.time_obs)
-    adata = adata[:, adata.var['highly_variable']].copy()
-    adata.X = adata.layers['counts']  # need raw counts
-elif args.gene_filtering_mode == 'degs':
+# data preprocessing
+if 'counts' not in adata.layers:
+    adata.layers['counts'] = adata.X.copy()
+else:
+    adata.X = adata.layers['counts'].copy()
+if args.gene_filtering_mode == 'degs':
     # Filter adata for only DEGs
     degs = pd.read_csv(
         '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
@@ -241,13 +242,29 @@ elif args.gene_filtering_mode == 'degs':
     )
     unique_degs = degs['names'].unique()
     adata = adata[:, adata.var['gene_name'].isin(unique_degs)]
-elif args.gene_filtering_mode == 'all':
-    if 'counts' not in adata.layers:
-        adata.layers['counts'] = adata.X.copy()
-    else:
-        adata.X = adata.layers['counts'].copy()
-else:
-    raise ValueError('Invalid gene filtering mode')
+# elif args.gene_filtering_mode == 'hvg':
+#     sc.pp.normalize_total(adata, target_sum=1e4)
+#     sc.pp.log1p(adata)
+
+sc.pp.filter_cells(adata, min_genes=1000)
+sc.pp.filter_genes(adata, min_cells=3)
+
+if args.remove_mito_ribo_genes:
+    print('Removing mitochondrial and ribosomal genes...')
+    mito_genes = adata.var['gene_name'].str.startswith('MT-')
+    ribo_genes = adata.var['gene_name'].str.startswith('RPS') | adata.var[
+        'gene_name'
+    ].str.startswith('RPL')
+    mito_ribo_genes = adata.var['gene_name'].str.startswith('MRPS') | adata.var[
+        'gene_name'
+    ].str.startswith('MRPL')
+
+    genes_to_keep = ~(mito_genes | ribo_genes | mito_ribo_genes)
+    adata = adata[:, genes_to_keep]
+    print(f'Filtered out {np.sum(~genes_to_keep)} genes')
+
+# else:
+#     raise ValueError('Invalid gene filtering mode')
 
 # create gene mapping file
 with open(args.token_dict_path, 'rb') as f:
@@ -323,11 +340,25 @@ adata.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
 
 # subset adata to only genes in the token dictionary
 # filter adata for only genes occuring in the token dictionary
-(adata_subset, token_id_to_row_id_dict, row_id_to_gene_name) = tokenid_mapping(
+adata_subset = filter_adata_for_GF_genes(
     adata,
-    # './T_perturb/Geneformer/geneformer/token_dictionary_gc95M.pkl',
     args.token_dict_path,
-    exclude_non_GF_genes=True,
+    exclude_non_GF_genes=args.exclude_non_GF_genes,
+)
+
+if args.gene_filtering_mode == 'hvg':
+    sc.pp.highly_variable_genes(
+        adata_subset,
+        n_top_genes=args.n_hvg,
+        flavor='seurat_v3',
+        batch_key=args.time_obs,
+    )
+    adata_subset = adata_subset[:, adata_subset.var['highly_variable']].copy()
+    adata_subset.X = adata_subset.layers['counts']  # need raw counts
+# ensure that if hvg genes are used, that gene token dictionary is correct
+(adata_subset, token_id_to_row_id_dict, row_id_to_gene_name) = tokenid_mapping(
+    adata_subset,
+    args.token_dict_path,
 )
 # save row id to gene name mapping
 with open(
