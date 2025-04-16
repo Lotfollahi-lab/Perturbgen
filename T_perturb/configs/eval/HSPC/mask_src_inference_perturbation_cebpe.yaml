@@ -1,8 +1,8 @@
 data:
-  tgt_dataset_folder: "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_all/dataset_all_tgt"
-  src_dataset_file: "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_all/dataset_all_src/intermediate.dataset"
-  src_adata_file: "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_all/h5ad_pairing_all_src/intermediate.h5ad"
-  tgt_adata_folder: "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_all/h5ad_pairing_all_tgt"
+  src_dataset_file: "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_hvg/dataset_10000_hvg_src/intermediate.dataset"
+  tgt_dataset_folder: "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_hvg/dataset_10000_hvg_tgt"
+  src_adata_file: "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_hvg/h5ad_pairing_10000_hvg_src/intermediate.h5ad"
+  tgt_adata_folder: "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_hvg/h5ad_pairing_10000_hvg_tgt"
   # cond_list:
   #   - 'celltype_v2'
   #   - 'diff_state'
@@ -17,7 +17,7 @@ data:
   # - '75'
 
 trainer:
-  tgt_vocab_size: 17856
+  tgt_vocab_size: 9993
   d_model: 768
   num_heads: 8
   num_layers: 6
@@ -26,8 +26,8 @@ trainer:
   dropout: 0
   mask_scheduler: 'pow'
   output_dir: 'T_perturb/T_perturb/plt/res/hspc/pbmc_median/perturbation'
-  mapping_dict_path: 'T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_all/token_id_to_genename_all.pkl'
-  tokenid_to_rowid_path: 'T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_all/tokenid_to_rowid_all.pkl'
+  mapping_dict_path: 'T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_hvg/token_id_to_genename_10000_hvg.pkl'
+  tokenid_to_rowid_path: 'T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_hvg/tokenid_to_rowid_10000_hvg.pkl'
   encoder: 'scmaskgit'
   encoder_path: '/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt'
   context_mode: False
@@ -47,7 +47,7 @@ trainer:
   pred_tps:
     - 1
   #count decoder
-  use_count_decoder: false
+  use_count_decoder: False
   loss_mode: 'zinb'
   n_samples: 3
 
@@ -67,4 +67,4 @@ datamodule:
     - 1
 model:
   precision: 16
-  ckpt_masking_path: "T_perturb/T_perturb/plt/res/hspc/pbmc_median/checkpoints/all_gene_all_tps_tissue_masking_ep49.ckpt/pytorch_model.bin"
+  ckpt_masking_path: "T_perturb/T_perturb/plt/res/hspc/pbmc_median/checkpoints/all_genes_inter_tissue_masking_hvg_ep24.ckpt/pytorch_model.bin"

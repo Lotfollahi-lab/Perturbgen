@@ -198,6 +198,17 @@ def get_args():
         default='T_perturb/Geneformer/geneformer/gene_name_id_dict_gc95M.pkl',
         help='Path to gene mapping file',
     )
+    parser.add_argument(
+        '--genes_to_include',
+        type=str,
+        nargs='+',
+        default=None,
+    )
+    parser.add_argument(
+        '--genes_to_include_path',
+        type=str,
+        default=None,
+    )
     args = parser.parse_args()
     return args
 
@@ -353,6 +364,17 @@ if args.gene_filtering_mode == 'hvg':
         flavor='seurat_v3',
         batch_key=args.time_obs,
     )
+    print(adata_subset)
+    if args.genes_to_include is not None:
+        adata_subset[:, adata_subset.var['gene_name'].isin(args.genes_to_include)].var[
+            'highly_variable'
+        ] = True
+    if args.genes_to_include_path is not None:
+        genes_to_include = pd.read_csv(args.genes_to_include_path, header=0)
+        # convert to list
+        genes_to_include_ = genes_to_include['gene_name'].unique().tolist()
+        mask = adata_subset.var['gene_name'].isin(genes_to_include_)
+        adata_subset.var.loc[mask, 'highly_variable'] = True
     adata_subset = adata_subset[:, adata_subset.var['highly_variable']].copy()
     adata_subset.X = adata_subset.layers['counts']  # need raw counts
 # ensure that if hvg genes are used, that gene token dictionary is correct
