@@ -1010,9 +1010,9 @@ def return_perturbation_adata(
             index=cos_similarity_df.columns,
         ),
     )
-    if pred_counts is not None:
-        if pred_counts.shape[1] > 0:
-            adata.X = pred_counts
+    if pert_counts is not None:
+        if pert_counts.shape[1] > 0:
+            adata.X = pert_counts
     if true_counts is not None:
         if true_counts.shape[1] > 0:
             adata.layers['true_counts'] = true_counts
