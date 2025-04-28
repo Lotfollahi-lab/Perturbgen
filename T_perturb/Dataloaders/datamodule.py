@@ -1,4 +1,5 @@
 import pickle
+from collections import Counter
 from warnings import warn
 
 import numpy as np
@@ -10,7 +11,11 @@ from geneformer.perturber_utils import pad_tensor_list
 from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningDataModule
 from scipy.sparse import csr_matrix
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import (
+    DataLoader,
+    Dataset,
+    WeightedRandomSampler,
+)
 
 
 class CytoMeisterDataset(Dataset):
@@ -25,6 +30,7 @@ class CytoMeisterDataset(Dataset):
         conditions: torch.Tensor | None = None,
         conditions_combined: torch.Tensor | None = None,
         condition_encodings: dict | None = None,
+        sampling_keys: list | None = None,
     ):
         super().__init__()
         self.src_dataset = src_dataset
@@ -36,9 +42,18 @@ class CytoMeisterDataset(Dataset):
         self.conditions_combined = conditions_combined
         self.condition_encodings = condition_encodings
         self.time_steps = time_steps
-
+        label_list = []
         if split_indices is not None:
             self.src_dataset = src_dataset.select(split_indices)
+            # return labels for src dataset
+            if sampling_keys is not None:
+                label_list.append(
+                    self.get_label_weights(
+                        src_dataset,
+                        sampling_keys=sampling_keys,
+                    )
+                )
+
             self.tgt_datasets = {}
             self.tgt_counts_dict = {}
             if self.src_counts is not None:
@@ -50,6 +65,13 @@ class CytoMeisterDataset(Dataset):
                 self.tgt_datasets[dataset_keys_] = tgt_datasets[dataset_keys_].select(
                     split_indices
                 )
+                if sampling_keys is not None:
+                    label_list.append(
+                        self.get_label_weights(
+                            tgt_datasets[dataset_keys_],
+                            sampling_keys=sampling_keys,
+                        )
+                    )
                 if tgt_counts_dict is not None:
                     self.tgt_counts_dict[count_keys_] = tgt_counts_dict[count_keys_][
                         split_indices, :
@@ -61,6 +83,45 @@ class CytoMeisterDataset(Dataset):
         if src_len != tgt_len:
             warn('src and tgt dataset have different length')
         self.dataset_length = min(src_len, tgt_len)
+        if len(label_list) > 0:
+            # take the average of the weights
+            self.label_weights = torch.mean(torch.stack(label_list), dim=0)
+
+    def get_label_weights(
+        self,
+        dataset: Dataset,
+        sampling_keys: list,
+    ):
+        """
+        Calculate weights for each label to be used with WeightedRandomSampler.
+
+        Args:
+            subsample_indices (list or np.ndarray, optional): Indices of a subset.
+            If provided, weights are calculated based on the subset.
+
+        Returns:
+            torch.Tensor: Weights for each label.
+        """
+
+        # combine all labels from the dataset
+        labels_dict = {}
+        for obs in sampling_keys:
+            labels_dict[obs] = dataset[obs]
+        # combine strings of the labels dict to a list of labels
+        labels = ['_'.join(values) for values in zip(*labels_dict.values())]
+        # Calculate the frequency of each label
+        label_counts = Counter(labels)
+
+        # Calculate the total number of samples
+        total_count = len(labels)
+
+        # Calculate weights inversely proportional to the frequency
+        weights = {label: total_count / count for label, count in label_counts.items()}
+        # Convert weights to a tensor, matching the order of labels
+        weight_tensor = torch.tensor(
+            [weights[label] for label in labels], dtype=torch.float
+        )
+        return weight_tensor
 
     def __getitem__(self, ind):
         out = {
@@ -98,6 +159,7 @@ class CytoMeisterDataModule(LightningDataModule):
         split: bool = False,
         pred_tps: list = [1, 2],
         n_total_tps: int = 4,
+        seed: int = 42,
         src_counts: np.ndarray | None = None,
         tgt_counts_dict: np.ndarray | None = None,
         condition_keys: list | None = None,
@@ -109,6 +171,8 @@ class CytoMeisterDataModule(LightningDataModule):
         test_indices: list[int] | None = None,
         var_list: list | None = None,
         context_tps: list | None = None,
+        sampling_keys: list | None = None,
+        use_weighted_sampler: bool = True,
     ):
         """
         Description:
@@ -146,6 +210,15 @@ class CytoMeisterDataModule(LightningDataModule):
         self.context_tps = context_tps
         self.total_tps = list(range(1, n_total_tps + 1))
         self.var_list = var_list
+        if use_weighted_sampler:
+            if sampling_keys is None:
+                raise ValueError(
+                    'If use_weighted_sampler is True, ' 'sampling_keys must be provided'
+                )
+        self.sampling_keys = sampling_keys
+        self.use_weighted_sampler = use_weighted_sampler
+        self.seed = seed
+
         # create condition encoder for categorical variables in
         # form of dictionary with key: value pairs based on condition_keys
 
@@ -170,7 +243,10 @@ class CytoMeisterDataModule(LightningDataModule):
                     if self.condition_keys is not None
                     else None
                 )
-                self.train_dataset = CytoMeisterDataset(**dataset_args)
+                training_args = dataset_args.copy()
+                if self.sampling_keys is not None:
+                    training_args['sampling_keys'] = self.sampling_keys
+                self.train_dataset = CytoMeisterDataset(**training_args)
                 if self.val_indices is not None:
                     dataset_args['split_indices'] = self.val_indices
                     self.val_dataset = CytoMeisterDataset(**dataset_args)
@@ -178,7 +254,10 @@ class CytoMeisterDataModule(LightningDataModule):
                     self.val_dataset = None
             else:
                 dataset_args['split_indices'] = self.train_indices
-                self.train_dataset = CytoMeisterDataset(**dataset_args)
+                training_args = dataset_args.copy()
+                if self.sampling_keys is not None:
+                    training_args['sampling_keys'] = self.sampling_keys
+                self.train_dataset = CytoMeisterDataset(**training_args)
                 if self.val_indices is not None:
                     dataset_args['split_indices'] = self.val_indices
                     self.val_dataset = CytoMeisterDataset(**dataset_args)
@@ -208,6 +287,20 @@ class CytoMeisterDataModule(LightningDataModule):
                 self.test_dataset = CytoMeisterDataset(**dataset_args)
 
     def train_dataloader(self):
+        if (self.use_weighted_sampler) and (
+            self.train_dataset.label_weights is not None
+        ):
+            self.dataloader_kwargs['shuffle'] = False
+            sampler = WeightedRandomSampler(
+                weights=self.train_dataset.label_weights,
+                num_samples=len(self.train_dataset),
+                replacement=True,
+                generator=torch.Generator().manual_seed(self.seed),
+            )
+        else:
+            sampler = None
+
+        self.dataloader_kwargs['sampler'] = sampler
         self.dataloader_kwargs['dataset'] = self.train_dataset
         self.dataloader_kwargs['collate_fn'] = self.collate
         data = DataLoader(**self.dataloader_kwargs)

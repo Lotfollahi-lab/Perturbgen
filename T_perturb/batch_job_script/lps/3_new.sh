@@ -1,7 +1,7 @@
 #make a date directory if it does not exist
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu
+#BSUB -gpu 'mode=exclusive_process:num=4' # request for exclusive access to gpu
 #BSUB -n 8 # number of cores
 #BSUB -R "span[ptile=8]"     # split X cores per host
 #BSUB -G team361 # groupname for billing
@@ -24,7 +24,7 @@ echo "--- Start computing model"
 
 # # ----------------- Create folder to save results and copy the script -----------------
 RES_DIR="/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/results"
-RES_NAME="lps/count_interpolation_ourMED_ws_on2k_alltps_ns3_withval"
+RES_NAME="lps/count_interpolation_ourMED_ws_on2k_beacon"
 # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
 # Get the current timestamp
@@ -40,18 +40,18 @@ echo '--- Start computing model'
 # # interpolation
 python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/train.py \
 --train_mode count \
---split True \
+--split False \
 --splitting_mode stratified \
 --output_dir $RES_DIR/$RES_NAME \
---ckpt_masking_path "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/results/lps/interpolation_2k_all_tps_cond_celltype/res/checkpoints/20250216_1825_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_ptime_pos_sin_m_cosine_tp_1-2-3_s_42-epoch=15.ckpt" \
---src_dataset "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED_all_tps/dataset_2000_hvg_src/normal.dataset" \
---tgt_dataset_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED_all_tps/dataset_2000_hvg_tgt" \
---src_adata "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_src/normal.h5ad" \
---tgt_adata_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_tgt" \
---mapping_dict_path "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED_all_tps/token_id_to_genename_2000_hvg.pkl" \
+--ckpt_masking_path "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/results/lps/interpolation_2k_beacon/res/checkpoints/20250409_1922_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_ptime_pos_sin_m_cosine_tp_1-2-3-4_s_42-epoch=09.ckpt" \
+--src_dataset "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/BeaconData_2kHVG_ourMED/dataset_2000_hvg_src/Baseline.dataset" \
+--tgt_dataset_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/BeaconData_2kHVG_ourMED/dataset_2000_hvg_tgt" \
+--src_adata "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/BeaconData_2kHVG_ourMED/h5ad_pairing_2000_hvg_src/Baseline.h5ad" \
+--tgt_adata_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/BeaconData_2kHVG_ourMED/h5ad_pairing_2000_hvg_tgt" \
+--mapping_dict_path "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/BeaconData_2kHVG_ourMED/token_id_to_genename_2000_hvg.pkl" \
 --batch_size 16 \
---max_len 666 \
---epochs 16 \
+--max_len 455 \
+--epochs 19 \
 --tgt_vocab_size 20274 \
 --count_lr 0.001 \
 --cellgen_lr 0.0001 \
@@ -62,12 +62,10 @@ python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb
 --num_layers 6 \
 --d_ff 32 \
 --loss_mode zinb \
---pred_tps 1 2 3 \
---var_list cell_type_cellgen_harm donor_cellgen_harm time_after_LPS \
---cond_list cell_type_cellgen_harm \
+--pred_tps 1 2 3 4 \
+--var_list annotation Donor Timepoint Responder_EASI50 cell_pairing_index \
 --encoder scmaskgit \
---add_cell_time False \
---d_condc 64 \
+--add_cell_time True \
 --d_condt 768 \
 --count_dropout 0.1 \
 --use_positional_encoding False \

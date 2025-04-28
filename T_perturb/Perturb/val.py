@@ -19,7 +19,7 @@ from T_perturb.src.utils import (
 # --- 1. Data pre-processing ---
 if os.getcwd().split('/')[-1] != 't_generative':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative/')
+    os.chdir('/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb')
 print(os.getcwd())
 # set seed for reproducibility
 seed_no = 42
@@ -185,6 +185,7 @@ def main() -> None:
         tgt_counts_dict=tgt_counts_dict,
         conditions=conditions,
         conditions_combined=conditions_combined,
+        use_weighted_sampler=False,
         **config['datamodule'],
     )
 
@@ -195,9 +196,24 @@ def main() -> None:
         devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
         precision=precision,
     )
-    trainer.test(
-        decoder_module, data_module, ckpt_path=config['model']['ckpt_masking_path']
-    )
+    if config['model']['ckpt_masking_path'] is not None:
+        # check if masking_path ends with .bin
+        if config['model']['ckpt_masking_path'].endswith('.bin'):
+            # load the model from the bin file
+            state_dict = torch.load(
+                config['model']['ckpt_masking_path'], map_location='cpu'
+            )
+            decoder_module.load_state_dict(state_dict, strict=False)
+            trainer.test(
+                decoder_module,
+                data_module,
+            )
+        else:
+            trainer.test(
+                decoder_module,
+                data_module,
+                ckpt_path=config['model']['ckpt_masking_path'],
+            )
 
 
 if __name__ == '__main__':

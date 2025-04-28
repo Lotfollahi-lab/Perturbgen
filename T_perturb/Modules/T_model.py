@@ -521,9 +521,9 @@ class scmaskgitwrapper(nn.Module):
             max_seq_length=4096,
             dropout=0.03,
         )
-        pretrained_dict = torch.load(model_path, map_location='cpu', weights_only=True)[
-            'state_dict'
-        ]
+        pretrained_dict = torch.load(model_path, map_location='cpu', weights_only=True)
+        if 'state_dict' in pretrained_dict:
+            pretrained_dict = pretrained_dict['state_dict']
         corrected_dict = {
             k.replace('transformer.', ''): v for k, v in pretrained_dict.items()
         }
@@ -1307,6 +1307,7 @@ class CytoMeister(nn.Module):
         total_tokens = torch.sum(tmp_ids == 1, dim=1)
         ids_to_keep = torch.zeros_like(tmp_ids, dtype=torch.long)
         # # keep indices which are not masked except for the CLS token
+        print("****generate_mode*****", generate_mode)
 
         iteration_ratios = torch.linspace(0, 1, iterations)
         all_steps = reversed(range(iterations))
@@ -1612,6 +1613,8 @@ class CountDecoder(nn.Module):
                         )
                     else:
                         condition_emb = condition_emb_time
+                if condition_emb.dim() == 1:
+                    condition_emb = condition_emb.unsqueeze(0).expand(cls_embedding.shape[0], -1)
                 cls_embedding = torch.cat((cls_embedding, condition_emb), dim=1)
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
             count_outputs[f'count_output_t{t}'] = count_outputs_tmp
@@ -1669,6 +1672,8 @@ class CountDecoder(nn.Module):
                         )
                     else:
                         condition_emb = condition_emb_time
+                if condition_emb.dim() == 1:
+                    condition_emb = condition_emb.unsqueeze(0).expand(cls_embedding.shape[0], -1)
                 cls_embedding = torch.cat((cls_embedding, condition_emb), dim=-1)
                 count_outputs[f'count_output_t{t}'] = self.count_decoder.forward(
                     cls_embedding

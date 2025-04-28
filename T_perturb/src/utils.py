@@ -685,7 +685,7 @@ def return_gene_embeddings(
         ]
         marker_genes_dict[gene] = i
 
-    return gene_embeddings_res
+    return gene_embeddings_res, marker_genes_dict
 
 
 def return_prediction_adata(
@@ -694,8 +694,9 @@ def return_prediction_adata(
     marker_genes: dict,
     output_dir: str,
     file_name: str,
-    gene_names: list,
+    # gene_names: list,
     sum_gene_embs: dict | None = None,
+    aggregate: bool = True,
 ):
     """
     Description:
@@ -741,50 +742,40 @@ def return_prediction_adata(
     # adata.obs
     obs_dict = {obs: np.concatenate(test_dict[obs]) for obs in obs_key}
     test_obs = pd.DataFrame(obs_dict)
-    # adata.var
-    if gene_names is not None:
-        test_var = pd.DataFrame(gene_names, columns=['gene_name'])
-    # if len(test_dict['gene_embeddings']) > 0:
-    #     gene_embeddings_dict = {}
-    #     gene_embeddings = torch.cat(test_dict['gene_embeddings'], dim=0).numpy()
-    #     gene_embeddings_dict['gene_embeddings'] = gene_embeddings
+    # # adata.var
+    if marker_genes is not None:
+        test_var = pd.DataFrame(marker_genes, index=[0]).T
+        test_var.columns = ['token_id']
 
-    #     # save as pkl file for downstream analysis
-    #     with open(
-    #         os.path.join(output_dir, f'{file_name}_gene_embeddings.pkl'), 'wb'
-    #     ) as f:
-    #         pickle.dump(gene_embeddings_dict, f)
-    #     del gene_embeddings_dict
+    if (aggregate is True) and ('cell_idx' in test_obs.columns):
+        true_counts = mean_duplicates(test_obs, true_counts)
+        # cls_cos_similarity = mean_duplicates(test_obs, cls_cos_similarity)
+        cls_embeddings = mean_duplicates(test_obs, cls_embeddings)
+        test_obs = test_obs.drop_duplicates(subset='cell_idx')
 
     adata = ad.AnnData(
         X=true_counts,
         obs=test_obs,
-        var=test_var if gene_names is not None else None,
+        var=test_var if marker_genes is not None else None,
         obsm={
             'cls_embeddings': cls_embeddings,
-        },
-        uns={
-            'marker_genes': marker_genes if marker_genes is not None else {},
         },
     )
     if sum_gene_embs is not None:
         for condition in sum_gene_embs.keys():
             adata.varm[condition] = sum_gene_embs[condition]
-    if gene_names is not None:
-        adata.var_names = adata.var['gene_name']
-        adata.var = adata.var.drop(columns=['gene_name'])
     adata.write_h5ad(os.path.join(output_dir, f'{file_name}.h5ad'))
-    if len(test_dict['cosine_similarities']) > 0:
-        # save cosine similarity separately due to large size
-        cos_similarity = torch.cat(test_dict['cosine_similarities'], dim=0).numpy()
-        cos_similarity_df = pd.DataFrame(cos_similarity, columns=marker_genes.keys())
-        # remove all non-expressed genes
-        cos_similarity_df = cos_similarity_df.loc[:, cos_similarity_df.sum() != 0]
-        # save as csv file for downstream analysis
-        cos_similarity_df.index = adata.obs.index
-        cos_similarity_df.to_csv(
-            os.path.join(output_dir, f'{file_name}_cosine_similarity.csv')
-        )
+    # if len(test_dict['cosine_similarities']) > 0:
+    #     # save cosine similarity separately due to large size
+    #     cos_similarity = torch.cat(test_dict['cosine_similarities'], dim=0).numpy()
+    #     cos_similarity_df = pd.DataFrame(cos_similarity, columns=marker_genes.keys())
+    #     # remove all non-expressed genes
+    #     cos_similarity_df = cos_similarity_df.loc[:, cos_similarity_df.sum() != 0]
+    #     # save as csv file for downstream analysis
+    #     cos_similarity_df.index = adata.obs.index
+    #     cos_similarity_df.to_csv(
+    #         os.path.join(output_dir, f'{file_name}_cosine_similarity.csv')
+    #     )
     # adata.obsm['cosine_similarity'] = cos_similarity_df
     print('End saving embeddings---')
 
@@ -1052,8 +1043,10 @@ def modify_ckpt_state_dict(
 ):
     if 'module' in checkpoint.keys():
         state_dict = checkpoint['module']
-    else:
+    elif 'state_dict' in checkpoint.keys():
         state_dict = checkpoint['state_dict']
+    else:
+        state_dict = checkpoint
 
     new_state_dict = {}
     for k, v in state_dict.items():
@@ -1368,12 +1361,80 @@ def generate_pad(input_ids):
     return pad
 
 
+def annotate_hspc_metadata(adata: ad.AnnData) -> ad.AnnData:
+    adata.obs['tissue'] = adata.obs['tissue'].replace('EL', 'FL')
+    adata.obs['age_group'] = None
+    adata.obs.loc[(adata.obs['age'].str.contains('PCW')), 'age_group'] = 'Fetal'
+    adata.obs.loc[(adata.obs['age'] == '0'), 'age_group'] = 'Cord Blood'
+    # replace all PCW rows with empty string, e.g. 14PCW -> ''
+    adata.obs['age'] = adata.obs['age'].str.replace(r'\d+PCW', '', regex=True)
+    adata.obs['age'] = adata.obs['age'].replace('', np.nan)
+    adata.obs['age'] = adata.obs['age'].astype(float)
+    adata.obs.loc[
+        (adata.obs['age'] > 0) & (adata.obs['age'] < 17), 'age_group'
+    ] = 'Pediatric'
+    adata.obs.loc[
+        (adata.obs['age'] >= 17) & (adata.obs['age'] <= 30), 'age_group'
+    ] = 'Young Adult'
+    adata.obs.loc[
+        (adata.obs['age'] > 30) & (adata.obs['age'] <= 50), 'age_group'
+    ] = 'Middle Age'
+    adata.obs.loc[adata.obs['age'] > 50, 'age_group'] = 'Aged'
+    adata.obs['age_group'] = pd.Categorical(adata.obs['age_group'])
+    # distinguish between adult bone marrow Aged (60+) and normal (<60)
+    adata.obs['tissue'] = adata.obs['tissue'].cat.add_categories(
+        ['ABM_+60y', 'ABM_29-50y', 'PBM_1-16y']
+    )
+    adata.obs.loc[adata.obs['age'] >= 60, 'tissue'] = 'ABM_+60y'
+    adata.obs.loc[
+        (adata.obs['age'] < 60) & (adata.obs['age'] >= 17), 'tissue'
+    ] = 'ABM_29-50y'
+    adata.obs.loc[
+        (adata.obs['age'] < 17) & (adata.obs['age'] >= 1), 'tissue'
+    ] = 'PBM_1-16y'
+    # drop categories with 0 samples in tissue
+    adata.obs['tissue'] = adata.obs['tissue'].cat.remove_unused_categories()
+    # order categories
+    adata.obs['tissue'] = adata.obs['tissue'].cat.reorder_categories(
+        ['YS', 'FL', 'FBM', 'CB', 'PBM_1-16y', 'ABM_29-50y', 'ABM_+60y']
+    )
+    adata.obs['age_group'] = adata.obs['age_group'].cat.reorder_categories(
+        ['Fetal', 'Cord Blood', 'Pediatric', 'Young Adult', 'Middle Age', 'Aged']
+    )
+    adata.obs['celltype_v2'] = adata.obs['celltype_v2'].cat.reorder_categories(
+        [
+            'LT-HSC',
+            'ST-HSC',
+            'MPP',
+            'LMPP',
+            'PreProB',
+            'Small_Pre_B',
+            'Immature_B',
+            'Pro_B',
+            'Cycling_Pro_B',
+            'Large_Pre_B',
+            'pDC',
+            'MEMP',
+            'MK',
+            'Early_Ery',
+            'Late_Ery',
+            'BaEoMa',
+            'GMP',
+            'DC_pre',
+            'Mono_pre',
+            'Macrophage',
+        ]
+    )
+    return adata
+
+
 def pairing_src_to_tgt_cells(
-    adata_subset: sc.AnnData,
+    adata_subset: ad.AnnData,
     pairing_mode: Literal['random', 'stratified'],
-    pairing_obs: str,
+    time_obs: str,
     seed_no: int = 42,
-    mapping_df=Optional[pd.DataFrame],
+    mapping_df: pd.DataFrame | None = None,
+    opt_pairing_obs: List[str] | None = None,
 ):
     """
     Description:
@@ -1396,90 +1457,171 @@ def pairing_src_to_tgt_cells(
     """
     np.random.seed(seed_no)
     # replace index by row number
-    adata_subset_ = adata_subset.copy()
-    adata_subset_.obs = adata_subset_.obs.reset_index()
-    adata_dict = {}
-    # initiate dict to store cell pairing
+    adata_obs_ = adata_subset.obs.copy()
+    adata_obs_ = adata_obs_.reset_index()
     cell_pairings: Dict[str, List[str]] = {}
-    max_rows = 0
-    max_reference_time = None
-    for category in adata_subset_.obs[pairing_obs].unique():
-        adata_dict[category] = adata_subset_.obs.loc[
-            adata_subset_.obs[pairing_obs] == category, :
-        ]
-        cell_pairings[category] = []
-        # Check if this category has more rows than the current maximum
-        if len(adata_dict[category]) > max_rows:
-            max_rows = len(adata_dict[category])
-            max_reference_time = category
-    if pairing_mode == 'stratified':
-        # drop Donor if they do not have Cell_type, Donor in all the Time_points
-        adata_grouped = adata_subset_.obs[
-            adata_subset_.obs.groupby(['cell_type_cellgen_harm'])[
-                pairing_obs
-            ].transform('nunique')
-            == 4
-        ]
-        dropped_donors = (
-            adata_subset.obs['Donor'].nunique() - adata_grouped['Donor'].nunique()
-        )
-        print(f'dropped {dropped_donors} donors')
-        resting_cells = adata_grouped.loc[adata_grouped[pairing_obs] == '0h', :]
-        grouped = adata_grouped.groupby(['Donor', 'Cell_type'])
-        for idx, resting in tqdm.tqdm(
-            resting_cells.iterrows(), total=resting_cells.shape[0]
-        ):
-            # get the indices of the other time points for the same cell type and donor
-            group = grouped.get_group((resting['Donor'], resting['Cell_type']))
-            indices_16h = group[group[pairing_obs] == '16h'].index
-            indices_40h = group[group[pairing_obs] == '40h'].index
-            indices_5d = group[group[pairing_obs] == '5d'].index
-            cell_pairings['0h'].append(idx)
-            cell_pairings['16h'].append(np.random.choice(indices_16h))
-            cell_pairings['40h'].append(np.random.choice(indices_40h))
-            cell_pairings['5d'].append(np.random.choice(indices_5d))
-    if pairing_mode == 'mapping':
-        for condition in mapping_df[max_reference_time].unique():
-            mapping_df_ = mapping_df[mapping_df[max_reference_time] == condition]
-            adata_ = adata_dict[max_reference_time]
-            cell_to_pair = adata_['celltype_v2'][
-                adata_['celltype_v2'].isin(mapping_df_[max_reference_time])
-            ].index
-            cell_pairings[max_reference_time].extend(cell_to_pair)
-            n_cells_to_pair = len(cell_to_pair)
 
-            for stage, adata_ in adata_dict.items():
-                if stage != max_reference_time:
-                    cell_to_pair = adata_['celltype_v2'][
-                        adata_['celltype_v2'].isin(mapping_df_[stage])
-                    ].index
-                    # only sample with replacement if needed
-                    if n_cells_to_pair > cell_to_pair.shape[0]:
-                        sample_with_replacement = True
-                    else:
-                        sample_with_replacement = False
-                    cell_pairings[stage].extend(
-                        np.random.choice(
-                            cell_to_pair,
-                            n_cells_to_pair,
-                            replace=sample_with_replacement,
-                        )
-                    )
-                else:
-                    continue
-    elif pairing_mode == 'random':
-        if max_reference_time is not None:
-            # randomly sample from each time point
-            ref_adata = adata_dict[max_reference_time]
-            cell_pairings[max_reference_time] = ref_adata.index.tolist()
-            # remove reference time from dictionary
-            del adata_dict[max_reference_time]
-            for rest_time, adata_ in adata_dict.items():
-                cell_pairings[rest_time] = np.random.choice(
-                    adata_.index, len(ref_adata), replace=True
-                ).tolist()
+    if opt_pairing_obs is not None:
+        if pairing_mode == 'mapping':
+            obs_dict_opt: Dict[str, Dict[str, Dict[str, ad.AnnData]]] = {}
+            # initiate dict to store cell pairing
+            max_reference_time_opt: Dict[str, Dict[str, ad.AnnData]] = {}
+            adata_obs_ = adata_obs_[adata_obs_['tissue'] != 'YS']
+            if len(opt_pairing_obs) > 1:
+                adata_obs_['pairing_obs'] = (
+                    adata_obs_[opt_pairing_obs]
+                    .agg(lambda x: '.'.join(x.astype(str)), axis=1)
+                    .copy()
+                )
+            else:
+                adata_obs_['pairing_obs'] = adata_obs_[opt_pairing_obs[0]].copy()
+            for intermediate in mapping_df['intermediate'].unique():
+                mapping_df_ = mapping_df[mapping_df['intermediate'] == intermediate]
+                # create a list of all entries in dataframe
+                celltypes_ = np.unique(mapping_df_.values)
+                obs_filter = adata_obs_.loc[
+                    adata_obs_['celltype_v2'].isin(celltypes_), :
+                ].copy()
+                for category in obs_filter['pairing_obs'].unique():
+                    obs_filter_ = obs_filter.loc[
+                        obs_filter['pairing_obs'] == category, :
+                    ].copy()
+                    max_rows = 0
+                    for time in obs_filter[time_obs].unique():
+                        if intermediate not in obs_dict_opt.keys():
+                            obs_dict_opt[intermediate] = {}
+                        if category not in obs_dict_opt[intermediate].keys():
+                            obs_dict_opt[intermediate][category] = {}
+                        if intermediate not in max_reference_time_opt.keys():
+                            max_reference_time_opt[intermediate] = {}
+                        obs_dict_opt[intermediate][category][time] = obs_filter_.loc[
+                            obs_filter_[time_obs] == time, :
+                        ]
+                        cell_pairings[time] = []
+                        # skip stem to focus on lineage
+                        if time == 'stem':
+                            continue
+                        else:
+                            # Check if this category has
+                            # more rows than the current maximum
+                            if (
+                                len(obs_dict_opt[intermediate][category][time])
+                                > max_rows
+                            ):
+                                max_rows = len(
+                                    obs_dict_opt[intermediate][category][time]
+                                )
+                                max_reference_time_opt[intermediate][category] = time
+
+            for intermediate in mapping_df['intermediate'].unique():
+                mapping_df_ = mapping_df[mapping_df['intermediate'] == intermediate]
+                # create a list of all entries in dataframe
+                for category in obs_filter['pairing_obs'].unique():
+                    max_reference_time_opt_ = max_reference_time_opt[intermediate][
+                        category
+                    ]
+                    obs_dict_opt_ = obs_dict_opt[intermediate][category]
+                    cell_pairing_idx = obs_dict_opt_[max_reference_time_opt_].index
+                    cell_pairings[max_reference_time_opt_].extend(cell_pairing_idx)
+                    n_cells_to_pair = len(cell_pairing_idx)
+                    for stage, obs_dict_tmp in obs_dict_opt_.items():
+                        if stage != max_reference_time_opt_:
+                            cell_to_pair = obs_dict_tmp['celltype_v2'][
+                                obs_dict_tmp['celltype_v2'].isin(mapping_df_[stage])
+                            ].index
+                            # only sample with replacement if needed
+                            if n_cells_to_pair > cell_to_pair.shape[0]:
+                                sample_with_replacement = True
+                            else:
+                                sample_with_replacement = False
+                            cell_pairings[stage].extend(
+                                np.random.choice(
+                                    cell_to_pair,
+                                    n_cells_to_pair,
+                                    replace=sample_with_replacement,
+                                )
+                            )
+                        else:
+                            continue
     else:
-        raise ValueError('pairing_mode must be either random or stratified')
+        max_rows = 0
+        obs_dict = {}
+        max_reference_time: None | str = None
+        for time in adata_obs_[time_obs].unique():
+            obs_dict[time] = adata_obs_.loc[adata_obs_[time_obs] == time, :]
+            cell_pairings[time] = []
+            # Check if this category has more rows than the current maximum
+            if len(obs_dict[time]) > max_rows:
+                max_rows = len(obs_dict[time])
+                max_reference_time = time
+        if pairing_mode == 'mapping':
+            for condition in mapping_df[max_reference_time].unique():
+                mapping_df_ = mapping_df[mapping_df[max_reference_time] == condition]
+                adata_ = obs_dict[max_reference_time]
+                cell_to_pair = adata_['celltype_v2'][
+                    adata_['celltype_v2'].isin(mapping_df_[max_reference_time])
+                ].index
+                cell_pairings[max_reference_time].extend(cell_to_pair)
+                n_cells_to_pair = len(cell_to_pair)
+                for stage, adata_ in obs_dict.items():
+                    if stage != max_reference_time:
+                        cell_to_pair = adata_['celltype_v2'][
+                            adata_['celltype_v2'].isin(mapping_df_[stage])
+                        ].index
+                        # only sample with replacement if needed
+                        if n_cells_to_pair > cell_to_pair.shape[0]:
+                            sample_with_replacement = True
+                        else:
+                            sample_with_replacement = False
+                        cell_pairings[stage].extend(
+                            np.random.choice(
+                                cell_to_pair,
+                                n_cells_to_pair,
+                                replace=sample_with_replacement,
+                            )
+                        )
+                    else:
+                        continue
+        elif pairing_mode == 'random':
+            if max_reference_time is not None:
+                # randomly sample from each time point
+                ref_adata = obs_dict[max_reference_time]
+                cell_pairings[max_reference_time] = ref_adata.index.tolist()
+                # remove reference time from dictionary
+                del obs_dict[max_reference_time]
+                for rest_time, adata_ in obs_dict.items():
+                    cell_pairings[rest_time] = np.random.choice(
+                        adata_.index, len(ref_adata), replace=True
+                    ).tolist()
+        elif pairing_mode == 'stratified':
+            # drop Donor if they do not have Cell_type, Donor in all the Time_points
+            adata_grouped = adata_obs_[
+                adata_obs_.groupby(['cell_type_cellgen_harm'])[time_obs].transform(
+                    'nunique'
+                )
+                == 4
+            ]
+            dropped_donors = (
+                adata_subset.obs['Donor'].nunique() - adata_grouped['Donor'].nunique()
+            )
+            print(f'dropped {dropped_donors} donors')
+            resting_cells = adata_grouped.loc[adata_grouped[time_obs] == '0h', :]
+            grouped = adata_grouped.groupby(['Donor', 'Cell_type'])
+            for idx, resting in tqdm.tqdm(
+                resting_cells.iterrows(), total=resting_cells.shape[0]
+            ):
+                # get the indices of the other
+                # time points for the same cell type and donor
+                group = grouped.get_group((resting['Donor'], resting['Cell_type']))
+                indices_16h = group[group[time_obs] == '16h'].index
+                indices_40h = group[group[time_obs] == '40h'].index
+                indices_5d = group[group[time_obs] == '5d'].index
+                cell_pairings['0h'].append(idx)
+                cell_pairings['16h'].append(np.random.choice(indices_16h))
+                cell_pairings['40h'].append(np.random.choice(indices_40h))
+                cell_pairings['5d'].append(np.random.choice(indices_5d))
+        else:
+            raise ValueError('pairing_mode must be either random or stratified')
     return cell_pairings
 
 

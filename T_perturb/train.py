@@ -32,7 +32,7 @@ from T_perturb.src.utils import (
 
 if os.getcwd().split('/')[-1] != 't_generative':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative/')
+    os.chdir('/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb')
     print('Changed working directory to root of repository')
 
 
@@ -58,6 +58,13 @@ def get_args():
         default='./T_perturb/T_perturb/plt/res/eb',
         help='store dataset name',
     )
+    # parser.add_argument(
+    #     '--tokenid_to_rowid_path',
+    #     type=str,
+    #     # default='./T_perturb/T_perturb/plt/res/cytoimmgen',
+    #     default='./T_perturb/T_perturb/plt/res/eb',
+    #     help='add tokenid to rowid path',
+    # )
     parser.add_argument(
         '--splitting_mode',
         type=str,
@@ -276,7 +283,7 @@ def get_args():
     parser.add_argument(
         '--d_condc',
         type=int,
-        default=1,
+        default=None,
         help='One Hot dimension',
     )
     parser.add_argument(
@@ -290,6 +297,18 @@ def get_args():
         type=int,
         default=512,
         help='embedding dimension',
+    )
+    parser.add_argument(
+        '--sampling_keys',
+        nargs='+',
+        type=str,
+        help='List of variables to form condition tokens',
+    )
+    parser.add_argument(
+        '--use_weighted_sampler',
+        type=str2bool,
+        default=False,
+        help='use weighted sampler',
     )
     args = parser.parse_args()
     return args
@@ -483,6 +502,9 @@ def main() -> None:
         'context_tps': args.context_tps,
         'n_total_tps': n_total_tps,
         'var_list': args.var_list,
+        'use_weighted_sampler': args.use_weighted_sampler,
+        'sampling_keys': args.sampling_keys,
+        'seed': args.seed,
     }
     if args.train_mode == 'masking':
         # TODO: Do not pass src into DataModule
@@ -538,7 +560,7 @@ def main() -> None:
         dirpath=checkpoint_path,
         filename=f'{filename}-' + '{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=5,
+        every_n_epochs=1, #5
         verbose=True,
         monitor=monitor_metric,
         mode=mode,
