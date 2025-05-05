@@ -382,7 +382,7 @@ adata_subset = sc.read_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
 cell_pairings = pairing_src_to_tgt_cells(
     adata_subset=adata_subset,
     pairing_mode=args.pairing_mode,
-    opt_pairing_obs=args.pairing_obs,
+    pairing_obs=args.pairing_obs,
     seed_no=seed_no,
     mapping_df=mapping_df,
 )

@@ -70,4 +70,3 @@ python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb
 2> T_perturb/logs/eb_interpolation_$(date +%Y%m%d_%H%M%S).err
 
 echo '--- Finished computing model'
-

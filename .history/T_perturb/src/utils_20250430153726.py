@@ -214,21 +214,36 @@ def concat_cond_tokens(
 ):
     tgt_input_ids = batch[f'tgt_input_ids_t{time_step}']
     device = tgt_input_ids.device
-    batch_size = tgt_input_ids.shape[0]
-    if condition_dict is not None:
-        cond_ids = torch.zeros(
-            (batch_size, len(condition_dict)), dtype=torch.long, device=device
-        )
-        if pad_condition is False:
-            for j, condition in enumerate(condition_dict.keys()):
-                condition_tokens = [
-                    condition_dict[condition][id]
-                    for id in batch[f'{condition}_t{time_step}']
-                ]
-                # j+1 to skip time token
-                cond_ids[:, j] = torch.tensor(
-                    condition_tokens, dtype=torch.long, device=device
-                )
+    batch_size = tgt_input_ids.size(0)
+    if condition_dict is None:
+        # no conditions → return empty [B,0] tensor
+        return torch.zeros((batch_size, 0), dtype=torch.long, device=device)
+
+    # only real conditions, not our special <null> slot
+    cond_keys = [k for k in condition_dict.keys() if k != 'uncondition']
+    num_conds = len(cond_keys)
+
+    # initialize with zeros (so pad_condition==True gives all <null>=0)
+    cond_ids = torch.zeros((batch_size, num_conds),
+                           dtype=torch.long,
+                           device=device)
+
+    if not pad_condition:
+        # fill each column j with the batch’s token for that condition
+        for j, condition in enumerate(cond_keys):
+            # batch should have keys like 'cell_type_t2', etc.
+            key = f'{condition}_t{time_step}'
+            if key not in batch:
+                raise KeyError(f"Expected batch['{key}'] but not found.")
+            # map each value id→flat index
+            # condition_dict[condition] is a dict mapping original id→flat index
+            tokens = [
+                condition_dict[condition][orig_id]
+                for orig_id in batch[key]
+            ]
+            cond_ids[:, j] = torch.tensor(tokens,
+                                          dtype=torch.long,
+                                          device=device)
     return cond_ids
 
 
@@ -1603,26 +1618,30 @@ def pairing_src_to_tgt_cells(
         elif pairing_mode == 'stratified':
             # drop Donor if they do not have Cell_type, Donor in all the Time_points
             adata_grouped = adata_obs_[
-                adata_obs_.groupby(['annotation_simplified'])[time_obs].transform(
+                adata_obs_.groupby(['cell_type_cellgen_harm'])[time_obs].transform(
                     'nunique'
                 )
-                == 2
+                == 4
             ]
-            # dropped_donors = (
-            #     adata_subset.obs['Donor'].nunique() - adata_grouped['Donor'].nunique()
-            # )
-            # print(f'dropped {dropped_donors} donors')
-            resting_cells = adata_grouped.loc[adata_grouped[time_obs] == 'early', :]
-            grouped = adata_grouped.groupby(['annotation_simplified'])
+            dropped_donors = (
+                adata_subset.obs['Donor'].nunique() - adata_grouped['Donor'].nunique()
+            )
+            print(f'dropped {dropped_donors} donors')
+            resting_cells = adata_grouped.loc[adata_grouped[time_obs] == '0h', :]
+            grouped = adata_grouped.groupby(['Donor', 'Cell_type'])
             for idx, resting in tqdm.tqdm(
                 resting_cells.iterrows(), total=resting_cells.shape[0]
             ):
                 # get the indices of the other
                 # time points for the same cell type and donor
-                group = grouped.get_group((resting['annotation_simplified']))
-                indices_16h = group[group[time_obs] == 'late'].index
-                cell_pairings['early'].append(idx)
-                cell_pairings['late'].append(np.random.choice(indices_16h))
+                group = grouped.get_group((resting['Donor'], resting['Cell_type']))
+                indices_16h = group[group[time_obs] == '16h'].index
+                indices_40h = group[group[time_obs] == '40h'].index
+                indices_5d = group[group[time_obs] == '5d'].index
+                cell_pairings['0h'].append(idx)
+                cell_pairings['16h'].append(np.random.choice(indices_16h))
+                cell_pairings['40h'].append(np.random.choice(indices_40h))
+                cell_pairings['5d'].append(np.random.choice(indices_5d))
         else:
             raise ValueError('pairing_mode must be either random or stratified')
     return cell_pairings

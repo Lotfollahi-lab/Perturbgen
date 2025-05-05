@@ -796,15 +796,6 @@ class CytoMeister(nn.Module):
         self.mask_scheduler = mask_scheduler
         self.gene_to_rowid = gene_to_rowid
         self.condition_dict = condition_dict
-        # classifier-free guidance
-        # add <null> token for uncoditional generation
-        # if self.classifier_free_guidance:
-        #     condition_dict_ = condition_dict.copy()
-        #     condition_dict_['uncondition'] = {'<null>': 0}
-        #     print('Added "uncondition" to the condition_dict')
-        #     cond_vocab_size = sum(len(v) for v in condition_dict_.values())
-        #     print("****cond_vocab_size****",cond_vocab_size)
-        #     self.cond_embedding = nn.Embedding(cond_vocab_size, d_model)
 
     def generate_mask(
         self,
@@ -841,7 +832,6 @@ class CytoMeister(nn.Module):
             True labels for masked tokens. Return -100 for non-masked tokens.
         '''
         device = tgt_input_id.device
-        tgt_input_id = tgt_input_id.clone()
         labels = tgt_input_id.clone()
         if (mask_mode == 'BERT') and (self.mlm_probability is not None):
             # Masked language modeling for the target tokens.
@@ -1027,11 +1017,10 @@ class CytoMeister(nn.Module):
         context_embedding = torch.cat(context_embs_list, dim=1)
         context_pad = torch.cat(context_pad_list, dim=1)
         return context_embedding, context_pad
-    def forward_with_cond_scale(self, cond_scale=0.5, *args, **kwargs):
+    def forward_with_cond_scale(self, cond_scale=0.0, *args, **kwargs):
         # ---classifier-free guidance---
         # run two fwd passes with the same time step
         # one with conditional and one unconditional
-        print(f"****WE ARE HERE**** [CFG] Conditional scale: {cond_scale}")
 
         conditional_out = self.forward(
             cond_drop_prob=0.0, *args, **kwargs
@@ -1060,7 +1049,7 @@ class CytoMeister(nn.Module):
         generate_id_dict: dict | None = None,
         generate_pad_dict: dict | None = None,
         cond_dict: torch.Tensor | None = None,
-        cond_drop_prob: float = 0.1,
+        cond_drop_prob: float = 0.0,
         **kwargs,
     ):
         '''
@@ -1152,46 +1141,17 @@ class CytoMeister(nn.Module):
 
             tgt_embedding = self.token_embedding(tgt_input_id)
             # ---classifier-free guidance---
-            # if self.classifier_free_guidance:
-            #     # cond_token_emb = self.cond_embedding(cond_dict)
-            #     cond_len = cond_token_emb.shape[1]
-            #     # tgt_embedding = torch.cat([cond_token_emb, tgt_embedding], dim=1)
-            #     cond_pad = prob_mask_like(
-            #         cond_dict.shape, cond_drop_prob, device=cond_dict.device
-            #     )
-            #     tgt_pad = torch.cat([cond_pad, tgt_pad], dim=1)
-            #     if labels is not None:
-            #         # add -100 to ignore condition tokens in CE loss
-            #         labels = F.pad(labels, (cond_len, 0), value=-100)
-            #if self.condition_dict is not None:
-                #print(f"[CFG] Condition keys: {list(self.condition_dict.keys())}")
-                #print(f"[CFG] Number of condition tokens: {cond_dict.shape[1]}")
-            if self.classifier_free_guidance and cond_dict is not None:
-                cond_len = cond_dict.shape[1]
-
-                #print(f"\n[CFG] cond_drop_prob: {cond_drop_prob}")
-                #print(f"[CFG] tgt_pad before:\n{tgt_pad}")
-
-                if cond_drop_prob > 0:
-                    dropout_mask = prob_mask_like((tgt_pad.shape[0], cond_len),
-                        prob=cond_drop_prob, device=tgt_pad.device)
-                else:
-                    dropout_mask = torch.zeros((tgt_pad.shape[0], cond_len),
-                        dtype=torch.bool, device=tgt_pad.device)
-                # Count number of dropped-out condition tokens
-                #print(f"[CFG] # dropped: {dropout_mask.sum().item()}/{dropout_mask.numel()} "
-                #    f"({dropout_mask.sum().item() / dropout_mask.numel():.2%})")
-                #num_dropped = dropout_mask.sum().item()
-                #total_tokens = dropout_mask.numel()
-                #dropout_percent = 100 * num_dropped / total_tokens
-                #print(f"[CFG] dropout_mask:\n{dropout_mask}")
-                #print(f"[CFG] # dropped: {num_dropped}/{total_tokens} "
-                #    f"({dropout_percent:.2f}%)")
-                #print(f"[CFG] dropout_mask:\n{dropout_mask}")
-                tgt_pad = torch.cat([dropout_mask, tgt_pad[:, cond_len:].clone()], dim=1)
-                #print(f"[CFG] tgt_pad after:\n{tgt_pad}")
-
-                
+            if self.classifier_free_guidance:
+                cond_token_emb = self.cond_embedding(cond_dict)
+                cond_len = cond_token_emb.shape[1]
+                tgt_embedding = torch.cat([cond_token_emb, tgt_embedding], dim=1)
+                cond_pad = prob_mask_like(
+                    cond_dict.shape, cond_drop_prob, device=cond_dict.device
+                )
+                tgt_pad = torch.cat([cond_pad, tgt_pad], dim=1)
+                if labels is not None:
+                    # add -100 to ignore condition tokens in CE loss
+                    labels = F.pad(labels, (cond_len, 0), value=-100)
             dec_embedding = self.pos_embedding(tgt_embedding, tgt_time_step)
             # does not include any context
             outputs = self.call_decoder(

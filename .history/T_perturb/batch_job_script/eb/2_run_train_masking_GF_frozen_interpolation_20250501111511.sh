@@ -21,7 +21,7 @@ cwd=$(pwd)
 
 # ----------------- Create folder to save results and copy the script -----------------
 RES_DIR="/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/results"
-RES_NAME="eb/pbmc_median/interpolation_CFG"
+RES_NAME="eb/pbmc_median/interpolation_CFG_drop_prob_0.1"
 # # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
 # # Get the current timestamp

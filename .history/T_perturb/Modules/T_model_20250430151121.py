@@ -675,6 +675,8 @@ class CytoMeister(nn.Module):
         pad_token: int = 0,
         context_mode: bool = True,
         classifier_free_guidance: bool = True,
+        train_drop_prob: float = 0.1,   
+        cfg_scale: float     = 1.0,
         context_tps: List[int] | None = None,
         encoder_path: str | None = None,
         condition_dict: Dict[str, Dict] | None = None,
@@ -792,6 +794,7 @@ class CytoMeister(nn.Module):
 
         self.pad_token = pad_token
         self.context_mode = context_mode
+        self.null_index = None   
         self.classifier_free_guidance = classifier_free_guidance
         self.mask_scheduler = mask_scheduler
         self.gene_to_rowid = gene_to_rowid
@@ -803,8 +806,29 @@ class CytoMeister(nn.Module):
         #     condition_dict_['uncondition'] = {'<null>': 0}
         #     print('Added "uncondition" to the condition_dict')
         #     cond_vocab_size = sum(len(v) for v in condition_dict_.values())
-        #     print("****cond_vocab_size****",cond_vocab_size)
         #     self.cond_embedding = nn.Embedding(cond_vocab_size, d_model)
+        if self.classifier_free_guidance:
+            # build one flat vocab of all condition tokens + a special "<null>"
+            condition_dict_ = {}
+            offset = 0
+            for name, vocab in condition_dict.items():
+                # shift each sub‐vocab by the current offset
+                condition_dict_[name] = {
+                    tok: idx + offset for tok, idx in vocab.items()
+                }
+                offset += len(vocab)
+
+            # reserve one index for the unconditional "<null>" token
+            self.null_index = offset
+            condition_dict_['uncondition'] = {'<null>': self.null_index}
+
+            # store the new flat dict and create embedding
+            self.condition_dict  = condition_dict_
+            self.cond_vocab_size = offset + 1
+            self.cond_embedding  = nn.Embedding(self.cond_vocab_size, d_model)
+        else:
+            # if no CFG, you can still keep the original dict around
+            self.condition_dict = condition_dict
 
     def generate_mask(
         self,
@@ -841,7 +865,6 @@ class CytoMeister(nn.Module):
             True labels for masked tokens. Return -100 for non-masked tokens.
         '''
         device = tgt_input_id.device
-        tgt_input_id = tgt_input_id.clone()
         labels = tgt_input_id.clone()
         if (mask_mode == 'BERT') and (self.mlm_probability is not None):
             # Masked language modeling for the target tokens.
@@ -1027,29 +1050,83 @@ class CytoMeister(nn.Module):
         context_embedding = torch.cat(context_embs_list, dim=1)
         context_pad = torch.cat(context_pad_list, dim=1)
         return context_embedding, context_pad
-    def forward_with_cond_scale(self, cond_scale=0.5, *args, **kwargs):
-        # ---classifier-free guidance---
-        # run two fwd passes with the same time step
-        # one with conditional and one unconditional
-        print(f"****WE ARE HERE**** [CFG] Conditional scale: {cond_scale}")
+    # def forward_with_cond_scale(self, cond_scale=0.0, *args, **kwargs):
+    #     # ---classifier-free guidance---
+    #     # run two fwd passes with the same time step
+    #     # one with conditional and one unconditional
+    #     if 'tgt_time_step' not in kwargs:
+    #         raise ValueError("tgt_time_step must be provided for deterministic guidance.")
+    #     tgt_time_step = kwargs['tgt_time_step']
+    #     safe_kwargs = dict(kwargs)
+    #     safe_kwargs.pop('tgt_time_step', None)
+    #     conditional_out = self.forward(
+    #         cond_drop_prob=0.0, tgt_time_step=tgt_time_step, *args, **safe_kwargs
+    #     )
+    #     unconditional_out = self.forward(
+    #         cond_drop_prob=1.0, tgt_time_step=tgt_time_step, *args, **safe_kwargs
+    #     )
+    #     if cond_scale == 1:
+    #         return conditional_out
+    #     elif cond_scale == 0:
+    #         return unconditional_out
+    #     else:
+    #         for t in conditional_out.keys():
+    #             null_logits = unconditional_out[t]['dec_logits']
+    #             logits = conditional_out[t]['dec_logits']
+    #             scaled_logits = logits + (logits - null_logits) * cond_scale
+    #             conditional_out[t]['dec_logits'] = scaled_logits
+    #         return conditional_out
+    def forward_with_cond_scale(self, cond_scale: float, *args, **kwargs):
+        if 'tgt_time_step' not in kwargs:
+            raise ValueError("tgt_time_step must be provided for deterministic guidance.")
+        t = kwargs.pop('tgt_time_step')
 
-        conditional_out = self.forward(
-            cond_drop_prob=0.0, *args, **kwargs
+        # extract the same generation dicts & cond_dict
+        gen_ids = kwargs.get('generate_id_dict', None)
+        gen_pad = kwargs.get('generate_pad_dict', None)
+        cond_dict = kwargs.get('cond_dict', None)
+
+        # 1) conditional pass: always keep the cond token
+        cond_out = self.forward(
+            *args,
+            cond_dict=cond_dict,
+            cond_drop_prob=0.0,
+            generate_id_dict=gen_ids,
+            generate_pad_dict=gen_pad,
+            tgt_time_step=t,
+            **{k: v for k, v in kwargs.items() if k not in ('generate_id_dict','generate_pad_dict','cond_dict')}
         )
-        unconditional_out = self.forward(
-            cond_drop_prob=1.0, *args, **kwargs
+
+        # 2) unconditional pass: always drop the cond token
+        uncond_out = self.forward(
+            *args,
+            cond_dict=cond_dict,
+            cond_drop_prob=1.0,
+            generate_id_dict=gen_ids,
+            generate_pad_dict=gen_pad,
+            tgt_time_step=t,
+            **{k: v for k, v in kwargs.items() if k not in ('generate_id_dict','generate_pad_dict','cond_dict')}
         )
-        if cond_scale == 1:
-            return conditional_out
-        elif cond_scale == 0:
-            return unconditional_out
-        else:
-            for t in conditional_out.keys():
-                null_logits = unconditional_out[t]['dec_logits']
-                logits = conditional_out[t]['dec_logits']
-                scaled_logits = logits + (logits - null_logits) * cond_scale
-                conditional_out[t]['dec_logits'] = scaled_logits
-            return conditional_out
+
+        # shortcut when no blending needed
+        if cond_scale == 1.0:
+            return cond_out
+        if cond_scale == 0.0:
+            return uncond_out
+
+        # 3) blend logits: u + w*(c - u)
+        out = {}
+        for ts, c_block in cond_out.items():
+            u_logits = uncond_out[ts]['dec_logits']
+            c_logits = c_block   ['dec_logits']
+            blended = u_logits + cond_scale * (c_logits - u_logits)
+
+            # copy the rest of the block from the conditional pass
+            new_block = dict(c_block)
+            new_block['dec_logits'] = blended
+            out[ts] = new_block
+
+        return out
 
     def forward(
         self,
@@ -1060,7 +1137,7 @@ class CytoMeister(nn.Module):
         generate_id_dict: dict | None = None,
         generate_pad_dict: dict | None = None,
         cond_dict: torch.Tensor | None = None,
-        cond_drop_prob: float = 0.1,
+        cond_drop_prob: float = 0.0,
         **kwargs,
     ):
         '''
@@ -1153,9 +1230,9 @@ class CytoMeister(nn.Module):
             tgt_embedding = self.token_embedding(tgt_input_id)
             # ---classifier-free guidance---
             # if self.classifier_free_guidance:
-            #     # cond_token_emb = self.cond_embedding(cond_dict)
+            #     cond_token_emb = self.cond_embedding(cond_dict)
             #     cond_len = cond_token_emb.shape[1]
-            #     # tgt_embedding = torch.cat([cond_token_emb, tgt_embedding], dim=1)
+            #     tgt_embedding = torch.cat([cond_token_emb, tgt_embedding], dim=1)
             #     cond_pad = prob_mask_like(
             #         cond_dict.shape, cond_drop_prob, device=cond_dict.device
             #     )
@@ -1163,35 +1240,30 @@ class CytoMeister(nn.Module):
             #     if labels is not None:
             #         # add -100 to ignore condition tokens in CE loss
             #         labels = F.pad(labels, (cond_len, 0), value=-100)
-            #if self.condition_dict is not None:
-                #print(f"[CFG] Condition keys: {list(self.condition_dict.keys())}")
-                #print(f"[CFG] Number of condition tokens: {cond_dict.shape[1]}")
-            if self.classifier_free_guidance and cond_dict is not None:
-                cond_len = cond_dict.shape[1]
+            if self.classifier_free_guidance:
+                # --- single‐pass train‐time drop of the condition token ---
+                # cond_dict: [B] of real condition indices
+                # create a binary mask [B] that’s True with probability cond_drop_prob
+                drop_mask = torch.rand_like(cond_dict, dtype=torch.float) < cond_drop_prob
 
-                #print(f"\n[CFG] cond_drop_prob: {cond_drop_prob}")
-                #print(f"[CFG] tgt_pad before:\n{tgt_pad}")
+                # wherever drop_mask is True, swap in the null token index
+                cond_in = torch.where(
+                    drop_mask,
+                    torch.full_like(cond_dict, self.null_index),
+                    cond_dict
+                )
 
-                if cond_drop_prob > 0:
-                    dropout_mask = prob_mask_like((tgt_pad.shape[0], cond_len),
-                        prob=cond_drop_prob, device=tgt_pad.device)
-                else:
-                    dropout_mask = torch.zeros((tgt_pad.shape[0], cond_len),
-                        dtype=torch.bool, device=tgt_pad.device)
-                # Count number of dropped-out condition tokens
-                #print(f"[CFG] # dropped: {dropout_mask.sum().item()}/{dropout_mask.numel()} "
-                #    f"({dropout_mask.sum().item() / dropout_mask.numel():.2%})")
-                #num_dropped = dropout_mask.sum().item()
-                #total_tokens = dropout_mask.numel()
-                #dropout_percent = 100 * num_dropped / total_tokens
-                #print(f"[CFG] dropout_mask:\n{dropout_mask}")
-                #print(f"[CFG] # dropped: {num_dropped}/{total_tokens} "
-                #    f"({dropout_percent:.2f}%)")
-                #print(f"[CFG] dropout_mask:\n{dropout_mask}")
-                tgt_pad = torch.cat([dropout_mask, tgt_pad[:, cond_len:].clone()], dim=1)
-                #print(f"[CFG] tgt_pad after:\n{tgt_pad}")
+                # embed the (possibly dropped) cond token and prepend it
+                cond_emb = self.cond_embedding(cond_in).unsqueeze(1)   # [B,1,d_model]
+                tgt_embedding = torch.cat([cond_emb, tgt_embedding], dim=1)
 
-                
+                # build a padding mask for that extra token (so it’s ignored when dropped)
+                cond_pad = drop_mask.unsqueeze(1)                     # [B,1]
+                tgt_pad  = torch.cat([cond_pad, tgt_pad], dim=1)
+
+                # ensure the loss ignores the prepended cond token
+                if labels is not None:
+                    labels = F.pad(labels, (1, 0), value=-100)
             dec_embedding = self.pos_embedding(tgt_embedding, tgt_time_step)
             # does not include any context
             outputs = self.call_decoder(

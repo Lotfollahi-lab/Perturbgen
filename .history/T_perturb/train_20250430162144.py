@@ -24,6 +24,8 @@ from T_perturb.src.utils import (
     str2bool,
     stratified_split,
 )
+import os
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 # from pytorch_lightning.utilities.deepspeed import (
 #     convert_zero_checkpoint_to_fp32_state_dict,
@@ -569,7 +571,7 @@ def main() -> None:
         dirpath=checkpoint_path,
         filename=f'{filename}-' + '{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=5, #5
+        every_n_epochs=1, #5
         verbose=True,
         monitor=monitor_metric,
         mode=mode,
@@ -595,7 +597,7 @@ def main() -> None:
     early_stop_callback = pl.callbacks.EarlyStopping(
         monitor=monitor_metric,
         min_delta=0.00,
-        patience=20,
+        patience=10,
         verbose=False,
         mode=mode,
     )
@@ -674,7 +676,7 @@ def main() -> None:
         accelerator=accelerator,
         # precision=precision,
         # gradient_clip_val=1.0,
-        devices=-1 if torch.cuda.is_available() else 0,
+        devices=1 if torch.cuda.is_available() else 0,
         num_nodes=args.num_node,
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
     )

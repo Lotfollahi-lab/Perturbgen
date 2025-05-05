@@ -54,12 +54,6 @@ def get_args():
         help='store dataset name',
     )
     parser.add_argument(
-        '--classifier_free_guidance',
-        type=str2bool,
-        default=True,
-        help='context mode for timepoints',
-    )
-    parser.add_argument(
         '--splitting_mode',
         type=str,
         # default='random',
@@ -575,7 +569,6 @@ def main() -> None:
         test_kwargs['context_mode'] = args.context_mode
         test_kwargs['return_attn'] = args.return_attn
         test_kwargs['tokenid_to_rowid_path'] = args.tokenid_to_rowid_path
-        test_kwargs['classifier_free_guidance'] = args.classifier_free_guidance
         test_kwargs['deg_pkl_path'] = args.deg_pkl_path
         test_kwargs['gene_embs_list'] = gene_embs_list
         test_kwargs['gene_embs_condition'] = args.gene_embs_condition
@@ -695,7 +688,7 @@ def main() -> None:
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
         num_nodes=args.num_node,
-        devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
+        devices=-1 if torch.cuda.is_available() else 0,  # inference only on one gpu
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
     )
     # Finally, kick of the training process.

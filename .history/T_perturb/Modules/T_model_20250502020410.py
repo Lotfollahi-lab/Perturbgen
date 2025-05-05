@@ -1027,11 +1027,10 @@ class CytoMeister(nn.Module):
         context_embedding = torch.cat(context_embs_list, dim=1)
         context_pad = torch.cat(context_pad_list, dim=1)
         return context_embedding, context_pad
-    def forward_with_cond_scale(self, cond_scale=0.5, *args, **kwargs):
+    def forward_with_cond_scale(self, cond_scale=1, *args, **kwargs):
         # ---classifier-free guidance---
         # run two fwd passes with the same time step
         # one with conditional and one unconditional
-        print(f"****WE ARE HERE**** [CFG] Conditional scale: {cond_scale}")
 
         conditional_out = self.forward(
             cond_drop_prob=0.0, *args, **kwargs

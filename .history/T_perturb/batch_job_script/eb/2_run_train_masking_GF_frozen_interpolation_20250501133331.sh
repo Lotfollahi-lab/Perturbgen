@@ -21,7 +21,7 @@ cwd=$(pwd)
 
 # ----------------- Create folder to save results and copy the script -----------------
 RES_DIR="/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/results"
-RES_NAME="eb/pbmc_median/interpolation_CFG"
+RES_NAME="eb/pbmc_median/interpolation_CFG_off_test"
 # # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
 # # Get the current timestamp
@@ -64,7 +64,7 @@ python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb
 --seed 100 \
 --pos_encoding_mode time_pos_sin \
 --mask_scheduler 'pow' \
---classifier_free_guidance True \
+--classifier_free_guidance False \
 --d_model 768 \
 > T_perturb/logs/eb_interpolation_$(date +%Y%m%d_%H%M%S).out \
 2> T_perturb/logs/eb_interpolation_$(date +%Y%m%d_%H%M%S).err

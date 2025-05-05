@@ -271,46 +271,90 @@ class CytoMeisterTrainer(LightningModule):
                 raise ValueError('gene_embs_list is None')
 
     def forward(self, batch, generate: bool = False):
-        tgt_input_id_dict = {}
-        cond_ids = None  # Only used if CFG is enabled
-        for i in self.total_tps:
-            tgt_input_id_ = batch[f'tgt_input_ids_t{i}'].clone()
-            if self.condition_dict is not None:
-                cond_ids = concat_cond_tokens(
-                    batch=batch,
-                    time_step=i,
-                    condition_dict=self.condition_dict,
-                )
-                tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
-            tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
+        if self.classifier_free_guidance:
+            # Expecting a single target time step for CFG
+            tgt_time_step = batch.get('tgt_time_step', self.pred_tps[0])
+            tgt_input_id_ = batch[f'tgt_input_ids_t{tgt_time_step}'].clone()
 
-        if generate:
-            outputs = None
-        else:
-            outputs = self.transformer(
-                src_input_id=batch['src_input_ids'],
-                tgt_input_id_dict=tgt_input_id_dict,
-                not_masked=self.return_embeddings,
-                cond_dict=cond_ids if self.classifier_free_guidance else None,
-                cond_drop_prob=0.1 if self.classifier_free_guidance else 0.0,
-                tgt_time_step=batch.get('tgt_time_step', self.pred_tps[0]),
+            # Build cond_ids only for the selected time step
+            cond_ids = concat_cond_tokens(
+                batch=batch,
+                time_step=tgt_time_step,
+                condition_dict=self.condition_dict,
+            )
+            # Concatenate cond_ids with input
+            tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
+            tgt_input_id_dict = {f'tgt_input_ids_t{tgt_time_step}': tgt_input_id_}
+
+            if generate:
+                outputs = None
+            else:
+                outputs = self.transformer.forward_with_cond_scale(
+                    src_input_id=batch['src_input_ids'],
+                    tgt_input_id_dict=tgt_input_id_dict,
+                    not_masked=self.return_embeddings,
+                    cond_dict=cond_ids,
+                    cond_scale=1.0,
+                    tgt_time_step=tgt_time_step,
                 )
-            # if self.classifier_free_guidance:
-            #     outputs = self.transformer.forward_with_cond_scale(
-            #         src_input_id=batch['src_input_ids'],
-            #         tgt_input_id_dict=tgt_input_id_dict,
-            #         not_masked=self.return_embeddings,
-            #         #cond_dict=cond_ids-self.token_no,
-            #         cond_dict=cond_ids,
-            #         tgt_time_step=batch.get('tgt_time_step', self.pred_tps[0]),
-            #     )
-            # else:
-            #     outputs = self.transformer(
-            #         src_input_id=batch['src_input_ids'],
-            #         tgt_input_id_dict=tgt_input_id_dict,
-            #         not_masked=self.return_embeddings,
-            #     )
+
+        else:
+            # Non-CFG: process all time points
+            tgt_input_id_dict = {}
+            for i in self.total_tps:
+                tgt_input_id_ = batch[f'tgt_input_ids_t{i}'].clone()
+                if self.condition_dict is not None:
+                    cond_ids = concat_cond_tokens(
+                        batch=batch,
+                        time_step=i,
+                        condition_dict=self.condition_dict,
+                    )
+                    tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
+
+                tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
+
+            if generate:
+                outputs = None
+            else:
+                outputs = self.transformer(
+                    src_input_id=batch['src_input_ids'],
+                    tgt_input_id_dict=tgt_input_id_dict,
+                    not_masked=self.return_embeddings,
+                )
         return outputs, tgt_input_id_dict
+
+    # def forward(self, batch, generate: bool = False):
+    #     tgt_input_id_dict = {}
+    #     for i in self.total_tps:
+    #         tgt_input_id_ = batch[f'tgt_input_ids_t{i}'].clone()
+    #         if self.condition_dict is not None:
+    #             cond_ids = concat_cond_tokens(
+    #                 batch=batch,
+    #                 time_step=i,
+    #                 condition_dict=self.condition_dict,
+    #             )
+    #             tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
+    #         tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
+
+    #     if generate:
+    #         outputs = None
+    #     else:
+    #         if self.classifier_free_guidance:
+    #             outputs = self.transformer.forward_with_cond_scale(
+    #                 src_input_id=batch['src_input_ids'],
+    #                 tgt_input_id_dict=tgt_input_id_dict,
+    #                 not_masked=self.return_embeddings,
+    #                 #cond_dict=cond_ids-self.token_no,
+    #                 cond_dict=cond_ids,
+    #                 tgt_time_step=batch.get('tgt_time_step', self.pred_tps[0]),
+    #             )
+    #         else:
+    #             outputs = self.transformer(
+    #                 src_input_id=batch['src_input_ids'],
+    #                 tgt_input_id_dict=tgt_input_id_dict,
+    #                 not_masked=self.return_embeddings,
+    #             )
+    #     return outputs, tgt_input_id_dict
 
     def configure_optimizers(self):
         parameters = [{'params': self.transformer.parameters(), 'lr': self.initial_lr}]
@@ -322,6 +366,10 @@ class CytoMeisterTrainer(LightningModule):
         }
 
     def training_step(self, batch, *args, **kwargs):
+        print("==== DEBUG ====")
+        print(f"batch['tgt_time_step']: {batch.get('tgt_time_step', 'NO KEY')}")
+        print(f"type: {type(batch.get('tgt_time_step', 'NO KEY'))}")
+        print("================")
         # log learning rate
         self.log(
             'lr',
@@ -352,6 +400,12 @@ class CytoMeisterTrainer(LightningModule):
             dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
 
             labels = labels.contiguous().view(-1)
+
+            print("==== DEBUG LOSS ====")
+            print(f"dec_logits.shape: {dec_logits.shape}")
+            print(f"labels.shape: {labels.shape}")
+            print(f"labels min: {labels.min().item()}, max: {labels.max().item()}")
+            print("=====================")
 
             masking_loss = self.masking_loss(dec_logits, labels)
             self.log(

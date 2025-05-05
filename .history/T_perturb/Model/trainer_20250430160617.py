@@ -272,7 +272,6 @@ class CytoMeisterTrainer(LightningModule):
 
     def forward(self, batch, generate: bool = False):
         tgt_input_id_dict = {}
-        cond_ids = None  # Only used if CFG is enabled
         for i in self.total_tps:
             tgt_input_id_ = batch[f'tgt_input_ids_t{i}'].clone()
             if self.condition_dict is not None:
@@ -287,29 +286,21 @@ class CytoMeisterTrainer(LightningModule):
         if generate:
             outputs = None
         else:
-            outputs = self.transformer(
-                src_input_id=batch['src_input_ids'],
-                tgt_input_id_dict=tgt_input_id_dict,
-                not_masked=self.return_embeddings,
-                cond_dict=cond_ids if self.classifier_free_guidance else None,
-                cond_drop_prob=0.1 if self.classifier_free_guidance else 0.0,
-                tgt_time_step=batch.get('tgt_time_step', self.pred_tps[0]),
+            if self.classifier_free_guidance:
+                outputs = self.transformer.forward_with_cond_scale(
+                    src_input_id=batch['src_input_ids'],
+                    tgt_input_id_dict=tgt_input_id_dict,
+                    not_masked=self.return_embeddings,
+                    #cond_dict=cond_ids-self.token_no,
+                    cond_dict=cond_ids,
+                    tgt_time_step=batch.get('tgt_time_step', self.pred_tps[0]),
                 )
-            # if self.classifier_free_guidance:
-            #     outputs = self.transformer.forward_with_cond_scale(
-            #         src_input_id=batch['src_input_ids'],
-            #         tgt_input_id_dict=tgt_input_id_dict,
-            #         not_masked=self.return_embeddings,
-            #         #cond_dict=cond_ids-self.token_no,
-            #         cond_dict=cond_ids,
-            #         tgt_time_step=batch.get('tgt_time_step', self.pred_tps[0]),
-            #     )
-            # else:
-            #     outputs = self.transformer(
-            #         src_input_id=batch['src_input_ids'],
-            #         tgt_input_id_dict=tgt_input_id_dict,
-            #         not_masked=self.return_embeddings,
-            #     )
+            else:
+                outputs = self.transformer(
+                    src_input_id=batch['src_input_ids'],
+                    tgt_input_id_dict=tgt_input_id_dict,
+                    not_masked=self.return_embeddings,
+                )
         return outputs, tgt_input_id_dict
 
     def configure_optimizers(self):
