@@ -6,8 +6,8 @@
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
 #BSUB -o logs/cyto_generate_context_%J.out # output file
 #BSUB -e logs/cyto_generate_context_%J.err # error file
-#BSUB -M 50000  # RAM memory part 2. Default: 100MB
-#BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
+#BSUB -M 25000  # RAM memory part 2. Default: 100MB
+#BSUB -R 'select[mem>25000] rusage[mem=25000]' # RAM memory part 1. Default: 100MB
 #BSUB -J cytoimmgen_generate_context # job name
 
 # load cuda
@@ -38,7 +38,7 @@ python3 $cwd/val.py \
 --split False \
 --splitting_mode stratified \
 --generate True \
---ckpt_count_path 'T_perturb/T_perturb/plt/res/cytoimmgen/pbmc_median/interpolation/res/checkpoints/20250430_1655_cellgen_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1-3_s_42_pos_time_pos_sin_m_pow-epoch=04.ckpt' \
+--ckpt_count_path 'T_perturb/T_perturb/plt/res/cytoimmgen/pbmc_median/interpolation/res/checkpoints/20250502_1357_cellgen_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1-3_s_42_pos_time_pos_sin_m_pow-epoch=04.ckpt' \
 --output_dir $RES_DIR/$RES_NAME/res \
 --src_dataset "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_src/0h.dataset" \
 --tgt_dataset_folder "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_tgt" \
@@ -66,7 +66,7 @@ python3 $cwd/val.py \
 --pos_encoding_mode time_pos_sin \
 --context_mode True \
 --d_model 768 \
---temperature 0.5 \
+--temperature 0.75 \
 --sequence_length 125 \
 --iterations 20 \
 --n_samples 2 \

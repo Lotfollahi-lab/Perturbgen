@@ -1,6 +1,6 @@
 #make a date directory if it does not exist
 #!/bin/bash
-#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
 #BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu
 #BSUB -n 4 # number of cores
 #BSUB -R "span[ptile=4]"     # split X cores per host
@@ -46,7 +46,7 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --count_lr 0.001 \
 --cellgen_lr 0.0001 \
 --cellgen_wd 0.0001 \
---count_wd 0.001 \
+--count_wd 0.0005 \
 --count_dropout 0.1 \
 --n_workers 4 \
 --num_layers 6 \

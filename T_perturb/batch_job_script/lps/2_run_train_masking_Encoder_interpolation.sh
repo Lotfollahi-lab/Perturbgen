@@ -6,11 +6,11 @@
 #BSUB -R "span[ptile=4]"     # split X cores per host
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
-#BSUB -o logs/lps_interpolation_2k_%J.out # output file
-#BSUB -e logs/lps_interpolation_2k_%J.err # error file
+#BSUB -o logs/lps_interpolation_s100_%J.out # output file
+#BSUB -e logs/lps_interpolation_s100_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
-#BSUB -J lps_interpolation_2k # job name
+#BSUB -J lps_interpolation_s100 # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -55,7 +55,7 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --cond_list time_after_LPS \
 --encoder scmaskgit \
 --encoder_path "/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt" \
---seed 42 \
+--seed 0 \
 --context_mode True \
 --pos_encoding_mode time_pos_sin \
 --mask_scheduler 'pow' \

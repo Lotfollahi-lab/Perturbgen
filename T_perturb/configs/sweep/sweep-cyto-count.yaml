@@ -34,17 +34,21 @@ parameters:
     value: 0.0001
   cellgen_wd:
     value: 0.0001
+  cond_list:
+    value: 'Time_point'
   num_layers:
     value: 6
   d_ff:
     value: 64
   loss_mode:
     value: 'zinb'
+  count_dropout:
+    values: [0.0, 0.1]
   count_lr:
-    values: [0.001, 0.005, 0.001]
+    values: [0.001, 0.0005, 0.0001]
   count_wd:
-    values: [0.005, 0.001, 0.0005, 0.0001]
+    value: 0.001
   batch_size:
-    values: [64, 128, 256]
-program: /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/train.py
+    values: [64, 128]
+program: /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb/train.py
 project: ttransformer_sweep

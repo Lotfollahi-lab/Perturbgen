@@ -46,7 +46,7 @@ python3 $cwd/train.py \
 --mapping_dict_path  "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/token_id_to_genename_2000_hvg.pkl" \
 --batch_size 64 \
 --max_len 400 \
---epochs 5 \
+--epochs 10 \
 --tgt_vocab_size 1360 \
 --count_lr 0.005 \
 --count_wd 0.001  \

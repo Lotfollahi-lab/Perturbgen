@@ -39,7 +39,6 @@ from T_perturb.src.utils import (  # WarmupScheduler
     concat_cond_tokens,
     exclude_special_tokens,
     modify_ckpt_state_dict,
-    pearson,
     return_attn_weights,
     return_gene_embeddings,
     return_generation_adata,
@@ -1065,20 +1064,34 @@ class CountDecoderTrainer(LightningModule):
         )
 
     def on_validation_epoch_end(self):
-        # return Pearson correlation coefficient
-        true_counts = torch.cat(self.val_dict['true_counts'])
-        pred_counts = torch.cat(self.val_dict['pred_counts'])
-        mean_pearson = pearson(pred_counts=pred_counts, true_counts=true_counts)
-        self.log(
-            'val/pearson',
-            mean_pearson,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            sync_dist=True,
-        )
-        self.val_true_counts_list = []
-        self.val_pred_counts_list = []
+        with torch.no_grad():
+            # return Pearson correlation coefficient
+            true_counts = torch.cat(self.val_dict['true_counts'])
+            pred_counts = torch.cat(self.val_dict['pred_counts'])
+            # mean_pearson = pearson(pred_counts=pred_counts, true_counts=true_counts)
+            # random sample 10000 or max number of samples
+            if len(pred_counts) > 10000:
+                random_ids = torch.randint(
+                    low=0,
+                    high=len(pred_counts),
+                    size=(10000,),
+                    generator=torch.Generator().manual_seed(42),
+                ).tolist()
+            else:
+                random_ids = torch.arange(len(pred_counts)).tolist()
+            pred_counts = pred_counts[random_ids]
+            true_counts = true_counts[random_ids]
+            emd = compute_emd(pred_counts, true_counts)
+            self.log(
+                'val/emd',
+                emd,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+                sync_dist=True,
+            )
+        self.val_dict['true_counts'] = []
+        self.val_dict['pred_counts'] = []
 
     def test_step(self, batch, *args, **kwargs):
         outputs, tgt_input_id_dict = self.forward(

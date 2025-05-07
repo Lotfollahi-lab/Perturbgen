@@ -37,7 +37,7 @@ python3 $cwd/train.py \
 --train_mode masking \
 --split False \
 --splitting_mode stratified \
---output_dir $RES_DIR/$RES_NAME \
+--output_dir $RES_DIR/$RES_NAME/res \
 --src_dataset "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_src/0h.dataset" \
 --tgt_dataset_folder "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_tgt" \
 --src_adata "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_src/0h.h5ad" \
@@ -60,7 +60,7 @@ python3 $cwd/train.py \
 --cond_list Time_point \
 --encoder_path "/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt" \
 --pos_encoding_mode time_pos_sin \
---seed 42 \
+--seed 100 \
 --mask_scheduler 'pow' \
 --d_model 768 \
 --use_weighted_sampler False

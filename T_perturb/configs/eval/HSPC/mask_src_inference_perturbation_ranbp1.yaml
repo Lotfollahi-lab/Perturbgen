@@ -3,10 +3,18 @@ data:
   tgt_dataset_folder: "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_5k_tf/dataset_5000_hvg_tgt"
   src_adata_file: "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_5k_tf/h5ad_pairing_5000_hvg_src/intermediate.h5ad"
   tgt_adata_folder: "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_5k_tf/h5ad_pairing_5000_hvg_tgt"
-  perturb_genes_file: 'T_perturb/T_perturb/plt/res/hspc/pbmc_median/gene_embedding/20250423/gene_clusters_L5.csv'
-  perturb_colname: 'leiden_5'
-  perturb_cluster:
-  - 53
+  # cond_list:
+  #   - 'celltype_v2'
+  #   - 'diff_state'
+  # filter_var: 'celltype_v2'
+  # filter_cond:
+  # - 'DC_pre'
+  # - 'Mono_Pre'
+  # - 'DC_pre'
+  # - 'Macrophage'
+  # perturb_genes_file: 'T_perturb/T_perturb/plt/res/hspc/pbmc_median/gene_embedding/20250312_gene_clusters_LMPP_L4.csv'
+  # perturb_cluster:
+  # - '75'
 
 trainer:
   tgt_vocab_size: 5848
@@ -26,7 +34,7 @@ trainer:
   pos_encoding_mode: 'time_pos_sin'
   perturbation_mode: 'mask'
   genes_to_perturb:
-    - 'MZB1'
+    - 'HNRNPA2B1'
   validation_mode: 'inference'
   perturbation_sequence:
     - 'src'

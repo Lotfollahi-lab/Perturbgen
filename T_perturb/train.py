@@ -76,8 +76,8 @@ def get_args():
         '--split_obs',
         type=str,
         nargs='+',
-        # default=['cell_type_cellgen_harm'],
-        default=['Cell_type'],
+        default=['cell_type_cellgen_harm'],
+        # default=['Cell_type'],
     )
     parser.add_argument(
         '--ckpt_masking_path',
@@ -129,9 +129,14 @@ def get_args():
         type=str,
         # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl',
         # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
+        # default=(
+        #     'T_perturb/T_perturb/pp/res/'
+        #     'cytoimmgen_pbmc_median/token_id_to_genename_2000_hvg.pkl'
+        # ),
         default=(
-            'T_perturb/T_perturb/pp/res/'
-            'cytoimmgen_pbmc_median/token_id_to_genename_2000_hvg.pkl'
+            '/lustre/scratch126/cellgen/team298/dv8/trace_paper/'
+            'trace_final/T_perturb/T_perturb/pp/res/'
+            '2k_hvg_ourMED_all_tps/token_id_to_genename_2000_hvg.pkl'
         ),
     )
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
@@ -151,16 +156,16 @@ def get_args():
         '--max_len',
         type=int,
         # default=300,
-        # default=2048,
-        default=400,
+        default=666,
+        # default=400,
         help='max sequence length',
     )  # check how many genes there are
     parser.add_argument(
         '--tgt_vocab_size',
         type=int,
         # default=1261,
-        # default=15280,
-        default=1360,
+        default=1990,
+        # default=1360,
         help='vocab size (max token id + 1) in dataset for padding',
     )
     parser.add_argument(
@@ -223,14 +228,14 @@ def get_args():
         # type=list,
         nargs='+',
         type=str,
-        default=[
-            'Time_point',
-            'Cell_type',
-            'Cell_culture_batch',
-            'Cell_population',
-            'Donor',
-        ],
-        # default=['cell_type_cellgen_harm', 'donor_cellgen_harm', 'time_after_LPS'],
+        # default=[
+        #     'Time_point',
+        #     'Cell_type',
+        #     'Cell_culture_batch',
+        #     'Cell_population',
+        #     'Donor',
+        # ],
+        default=['cell_type_cellgen_harm', 'donor_cellgen_harm', 'time_after_LPS'],
         # default=['celltype_v2', 'sex', 'phase', 'tissue', 'diff_state'],
         help='List of variables to keep in the dataset',
     )
