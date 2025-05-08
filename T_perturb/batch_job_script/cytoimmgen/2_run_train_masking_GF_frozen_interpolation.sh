@@ -1,6 +1,6 @@
 #!/bin/bash
-#BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=4:gmodel=NVIDIAA100_SXM4_80GB' # request for exclusive access to gpu
+#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -gpu 'mode=exclusive_process:num=3' # request for exclusive access to gpu
 #BSUB -n 4 # number of cores
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
@@ -37,7 +37,7 @@ python3 $cwd/train.py \
 --train_mode masking \
 --split False \
 --splitting_mode stratified \
---output_dir $RES_DIR/$RES_NAME \
+--output_dir $RES_DIR/$RES_NAME/res \
 --src_dataset "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_src/0h.dataset" \
 --tgt_dataset_folder "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_tgt" \
 --src_adata "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_src/0h.h5ad" \
@@ -45,7 +45,7 @@ python3 $cwd/train.py \
 --mapping_dict_path  "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/token_id_to_genename_2000_hvg.pkl" \
 --batch_size 64 \
 --max_len 400 \
---epochs 10 \
+--epochs 20 \
 --tgt_vocab_size 1360 \
 --cellgen_lr 0.00001 \
 --cellgen_wd 0.00001 \
@@ -62,5 +62,6 @@ python3 $cwd/train.py \
 --pos_encoding_mode time_pos_sin \
 --seed 100 \
 --mask_scheduler 'pow' \
---d_model 768
+--d_model 768 \
+--use_weighted_sampler False
 echo "--- Finished computing model"

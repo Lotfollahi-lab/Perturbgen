@@ -1,6 +1,6 @@
 #!/bin/bash
-#BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-cellgeni-a100)
-#BSUB -gpu 'mode=exclusive_process:num=2:gmodel=NVIDIAA100_SXM4_80GB' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
+#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-cellgeni-a100)
+#BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
 #BSUB -n 4 # number of cores
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
@@ -39,7 +39,7 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --split False \
 --splitting_mode random \
 --output_dir $RES_DIR/$RES_NAME \
---ckpt_masking_path 'T_perturb/T_perturb/plt/res/eb/pbmc_median/interpolation/checkpoints/20250225_0834_cellgen_train_masking_lr_0.001_wd_0.0001_batch_64_ptime_pos_sin_m_pow_tp_1-2-4_s_0-epoch=49.ckpt' \
+--ckpt_masking_path 'T_perturb/T_perturb/plt/res/eb/pbmc_median/interpolation/checkpoints/20250429_1355_cellgen_train_masking_lr_0.001_wd_0.0001_batch_64_ptime_pos_sin_m_pow_tp_1-2-4_s_0-epoch=49.ckpt' \
 --src_dataset 'T_perturb/T_perturb/pp/res/eb_pbmc_median/dataset_2000_hvg_src/Day 00-03.dataset' \
 --tgt_dataset_folder 'T_perturb/T_perturb/pp/res/eb_pbmc_median/dataset_2000_hvg_tgt' \
 --src_adata 'T_perturb/T_perturb/pp/res/eb_pbmc_median/h5ad_pairing_2000_hvg_src/Day 00-03.h5ad' \
@@ -53,7 +53,7 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --count_lr 0.0001 \
 --cellgen_wd 0.0001 \
 --count_wd 0.0001 \
---count_dropout 0.0 \
+--count_dropout 0.25 \
 --n_workers 4 \
 --num_layers 3 \
 --d_ff 32 \
@@ -67,5 +67,6 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --pos_encoding_mode time_pos_sin \
 --mask_scheduler 'pow' \
 --seed 0 \
---d_model 768
+--d_model 768 \
+--use_weighted_sampler False
 echo '--- Finished computing model'

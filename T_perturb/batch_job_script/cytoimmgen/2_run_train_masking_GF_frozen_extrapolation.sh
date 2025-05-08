@@ -1,14 +1,14 @@
 #!/bin/bash
-#BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=4:gmodel=NVIDIAA100_SXM4_80GB' # request for exclusive access to gpu
+#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -gpu 'mode=exclusive_process:num=3' # request for exclusive access to gpu
 #BSUB -n 4 # number of cores
-#BSUB -G teamtrynka # groupname for billing
+#BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
-#BSUB -o logs/cytoimmgen_masking_extra_s100_%J.out # output file
-#BSUB -e logs/cytoimmgen_masking_extra_s100_%J.err # error file
+#BSUB -o logs/cytoimmgen_masking_extra_s0_%J.out # output file
+#BSUB -e logs/cytoimmgen_masking_extra_s0_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
-#BSUB -J cytoimmgen_masking_extra_s100 # job name
+#BSUB -J cytoimmgen_masking_extra_s0 # job name
 
 
 # load cuda
@@ -38,7 +38,7 @@ python3 $cwd/train.py \
 --train_mode masking \
 --split False \
 --splitting_mode stratified \
---output_dir $RES_DIR/$RES_NAME \
+--output_dir $RES_DIR/$RES_NAME/res \
 --src_dataset "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_src/0h.dataset" \
 --tgt_dataset_folder "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_tgt" \
 --src_adata "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_src/0h.h5ad" \
@@ -46,7 +46,7 @@ python3 $cwd/train.py \
 --mapping_dict_path  "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/token_id_to_genename_2000_hvg.pkl" \
 --batch_size 64 \
 --max_len 400 \
---epochs 10 \
+--epochs 20 \
 --tgt_vocab_size 1360 \
 --cellgen_lr 0.00001 \
 --cellgen_wd 0.00001 \
@@ -61,7 +61,8 @@ python3 $cwd/train.py \
 --encoder_path "/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt" \
 --context_mode True \
 --pos_encoding_mode 'time_pos_sin' \
---seed 100 \
+--seed 0 \
 --mask_scheduler 'pow' \
---d_model 768
+--d_model 768 \
+--use_weighted_sampler False
 echo "--- Finished computing model"

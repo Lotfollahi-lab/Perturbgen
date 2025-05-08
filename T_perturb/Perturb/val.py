@@ -53,20 +53,27 @@ def main() -> None:
 
     # read genes to perturb from file
     if 'perturb_genes_file' in config['data']:
-        perturb_genes_df = pd.read_csv(
-            config['data']['perturb_genes_file'], header=None
-        )
-        # assign column names being the first row
-        perturb_genes_df.columns = perturb_genes_df.iloc[0]
-        # drop the first row
-        perturb_genes_df = perturb_genes_df.drop(0)
+        perturb_genes_df = pd.read_csv(config['data']['perturb_genes_file'], header=0)
+        # put column 0 as index
+        perturb_genes_df.set_index(perturb_genes_df.columns[0], inplace=True)
+        # # assign column names being the first row
+        # perturb_genes_df.columns = perturb_genes_df.iloc[0]
         # filter based on cluster
-        if 'perturb_cluster' in config['data']:
+        if 'perturb_cluster' in config['data'] and 'perturb_colname' in config['data']:
+            colname = config['data']['perturb_colname']
+            cluster_to_perturb = config['data']['perturb_cluster']
+            # convert to string from this list
+            cluster_to_perturb = [int(i) for i in cluster_to_perturb]
             filtered_df = perturb_genes_df[
-                perturb_genes_df['leiden_4'].isin(config['data']['perturb_cluster'])
+                perturb_genes_df[colname].isin(cluster_to_perturb)
             ]
-            genes_to_perturb = filtered_df['gene_name'].tolist()
+            genes_to_perturb = filtered_df.index.tolist()
             config['trainer']['genes_to_perturb'] = genes_to_perturb
+        else:
+            raise ValueError(
+                'perturb_cluster and perturb_colname'
+                'must be provided in data in the config file'
+            )
 
     if 'loss_mode' in config['trainer']:
         if config['trainer']['loss_mode'] == 'mse':

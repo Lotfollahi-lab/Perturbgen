@@ -229,6 +229,23 @@ def evaluate_emd(
     return emd_df
 
 
+def compute_emd(
+    pred_counts: torch.Tensor,
+    true_counts: torch.Tensor,
+) -> float:
+    wd = []
+    pred_counts = pred_counts.detach().cpu()
+    true_counts = true_counts.detach().cpu()
+    for i, _ in enumerate(true_counts[1]):
+        wd.append(
+            wasserstein_distance(
+                pred_counts[:, i],
+                true_counts[:, i],
+            )
+        )
+    return np.mean(wd)
+
+
 def lin_reg_summary(
     true_adata: sc.AnnData,
     pred_adata: sc.AnnData,

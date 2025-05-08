@@ -57,6 +57,7 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --condition_keys Cell_culture_batch \
 --pred_tps 1 2 3 \
 --var_list Cell_population Cell_type Time_point Donor \
+--cond_list Time_point \
 --mode GF_frozen \
 --context_mode True \
 --mask_scheduler 'cosine' \

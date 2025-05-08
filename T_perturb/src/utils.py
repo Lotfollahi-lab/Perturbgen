@@ -21,11 +21,13 @@ import tqdm
 from datasets import DatasetDict, load_from_disk
 from geneformer import EmbExtractor
 from geneformer.emb_extractor import get_embs, label_cell_embs
+from scipy import stats
 from scipy.sparse import csr_matrix
 from torch.nn.functional import cosine_similarity
 from torch.optim import Optimizer
 from torch.utils.data import Subset
-from torchmetrics import PearsonCorrCoef
+
+# from torchmetrics import PearsonCorrCoef
 
 
 class WarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
@@ -785,6 +787,7 @@ def return_generation_adata(
     obs_key: list,
     output_dir: str,
     file_name: str,
+    aggregate: bool = True,
 ):
     """
     Description:
@@ -821,6 +824,7 @@ def return_generation_adata(
     # adata.X
     if 'pred_counts' in test_dict.keys():
         pred_counts = torch.cat(test_dict['pred_counts']).numpy()
+
     # adata.layers['counts']
     if 'true_counts' in test_dict.keys():
         true_counts = torch.cat(test_dict['true_counts']).numpy()
@@ -829,6 +833,12 @@ def return_generation_adata(
     # adata.obs
     obs_dict = {obs: np.concatenate(test_dict[obs]) for obs in obs_key}
     test_obs = pd.DataFrame(obs_dict)
+
+    if (aggregate is True) and ('cell_idx' in test_obs.columns):
+        pred_counts = mean_duplicates(test_obs, pred_counts)
+        true_counts = mean_duplicates(test_obs, true_counts)
+        cls_embeddings = mean_duplicates(test_obs, cls_embeddings)
+        test_obs = test_obs.drop_duplicates(subset='cell_idx')
     # create adata
     if 'pred_counts' in test_dict.keys() and 'true_counts' in test_dict.keys():
         adata = ad.AnnData(
@@ -844,6 +854,8 @@ def return_generation_adata(
         )
     if 'true_embeddings' in test_dict.keys():
         true_embeddings = torch.cat(test_dict['true_embeddings']).numpy()
+        if aggregate is True:
+            true_embeddings = mean_duplicates(test_obs, true_embeddings)
         adata.obsm['true_embeddings'] = true_embeddings
     adata.write_h5ad(os.path.join(output_dir, file_name))
     print('anndata generation completed---')
@@ -1087,13 +1099,23 @@ def pearson(
     if ctrl_counts is not None:
         pred_counts = pred_counts - ctrl_counts
         true_counts = true_counts - ctrl_counts
-    num_outputs = true_counts.shape[0]
-    pearson = PearsonCorrCoef(num_outputs=num_outputs).to(pred_counts.device)
-    pred_counts_t = pred_counts.transpose(0, 1)
-    true_counts_t = true_counts.transpose(0, 1)
-    pearson_output = pearson(pred_counts_t, true_counts_t)
-    mean_pearson = torch.mean(pearson_output)
-    return mean_pearson
+    # num_outputs = true_counts.shape[0]
+    # pearson = PearsonCorrCoef(num_outputs=num_outputs)
+    # pred_counts_t = pred_counts.transpose(0, 1)
+    # true_counts_t = true_counts.transpose(0, 1)
+    # pearson_output = pearson(pred_counts_t, true_counts_t)
+    # mean_pearson = torch.mean(pearson_output)
+    x_true = np.average(true_counts, axis=1)
+    x_pred = np.average(pred_counts, axis=1)
+    print(f'x_true: {x_true.shape}')
+    print(f'x_true: {x_true}')
+    print(f'x_pred: {x_pred.shape}')
+    print(f'x_pred: {x_pred}')
+    print(f'Pearson correlation: {np.corrcoef(x_true, x_pred)[0, 1]}')
+    _, _, r_value, _, _ = stats.linregress(x_true, x_pred)
+    pearson_r = r_value**2
+    raise
+    return pearson_r
 
 
 def subset_adata_dataset(

@@ -1536,9 +1536,9 @@ class CountDecoder(nn.Module):
                 else None
             )
 
-        # if self.add_cell_time:
-        #     if use_positional_encoding:
-        #         d_condc = d_model
+        if self.add_cell_time:
+            if use_positional_encoding:
+                d_condc = d_model
 
         if self.add_cell_time:
             input_size = d_model + d_condt

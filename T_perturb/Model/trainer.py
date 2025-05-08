@@ -28,6 +28,7 @@ from T_perturb.Modules.T_model import CountDecoder, CytoMeister
 from T_perturb.src.losses import mse_loss
 from T_perturb.src.metric import (
     compute_distribution_distances,
+    compute_emd,
     evaluate_emd,
     evaluate_mmd,
     lin_reg_summary,
@@ -38,7 +39,6 @@ from T_perturb.src.utils import (  # WarmupScheduler
     concat_cond_tokens,
     exclude_special_tokens,
     modify_ckpt_state_dict,
-    pearson,
     return_attn_weights,
     return_gene_embeddings,
     return_generation_adata,
@@ -52,13 +52,13 @@ from T_perturb.src.utils import (  # WarmupScheduler
 def set_matmul_precision_for_device(precision: Literal['high', 'medium'] = 'medium'):
     if torch.cuda.is_available():
         cuda_device_name = torch.cuda.get_device_name()
-        # If the device is an A100, set the precision for matrix multiplication
         if ('A100' in cuda_device_name) or ('NVIDIA H100 80GB HBM' in cuda_device_name):
             print(f'Using {cuda_device_name} for training')
             print(f'Set float32_matmul_precision to {precision}')
             torch.set_float32_matmul_precision(precision)
+
     else:
-        print('Using CPU for training')
+        print('CUDA is not available, using CPU for training.')
 
 
 class CytoMeisterTrainer(LightningModule):
@@ -707,10 +707,16 @@ class CountDecoderTrainer(LightningModule):
         if ckpt_masking_path is not None:
             checkpoint = torch.load(ckpt_masking_path, map_location='cpu')
             state_dict_ = modify_ckpt_state_dict(checkpoint, 'transformer.')
-            self.pretrained_model.load_state_dict(state_dict_, strict=False)
+            missing, unexpected = self.pretrained_model.load_state_dict(
+                state_dict_, strict=False
+            )
             # set parameters to not trainable
             for param in self.pretrained_model.parameters():
                 param.requires_grad = False
+            if len(missing) > 1:
+                raise Warning(f'Missing keys in state_dict: {missing}')
+            if len(unexpected) > 1:
+                raise Warning(f'Unexpected keys in state_dict: {unexpected}')
         self.return_rouge_score = return_rouge_score
         self.decoder = CountDecoder(
             pretrained_model=self.pretrained_model,
@@ -996,19 +1002,31 @@ class CountDecoderTrainer(LightningModule):
             # return Pearson correlation coefficient
             true_counts = torch.cat(self.train_dict['true_counts'])
             pred_counts = torch.cat(self.train_dict['pred_counts'])
-            # Pearson correlation coefficient
-            mean_pearson = pearson(pred_counts=pred_counts, true_counts=true_counts)
+            # mean_pearson = pearson(pred_counts=pred_counts, true_counts=true_counts)
+            # random sample 10000 or max number of samples
+            if len(pred_counts) > 10000:
+                random_ids = torch.randint(
+                    low=0,
+                    high=len(pred_counts),
+                    size=(10000,),
+                    generator=torch.Generator().manual_seed(42),
+                ).tolist()
+            else:
+                random_ids = torch.arange(len(pred_counts)).tolist()
+            pred_counts = pred_counts[random_ids]
+            true_counts = true_counts[random_ids]
+            emd = compute_emd(pred_counts, true_counts)
             self.log(
-                'train/pearson',
-                mean_pearson,
+                'train/emd',
+                emd,
                 on_epoch=True,
                 prog_bar=True,
                 logger=True,
                 sync_dist=True,
             )
             # set to status quo
-            self.train_true_counts_list = []
-            self.train_pred_counts_list = []
+            self.train_dict['true_counts'] = []
+            self.train_dict['pred_counts'] = []
 
     def validation_step(self, batch, *args, **kwargs):
         outputs, _ = self.forward(batch)
@@ -1046,20 +1064,34 @@ class CountDecoderTrainer(LightningModule):
         )
 
     def on_validation_epoch_end(self):
-        # return Pearson correlation coefficient
-        true_counts = torch.cat(self.val_dict['true_counts'])
-        pred_counts = torch.cat(self.val_dict['pred_counts'])
-        mean_pearson = pearson(pred_counts=pred_counts, true_counts=true_counts)
-        self.log(
-            'val/pearson',
-            mean_pearson,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            sync_dist=True,
-        )
-        self.val_true_counts_list = []
-        self.val_pred_counts_list = []
+        with torch.no_grad():
+            # return Pearson correlation coefficient
+            true_counts = torch.cat(self.val_dict['true_counts'])
+            pred_counts = torch.cat(self.val_dict['pred_counts'])
+            # mean_pearson = pearson(pred_counts=pred_counts, true_counts=true_counts)
+            # random sample 10000 or max number of samples
+            if len(pred_counts) > 10000:
+                random_ids = torch.randint(
+                    low=0,
+                    high=len(pred_counts),
+                    size=(10000,),
+                    generator=torch.Generator().manual_seed(42),
+                ).tolist()
+            else:
+                random_ids = torch.arange(len(pred_counts)).tolist()
+            pred_counts = pred_counts[random_ids]
+            true_counts = true_counts[random_ids]
+            emd = compute_emd(pred_counts, true_counts)
+            self.log(
+                'val/emd',
+                emd,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+                sync_dist=True,
+            )
+        self.val_dict['true_counts'] = []
+        self.val_dict['pred_counts'] = []
 
     def test_step(self, batch, *args, **kwargs):
         outputs, tgt_input_id_dict = self.forward(
@@ -1177,7 +1209,7 @@ class CountDecoderTrainer(LightningModule):
                     f't{self.pred_tps}_{self.encoder}_s{self.seed}_'
                     f'l{self.loss_mode}_n{self.n_samples}'
                     f'_p{self.pos_encoding_mode}_'
-                    f'm{self.mask_scheduler}_s{self.sequence_length}'
+                    f'm{self.mask_scheduler}_s{self.sequence_length}.h5ad'
                 ),
             )
             # save metrics
@@ -1233,7 +1265,8 @@ class CountDecoderTrainer(LightningModule):
             metrics.to_csv(
                 f'{self.output_dir}/{self.date}_p{self.pos_encoding_mode}_'
                 f'm{self.mask_scheduler}_t{self.temperature}_i{self.iterations}'
-                f'_s{self.seed}_s{self.sequence_length}_metrics.csv'
+                f'_s{self.seed}_s{self.sequence_length}'
+                f'n{self.n_samples}_metrics.csv'
             )
 
         else:
