@@ -1,6 +1,6 @@
 #make a date directory if it does not exist
 #!/bin/bash
-#BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
 #BSUB -gpu 'mode=exclusive_process:num=4' # request for exclusive access to gpu
 #BSUB -n 8 # number of cores
 #BSUB -R "span[ptile=8]"     # split X cores per host

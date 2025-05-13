@@ -271,7 +271,7 @@ def get_args():
     parser.add_argument(
         '--classifier_free_guidance',
         type=str2bool,
-        default=False,
+        default=True,
         help='context mode for timepoints',
     )
     parser.add_argument(

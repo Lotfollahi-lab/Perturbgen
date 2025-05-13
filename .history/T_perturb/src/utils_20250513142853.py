@@ -1601,6 +1601,7 @@ def pairing_src_to_tgt_cells(
                cell_pairings[tp] = []
             resting_cells = adata_grouped.loc[adata_grouped[time_obs] == 'early', :]
             grouped = adata_grouped.groupby(['annotation_simplified'])
+
             for idx, resting in tqdm.tqdm(
                 resting_cells.iterrows(), total=resting_cells.shape[0]
             ):

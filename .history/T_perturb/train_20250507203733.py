@@ -271,7 +271,7 @@ def get_args():
     parser.add_argument(
         '--classifier_free_guidance',
         type=str2bool,
-        default=False,
+        default=True,
         help='context mode for timepoints',
     )
     parser.add_argument(
@@ -603,6 +603,64 @@ def main() -> None:
     )
     accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
     print('Using device {}.'.format(accelerator))
+    # deepspeed_strategy = DeepSpeedStrategy(
+    #     stage=2,
+    #     # offload_optimizer=True,
+    #     # offload_parameters=True,
+    # )
+
+    # if torch.cuda.is_available():
+    #     cuda_device_name = torch.cuda.get_device_name()
+    # if ('A100' in cuda_device_name) or ('NVIDIA H100 80GB HBM' in cuda_device_name):
+    #     print(f'Using {cuda_device_name} for training')
+    #     precision = 'bf16-mixed'
+    # else:
+    #     precision = '16-mixed'
+    # # After each epoch, convert DeepSpeed checkpoint to FP32 and save
+    # class DeepSpeedCheckpointConverter(Callback):
+    #     def __init__(self, checkpoint_path, filename, save_interval=5):
+    #         super().__init__()
+    #         self.checkpoint_path = checkpoint_path
+    #         print(f'Checkpoint path: {checkpoint_path}')
+    #         self.filename = filename
+    #         print(f'Filename: {filename}')
+    #         self.save_interval = save_interval
+
+    #     def on_train_epoch_end(self, trainer, pl_module):
+    #         # Only save at specified intervals
+    #         if trainer.current_epoch % self.save_interval == 0:
+    #             # Try accessing DeepSpeed through pl_module
+    #             deepspeed_engine = getattr(pl_module, 'deepspeed', None)
+
+    #             if isinstance(trainer.strategy, DeepSpeedStrategy):
+    #                 # Define DeepSpeed checkpoint path
+    #                 deepspeed_epoch_checkpoint_path = os.path.join(
+    #                     self.checkpoint_path, f'epoch_{trainer.current_epoch:02d}'
+    #                 )
+
+    #                 # Save the checkpoint using DeepSpeed’s save_checkpoint method
+    #                 deepspeed_engine.save_checkpoint(deepspeed_epoch_checkpoint_path)
+    #                 print(
+    #                     f'DeepSpeed checkpoint saved at'
+    #                     f'{deepspeed_epoch_checkpoint_path}'
+    #                 )
+
+    #                 # Convert the DeepSpeed checkpoint to FP32 format
+    #                 fp32_state_dict = os.path.join(
+    #                     self.checkpoint_path,
+    #                     f'{self.filename}-epoch={trainer.current_epoch:02d}-fp32.pth',
+    #                 )
+    #                 convert_zero_checkpoint_to_fp32_state_dict(
+    #                     zero_checkpoint_path=deepspeed_epoch_checkpoint_path,
+    #                     output_path=fp32_state_dict,
+    #                 )
+    #                 print(f'FP32 checkpoint saved at {fp32_state_dict}')
+    #             else:
+    #                 print('DeepSpeed not initialized in pl_module')
+
+    # deepspeed_convert_ckpt = DeepSpeedCheckpointConverter(
+    #     checkpoint_path=checkpoint_path, filename=filename
+    # )
     # If the device is an A100, set the precision for matrix multiplication
     ddp_strategy = DDPStrategy(find_unused_parameters=False)
 
@@ -630,6 +688,22 @@ def main() -> None:
         trainer.fit(decoder_module, data_module)
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
+
+    # # #collate deepzero checkpoint
+    # if torch.cuda.device_count() > 1:
+    #     checkpoint_path = os.path.join(
+    #         checkpoint_path,
+    #         f'{filename}-epoch={trainer.current_epoch}.ckpt'
+    #     )
+    #     print(f'Saving checkpoint to {checkpoint_path}')
+    # # check if checkpoint path exists
+    # if os.path.exists(checkpoint_path):
+
+    #     convert_zero_checkpoint_to_fp32_state_dict(
+    #         zero_checkpoint_path=checkpoint_path,
+    #         output_path=checkpoint_path,
+    #         tag='fp32'
+    #     )
 
 
 if __name__ == '__main__':

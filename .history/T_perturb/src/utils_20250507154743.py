@@ -1487,8 +1487,7 @@ def pairing_src_to_tgt_cells(
             obs_dict_opt: Dict[str, Dict[str, Dict[str, ad.AnnData]]] = {}
             # initiate dict to store cell pairing
             max_reference_time_opt: Dict[str, Dict[str, ad.AnnData]] = {}
-            if 'tissue' in adata_obs_.columns:
-                adata_obs_ = adata_obs_[adata_obs_['tissue'] != 'YS']
+            adata_obs_ = adata_obs_[adata_obs_['target'] != 'YS']
             if len(opt_pairing_obs) > 1:
                 adata_obs_['pairing_obs'] = (
                     adata_obs_[opt_pairing_obs]
@@ -1497,38 +1496,74 @@ def pairing_src_to_tgt_cells(
                 )
             else:
                 adata_obs_['pairing_obs'] = adata_obs_[opt_pairing_obs[0]].copy()
-                # Initialize
-            cell_pairings = {'early': [], 'late': []}
-            print("Pairing obs categories:", adata_obs_['pairing_obs'].unique())
-            print("Mapping pairs:", mapping_df.values.tolist())
-            for category in adata_obs_['pairing_obs'].unique():
-                obs_filter = adata_obs_[adata_obs_['pairing_obs'] == category].copy()
+            for intermediate in mapping_df['intermediate'].unique():
+                mapping_df_ = mapping_df[mapping_df['intermediate'] == intermediate]
+                # create a list of all entries in dataframe
+                celltypes_ = np.unique(mapping_df_.values)
+                obs_filter = adata_obs_.loc[
+                    adata_obs_['celltype_v2'].isin(celltypes_), :
+                ].copy()
+                for category in obs_filter['pairing_obs'].unique():
+                    obs_filter_ = obs_filter.loc[
+                        obs_filter['pairing_obs'] == category, :
+                    ].copy()
+                    max_rows = 0
+                    for time in obs_filter[time_obs].unique():
+                        if intermediate not in obs_dict_opt.keys():
+                            obs_dict_opt[intermediate] = {}
+                        if category not in obs_dict_opt[intermediate].keys():
+                            obs_dict_opt[intermediate][category] = {}
+                        if intermediate not in max_reference_time_opt.keys():
+                            max_reference_time_opt[intermediate] = {}
+                        obs_dict_opt[intermediate][category][time] = obs_filter_.loc[
+                            obs_filter_[time_obs] == time, :
+                        ]
+                        cell_pairings[time] = []
+                        # skip stem to focus on lineage
+                        if time == 'stem':
+                            continue
+                        else:
+                            # Check if this category has
+                            # more rows than the current maximum
+                            if (
+                                len(obs_dict_opt[intermediate][category][time])
+                                > max_rows
+                            ):
+                                max_rows = len(
+                                    obs_dict_opt[intermediate][category][time]
+                                )
+                                max_reference_time_opt[intermediate][category] = time
 
-                for _, row in mapping_df.iterrows():
-                    early_type = row['early']
-                    late_type = row['late']
-
-                    early_cells = obs_filter[
-                        (obs_filter['annotation_simplified'] == early_type) &
-                        (obs_filter[time_obs] == 'early')
+            for intermediate in mapping_df['intermediate'].unique():
+                mapping_df_ = mapping_df[mapping_df['intermediate'] == intermediate]
+                # create a list of all entries in dataframe
+                for category in obs_filter['pairing_obs'].unique():
+                    max_reference_time_opt_ = max_reference_time_opt[intermediate][
+                        category
                     ]
-                    late_cells = obs_filter[
-                        (obs_filter['annotation_simplified'] == late_type) &
-                        (obs_filter[time_obs] == 'late')
-                    ]
-
-                    n_to_pair = min(len(early_cells), len(late_cells))
-                    if n_to_pair == 0:
-                        continue
-
-                    sampled_early = np.random.choice(early_cells.index, n_to_pair, replace=False)
-                    sampled_late = np.random.choice(late_cells.index, n_to_pair, replace=False)
-
-                    cell_pairings['early'].extend(sampled_early)
-                    cell_pairings['late'].extend(sampled_late)
-
-            for tp in ['early', 'late']:
-                print(f"{tp}: {len(cell_pairings[tp])} cells paired.")
+                    obs_dict_opt_ = obs_dict_opt[intermediate][category]
+                    cell_pairing_idx = obs_dict_opt_[max_reference_time_opt_].index
+                    cell_pairings[max_reference_time_opt_].extend(cell_pairing_idx)
+                    n_cells_to_pair = len(cell_pairing_idx)
+                    for stage, obs_dict_tmp in obs_dict_opt_.items():
+                        if stage != max_reference_time_opt_:
+                            cell_to_pair = obs_dict_tmp['celltype_v2'][
+                                obs_dict_tmp['celltype_v2'].isin(mapping_df_[stage])
+                            ].index
+                            # only sample with replacement if needed
+                            if n_cells_to_pair > cell_to_pair.shape[0]:
+                                sample_with_replacement = True
+                            else:
+                                sample_with_replacement = False
+                            cell_pairings[stage].extend(
+                                np.random.choice(
+                                    cell_to_pair,
+                                    n_cells_to_pair,
+                                    replace=sample_with_replacement,
+                                )
+                            )
+                        else:
+                            continue
     else:
         max_rows = 0
         obs_dict = {}
@@ -1601,6 +1636,7 @@ def pairing_src_to_tgt_cells(
                cell_pairings[tp] = []
             resting_cells = adata_grouped.loc[adata_grouped[time_obs] == 'early', :]
             grouped = adata_grouped.groupby(['annotation_simplified'])
+
             for idx, resting in tqdm.tqdm(
                 resting_cells.iterrows(), total=resting_cells.shape[0]
             ):

@@ -27,7 +27,7 @@ np.random.seed(seed_no)
 
 if os.getcwd().split('/')[-1] != 't_generative':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb')
+    os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative/')
     print('Changed working directory to root of repository')
 
 
@@ -45,6 +45,17 @@ def get_args():
         type=str,
         # default='cytoimmgen',
         default='hspc_pbmc_median_tissue',
+        # choices=[
+        #     'cytoimmgen',
+        #     'cytoimmgen_pbmc_median',
+        #     'eb',
+        #     'eb_pbmc_median',
+        #     'eb_GF_26k_median',
+        #     'mnc',
+        #     'hspc',
+        #     'hspc_pbmc_median',
+        #     'hspc_GF_26k_median',
+        # ],
     )
     parser.add_argument(
         '--gene_filtering_mode',
@@ -102,7 +113,7 @@ def get_args():
         '--opt_pairing_obs',
         type=str,
         nargs='+',
-        default=None,
+        default=['tissue'],
         help='Additional obs for cell pairing',
     )
     parser.add_argument(
@@ -184,7 +195,7 @@ def get_args():
         # default='/lustre/scratch126/cellgen/team361/am74/'
         # 'Adib/TRACE/Loom_cohort/tdigest/2nd_run/'
         # 'Dictionaries/filtered_trace_median.pkl',
-        default='/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/gene_name_id_dict_gc95M.pkl',
+        default='T_perturb/Geneformer/geneformer/gene_name_id_dict_gc95M.pkl',
         help='Path to gene mapping file',
     )
     parser.add_argument(
@@ -285,11 +296,11 @@ token_to_genename = {
 if args.gene_filtering_mode == 'all':
     token_to_genename.update(special_tokens_dict)
 
-os.makedirs(f'./T_perturb/pp/res/{args.dataset}', exist_ok=True)
+os.makedirs(f'./T_perturb/T_perturb/pp/res/{args.dataset}', exist_ok=True)
 
 # save token_dict
 with open(
-    f'./T_perturb/pp/res/{args.dataset}/'
+    f'./T_perturb/T_perturb/pp/res/{args.dataset}/'
     f'token_id_to_genename_{gene_filter_mode_suffix}.pkl',
     'wb',
 ) as file:
@@ -310,7 +321,7 @@ with open(
 
 # make new directory to store h5ad files
 paired_h5ad_dir = (
-    f'./T_perturb/pp/res/{args.dataset}'
+    f'./T_perturb/T_perturb/pp/res/{args.dataset}'
     f'/h5ad_pairing_{gene_filter_mode_suffix}'
 )
 
@@ -328,6 +339,7 @@ if not (issparse(adata.X)):
 # adata.obs = adata.obs[args.var_list]
 adata.var = adata.var[['gene_name', 'ensembl_id']]
 adata.obs['n_counts'] = adata.X.sum(axis=1)
+
 # save adata
 adata.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
 
@@ -391,17 +403,16 @@ if args.gene_filtering_mode == 'hvg':
     adata_subset,
     args.token_dict_path,
 )
-print('adata_subset', adata_subset)
 # save row id to gene name mapping
 with open(
-    f'./T_perturb/pp/res/{args.dataset}'
+    f'./T_perturb/T_perturb/pp/res/{args.dataset}'
     f'/token_id_to_genename_{gene_filter_mode_suffix}.pkl',
     'wb',
 ) as file:
     pickle.dump(row_id_to_gene_name, file)
 # save token id to row id mapping
 with open(
-    f'./T_perturb/pp/res/{args.dataset}/'
+    f'./T_perturb/T_perturb/pp/res/{args.dataset}/'
     f'tokenid_to_rowid_{gene_filter_mode_suffix}.pkl',
     'wb',
 ) as file:
@@ -410,8 +421,9 @@ if args.exclude_non_GF_genes is True:
     adata_subset.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
 print('Finished preprocessing adata.')
 print('Start tokenisation of adata...')
+
 output_dir = (
-    f'./T_perturb/pp/res/{args.dataset}/' f'dataset_{gene_filter_mode_suffix}'
+    f'./T_perturb/T_perturb/pp/res/{args.dataset}/' f'dataset_{gene_filter_mode_suffix}'
 )
 var_to_keep: Dict[str, str] = {v: v for v in args.var_list}.copy()
 # add cell_pairing_index to var_to_keep
@@ -445,7 +457,7 @@ print('Finished tokenisation.')
 dataset = load_from_disk(f'{output_dir}/{file_name}.dataset')
 # load csv
 if args.pairing_mode == 'mapping':
-    mapping_df = pd.read_csv('/lustre/scratch126/cellgen/team298/dv8/trace_paper/validation_data/train_s2/cell_type_pairings_s2.csv')
+    mapping_df = pd.read_csv('T_perturb/T_perturb/pp/res/hspc/cd34_pos_mapping.csv')
 else:
     mapping_df = None
 adata_subset = sc.read_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
@@ -461,7 +473,7 @@ cell_pairings = pairing_src_to_tgt_cells(
 
 
 paired_dataset_dir = (
-    f'./T_perturb/res/{args.dataset}/' f'dataset_{gene_filter_mode_suffix}'
+    f'./T_perturb/T_perturb/res/{args.dataset}/' f'dataset_{gene_filter_mode_suffix}'
 )
 # token_id_to_row_id_dict = pickle.load(
 #     open(
@@ -470,6 +482,7 @@ paired_dataset_dir = (
 #         'rb',
 #     )
 # )
+
 dataset_mapped = dataset.map(
     lambda example: map_input_ids_to_row_id(
         example, token_id_to_row_id_dict, ignore_tokens=[2]
@@ -479,8 +492,6 @@ dataset_mapped = dataset.map(
 n_tgt_iter = 1  # for enumerating the timepoints
 for time_point in tqdm.tqdm(args.time_point_order):
     # subset adata by cell pairings
-    print("Available keys in cell_pairings:", cell_pairings.keys())
-    print("Requested time_point:", time_point)
     adata_tmp = subset_adata(adata_subset, cell_pairings[time_point])
     # separate src and target directory
     src_adata_dir = f'{paired_h5ad_dir}_src'

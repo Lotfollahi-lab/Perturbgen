@@ -2,14 +2,14 @@
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
 #BSUB -gpu 'mode=shared:num=2' # request for exclusive access to gpu
-#BSUB -n 8 # number of cores
-#BSUB -R "span[ptile=8]"     # split X cores per host
+#BSUB -n 16 # number of cores
+#BSUB -R "span[ptile=16]"     # split X cores per host
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb # working directory
-#BSUB -o T_perturb/logs/interpolation_S1valid_out_opt_hparam%J.out # output file
-#BSUB -e T_perturb/logs/interpolation_S1valid_out_opt_hparam%J.err # error file
-#BSUB -M 50000  # RAM memory part 2. Default: 100MB
-#BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
+#BSUB -o T_perturb/logs/interpolation_6h_out_opt_hparam%J.out # output file
+#BSUB -e T_perturb/logs/interpolation_6h_out_opt_hparam%J.err # error file
+#BSUB -M 100000  # RAM memory part 2. Default: 100MB
+#BSUB -R 'select[mem>100000] rusage[mem=100000]' # RAM memory part 1. Default: 100MB
 #BSUB -J interpolation_2k # job name
 
 # activate pyenv
@@ -45,7 +45,7 @@ python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb
 --split_obs annotation_simplified \
 --output_dir $RES_DIR/$RES_NAME/res \
 --src_dataset "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/validation_TrainDataS1_2kHVG_ourMED/dataset_2000_hvg_src/early.dataset" \
---tgt_dataset_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/validation_TrainDataS1_2kHVG_ourMED/dataset_2000_hvg_tgt" \
+--tgt_dataset_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/validation_TrainDataS1_2kHVG_ourMED/dataset_2000_hvg_tgt/1_late.dataset" \
 --src_adata "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/validation_TrainDataS1_2kHVG_ourMED/h5ad_pairing_2000_hvg_src/early.h5ad" \
 --tgt_adata_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/validation_TrainDataS1_2kHVG_ourMED/h5ad_pairing_2000_hvg_tgt" \
 --mapping_dict_path "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/validation_TrainDataS1_2kHVG_ourMED/token_id_to_genename_2000_hvg.pkl" \
@@ -62,18 +62,14 @@ python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb
 --pred_tps 1 \
 --var_list annotation_simplified target pairing replicate cell_pairing_index \
 --encoder scmaskgit \
---classifier_free_guidance False \
 --encoder_path "/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt" \
 --seed 42 \
 --context_mode True \
 --pos_encoding_mode time_pos_sin \
 --mask_scheduler 'pow' \
 --num_node 1 \
---d_model 768 
+--d_model 768 \
+> T_perturb/logs/valid_masking_trainS1_$(date +%Y%m%d_%H%M%S).out \
+2> T_perturb/logs/valid_masking_trainS1_$(date +%Y%m%d_%H%M%S).err
 
 echo '--- Finished computing model'
-
-# 1175 S1 1141 S2 
-# \
-# > T_perturb/logs/valid_masking_trainS1_$(date +%Y%m%d_%H%M%S).out \
-# 2> T_perturb/logs/valid_masking_trainS1_$(date +%Y%m%d_%H%M%S).err

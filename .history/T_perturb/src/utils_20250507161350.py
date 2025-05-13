@@ -1519,6 +1519,7 @@ def pairing_src_to_tgt_cells(
 
                     n_to_pair = min(len(early_cells), len(late_cells))
                     if n_to_pair == 0:
+                        print(f"⚠️  Skipping: {early_type} → {late_type} under {category} (no match)")
                         continue
 
                     sampled_early = np.random.choice(early_cells.index, n_to_pair, replace=False)
@@ -1527,6 +1528,7 @@ def pairing_src_to_tgt_cells(
                     cell_pairings['early'].extend(sampled_early)
                     cell_pairings['late'].extend(sampled_late)
 
+            print("✅ Mapping-based pairing complete.")
             for tp in ['early', 'late']:
                 print(f"{tp}: {len(cell_pairings[tp])} cells paired.")
     else:
@@ -1601,6 +1603,7 @@ def pairing_src_to_tgt_cells(
                cell_pairings[tp] = []
             resting_cells = adata_grouped.loc[adata_grouped[time_obs] == 'early', :]
             grouped = adata_grouped.groupby(['annotation_simplified'])
+
             for idx, resting in tqdm.tqdm(
                 resting_cells.iterrows(), total=resting_cells.shape[0]
             ):

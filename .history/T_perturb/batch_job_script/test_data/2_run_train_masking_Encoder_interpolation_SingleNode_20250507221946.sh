@@ -62,7 +62,6 @@ python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb
 --pred_tps 1 \
 --var_list annotation_simplified target pairing replicate cell_pairing_index \
 --encoder scmaskgit \
---classifier_free_guidance False \
 --encoder_path "/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt" \
 --seed 42 \
 --context_mode True \

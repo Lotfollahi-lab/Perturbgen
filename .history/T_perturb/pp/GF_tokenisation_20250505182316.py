@@ -102,7 +102,7 @@ def get_args():
         '--opt_pairing_obs',
         type=str,
         nargs='+',
-        default=None,
+        default=['tissue'],
         help='Additional obs for cell pairing',
     )
     parser.add_argument(
@@ -285,11 +285,11 @@ token_to_genename = {
 if args.gene_filtering_mode == 'all':
     token_to_genename.update(special_tokens_dict)
 
-os.makedirs(f'./T_perturb/pp/res/{args.dataset}', exist_ok=True)
+os.makedirs(f'./T_perturb/T_perturb/pp/res/{args.dataset}', exist_ok=True)
 
 # save token_dict
 with open(
-    f'./T_perturb/pp/res/{args.dataset}/'
+    f'./T_perturb/T_perturb/pp/res/{args.dataset}/'
     f'token_id_to_genename_{gene_filter_mode_suffix}.pkl',
     'wb',
 ) as file:
@@ -310,7 +310,7 @@ with open(
 
 # make new directory to store h5ad files
 paired_h5ad_dir = (
-    f'./T_perturb/pp/res/{args.dataset}'
+    f'./T_perturb/T_perturb/pp/res/{args.dataset}'
     f'/h5ad_pairing_{gene_filter_mode_suffix}'
 )
 
@@ -328,6 +328,7 @@ if not (issparse(adata.X)):
 # adata.obs = adata.obs[args.var_list]
 adata.var = adata.var[['gene_name', 'ensembl_id']]
 adata.obs['n_counts'] = adata.X.sum(axis=1)
+
 # save adata
 adata.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
 
@@ -391,7 +392,6 @@ if args.gene_filtering_mode == 'hvg':
     adata_subset,
     args.token_dict_path,
 )
-print('adata_subset', adata_subset)
 # save row id to gene name mapping
 with open(
     f'./T_perturb/pp/res/{args.dataset}'
@@ -410,6 +410,7 @@ if args.exclude_non_GF_genes is True:
     adata_subset.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
 print('Finished preprocessing adata.')
 print('Start tokenisation of adata...')
+
 output_dir = (
     f'./T_perturb/pp/res/{args.dataset}/' f'dataset_{gene_filter_mode_suffix}'
 )
@@ -445,7 +446,7 @@ print('Finished tokenisation.')
 dataset = load_from_disk(f'{output_dir}/{file_name}.dataset')
 # load csv
 if args.pairing_mode == 'mapping':
-    mapping_df = pd.read_csv('/lustre/scratch126/cellgen/team298/dv8/trace_paper/validation_data/train_s2/cell_type_pairings_s2.csv')
+    mapping_df = pd.read_csv('T_perturb/pp/res/hspc/cd34_pos_mapping.csv')
 else:
     mapping_df = None
 adata_subset = sc.read_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')

@@ -12,8 +12,6 @@ from geneformer import TranscriptomeTokenizer
 from scipy.sparse import csr_matrix, issparse
 
 from T_perturb.src.utils import (  # tokenid_mapping,;
-    annotate_hspc_metadata,
-    filter_adata_for_GF_genes,
     map_ensembl_to_genename,
     map_input_ids_to_row_id,
     pairing_src_to_tgt_cells,
@@ -44,7 +42,7 @@ def get_args():
         '--dataset',
         type=str,
         # default='cytoimmgen',
-        default='hspc_pbmc_median_tissue',
+        default='hspc_pbmc_median',
     )
     parser.add_argument(
         '--gene_filtering_mode',
@@ -91,19 +89,19 @@ def get_args():
         help='Cell pairing mode',
     )
     parser.add_argument(
+        '--pairing_obs',
+        type=str,
+        default='diff_state',
+        help='Observation to use for cell pairing'
+        'and encoding the different states (e.g. time, hierarchy).',
+    )
+    parser.add_argument(
         '--time_obs',
         type=str,
         # default='Time_point',
         default='diff_state',
         help='Observation to use for cell pairing'
         'and encoding the different states (e.g. time, hierarchy).',
-    )
-    parser.add_argument(
-        '--opt_pairing_obs',
-        type=str,
-        nargs='+',
-        default=None,
-        help='Additional obs for cell pairing',
     )
     parser.add_argument(
         '--nproc',
@@ -140,12 +138,6 @@ def get_args():
         type=str2bool,
         default=True,
         help='Exclude genes in anndata that are not in Geneformer dictionary',
-    )
-    parser.add_argument(
-        '--remove_mito_ribo_genes',
-        type=str2bool,
-        default=True,
-        help='Exclude mitochondrial and ribosomal genes',
     )
     parser.add_argument(
         '--src_mode',
@@ -187,17 +179,6 @@ def get_args():
         default='/lustre/scratch126/cellgen/team298/dv8/trace_paper/T_perturb/gene_name_id_dict_gc95M.pkl',
         help='Path to gene mapping file',
     )
-    parser.add_argument(
-        '--genes_to_include',
-        type=str,
-        nargs='+',
-        default=None,
-    )
-    parser.add_argument(
-        '--genes_to_include_path',
-        type=str,
-        default=None,
-    )
     args = parser.parse_args()
     return args
 
@@ -225,15 +206,32 @@ else:
     adata.var['gene_name'] = adata.var_names
     adata.var_names = adata.var['ensembl_id']
 
-if args.dataset.startswith('hspc'):
-    adata = annotate_hspc_metadata(adata)
-
-# data preprocessing
-if 'counts' not in adata.layers:
-    adata.layers['counts'] = adata.X.copy()
-else:
-    adata.X = adata.layers['counts'].copy()
-if args.gene_filtering_mode == 'degs':
+# gene_filtering_mode = 'degs'
+if args.gene_filtering_mode == 'hvg':
+    if 'counts' not in adata.layers:
+        adata.layers['counts'] = adata.X.copy()
+    else:
+        adata.X = adata.layers['counts'].copy()
+    ##adata_no_6h = adata[adata.obs['time_after_LPS'] != '6h_LPS', :]
+    ##sc.pp.normalize_total(adata_no_6h, target_sum=1e4)
+    sc.pp.normalize_total(adata, target_sum=1e4)
+    ##sc.pp.log1p(adata_no_6h)
+    sc.pp.log1p(adata)
+    ##sc.pp.highly_variable_genes(
+    ##   adata_no_6h, n_top_genes=args.n_hvg
+    ##)
+    sc.pp.highly_variable_genes(
+        adata, n_top_genes=args.n_hvg
+    )
+    ##adata_no_6h = adata_no_6h[:, adata_no_6h.var['highly_variable']].copy()
+    adata = adata[:, adata.var['highly_variable']].copy()
+    ##adata_no_6h.X = adata_no_6h.layers['counts']  # need raw counts
+    ##adata_6h_LPS = adata[adata.obs['time_after_LPS'] == '6h_LPS', :]
+    ##adata_6h_LPS = adata_6h_LPS[:, adata_no_6h.var_names].copy()  # Keep only HVGs in '6h_LPS'
+    ##adata = adata_no_6h.concatenate(adata_6h_LPS, join='inner')
+    # adata = adata[adata.obs['time_after_LPS'] != 'normal', :].copy()
+    adata.X = adata.layers['counts']  # need raw counts
+elif args.gene_filtering_mode == 'degs':
     # Filter adata for only DEGs
     degs = pd.read_csv(
         '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
@@ -242,28 +240,13 @@ if args.gene_filtering_mode == 'degs':
     )
     unique_degs = degs['names'].unique()
     adata = adata[:, adata.var['gene_name'].isin(unique_degs)]
-# elif args.gene_filtering_mode == 'hvg':
-#     sc.pp.normalize_total(adata, target_sum=1e4)
-#     sc.pp.log1p(adata)
-
-sc.pp.filter_cells(adata, min_genes=1000)
-sc.pp.filter_genes(adata, min_cells=10)
-
-if args.remove_mito_ribo_genes:
-    print('Removing mitochondrial and ribosomal genes...')
-    mito_genes = adata.var['gene_name'].str.startswith('MT-')
-    ribo_genes = adata.var['gene_name'].str.startswith('RPS') | adata.var[
-        'gene_name'
-    ].str.startswith('RPL')
-    mito_ribo_genes = adata.var['gene_name'].str.startswith('MRPS') | adata.var[
-        'gene_name'
-    ].str.startswith('MRPL')
-    genes_to_keep = ~(mito_genes | ribo_genes | mito_ribo_genes)
-    adata = adata[:, genes_to_keep]
-    print(f'Filtered out {np.sum(~genes_to_keep)} genes')
-
-# else:
-#     raise ValueError('Invalid gene filtering mode')
+elif args.gene_filtering_mode == 'all':
+    if 'counts' not in adata.layers:
+        adata.layers['counts'] = adata.X.copy()
+    else:
+        adata.X = adata.layers['counts'].copy()
+else:
+    raise ValueError('Invalid gene filtering mode')
 
 # create gene mapping file
 with open(args.token_dict_path, 'rb') as f:
@@ -272,9 +255,8 @@ with open(args.gene_mapping_path, 'rb') as f:
     genename_dict = pickle.load(f)
 
 
-# # exclude special tokens
+# exclude special tokens
 special_tokens = [0, 1, 2, 3]
-special_tokens_dict = {v: k for k, v in token_dict.items() if v in special_tokens}
 token_dict = {k: v for k, v in token_dict.items() if v not in special_tokens}
 # change keys and values of genename_dict
 genename_dict = {v: k for k, v in genename_dict.items()}
@@ -282,8 +264,6 @@ genename_dict = {v: k for k, v in genename_dict.items()}
 token_to_genename = {
     v: genename_dict[k] for k, v in token_dict.items() if k in genename_dict
 }
-if args.gene_filtering_mode == 'all':
-    token_to_genename.update(special_tokens_dict)
 
 os.makedirs(f'./T_perturb/pp/res/{args.dataset}', exist_ok=True)
 
@@ -294,6 +274,7 @@ with open(
     'wb',
 ) as file:
     pickle.dump(token_to_genename, file)
+
 
 # # ignore CLS token because of redudancy with time task token
 # if pd.NA in token_id_to_row_id_dict:
@@ -338,76 +319,31 @@ adata.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
 
 # subset adata to only genes in the token dictionary
 # filter adata for only genes occuring in the token dictionary
-adata_subset = filter_adata_for_GF_genes(
-    adata,
-    args.token_dict_path,
-    exclude_non_GF_genes=args.exclude_non_GF_genes,
-)
-
-if args.gene_filtering_mode == 'hvg':
-    sc.pp.highly_variable_genes(
-        adata_subset,
-        n_top_genes=args.n_hvg,
-        flavor='seurat_v3',
-        batch_key=args.time_obs,
+if args.gene_filtering_mode == 'all':
+    adata_subset = adata
+else:
+    (adata_subset, token_id_to_row_id_dict, row_id_to_gene_name) = tokenid_mapping(
+        adata,
+        # './T_perturb/Geneformer/geneformer/token_dictionary_gc95M.pkl',
+        args.token_dict_path,
+        exclude_non_GF_genes=True,
     )
-    if args.genes_to_include is not None:
-        adata_subset[:, adata_subset.var['gene_name'].isin(args.genes_to_include)].var[
-            'highly_variable'
-        ] = True
-    if args.genes_to_include_path is not None:
-        genes_to_include = pd.read_csv(args.genes_to_include_path, header=0)
-        # filter for TF expressed in min 1000 cells
-        high_expressed_genes = (
-            adata_subset[:, np.count_nonzero(adata_subset.X.toarray(), axis=0) >= 1000]
-            .var['gene_name']
-            .unique()
-            .tolist()
-        )
-        intersect_genes = list(
-            set(genes_to_include['gene_name']).intersection(set(high_expressed_genes))
-        )
-        genes_to_include.loc[
-            genes_to_include['gene_name'].isin(intersect_genes), 'lower_bound_filter'
-        ] = 'included'
-        genes_to_include_ = genes_to_include[
-            genes_to_include['lower_bound_filter'] == 'included'
-        ].copy()
-        # convert to list
-        genes_to_include_ = genes_to_include_['gene_name'].unique().tolist()
-        excluded_genes = set(genes_to_include['gene_name'].unique().tolist()) - set(
-            genes_to_include_
-        )
-        # print only first 5 genes
-        excluded_genes_5 = list(excluded_genes)[:5]
-        print(f'Number of excluded genes: {len(excluded_genes)}')
-        print(f'Excluded genes: {excluded_genes_5}')
-        mask = adata_subset.var['gene_name'].isin(genes_to_include_)
-        adata_subset.var.loc[mask, 'highly_variable'] = True
-    adata_subset = adata_subset[:, adata_subset.var['highly_variable']].copy()
-    adata_subset.X = adata_subset.layers['counts']  # need raw counts
-# ensure that if hvg genes are used, that gene token dictionary is correct
-(adata_subset, token_id_to_row_id_dict, row_id_to_gene_name) = tokenid_mapping(
-    adata_subset,
-    args.token_dict_path,
-)
-print('adata_subset', adata_subset)
-# save row id to gene name mapping
-with open(
-    f'./T_perturb/pp/res/{args.dataset}'
-    f'/token_id_to_genename_{gene_filter_mode_suffix}.pkl',
-    'wb',
-) as file:
-    pickle.dump(row_id_to_gene_name, file)
-# save token id to row id mapping
-with open(
-    f'./T_perturb/pp/res/{args.dataset}/'
-    f'tokenid_to_rowid_{gene_filter_mode_suffix}.pkl',
-    'wb',
-) as file:
-    pickle.dump(token_id_to_row_id_dict, file)
-if args.exclude_non_GF_genes is True:
-    adata_subset.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
+    # save row id to gene name mapping
+    with open(
+        f'./T_perturb/pp/res/{args.dataset}'
+        f'/token_id_to_genename_{gene_filter_mode_suffix}.pkl',
+        'wb',
+    ) as file:
+        pickle.dump(row_id_to_gene_name, file)
+    # save token id to row id mapping
+    with open(
+        f'./T_perturb/pp/res/{args.dataset}/'
+        f'tokenid_to_rowid_{gene_filter_mode_suffix}.pkl',
+        'wb',
+    ) as file:
+        pickle.dump(token_id_to_row_id_dict, file)
+    if args.exclude_non_GF_genes is True:
+        adata_subset.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
 print('Finished preprocessing adata.')
 print('Start tokenisation of adata...')
 output_dir = (
@@ -445,20 +381,20 @@ print('Finished tokenisation.')
 dataset = load_from_disk(f'{output_dir}/{file_name}.dataset')
 # load csv
 if args.pairing_mode == 'mapping':
-    mapping_df = pd.read_csv('/lustre/scratch126/cellgen/team298/dv8/trace_paper/validation_data/train_s2/cell_type_pairings_s2.csv')
+    mapping_df = pd.read_csv('T_perturb/pp/res/hspc/cd34_pos_mapping.csv')
 else:
     mapping_df = None
 adata_subset = sc.read_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
+
 # # Pairing resting to activated cells and tokenise individual datasets
 cell_pairings = pairing_src_to_tgt_cells(
     adata_subset=adata_subset,
     pairing_mode=args.pairing_mode,
+    opt_pairing_obs=args.pairing_obs,
     time_obs=args.time_obs,
     seed_no=seed_no,
     mapping_df=mapping_df,
-    opt_pairing_obs=args.opt_pairing_obs,
 )
-
 
 paired_dataset_dir = (
     f'./T_perturb/res/{args.dataset}/' f'dataset_{gene_filter_mode_suffix}'
@@ -470,17 +406,18 @@ paired_dataset_dir = (
 #         'rb',
 #     )
 # )
-dataset_mapped = dataset.map(
-    lambda example: map_input_ids_to_row_id(
-        example, token_id_to_row_id_dict, ignore_tokens=[2]
-    ),
-    num_proc=4,
-)
+if args.gene_filtering_mode == 'all':
+    dataset_mapped = dataset
+else:
+    dataset_mapped = dataset.map(
+        lambda example: map_input_ids_to_row_id(
+            example, token_id_to_row_id_dict, ignore_tokens=[2]
+        ),
+        num_proc=4,
+    )
 n_tgt_iter = 1  # for enumerating the timepoints
 for time_point in tqdm.tqdm(args.time_point_order):
     # subset adata by cell pairings
-    print("Available keys in cell_pairings:", cell_pairings.keys())
-    print("Requested time_point:", time_point)
     adata_tmp = subset_adata(adata_subset, cell_pairings[time_point])
     # separate src and target directory
     src_adata_dir = f'{paired_h5ad_dir}_src'

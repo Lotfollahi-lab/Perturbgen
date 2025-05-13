@@ -18,7 +18,7 @@ echo '--- Start tokenisation'
 
 python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/GF_tokenisation.py \
 --h5ad_path '/lustre/scratch126/cellgen/team298/dv8/trace_paper/validation_data/train_s2/adata_train_s2_indexed.h5ad' \
---dataset validation_TrainDataS2_2kHVG_ourMED \
+--dataset validation_TestDataS2_2kHVG_ourMED \
 --gene_filtering_mode hvg \
 --var_list annotation_simplified replicate cell_pairing_index pairing target  \
 --pairing_mode mapping \

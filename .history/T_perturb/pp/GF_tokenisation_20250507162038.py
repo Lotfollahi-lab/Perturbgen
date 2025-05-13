@@ -445,7 +445,7 @@ print('Finished tokenisation.')
 dataset = load_from_disk(f'{output_dir}/{file_name}.dataset')
 # load csv
 if args.pairing_mode == 'mapping':
-    mapping_df = pd.read_csv('/lustre/scratch126/cellgen/team298/dv8/trace_paper/validation_data/train_s2/cell_type_pairings_s2.csv')
+    mapping_df = pd.read_csv('/lustre/scratch126/cellgen/team298/dv8/trace_paper/validation_data/train/cell_type_pairings.csv')
 else:
     mapping_df = None
 adata_subset = sc.read_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
