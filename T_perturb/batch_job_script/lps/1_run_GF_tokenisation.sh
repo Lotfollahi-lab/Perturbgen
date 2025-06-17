@@ -3,7 +3,7 @@
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
 #BSUB -gpu "mode=shared:num=1" # request for exclusive access to gpu
 #BSUB -n 16 # number of cores
-#BSUB -G team298 # groupname for billing
+#BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb # working directory
 #BSUB -o T_perturb/log/random_pairing_GF_tokenisation_%J.out # output file
 #BSUB -e T_perturb/log/random_pairing_GF_tokenisation_%J.err # error file

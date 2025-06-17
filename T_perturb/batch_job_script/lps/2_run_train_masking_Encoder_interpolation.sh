@@ -1,16 +1,16 @@
 #make a date directory if it does not exist
 #!/bin/bash
-#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu
+#BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -gpu 'mode=exclusive_process:num=2:gmodel=NVIDIAA100_SXM4_80GB' # request for exclusive access to gpu
 #BSUB -n 4 # number of cores
 #BSUB -R "span[ptile=4]"     # split X cores per host
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
-#BSUB -o logs/lps_interpolation_s100_%J.out # output file
-#BSUB -e logs/lps_interpolation_s100_%J.err # error file
+#BSUB -o logs/lps_interpolation_s0_%J.out # output file
+#BSUB -e logs/lps_interpolation_s0_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
-#BSUB -J lps_interpolation_s100 # job name
+#BSUB -J lps_interpolation_s0 # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -61,7 +61,6 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --mask_scheduler 'pow' \
 --num_node 1 \
 --d_model 768 \
---ckpt_masking_path /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb/plt/res/lps/pbmc_median/interpolation/res/checkpoints/20250429_1512_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_ptime_pos_sin_m_pow_tp_1-3_s_42-epoch=09.ckpt \
 --use_weighted_sampler False
 
 echo '--- Finished computing model'

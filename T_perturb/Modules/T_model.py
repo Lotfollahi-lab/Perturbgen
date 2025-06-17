@@ -3,6 +3,7 @@ Mostly copy-paste from timm library.
 https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
 '''
 import math
+import random
 from typing import (
     Dict,
     List,
@@ -671,6 +672,7 @@ class CytoMeister(nn.Module):
         ] = 'time_pos_sin',
         return_attn: bool = False,
         pad_token: int = 0,
+        seed: int = 42,
         context_mode: bool = True,
         context_tps: List[int] | None = None,
         encoder_path: str | None = None,
@@ -729,6 +731,9 @@ class CytoMeister(nn.Module):
             - 'mean_embedding': Mean embeddings for non-padding tokens.
         '''
         super(CytoMeister, self).__init__()
+
+        # set model seed for reproducibility
+        self.set_seed(seed)
 
         self.pos_embedding = PositionalEncoding(
             d_model=d_model,
@@ -792,6 +797,13 @@ class CytoMeister(nn.Module):
         self.mask_scheduler = mask_scheduler
         self.gene_to_rowid = gene_to_rowid
         self.condition_dict = condition_dict
+
+    def set_seed(self, seed: Optional[int]):
+        if seed is not None:
+            torch.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
+            np.random.seed(seed)
+            random.seed(seed)
 
     def generate_mask(
         self,
@@ -1478,6 +1490,7 @@ class CountDecoder(nn.Module):
         pred_tps: list = [1, 2],
         n_total_tps: int = 3,
         n_genes: int = 25426,
+        seed: int = 42,
         context_tps: list[int] | None = None,
         use_positional_encoding: bool = False,
     ):
@@ -1517,6 +1530,8 @@ class CountDecoder(nn.Module):
             - 'count_dropout': Dropout count prediction for ZINB loss.
         '''
         super(CountDecoder, self).__init__()
+        # set model seed for reproducibility
+        self.set_seed(seed=seed)
         self.pretrained_model = pretrained_model
         self.embed_dim = d_model
         self.add_cell_time = add_cell_time
@@ -1576,6 +1591,13 @@ class CountDecoder(nn.Module):
                     drop=dropout,
                     layer_norm=layer_norm,
                 )
+
+    def set_seed(self, seed: Optional[int]):
+        if seed is not None:
+            torch.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
+            np.random.seed(seed)
+            random.seed(seed)
 
     def forward(
         self,

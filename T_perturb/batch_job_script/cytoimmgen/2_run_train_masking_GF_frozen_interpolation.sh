@@ -60,7 +60,7 @@ python3 $cwd/train.py \
 --cond_list Time_point \
 --encoder_path "/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt" \
 --pos_encoding_mode time_pos_sin \
---seed 100 \
+--seed 0 \
 --mask_scheduler 'pow' \
 --d_model 768 \
 --use_weighted_sampler False

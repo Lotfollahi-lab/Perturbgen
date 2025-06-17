@@ -8,7 +8,7 @@
 #BSUB -e logs/count_extra_s100_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
-#BSUB -J cytoimmgen_count_extra_s100 # job name
+#BSUB -J cytoimmgen_count_extra_s0 # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -37,7 +37,7 @@ python3 $cwd/train.py \
 --split False \
 --splitting_mode stratified \
 --output_dir $RES_DIR/$RES_NAME/res \
---ckpt_masking_path "T_perturb/T_perturb/plt/res/cytoimmgen/pbmc_median/extrapolation/res/checkpoints/20250506_2249_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1-2_s_42-epoch=19.ckpt" \
+--ckpt_masking_path "T_perturb/T_perturb/plt/res/cytoimmgen/pbmc_median/extrapolation/res/checkpoints/20250512_2125_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1-2_s_100-epoch=19.ckpt" \
 --src_dataset "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_src/0h.dataset" \
 --tgt_dataset_folder "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_tgt" \
 --src_adata "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_src/0h.h5ad" \
@@ -45,10 +45,11 @@ python3 $cwd/train.py \
 --mapping_dict_path  "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/token_id_to_genename_2000_hvg.pkl" \
 --batch_size 64 \
 --max_len 400 \
---epochs 10 \
+--epochs 4 \
 --tgt_vocab_size 1360 \
---count_lr 0.005 \
+--count_lr 0.001 \
 --count_wd 0.001  \
+--count_dropout 0.0 \
 --n_workers 4 \
 --d_ff 64 \
 --num_layers 6 \
@@ -64,7 +65,7 @@ python3 $cwd/train.py \
 --use_positional_encoding False \
 --pos_encoding_mode time_pos_sin \
 --mask_scheduler 'pow' \
---seed 42 \
+--seed 100 \
 --context_mode True \
 --use_weighted_sampler False
 echo "--- Finished computing model"

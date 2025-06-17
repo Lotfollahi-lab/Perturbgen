@@ -1,6 +1,6 @@
 #!/bin/bash
-#BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=1:gmodel=NVIDIAA100_SXM4_80GB' # request for exclusive access to gpu
+#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -gpu 'mode=exclusive_process:num=1' # request for exclusive access to gpu
 #BSUB -n 4 # number of cores
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb # working directory
@@ -38,7 +38,7 @@ python3 $cwd/val.py \
 --split False \
 --splitting_mode stratified \
 --generate True \
---ckpt_count_path 'T_perturb/T_perturb/plt/res/cytoimmgen/pbmc_median/extrapolation/res/checkpoints/20250507_0743_cellgen_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1-2_s_42_pos_time_pos_sin_m_pow-epoch=01.ckpt' \
+--ckpt_count_path 'T_perturb/T_perturb/plt/res/cytoimmgen/pbmc_median/extrapolation/res/checkpoints/20250514_1753_cellgen_train_count_lr_0.001_wd_0.001_batch_64_drop_0.05_zinb_tp_1-2_s_100_pos_time_pos_sin_m_pow-epoch=01.ckpt' \
 --output_dir $RES_DIR/$RES_NAME/res \
 --src_dataset "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_src/0h.dataset" \
 --tgt_dataset_folder "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_tgt" \
@@ -70,6 +70,6 @@ python3 $cwd/val.py \
 --iterations 20 \
 --n_samples 2 \
 --mask_scheduler 'pow' \
---seed 42 \
+--seed 100 \
 --context_mode True
 echo '--- Finished computing model'

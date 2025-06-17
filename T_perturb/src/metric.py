@@ -4,10 +4,12 @@ from typing import (  # List,; Union,
     Optional,
 )
 
+import jax
 import numpy as np
 import pandas as pd
 import scanpy as sc
 import torch
+from jax.typing import ArrayLike
 from scipy import stats
 from scipy.sparse import issparse
 from scipy.stats import wasserstein_distance
@@ -16,6 +18,53 @@ from sklearn.metrics.pairwise import rbf_kernel
 
 from T_perturb.src.mmd import linear_mmd2, poly_mmd2
 from T_perturb.src.optimal_transport import wasserstein
+
+# E-distance metric
+# taken from https://github.com/theislab/CellFlow/blob/main/src/cellflow/metrics/_metrics.py # noqa
+# Date of access: 2025.05.15
+
+
+def pairwise_squeuclidean(x: ArrayLike, y: ArrayLike) -> ArrayLike:
+    """Compute pairwise squared euclidean distances."""
+    return ((x[:, None, :] - y[None, :, :]) ** 2).sum(-1)
+
+
+def compute_e_distance(x: ArrayLike, y: ArrayLike) -> float:
+    """Compute the energy distance between x and y as in :cite:`Peidli2024`.
+
+    Parameters
+    ----------
+        x
+            An array of shape [num_samples, num_features].
+        y
+            An array of shape [num_samples, num_features].
+
+    Returns
+    -------
+        A scalar denoting the energy distance value.
+    """
+    sigma_X = pairwise_squeuclidean(x, x).mean()
+    sigma_Y = pairwise_squeuclidean(y, y).mean()
+    delta = pairwise_squeuclidean(x, y).mean()
+    return 2 * delta - sigma_X - sigma_Y
+
+
+@jax.jit
+def compute_e_distance_fast(x: ArrayLike, y: ArrayLike) -> float:
+    """Compute the energy distance between x and y as in :cite:`Peidli2024`.
+
+    Parameters
+    ----------
+        x
+            An array of shape [num_samples, num_features].
+        y
+            An array of shape [num_samples, num_features].
+
+    Returns
+    -------
+        A scalar denoting the energy distance value.
+    """
+    return compute_e_distance(x, y)
 
 
 def pairwise_distance(x, y):
@@ -122,9 +171,12 @@ def evaluate_mmd(
     np.random.seed(seed)
     mmd_list = []
     if n_cells:
+        
         if n_cells < adata.shape[0]:
-            sc.pp.subsample(pred_adata, n_obs=n_cells)
             sc.pp.subsample(adata, n_obs=n_cells)
+            pred_adata.obs_names = pred_adata.obs_names.astype(str)
+            # use true_adata indices to subset pred_adata
+            pred_adata = pred_adata[adata.obs.index, :]
     if condition_key is not None:
         for cond in pred_adata.obs[condition_key].unique():
             adata_ = adata[adata.obs[condition_key] == cond].copy()

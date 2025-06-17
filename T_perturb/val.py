@@ -348,8 +348,8 @@ def main() -> None:
     print('positional encoding:', args.pos_encoding_mode)
 
     # PyTorch Lightning allows to set all necessary seeds in one function call.
-    pl.seed_everything(args.seed)
-    torch.manual_seed(args.seed)
+    pl.seed_everything(42, workers=True)
+    torch.manual_seed(42)
     # Load and preprocess data
     print('Loading and preprocessing data...')
     tgt_datasets = read_dataset_files(
@@ -414,11 +414,13 @@ def main() -> None:
         filter_idx = list(set(filter_idx))
         for i in range(len(tgt_datasets)):
             t = i + 1
+            print('before filtering',tgt_adata.shape)
             tgt_dataset = tgt_datasets[f'tgt_dataset_t{t}']
             tgt_adata = tgt_adatas[f'tgt_h5ad_t{t}']
             tgt_dataset = tgt_dataset.select(filter_idx)
             tgt_datasets[f'tgt_dataset_t{t}'] = tgt_dataset
             tgt_adata = tgt_adata[filter_idx, :]
+            print('after filtering', tgt_adata.shape)
             tgt_adatas[f'tgt_h5ad_t{t}'] = tgt_adata
         # for i, dataset in tgt_datasets.items():
         #     tgt_datasets[i] = dataset.select(filter_idx)
@@ -451,15 +453,21 @@ def main() -> None:
             gene_embs_list = None
     else:
         if args.gene_embs_condition is not None:
-            full_tgt_dataset = concatenate_datasets(list(tgt_datasets.values()))
-            gene_embs_list = full_tgt_dataset.unique(args.gene_embs_condition)
+            pred_dataset = {
+                key: tgt_datasets[key]
+                for key in tgt_datasets
+                if key in {f'tgt_dataset_t{tp}' for tp in args.pred_tps}
+            }
+            all_pred_dataset = concatenate_datasets(list(pred_dataset.values()))
+            # check if filter_cond is the same as all_pred_dataset
+            gene_embs_list = all_pred_dataset.unique(args.gene_embs_condition)
+            print(gene_embs_list)
             print(
                 f'Return gene embs for {gene_embs_list} '
                 f'in {args.gene_embs_condition}.'
             )
         else:
             gene_embs_list = None
-
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
     tgt_adata_tmp = tgt_adatas[f'tgt_h5ad_t{args.pred_tps[0]}'].copy()
@@ -560,6 +568,7 @@ def main() -> None:
         'iterations': args.iterations,
         'sequence_length': args.sequence_length,
         'mapping_dict_path': args.mapping_dict_path,
+        'seed': args.seed,
     }
     if args.test_mode == 'masking':
         test_kwargs['weight_decay'] = args.cellgen_wd
@@ -591,7 +600,6 @@ def main() -> None:
         test_kwargs['conditions_combined'] = conditions_combined_
         test_kwargs['tgt_adata'] = tgt_adatas
         test_kwargs['n_samples'] = args.n_samples
-        test_kwargs['seed'] = args.seed
         test_kwargs['n_genes'] = src_adata.shape[1]
         decoder_module = CountDecoderTrainer(**test_kwargs)
     else:

@@ -39,7 +39,7 @@ python3 $cwd/val.py \
 --splitting_mode random \
 --generate True \
 --output_dir $RES_DIR/$RES_NAME/res \
---ckpt_count_path '/lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb/plt/res/eb/pbmc_median/extrapolation/checkpoints/20250429_1446_cellgen_train_count_lr_0.0001_wd_0.0001_batch_64_zinb_tp_1-2-3_s_42_pos_time_pos_sin_m_pow-epoch=89.ckpt' \
+--ckpt_count_path 'T_perturb/T_perturb/plt/res/eb/pbmc_median/extrapolation/res/checkpoints/20250512_1534_cellgen_train_count_lr_0.0001_wd_0.0001_batch_64_zinb_tp_1-2-3_s_42_pos_time_pos_sin_m_pow-epoch=69.ckpt' \
 --src_dataset 'T_perturb/T_perturb/pp/res/eb_pbmc_median/dataset_2000_hvg_src/Day 00-03.dataset' \
 --tgt_dataset_folder 'T_perturb/T_perturb/pp/res/eb_pbmc_median/dataset_2000_hvg_tgt' \
 --src_adata 'T_perturb/T_perturb/pp/res/eb_pbmc_median/h5ad_pairing_2000_hvg_src/Day 00-03.h5ad' \

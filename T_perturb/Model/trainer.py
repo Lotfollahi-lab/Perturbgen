@@ -110,6 +110,7 @@ class CytoMeisterTrainer(LightningModule):
         condition_dict: Dict[str, Dict] | None = None,
         gene_embs_list: List[str] | None = None,
         gene_embs_condition: str | None = None,
+        seed: int = 42,
         # *args,
         # **kwargs,
     ) -> None:
@@ -156,6 +157,7 @@ class CytoMeisterTrainer(LightningModule):
             context_mode=context_mode,
             condition_dict=condition_dict,
             gene_to_rowid=self.gene_to_rowid,
+            seed=seed,
         )
         self.masking_loss = nn.CrossEntropyLoss()
 
@@ -701,6 +703,7 @@ class CountDecoderTrainer(LightningModule):
             condition_dict=condition_dict,
             gene_to_rowid=gene_to_rowid,
             context_mode=context_mode,
+            seed=seed,
         )
         self.pos_encoding_mode = pos_encoding_mode
         # load PETRA checkpoint
@@ -735,6 +738,7 @@ class CountDecoderTrainer(LightningModule):
             context_tps=context_tps,
             n_total_tps=n_total_tps,
             n_genes=n_genes,
+            seed=seed,
         )
         if ckpt_count_path is not None:
             checkpoint = torch.load(ckpt_count_path, map_location='cpu')

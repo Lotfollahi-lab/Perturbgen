@@ -33,7 +33,7 @@ python3 $cwd/val.py \
 --splitting_mode stratified \
 --generate True \
 --output_dir $RES_DIR/$RES_NAME/res \
---ckpt_count_path 'T_perturb/T_perturb/plt/res/lps/pbmc_median/extrapolation/res/checkpoints/20250507_0737_cellgen_train_count_lr_0.001_wd_0.0001_batch_64_zinb_tp_1-2_s_42_pos_time_pos_sin_m_pow-epoch=04.ckpt' \
+--ckpt_count_path 'T_perturb/T_perturb/plt/res/lps/pbmc_median/extrapolation/res/checkpoints/20250513_1751_cellgen_train_count_lr_0.001_wd_0.0001_batch_64_zinb_tp_1-2_s_42_pos_time_pos_sin_m_pow-epoch=04.ckpt' \
 --src_dataset "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED_all_tps/dataset_2000_hvg_src/normal.dataset" \
 --tgt_dataset_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED_all_tps/dataset_2000_hvg_tgt" \
 --src_adata "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_src/normal.h5ad" \
@@ -48,7 +48,7 @@ python3 $cwd/val.py \
 --sequence_length 150 \
 --count_wd 0.001 \
 --num_layers 6 \
---d_ff 32 \
+--d_ff 64 \
 --loss_mode zinb \
 --n_workers 4 \
 --pred_tps 3 \
@@ -63,7 +63,7 @@ python3 $cwd/val.py \
 --pos_encoding_mode time_pos_sin \
 --mask_scheduler 'pow' \
 --iterations 20 \
---temperature 1.0 \
+--temperature 0.5 \
 --n_samples 2 \
 --num_node 1 \
 --d_model 768 \

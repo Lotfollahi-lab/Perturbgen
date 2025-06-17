@@ -339,8 +339,8 @@ def main() -> None:
     """Run training."""
     args = get_args()
     # PyTorch Lightning allows to set all necessary seeds in one function call.
-    pl.seed_everything(args.seed)
-    torch.manual_seed(args.seed)
+    pl.seed_everything(42, workers=True)
+    torch.manual_seed(42)
     # Load and preprocess data
     # ----------------------------------------------------------------------------------
     print('Loading and preprocessing data...')
@@ -360,7 +360,7 @@ def main() -> None:
                 train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
                 test_prop=args.test_prop,
                 groups=args.split_obs,
-                seed=args.seed,
+                seed=42,
             )
             # check that indices are unique to avoid data leakage
             assert len(set(train_indices).intersection(val_indices)) == 0
@@ -371,7 +371,7 @@ def main() -> None:
                 adata=tgt_adata_tmp,
                 train_prop=args.train_prop,  # 0.8,0.1,0.1 train, val, test
                 test_prop=args.test_prop,
-                seed=args.seed,
+                seed=42,
             )
         # elif split == 'unseen_donor':
         #     train, val, test = unseen_donor_split()
@@ -460,6 +460,7 @@ def main() -> None:
         'temperature': args.temperature,
         'iterations': args.iterations,
         'mapping_dict_path': args.mapping_dict_path,
+        'seed': args.seed,
     }
     if args.train_mode == 'masking':
         trainer_kwargs['dropout'] = args.cellgen_dropout
@@ -487,7 +488,6 @@ def main() -> None:
         trainer_kwargs['n_genes'] = src_adata.shape[1]
         trainer_kwargs['dropout'] = args.count_dropout
         # trainer_kwargs['use_positional_encoding'] = args.use_positional_encoding
-        trainer_kwargs['seed'] = args.seed
         decoder_module = CountDecoderTrainer(**trainer_kwargs)
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
@@ -563,6 +563,7 @@ def main() -> None:
         filename = (
             f'{run_id}_train_{args.train_mode}_lr_{args.count_lr}_wd_{args.count_wd}_'
             f'batch_{args.batch_size}_'
+            f'drop_{args.count_dropout}_'
             f'{args.loss_mode}_tp_{time_steps_str}_s_'
             f'{args.seed}_pos_{args.pos_encoding_mode}_m_{args.mask_scheduler}'
         )
