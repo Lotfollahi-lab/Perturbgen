@@ -1,0 +1,61 @@
+# masking attention
+method: grid
+metric:
+  goal: minimize
+  name: val/perplexity_epoch
+name: hspc_masking
+parameters:
+  train_mode:
+    value: 'masking'
+  split:
+    value: True
+  splitting_mode:
+    value: stratified
+  split_obs:
+    value: celltype_v2
+  epochs:
+   value: 3
+  output_dir:
+    value: './T_perturb/T_perturb/plt/res/hspc'
+  src_dataset:
+    value: "./T_perturb/T_perturb/pp/res/hspc/dataset_10000_hvg_src/stem.dataset"
+  tgt_dataset_folder:
+    value: "./T_perturb/T_perturb/pp/res/hspc/dataset_10000_hvg_tgt"
+  src_adata:
+    value: "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_10000_hvg_src/stem.h5ad"
+  tgt_adata_folder:
+    value: "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_10000_hvg_tgt"
+  mapping_dict_path:
+    value: "./T_perturb/T_perturb/pp/res/hspc/token_id_to_genename_10000_hvg.pkl"
+  max_len:
+    value: 2200
+  tgt_vocab_size:
+    value: 22044
+  mask_scheduler:
+    value: 'cosine'
+  positional_encoding:
+    value: 'time_pos_learnt'
+  num_layers:
+    value: [4,6]
+  batch_size:
+    values: [64]
+  cellgen_lr:
+    values: [0.0001, 0.00001, 0.001]
+  d_ff:
+    values: [64]
+  cellgen_wd:
+    values: [0.0001, 0.00001, 0.001]
+
+  # petra_lr:
+  #   distribution: log_uniform
+  #   min: 0.00001
+  #   max: 0.001
+
+  # dropout:
+  #   distribution: uniform
+  #   low: 0.1
+  #   high: 0.5
+  # batch_size:
+  #   value: 256
+program: /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/train.py
+project: ttransformer_sweep

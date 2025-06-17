@@ -1,0 +1,56 @@
+data:
+  tgt_dataset_folder: "T_perturb/T_perturb/pp/res/hspc/dataset_10000_hvg_tgt"
+  src_dataset_file: "T_perturb/T_perturb/pp/res/hspc/dataset_10000_hvg_src/stem.dataset"
+  src_adata_file: "T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_10000_hvg_src/stem.h5ad"
+  tgt_adata_folder: "T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_10000_hvg_tgt"
+trainer:
+  tgt_vocab_size: 22044
+  d_model: 512
+  num_heads: 8
+  num_layers: 6
+  d_ff: 64
+  max_seq_length: 2300
+  dropout: 0
+  mask_scheduler: 'cosine'
+  output_dir: 'T_perturb/T_perturb/plt/res/hspc/embeddings/res'
+  mapping_dict_path: 'T_perturb/T_perturb/pp/res/hspc/token_id_to_genename_10000_hvg.pkl'
+  encoder: 'GF_frozen'
+  context_mode: true
+  temperature: 1.5
+  iterations: 19
+  pos_encoding_mode: 'time_pos_learnt'
+  return_attn: false
+  genes_to_perturb:
+    - 'CD79A'
+    - 'CD79B'
+  perturbation_token: 0
+  perturbation_mode: 'generate'
+  perturbation_sequence:
+    - 'src'
+    - 'tgt'
+  var_list:
+    - 'sex'
+    - 'phase'
+    - 'tissue'
+    - 'celltype_v2'
+    - 'diff_state'
+  pred_tps:
+    - 1
+
+datamodule:
+  batch_size: 32
+  num_workers: 8
+  context_tps: [2]
+  shuffle: False
+  split: False
+  max_len: 2200
+  var_list:
+    - 'sex'
+    - 'phase'
+    - 'tissue'
+    - 'celltype_v2'
+    - 'diff_state'
+  pred_tps:
+    - 1
+model:
+  ckpt_masking_path: "T_perturb/T_perturb/plt/res/hspc/embeddings/res/checkpoints/20241114_1146_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_learnt_m_cosine_tp_1-2_s_42-epoch=09.ckpt"
