@@ -1,0 +1,61 @@
+data:
+  tgt_dataset_folder: "T_perturb/T_perturb/pp/res/hspc_pbmc_median/dataset_10000_hvg_tgt"
+  src_dataset_file: "T_perturb/T_perturb/pp/res/hspc_pbmc_median/dataset_10000_hvg_src/stem.dataset"
+  src_adata_file: "T_perturb/T_perturb/pp/res/hspc_pbmc_median/h5ad_pairing_10000_hvg_src/stem.h5ad"
+  tgt_adata_folder: "T_perturb/T_perturb/pp/res/hspc_pbmc_median/h5ad_pairing_10000_hvg_tgt"
+  cond_list:
+    - 'celltype_v2'
+    - 'diff_state'
+
+trainer:
+  tgt_vocab_size: 5710
+  d_model: 768
+  num_heads: 8
+  num_layers: 6
+  d_ff: 64
+  max_seq_length: 2200
+  dropout: 0
+  mask_scheduler: 'cosine'
+  output_dir: 'T_perturb/T_perturb/plt/res/hspc/pbmc_median/perturbation'
+  mapping_dict_path: 'T_perturb/T_perturb/pp/res/hspc_pbmc_median/token_id_to_genename_10000_hvg.pkl'
+  tokenid_to_rowid_path: 'T_perturb/T_perturb/pp/res/hspc_pbmc_median/tokenid_to_rowid_10000_hvg.pkl'
+  encoder: 'scmaskgit'
+  encoder_path: '/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt'
+  context_mode: false
+  temperature: 1.5
+  iterations: 19
+  pos_encoding_mode: 'time_pos_sin'
+  return_attn: false
+  perturbation_mode: 'pad'
+  genes_to_perturb:
+    - 'DNTT'
+  validation_mode: 'inference'
+  perturbation_sequence:
+    - 'src'
+  var_list:
+    - 'sex'
+    - 'phase'
+    - 'tissue'
+    - 'celltype_v2'
+    - 'diff_state'
+  pred_tps:
+    - 1
+
+datamodule:
+  batch_size: 64
+  num_workers: 8
+  context_tps: [2]
+  shuffle: False
+  split: False
+  max_len: 2200
+  var_list:
+    - 'sex'
+    - 'phase'
+    - 'tissue'
+    - 'celltype_v2'
+    - 'diff_state'
+  pred_tps:
+    - 1
+model:
+  precision: 16
+  ckpt_masking_path: "T_perturb/T_perturb/plt/res/hspc/pbmc_median/checkpoints/20250123_1633_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_cosine_tp_1-2_s_42-epoch=19.ckpt"
