@@ -18,7 +18,7 @@ module load cuda-12.1.1
 # activate conda environment
 source /lustre/scratch126/cellgen/team361/kl11/t_generative/.cellgen_4096/bin/activate
 # results directory
-RES_DIR="/lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb/plt/res"
+RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/res"
 RES_NAME="lps/pbmc_median/extrapolation"
 # # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
@@ -56,7 +56,7 @@ python3 /lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb
 --var_list cell_type_cellgen_harm donor_cellgen_harm time_after_LPS cell_pairing_index  \
 --cond_list time_after_LPS \
 --encoder scmaskgit \
---encoder_path "/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt" \
+--encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=04.ckpt" \
 --add_cell_time False \
 --use_positional_encoding False \
 --context_mode True \

@@ -13,7 +13,7 @@ parameters:
   epochs:
    value: 5
   ckpt_masking_path:
-    value: '/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/T_perturb/plt/res/lps/pbmc_median/interpolation/res/checkpoints/20250430_1657_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_ptime_pos_sin_m_pow_tp_1-3_s_42-epoch=19.ckpt'
+    value: '/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/plt/res/lps/pbmc_median/interpolation/res/checkpoints/20250430_1657_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_ptime_pos_sin_m_pow_tp_1-3_s_42-epoch=19.ckpt'
   output_dir:
     value: 'T_perturb/T_perturb/plt/res/lps/pbmc_median/sweep'
   src_dataset:
@@ -48,5 +48,5 @@ parameters:
     values: [0.0005,0.0001, 0.00005]
   batch_size:
     values: [64, 128]
-program: /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/T_perturb/train.py
+program: /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.py
 project: ttransformer_sweep

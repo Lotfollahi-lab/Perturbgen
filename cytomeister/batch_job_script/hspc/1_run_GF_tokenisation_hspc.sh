@@ -3,7 +3,7 @@
 #BSUB -q normal # run CPU job
 #BSUB -n 4 # number of cores
 #BSUB -G team361 # groupname for billing
-#BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/T_perturb # working directory
+#BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister # working directory
 #BSUB -o logs/GF_tokenisation_hspc_%J.out # output file
 #BSUB -e logs/GF_tokenisation_hspc_%J.err # error file
 #BSUB -M 40000  # RAM memory part 2. Default: 100MB

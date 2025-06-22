@@ -16,5 +16,5 @@ cwd=$(pwd)
 # export WANDB_DIR=$cwd/wandb
 # run script
 echo "--- Start testing CellGen training"
-python -m unittest discover /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/T_perturb/tests/
+python -m unittest discover /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/tests/
 echo "Testing CellGen training finished ---"

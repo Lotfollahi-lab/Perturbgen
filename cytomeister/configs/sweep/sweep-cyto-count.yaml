@@ -50,5 +50,5 @@ parameters:
     value: 0.001
   batch_size:
     values: [64, 128]
-program: /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/T_perturb/train.py
+program: /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.py
 project: ttransformer_sweep

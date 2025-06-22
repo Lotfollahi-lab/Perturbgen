@@ -99,7 +99,7 @@ class CytoMeisterTrainer(LightningModule):
         ] = 'time_pos_sin',
         precision: Literal['high', 'medium'] = 'medium',
         tokenid_to_rowid_path: str = (
-            'T_perturb/T_perturb/pp/res/hspc/tokenid_to_rowid_hvg.pkl'
+            'T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/tokenid_to_rowid_5000_hvg.pkl'
         ),
         encoder_path: str | None = None,
         deg_pkl_path: str | None = None,

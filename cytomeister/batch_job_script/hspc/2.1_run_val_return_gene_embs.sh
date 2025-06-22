@@ -3,7 +3,7 @@
 #BSUB -gpu "mode=exclusive_process:num=1" # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB :gmodel=NVIDIA_H100_HBM3_80GB
 #BSUB -n 8 # number of cores
 #BSUB -G team361 # groupname for billing
-#BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/T_perturb # working directory
+#BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister # working directory
 #BSUB -o logs/return_gene_embed_%J.out # output file
 #BSUB -e logs/return_gene_embed_%J.err # error file
 #BSUB -M 250000  # RAM memory part 2. Default: 100MB
@@ -22,7 +22,7 @@ cwd=$(pwd)
 echo "--- Start computing model"
 
 # ----------------- Create folder to save results and copy the script -----------------
-RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/T_perturb/plt/res"
+RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/res"
 RES_NAME="hspc/pbmc_median/"
 # # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
@@ -34,7 +34,7 @@ mkdir -p $RES_DIR/$RES_NAME
 
 # # Run python script for rna
 # python3 $cwd/val.py \
-python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/T_perturb/val.py \
+python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/val.py \
 --test_mode masking \
 --split False \
 --splitting_mode stratified \
@@ -61,7 +61,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/T_perturb/val.py \
 --pred_tps 1 2 \
 --var_list sex phase tissue celltype_v2 diff_state \
 --encoder scmaskgit \
---encoder_path "/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt" \
+--encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=04.ckpt" \
 --tokenid_to_rowid 'T_perturb/T_perturb/pp/res/hspc_pbmc_median/tokenid_to_rowid_10000_hvg.pkl' \
 --context_mode True \
 --mask_scheduler 'pow' \

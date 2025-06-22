@@ -3,7 +3,7 @@
 #BSUB -gpu 'mode=exclusive_process:num=3' # request for exclusive access to gpu
 #BSUB -n 4 # number of cores
 #BSUB -G team361 # groupname for billing
-#BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/T_perturb # working directory
+#BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister # working directory
 #BSUB -o logs/cytoimmgen_masking_%J.out # output file
 #BSUB -e logs/cytoimmgen_masking_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
@@ -22,7 +22,7 @@ cwd=$(pwd)
 echo "--- Start computing model"
 
 # # ----------------- Create folder to save results and copy the script -----------------
-RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/T_perturb/plt/res"
+RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/res"
 RES_NAME="cytoimmgen/pbmc_median/interpolation"
 # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
@@ -58,7 +58,7 @@ python3 $cwd/train.py \
 --encoder scmaskgit \
 --context_mode True \
 --cond_list Time_point \
---encoder_path "/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt" \
+--encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=04.ckpt" \
 --pos_encoding_mode time_pos_sin \
 --seed 0 \
 --mask_scheduler 'pow' \

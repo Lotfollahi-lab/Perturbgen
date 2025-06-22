@@ -6282,6 +6282,24 @@ pygments = ">=2.13.0,<3.0.0"
 jupyter = ["ipywidgets (>=7.5.1,<9)"]
 
 [[package]]
+name = "rouge-score"
+version = "0.1.2"
+description = "Pure python implementation of ROUGE-1.5.5."
+optional = false
+python-versions = ">=3.7"
+groups = ["main"]
+markers = "python_version >= \"3.12\" or python_version == \"3.11\""
+files = [
+    {file = "rouge_score-0.1.2.tar.gz", hash = "sha256:c7d4da2683e68c9abf0135ef915d63a46643666f848e558a1b9f7ead17ff0f04"},
+]
+
+[package.dependencies]
+absl-py = "*"
+nltk = "*"
+numpy = "*"
+six = ">=1.14.0"
+
+[[package]]
 name = "rpds-py"
 version = "0.22.3"
 description = "Python bindings to Rust's persistent data structures (rpds)"
@@ -8968,4 +8986,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<4.0"
-content-hash = "e3cd5c156e447cabb56d3311441296203e69a8847feaefb20d146c03588dbed7"
+content-hash = "932958576b6a24d808b706316abf488ce1555b43c54af5921e23dda90cf41f89"

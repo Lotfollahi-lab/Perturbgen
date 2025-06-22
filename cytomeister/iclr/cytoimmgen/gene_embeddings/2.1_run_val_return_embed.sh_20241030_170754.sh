@@ -3,7 +3,7 @@
 #BSUB -gpu "mode=exclusive_process:num=1" # request for exclusive access to gpu
 #BSUB -n 8 # number of cores
 #BSUB -G team361 # groupname for billing
-#BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/T_perturb # working directory
+#BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister # working directory
 #BSUB -o logs/return_embed_%J.out # output file
 #BSUB -e logs/return_embed_%J.err # error file
 #BSUB -M 150000  # RAM memory part 2. Default: 100MB
@@ -22,7 +22,7 @@ cwd=$(pwd)
 echo "--- Start computing model"
 
 # ----------------- Create folder to save results and copy the script -----------------
-RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/T_perturb/iclr"
+RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/iclr"
 RES_NAME="cytoimmgen/gene_embeddings/"
 # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
@@ -34,7 +34,7 @@ echo "Copying script to $RES_DIR/$RES_NAME/2.1_run_val_return_embed.sh_$TIMESTAM
 
 # # Run python script for rna
 # python3 $cwd/val.py \
-python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/T_perturb/val.py \
+python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/val.py \
 --test_mode masking \
 --split False \
 --splitting_mode stratified \
