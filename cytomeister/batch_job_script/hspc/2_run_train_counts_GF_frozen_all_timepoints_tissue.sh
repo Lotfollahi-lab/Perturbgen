@@ -42,11 +42,11 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 --splitting_mode stratified \
 --split_obs celltype_v2 \
 --output_dir $RES_DIR/$RES_NAME/ \
---src_dataset "T_perturb/T_perturb/pp/res/hspc_pbmc_median_tissue_all/dataset_all_src/stem.dataset" \
---tgt_dataset_folder "T_perturb/T_perturb/pp/res/hspc_pbmc_median_tissue_all/dataset_all_tgt" \
---src_adata "T_perturb/T_perturb/pp/res/hspc_pbmc_median_tissue_all/h5ad_pairing_all_src/stem.h5ad" \
---tgt_adata_folder "T_perturb/T_perturb/pp/res/hspc_pbmc_median_tissue_all/h5ad_pairing_all_tgt" \
---mapping_dict_path "T_perturb/T_perturb/pp/res/hspc_pbmc_median_tissue_all/token_id_to_genename_all.pkl" \
+--src_dataset "T_perturb/cytomeister/pp/res/hspc_pbmc_median_tissue_all/dataset_all_src/stem.dataset" \
+--tgt_dataset_folder "T_perturb/cytomeister/pp/res/hspc_pbmc_median_tissue_all/dataset_all_tgt" \
+--src_adata "T_perturb/cytomeister/pp/res/hspc_pbmc_median_tissue_all/h5ad_pairing_all_src/stem.h5ad" \
+--tgt_adata_folder "T_perturb/cytomeister/pp/res/hspc_pbmc_median_tissue_all/h5ad_pairing_all_tgt" \
+--mapping_dict_path "T_perturb/cytomeister/pp/res/hspc_pbmc_median_tissue_all/token_id_to_genename_all.pkl" \
 --batch_size 64 \
 --max_len 4096 \
 --epochs 15 \
@@ -64,7 +64,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 --var_list sex phase tissue celltype_v2 diff_state \
 --encoder scmaskgit \
 --encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=04.ckpt" \
---ckpt_masking_path "T_perturb/T_perturb/plt/res/hspc/pbmc_median/checkpoints/all_gene_all_tps_tissue_masking.ckpt/pytorch_model.bin" \
+--ckpt_masking_path "T_perturb/cytomeister/plt/res/hspc/pbmc_median/checkpoints/all_gene_all_tps_tissue_masking.ckpt/pytorch_model.bin" \
 --context_mode True \
 --mask_scheduler 'pow' \
 --pos_encoding_mode 'time_pos_sin' \
@@ -74,11 +74,11 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 echo "--- Finished computing model"
 
 # 2k hvgs
-# --src_dataset "./T_perturb/T_perturb/pp/res/hspc/dataset_hvg_src/stem.dataset" \
-# --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/hspc/dataset_hvg_tgt" \
-# --src_adata "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_hvg_src/stem.h5ad" \
-# --tgt_adata_folder "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_hvg_tgt" \
-# --mapping_dict_path  "./T_perturb/T_perturb/pp/res/hspc/token_id_to_genename_hvg.pkl" \
+# --src_dataset "./T_perturb/cytomeister/pp/res/hspc/dataset_hvg_src/stem.dataset" \
+# --tgt_dataset_folder "./T_perturb/cytomeister/pp/res/hspc/dataset_hvg_tgt" \
+# --src_adata "./T_perturb/cytomeister/pp/res/hspc/h5ad_pairing_hvg_src/stem.h5ad" \
+# --tgt_adata_folder "./T_perturb/cytomeister/pp/res/hspc/h5ad_pairing_hvg_tgt" \
+# --mapping_dict_path  "./T_perturb/cytomeister/pp/res/hspc/token_id_to_genename_hvg.pkl" \
 
 # --max_len 450 \
 # --tgt_vocab_size 1187 \

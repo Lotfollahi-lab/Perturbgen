@@ -16,7 +16,7 @@ from tqdm import tqdm
 style.use('default')
 style.use(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-    't_generative/T_perturb/T_perturb/pp/mpl_style.mplstyle'
+    't_generative/T_perturb/cytomeister/pp/mpl_style.mplstyle'
 )
 
 seed_no = 42
@@ -25,7 +25,7 @@ if os.getcwd().split('/')[-3] != 'T_perturb':
     # set working directory to root of repository
     os.chdir(
         '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/T_perturb/T_perturb/pp'
+        't_generative/T_perturb/cytomeister/pp'
     )
     print('Changed working directory to root of repository')
 
@@ -35,7 +35,7 @@ if os.getcwd().split('/')[-3] != 'T_perturb':
 # read pickle file
 with open(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    'T_perturb/T_perturb/pp/res/token_id_to_genename_hvg.pkl',
+    'T_perturb/cytomeister/pp/res/token_id_to_genename_hvg.pkl',
     'rb',
 ) as f:
     tokenid_to_hvg_genename = pickle.load(f)

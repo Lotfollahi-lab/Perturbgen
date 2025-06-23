@@ -3,7 +3,7 @@
 #BSUB -gpu 'mode=exclusive_process:num=1' # request for exclusive access to gpu (:gmodel=NVIDIAA100_SXM4_80GB if you want to specify the gpu model)
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
-#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
+#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister # working directory
 #BSUB -o logs/cyto_generate_exp_%J.out # output file
 #BSUB -e logs/cyto_generate_exp_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
@@ -22,7 +22,7 @@ export WANDB_DIR=$cwd/wandb
 echo '--- Start computing model'
 
 # ----------------- Create folder to save results and copy the script -----------------
-RES_DIR="/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/iclr"
+RES_DIR="/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister/iclr"
 RES_NAME="cytoimmgen/postional_encoding"
 # if directory does not e
 echo create it with the name $RES_NAME
@@ -35,17 +35,17 @@ echo "Copying script to $RES_DIR/$RES_NAME/4_run_val_generate_interpolation_$TIM
 
 # ----------------- Interpolation -----------------
 # python3 $cwd/val.py \
-python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
+python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister/val.py \
 --test_mode count \
 --split False \
 --splitting_mode stratified \
 --generate True \
---ckpt_count_path './T_perturb/T_perturb/iclr/cytoimmgen/masking_scheduler/res/checkpoints/20240927_0906_cellgen_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1-3_s_42_pos_sin_learnt_m_exp-epoch=01.ckpt' \
+--ckpt_count_path './T_perturb/cytomeister/iclr/cytoimmgen/masking_scheduler/res/checkpoints/20240927_0906_cellgen_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1-3_s_42_pos_sin_learnt_m_exp-epoch=01.ckpt' \
 --output_dir $RES_DIR/$RES_NAME/res \
---src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_subsetted_src/0h.dataset" \
---tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_subsetted_tgt" \
---src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
---tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt" \
+--src_dataset "./T_perturb/cytomeister/pp/res/cytoimmgen/dataset_hvg_subsetted_src/0h.dataset" \
+--tgt_dataset_folder "./T_perturb/cytomeister/pp/res/cytoimmgen/dataset_hvg_subsetted_tgt" \
+--src_adata "./T_perturb/cytomeister/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
+--tgt_adata_folder "./T_perturb/cytomeister/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt" \
 --mapping_dict_path  "./T_perturb/Geneformer/geneformer/token_dictionary_gc95M.pkl" \
 --batch_size 128 \
 --max_len 300 \

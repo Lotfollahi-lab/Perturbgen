@@ -480,7 +480,7 @@ print('Finished tokenisation.')
 dataset = load_from_disk(f'{output_dir}/{file_name}.dataset')
 # load csv
 if args.pairing_mode == 'mapping':
-    mapping_df = pd.read_csv(f'T_perturb/T_perturb/pp/hspc/cd34_pos_mapping.csv')
+    mapping_df = pd.read_csv(f'T_perturb/cytomeister/pp/hspc/cd34_pos_mapping.csv')
 else:
     mapping_df = None
 adata_subset = sc.read_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')

@@ -33,7 +33,7 @@ def get_args():
     parser.add_argument(
         '--config',
         type=str,
-        default='T_perturb/T_perturb/configs/eval/HSPC/perturbation.yaml',
+        default='T_perturb/cytomeister/configs/eval/HSPC/perturbation.yaml',
     )
     return parser.parse_args()
 

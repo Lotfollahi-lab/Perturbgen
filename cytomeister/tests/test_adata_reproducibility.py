@@ -55,10 +55,10 @@ class TestAnnDataEquality(unittest.TestCase):
     def test_anndata_identical(self):
         # Define paths to your AnnData files
         anndata_path1 = (
-            'T_perturb/T_perturb/tests/res/20241217-16:35_prediction_embeddings.h5ad'
+            'T_perturb/cytomeister/tests/res/20241217-16:35_prediction_embeddings.h5ad'
         )
         anndata_path2 = (
-            'T_perturb/T_perturb/tests/res/20241217-16:37_prediction_embeddings.h5ad'
+            'T_perturb/cytomeister/tests/res/20241217-16:37_prediction_embeddings.h5ad'
         )
         # Load AnnData objects
         adata1 = load_anndata(anndata_path1)

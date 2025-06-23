@@ -59,8 +59,8 @@ def get_args():
     parser.add_argument(
         '--output_dir',
         type=str,
-        default='./T_perturb/T_perturb/plt/res/cytoimmgen/pbmc_median',
-        # default='./T_perturb/T_perturb/plt/res/eb',
+        default='./T_perturb/cytomeister/plt/res/cytoimmgen/pbmc_median',
+        # default='./T_perturb/cytomeister/plt/res/eb',
         help='store dataset name',
     )
     parser.add_argument(
@@ -87,54 +87,54 @@ def get_args():
     parser.add_argument(
         '--src_dataset',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset',
+        default='./T_perturb/cytomeister/pp/res/eb/dataset_hvg_src/Day 00-03.dataset',
         # default=(
-        #     './T_perturb/T_perturb/pp/res/eb/'
+        #     './T_perturb/cytomeister/pp/res/eb/'
         #     'dataset_all_src/eb_all_Day 00-03.dataset'
         # ),
-        # default='./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset',
+        # default='./T_perturb/cytomeister/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
         '--tgt_dataset_folder',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt',
-        # default='./T_perturb/T_perturb/pp/res/eb/dataset_all_tgt',
-        # default='./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt',
+        default='./T_perturb/cytomeister/pp/res/eb/dataset_hvg_tgt',
+        # default='./T_perturb/cytomeister/pp/res/eb/dataset_all_tgt',
+        # default='./T_perturb/cytomeister/pp/res/cytoimmgen/dataset_hvg_tgt',
         help='path to tokenised activated data',
     )
     parser.add_argument(
         '--src_adata',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
+        default='./T_perturb/cytomeister/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
         # default=(
-        #     './T_perturb/T_perturb/pp/'
+        #     './T_perturb/cytomeister/pp/'
         #     'res/eb/h5ad_pairing_all_src/eb_all_Day 00-03.h5ad'
         # ),
-        # default='./T_perturb/T_perturb/pp/res/cytoimmgen/'
+        # default='./T_perturb/cytomeister/pp/res/cytoimmgen/'
         # 'h5ad_pairing_hvg_src/0h.h5ad',
         help='path to src',
     )
     parser.add_argument(
         '--tgt_adata_folder',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt',
-        # default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_all_tgt',
-        # default='./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt',
+        default='./T_perturb/cytomeister/pp/res/eb/h5ad_pairing_hvg_tgt',
+        # default='./T_perturb/cytomeister/pp/res/eb/h5ad_pairing_all_tgt',
+        # default='./T_perturb/cytomeister/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt',
         help='path to tgt',
     )
     parser.add_argument(
         '--mapping_dict_path',
         type=str,
-        # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl',
-        # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
+        # default='./T_perturb/cytomeister/pp/res/eb/token_id_to_genename_hvg.pkl',
+        # default='./T_perturb/cytomeister/pp/res/eb/token_id_to_genename_all.pkl'
         # default=(
-        #     'T_perturb/T_perturb/pp/res/'
+        #     'T_perturb/cytomeister/pp/res/'
         #     'cytoimmgen_pbmc_median/token_id_to_genename_2000_hvg.pkl'
         # ),
         default=(
             '/lustre/scratch126/cellgen/team298/dv8/trace_paper/'
-            'trace_final/T_perturb/T_perturb/pp/res/'
+            'trace_final/T_perturb/cytomeister/pp/res/'
             '2k_hvg_ourMED_all_tps/token_id_to_genename_2000_hvg.pkl'
         ),
     )

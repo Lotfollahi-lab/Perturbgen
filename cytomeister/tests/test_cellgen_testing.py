@@ -130,11 +130,11 @@ class CytoMeisterTestGenerationCase(unittest.TestCase):
 
         decoder_module = CountDecoderTrainer(
             ckpt_masking_path=(
-                'T_perturb/T_perturb/tests/checkpoints/'
+                'T_perturb/cytomeister/tests/checkpoints/'
                 'test_masking_checkpoint-epoch=00.ckpt'
             ),
             ckpt_count_path=(
-                'T_perturb/T_perturb/tests/checkpoints/'
+                'T_perturb/cytomeister/tests/checkpoints/'
                 'test_counts_checkpoint-epoch=00.ckpt'
             ),
             tgt_vocab_size=self.tgt_vocab_size,
@@ -160,7 +160,7 @@ class CytoMeisterTestGenerationCase(unittest.TestCase):
             iterations=19,
             precision='high',
             mask_scheduler='pow',
-            output_dir='./T_perturb/T_perturb/tests/res',
+            output_dir='./T_perturb/cytomeister/tests/res',
             encoder='Transformer_encoder',
             seed=42,
             generate=True,

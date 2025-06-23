@@ -88,7 +88,7 @@ class CytoMeisterTrainer(LightningModule):
         iterations: int = 18,
         sequence_length: int = 2048,
         return_rouge_score: bool = True,
-        output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
+        output_dir: str = './T_perturb/cytomeister/plt/res/eb/',
         encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
             'GF_fine_tuned'
         ),
@@ -642,7 +642,7 @@ class CountDecoderTrainer(LightningModule):
         iterations: int = 18,
         n_samples: int = 1,
         precision: Literal['high', 'medium'] = 'medium',
-        output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
+        output_dir: str = './T_perturb/cytomeister/plt/res/eb/',
         encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
             'GF_fine_tuned'
         ),

@@ -136,9 +136,9 @@ class CytoMeisterTestEmbeddingCase(unittest.TestCase):
             pred_tps=self.pred_tps,
             context_tps=self.context_tps,
             n_total_tps=2,
-            mapping_dict_path='./T_perturb/T_perturb/pp/res/'
+            mapping_dict_path='./T_perturb/cytomeister/pp/res/'
             'cytoimmgen/token_id_to_genename_hvg.pkl',
-            output_dir='./T_perturb/T_perturb/tests/res',
+            output_dir='./T_perturb/cytomeister/tests/res',
             encoder='Transformer_encoder',
             var_list=None,
         )
@@ -184,7 +184,7 @@ class CytoMeisterTestEmbeddingCase(unittest.TestCase):
             self.decoder_module,
             self.data_module,
             ckpt_path=(
-                'T_perturb/T_perturb/tests/checkpoints/'
+                'T_perturb/cytomeister/tests/checkpoints/'
                 'test_masking_checkpoint-epoch=00.ckpt'
             ),
         )

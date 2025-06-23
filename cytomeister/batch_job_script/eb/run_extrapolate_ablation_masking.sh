@@ -3,7 +3,7 @@
 #BSUB -gpu 'mode=exclusive_process:num=1' # request for exclusive access to gpu
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
-#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
+#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister # working directory
 #BSUB -o logs/eb_generate_%J.out # output file
 #BSUB -e logs/eb_generate_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
@@ -23,15 +23,15 @@ echo '--- Start computing model'
 
 # extrapolation
 # python3 $cwd/train.py \
-python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/train.py \
+python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister/train.py \
 --train_mode masking \
 --split False \
 --splitting_mode random \
---src_dataset './T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset' \
---tgt_dataset_folder './T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt' \
---src_adata './T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad' \
---tgt_adata_folder './T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt' \
---mapping_dict_path  './T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl' \
+--src_dataset './T_perturb/cytomeister/pp/res/eb/dataset_hvg_src/Day 00-03.dataset' \
+--tgt_dataset_folder './T_perturb/cytomeister/pp/res/eb/dataset_hvg_tgt' \
+--src_adata './T_perturb/cytomeister/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad' \
+--tgt_adata_folder './T_perturb/cytomeister/pp/res/eb/h5ad_pairing_hvg_tgt' \
+--mapping_dict_path  './T_perturb/cytomeister/pp/res/eb/token_id_to_genename_hvg.pkl' \
 --batch_size 32 \
 --max_len 263 \
 --epochs 100 \

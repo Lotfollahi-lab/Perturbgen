@@ -14,15 +14,15 @@ parameters:
   epochs:
     value: 20
   output_dir:
-    value: './T_perturb/T_perturb/plt/res/eb'
+    value: './T_perturb/cytomeister/plt/res/eb'
   src_dataset:
-    value: './T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset'
+    value: './T_perturb/cytomeister/pp/res/eb/dataset_hvg_src/Day 00-03.dataset'
   tgt_dataset_folder:
-    value: './T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt'
+    value: './T_perturb/cytomeister/pp/res/eb/dataset_hvg_tgt'
   src_adata:
-    value: './T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad'
+    value: './T_perturb/cytomeister/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad'
   tgt_adata_folder:
-    value: './T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt'
+    value: './T_perturb/cytomeister/pp/res/eb/h5ad_pairing_hvg_tgt'
   batch_size:
     value: 32
   max_len:
@@ -53,5 +53,5 @@ parameters:
   #   distribution: uniform
   #   low: 0.1
   #   high: 0.5
-program: /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/train.py
+program: /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister/train.py
 project: ttransformer_sweep

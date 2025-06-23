@@ -38,11 +38,11 @@ python3 $cwd/train.py \
 --split False \
 --splitting_mode stratified \
 --output_dir $RES_DIR/$RES_NAME/res \
---src_dataset "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_src/0h.dataset" \
---tgt_dataset_folder "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_tgt" \
---src_adata "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_src/0h.h5ad" \
---tgt_adata_folder "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_tgt" \
---mapping_dict_path  "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/token_id_to_genename_2000_hvg.pkl" \
+--src_dataset "T_perturb/cytomeister/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_src/0h.dataset" \
+--tgt_dataset_folder "T_perturb/cytomeister/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_tgt" \
+--src_adata "T_perturb/cytomeister/pp/res/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_src/0h.h5ad" \
+--tgt_adata_folder "T_perturb/cytomeister/pp/res/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_tgt" \
+--mapping_dict_path  "T_perturb/cytomeister/pp/res/cytoimmgen_pbmc_median/token_id_to_genename_2000_hvg.pkl" \
 --batch_size 64 \
 --max_len 400 \
 --epochs 20 \

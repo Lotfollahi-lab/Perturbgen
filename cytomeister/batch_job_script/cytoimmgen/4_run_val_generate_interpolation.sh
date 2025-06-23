@@ -32,19 +32,19 @@ mkdir -p $RES_DIR/$RES_NAME
 # echo "Copying script to $RES_DIR/$RES_NAME/3_run_train_count_interpolation_$TIMESTAMP.sh"
 
 # ----------------- Interpolation -----------------
-# python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
+# python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister/val.py \
 python3 $cwd/val.py \
 --test_mode count \
 --split False \
 --splitting_mode stratified \
 --generate True \
---ckpt_count_path 'T_perturb/T_perturb/plt/res/cytoimmgen/pbmc_median/interpolation/res/checkpoints/20250513_0850_cellgen_train_count_lr_0.001_wd_0.001_batch_64_zinb_tp_1-3_s_0_pos_time_pos_sin_m_pow-epoch=01.ckpt' \
+--ckpt_count_path 'T_perturb/cytomeister/plt/res/cytoimmgen/pbmc_median/interpolation/res/checkpoints/20250513_0850_cellgen_train_count_lr_0.001_wd_0.001_batch_64_zinb_tp_1-3_s_0_pos_time_pos_sin_m_pow-epoch=01.ckpt' \
 --output_dir $RES_DIR/$RES_NAME/res \
---src_dataset "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_src/0h.dataset" \
---tgt_dataset_folder "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_tgt" \
---src_adata "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_src/0h.h5ad" \
---tgt_adata_folder "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_tgt" \
---mapping_dict_path  "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/token_id_to_genename_2000_hvg.pkl" \
+--src_dataset "T_perturb/cytomeister/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_src/0h.dataset" \
+--tgt_dataset_folder "T_perturb/cytomeister/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_tgt" \
+--src_adata "T_perturb/cytomeister/pp/res/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_src/0h.h5ad" \
+--tgt_adata_folder "T_perturb/cytomeister/pp/res/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_tgt" \
+--mapping_dict_path  "T_perturb/cytomeister/pp/res/cytoimmgen_pbmc_median/token_id_to_genename_2000_hvg.pkl" \
 --batch_size 128 \
 --max_len 400 \
 --tgt_vocab_size 1360 \

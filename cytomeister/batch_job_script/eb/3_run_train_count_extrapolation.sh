@@ -40,12 +40,12 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 --split False \
 --splitting_mode random \
 --output_dir $RES_DIR/$RES_NAME/res \
---ckpt_masking_path 'T_perturb/T_perturb/plt/res/eb/pbmc_median/extrapolation/checkpoints/20250512_1603_cellgen_train_masking_lr_0.001_wd_0.0001_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_0-epoch=49.ckpt' \
---src_dataset 'T_perturb/T_perturb/pp/res/eb_pbmc_median/dataset_2000_hvg_src/Day 00-03.dataset' \
---tgt_dataset_folder 'T_perturb/T_perturb/pp/res/eb_pbmc_median/dataset_2000_hvg_tgt' \
---src_adata 'T_perturb/T_perturb/pp/res/eb_pbmc_median/h5ad_pairing_2000_hvg_src/Day 00-03.h5ad' \
---tgt_adata_folder 'T_perturb/T_perturb/pp/res/eb_pbmc_median/h5ad_pairing_2000_hvg_tgt' \
---mapping_dict_path  'T_perturb/T_perturb/pp/res/eb_pbmc_median/token_id_to_genename_2000_hvg.pkl' \
+--ckpt_masking_path 'T_perturb/cytomeister/plt/res/eb/pbmc_median/extrapolation/checkpoints/20250512_1603_cellgen_train_masking_lr_0.001_wd_0.0001_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_0-epoch=49.ckpt' \
+--src_dataset 'T_perturb/cytomeister/pp/res/eb_pbmc_median/dataset_2000_hvg_src/Day 00-03.dataset' \
+--tgt_dataset_folder 'T_perturb/cytomeister/pp/res/eb_pbmc_median/dataset_2000_hvg_tgt' \
+--src_adata 'T_perturb/cytomeister/pp/res/eb_pbmc_median/h5ad_pairing_2000_hvg_src/Day 00-03.h5ad' \
+--tgt_adata_folder 'T_perturb/cytomeister/pp/res/eb_pbmc_median/h5ad_pairing_2000_hvg_tgt' \
+--mapping_dict_path  'T_perturb/cytomeister/pp/res/eb_pbmc_median/token_id_to_genename_2000_hvg.pkl' \
 --batch_size 64 \
 --max_len 300 \
 --epochs 100 \

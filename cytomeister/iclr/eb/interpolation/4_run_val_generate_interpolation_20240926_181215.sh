@@ -3,7 +3,7 @@
 #BSUB -gpu 'mode=exclusive_process:num=1 ' # request for exclusive access to gpu
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
-#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
+#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister # working directory
 #BSUB -o logs/eb_generate_inter_%J.out # output file
 #BSUB -e logs/eb_generate_inter_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
@@ -21,7 +21,7 @@ export WANDB_DIR=$cwd/wandb
 # run script
 echo '--- Start computing model'
 
-RES_DIR="/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/iclr"
+RES_DIR="/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister/iclr"
 RES_NAME="eb/interpolation/"
 
 # if directory does not exist, create it with the name $RES_NAME
@@ -37,18 +37,18 @@ echo "Copying script to $RES_DIR/$RES_NAME/4_run_val_generate_interpolation_$TIM
 echo '--- Start computing model'
 
 # interpolation
-# python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
+# python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister/val.py \
 python3 $cwd/val.py \
 --test_mode count \
 --split False \
 --splitting_mode random \
 --generate True \
 --output_dir $RES_DIR/$RES_NAME/res \
---ckpt_count_path './T_perturb/T_perturb/iclr/eb/interpolation/res/checkpoints/20240926_1639_cellgen_train_count_lr_0.0001_wd_0.0001_batch_32_zinb_tp_1-2-4_s_42_pos_time_pos_sin-epoch=24.ckpt' \
---src_dataset './T_perturb/T_perturb/pp/res/eb/dataset_hvg_subsetted_src/Day 00-03.dataset' \
---tgt_dataset_folder './T_perturb/T_perturb/pp/res/eb/dataset_hvg_subsetted_tgt' \
---src_adata './T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad' \
---tgt_adata_folder './T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt' \
+--ckpt_count_path './T_perturb/cytomeister/iclr/eb/interpolation/res/checkpoints/20240926_1639_cellgen_train_count_lr_0.0001_wd_0.0001_batch_32_zinb_tp_1-2-4_s_42_pos_time_pos_sin-epoch=24.ckpt' \
+--src_dataset './T_perturb/cytomeister/pp/res/eb/dataset_hvg_subsetted_src/Day 00-03.dataset' \
+--tgt_dataset_folder './T_perturb/cytomeister/pp/res/eb/dataset_hvg_subsetted_tgt' \
+--src_adata './T_perturb/cytomeister/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad' \
+--tgt_adata_folder './T_perturb/cytomeister/pp/res/eb/h5ad_pairing_hvg_tgt' \
 --batch_size 64 \
 --max_len 270 \
 --tgt_vocab_size 1730 \

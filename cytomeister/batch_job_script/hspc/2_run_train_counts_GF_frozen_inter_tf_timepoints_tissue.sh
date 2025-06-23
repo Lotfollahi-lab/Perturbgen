@@ -25,7 +25,7 @@ echo "--- Start computing model"
 
 # # # ----------------- Create folder to save results and copy the script -----------------
 RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/res"
-RES_NAME="hspc/pbmc_median"
+RES_NAME="hspc/fine_tuning"
 # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
 # # Get the current timestamp
@@ -74,11 +74,11 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 echo "--- Finished computing model"
 
 # 2k hvgs
-# --src_dataset "./T_perturb/T_perturb/pp/res/hspc/dataset_hvg_src/stem.dataset" \
-# --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/hspc/dataset_hvg_tgt" \
-# --src_adata "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_hvg_src/stem.h5ad" \
-# --tgt_adata_folder "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_hvg_tgt" \
-# --mapping_dict_path  "./T_perturb/T_perturb/pp/res/hspc/token_id_to_genename_hvg.pkl" \
+# --src_dataset "./T_perturb/cytomeister/pp/res/hspc/dataset_hvg_src/stem.dataset" \
+# --tgt_dataset_folder "./T_perturb/cytomeister/pp/res/hspc/dataset_hvg_tgt" \
+# --src_adata "./T_perturb/cytomeister/pp/res/hspc/h5ad_pairing_hvg_src/stem.h5ad" \
+# --tgt_adata_folder "./T_perturb/cytomeister/pp/res/hspc/h5ad_pairing_hvg_tgt" \
+# --mapping_dict_path  "./T_perturb/cytomeister/pp/res/hspc/token_id_to_genename_hvg.pkl" \
 
 # --max_len 450 \
 # --tgt_vocab_size 1187 \

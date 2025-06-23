@@ -16,7 +16,7 @@ cwd=$(pwd)
 
 echo '--- Start tokenisation'
 
-python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/GF_tokenisation.py \
+python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/cytomeister/pp/GF_tokenisation.py \
 --h5ad_path '/lustre/scratch126/cellgen/team298/dv8/trace_paper/lps_data/concatenated_lps_data_dv.h5ad' \
 --dataset 2k_hvg_ourMED_all_tps_butNormal \
 --gene_filtering_mode hvg \

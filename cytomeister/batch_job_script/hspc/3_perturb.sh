@@ -23,5 +23,5 @@ echo "--- Start computing model"
 
 # python3 $cwd/train.py \
 python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/Perturb/val.py \
---config T_perturb/T_perturb/configs/eval/HSPC/mask_src_inference_perturbation_prkar2b.yaml
+--config T_perturb/cytomeister/configs/eval/HSPC/mask_src_inference_perturbation_prkar2b.yaml
 echo "--- Completed perturbation"

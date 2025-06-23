@@ -2,7 +2,7 @@
 #BSUB -q normal # CPU job
 #BSUB -n 1 # number of cores
 #BSUB -G teamtrynka # groupname for billing
-#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
+#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister # working directory
 #BSUB -o logs/test_transformer_%J.out # output file
 #BSUB -e logs/test_transformer_%J.err # error file
 #BSUB -M 1000  # RAM memory part 2. Default: 100MB

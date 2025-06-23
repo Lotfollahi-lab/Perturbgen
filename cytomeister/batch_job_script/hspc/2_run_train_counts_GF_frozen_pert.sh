@@ -42,12 +42,12 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 --splitting_mode stratified \
 --split_obs celltype_v2 \
 --output_dir $RES_DIR/$RES_NAME/ \
---ckpt_masking_path "T_perturb/T_perturb/plt/res/hspc/pbmc_median/checkpoints/20250321_0822_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1_s_42-epoch=19.ckpt" \
---src_dataset "T_perturb/T_perturb/pp/res/hspc_pbmc_median/dataset_10000_hvg_src_pert/intermediate.dataset" \
---tgt_dataset_folder "T_perturb/T_perturb/pp/res/hspc_pbmc_median/dataset_10000_hvg_tgt_pert" \
---src_adata "T_perturb/T_perturb/pp/res/hspc_pbmc_median/h5ad_pairing_10000_hvg_src_pert/intermediate.h5ad" \
---tgt_adata_folder "T_perturb/T_perturb/pp/res/hspc_pbmc_median/h5ad_pairing_10000_hvg_tgt_pert" \
---mapping_dict_path  "T_perturb/T_perturb/pp/res/hspc_pbmc_median/token_id_to_genename_10000_hvg.pkl" \
+--ckpt_masking_path "T_perturb/cytomeister/plt/res/hspc/pbmc_median/checkpoints/20250321_0822_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1_s_42-epoch=19.ckpt" \
+--src_dataset "T_perturb/cytomeister/pp/res/hspc_pbmc_median/dataset_10000_hvg_src_pert/intermediate.dataset" \
+--tgt_dataset_folder "T_perturb/cytomeister/pp/res/hspc_pbmc_median/dataset_10000_hvg_tgt_pert" \
+--src_adata "T_perturb/cytomeister/pp/res/hspc_pbmc_median/h5ad_pairing_10000_hvg_src_pert/intermediate.h5ad" \
+--tgt_adata_folder "T_perturb/cytomeister/pp/res/hspc_pbmc_median/h5ad_pairing_10000_hvg_tgt_pert" \
+--mapping_dict_path  "T_perturb/cytomeister/pp/res/hspc_pbmc_median/token_id_to_genename_10000_hvg.pkl" \
 --batch_size 64 \
 --max_len 2200 \
 --epochs 20 \
@@ -64,7 +64,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 --var_list sex phase tissue celltype_v2 diff_state \
 --encoder scmaskgit \
 --encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=04.ckpt" \
---ckpt_masking_path "T_perturb/T_perturb/plt/res/hspc/pbmc_median/checkpoints/20250321_1923_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1_s_42-epoch=19.ckpt" \
+--ckpt_masking_path "T_perturb/cytomeister/plt/res/hspc/pbmc_median/checkpoints/20250321_1923_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1_s_42-epoch=19.ckpt" \
 --context_mode True \
 --mask_scheduler 'pow' \
 --pos_encoding_mode 'time_pos_sin' \
@@ -72,11 +72,11 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 echo "--- Finished computing model"
 
 # 2k hvgs
-# --src_dataset "./T_perturb/T_perturb/pp/res/hspc/dataset_hvg_src/stem.dataset" \
-# --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/hspc/dataset_hvg_tgt" \
-# --src_adata "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_hvg_src/stem.h5ad" \
-# --tgt_adata_folder "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_hvg_tgt" \
-# --mapping_dict_path  "./T_perturb/T_perturb/pp/res/hspc/token_id_to_genename_hvg.pkl" \
+# --src_dataset "./T_perturb/cytomeister/pp/res/hspc/dataset_hvg_src/stem.dataset" \
+# --tgt_dataset_folder "./T_perturb/cytomeister/pp/res/hspc/dataset_hvg_tgt" \
+# --src_adata "./T_perturb/cytomeister/pp/res/hspc/h5ad_pairing_hvg_src/stem.h5ad" \
+# --tgt_adata_folder "./T_perturb/cytomeister/pp/res/hspc/h5ad_pairing_hvg_tgt" \
+# --mapping_dict_path  "./T_perturb/cytomeister/pp/res/hspc/token_id_to_genename_hvg.pkl" \
 
 # --max_len 450 \
 # --tgt_vocab_size 1187 \

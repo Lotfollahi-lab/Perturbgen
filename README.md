@@ -50,23 +50,23 @@ The model can be run by following the four different steps:
 2. Training the masking model
 3. Training the count decoder model
 4. Load checkpoint and generate predictions
-The executable scripts for each step are located in the `T_perturb/T_perturb/batch_job_script` directory.
+The executable scripts for each step are located in the `T_perturb/cytomeister/batch_job_script` directory.
 
 Below is an example of how to run the model on the T cell dataset:
 ```shell
-bash ./T_perturb/T_perturb/batch_job_script/cytoimmgen/1_run_GF_tokenisation.sh
+bash ./T_perturb/cytomeister/batch_job_script/cytoimmgen/1_run_GF_tokenisation.sh
 ```
 
 ```shell
-bash ./T_perturb/T_perturb/batch_job_script/cytoimmgen/2_run_train_masking_GF_frozen_interpolation.sh
+bash ./T_perturb/cytomeister/batch_job_script/cytoimmgen/2_run_train_masking_GF_frozen_interpolation.sh
 ```
 
 ```shell
-bash ./T_perturb/T_perturb/batch_job_script/cytoimmgen/3_run_train_count_GF_frozen_interpolation.sh
+bash ./T_perturb/cytomeister/batch_job_script/cytoimmgen/3_run_train_count_GF_frozen_interpolation.sh
 ```
 
 ```shell
-bash ./T_perturb/T_perturb/batch_job_script/cytoimmgen/4_run_val_generate_interpolation.sh
+bash ./T_perturb/cytomeister/batch_job_script/cytoimmgen/4_run_val_generate_interpolation.sh
 ```
 
 

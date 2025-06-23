@@ -3,7 +3,7 @@
 #BSUB -gpu "mode=exclusive_process:num=1" # request for exclusive access to gpu
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
-#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
+#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister # working directory
 #BSUB -o logs/pad_cls_generate_extra_s100_%J.out # output file
 #BSUB -e logs/pad_cls_generate_extra_s100_%J.err # error file
 #BSUB -M 150000  # RAM memory part 2. Default: 100MB
@@ -21,17 +21,17 @@ cwd=$(pwd)
 # run script
 echo "--- Start computing model"
 
-# python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
+# python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister/val.py \
 # --test_mode count \
 # --split False \
 # --splitting_mode stratified \
 # --generate True \
-# --ckpt_count_path "./T_perturb/T_perturb/Model/checkpoints/20240522_0857_tcell_extrapolate_5e-05_wd_0.01_batch_64_zinb_tp_1-2_s_100-epoch=19.ckpt" \
-# --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
-# --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_transformer/0h.dataset" \
-# --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
-# --src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
-# --tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt" \
+# --ckpt_count_path "./T_perturb/cytomeister/Model/checkpoints/20240522_0857_tcell_extrapolate_5e-05_wd_0.01_batch_64_zinb_tp_1-2_s_100-epoch=19.ckpt" \
+# --output_dir "./T_perturb/cytomeister/plt/res/cytoimmgen" \
+# --src_dataset "./T_perturb/cytomeister/pp/res/cytoimmgen/dataset_hvg_src_transformer/0h.dataset" \
+# --tgt_dataset_folder "./T_perturb/cytomeister/pp/res/cytoimmgen/dataset_hvg_tgt" \
+# --src_adata "./T_perturb/cytomeister/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
+# --tgt_adata_folder "./T_perturb/cytomeister/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt" \
 # --batch_size 64 \
 # --max_len 300 \
 # --tgt_vocab_size 1261 \
@@ -50,17 +50,17 @@ echo "--- Start computing model"
 
 # Extrapolate
 # python3 $cwd/val.py \
-python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
+python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister/val.py \
 --test_mode count \
 --split False \
 --splitting_mode stratified \
 --generate True \
---ckpt_count_path "./T_perturb/T_perturb/Model/checkpoints/20240822_1920_cellgen_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1-2_s_42-epoch=19.ckpt" \
---output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
---src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_transformer/0h.dataset" \
---tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
---src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
---tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt" \
+--ckpt_count_path "./T_perturb/cytomeister/Model/checkpoints/20240822_1920_cellgen_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1-2_s_42-epoch=19.ckpt" \
+--output_dir "./T_perturb/cytomeister/plt/res/cytoimmgen" \
+--src_dataset "./T_perturb/cytomeister/pp/res/cytoimmgen/dataset_hvg_src_transformer/0h.dataset" \
+--tgt_dataset_folder "./T_perturb/cytomeister/pp/res/cytoimmgen/dataset_hvg_tgt" \
+--src_adata "./T_perturb/cytomeister/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
+--tgt_adata_folder "./T_perturb/cytomeister/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt" \
 --batch_size 64 \
 --max_len 300 \
 --tgt_vocab_size 1261 \
