@@ -14,9 +14,9 @@ from cytomeister.Model.trainer import CytoMeisterTrainer
 
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative/')
+    os.chdir('/lustre/scratch126/cellgen/lotfollahi/kl11/t_generative/')
 
-csv_logger = CSVLogger('T_perturb/T_perturb/tests/res', name='test_cellgen_training')
+csv_logger = CSVLogger('T_perturb/cytomeister/tests/res', name='test_cellgen_training')
 
 
 def dummy_dataset(
@@ -104,7 +104,7 @@ class CytoMeisterTestTrainingCase(unittest.TestCase):
             pos_encoding_mode='time_pos_sin',
             encoder='scmaskgit',
             mapping_dict_path=(
-                './T_perturb/T_perturb/pp/res/'
+                './T_perturb/tokenized_data/'
                 'cytoimmgen/token_id_to_genename_hvg.pkl'
             ),
         )
@@ -164,7 +164,7 @@ class CytoMeisterTestTrainingCase(unittest.TestCase):
     def test_transformer_training_loop(self, save_checkpoint=False):
         # Setup checkpoint callback
         checkpoint_callback = ModelCheckpoint(
-            dirpath='T_perturb/T_perturb/tests/checkpoints',
+            dirpath='T_perturb/cytomeister/tests/checkpoints',
             filename='test_masking_checkpoint-{epoch:02d}',
             save_top_k=-1,
             monitor='train/perplexity',

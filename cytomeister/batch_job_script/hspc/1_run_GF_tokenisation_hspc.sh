@@ -30,7 +30,7 @@ python3 $cwd/pp/GF_tokenisation.py \
 --hvg_mode 'after_tokenisation' \
 --n_hvg 5000 \
 --nproc 4 \
---genes_to_include_path 'T_perturb/T_perturb/pp/hspc/1639_Human_TF.csv' \
+--genes_to_include_path 'T_perturb/cytomeister/pp/hspc/1639_Human_TF.csv' \
 --reference_time stem \
 --time_point_order stem intermediate terminal \
 --gene_median_path '/nfs/team361/am74/Cytomeister/outputs/median/aggregate/scenario_3/median_trace_scenario3.pkl' \
@@ -39,6 +39,6 @@ python3 $cwd/pp/GF_tokenisation.py \
 echo "--- Finished tokenisation"
 
 # hspc_GF_26k_median
-# --gene_median_path '/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/trace_median.pkl' \
-# --token_dict_path '/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/trace_token.pkl' \
-# --gene_mapping_path '/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/trace_gene_mapping.pkl'
+# --gene_median_path '/lustre/scratch126/cellgen/lotfollahi/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/trace_median.pkl' \
+# --token_dict_path '/lustre/scratch126/cellgen/lotfollahi/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/trace_token.pkl' \
+# --gene_mapping_path '/lustre/scratch126/cellgen/lotfollahi/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/trace_gene_mapping.pkl'

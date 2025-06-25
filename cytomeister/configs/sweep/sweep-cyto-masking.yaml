@@ -14,15 +14,15 @@ parameters:
   epochs:
    value: 10
   output_dir:
-    value: 'T_perturb/T_perturb/iclr/cytoimmgen/pbmc_median/sweep/'
+    value: 'T_perturb/cytomeister/iclr/cytoimmgen/pbmc_median/sweep/'
   src_dataset:
-    value: "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_src/0h.dataset"
+    value: "T_perturb/tokenized_data/cytoimmgen_pbmc_median/dataset_2000_hvg_src/0h.dataset"
   tgt_dataset_folder:
-    value: "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/dataset_2000_hvg_tgt"
+    value: "T_perturb/tokenized_data/cytoimmgen_pbmc_median/dataset_2000_hvg_tgt"
   src_adata:
-    value: "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_src/0h.h5ad"
+    value: "T_perturb/tokenized_data/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_src/0h.h5ad"
   tgt_adata_folder:
-    value: "T_perturb/T_perturb/pp/res/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_tgt"
+    value: "T_perturb/tokenized_data/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_tgt"
   max_len:
     value: 400
   tgt_vocab_size:
@@ -46,7 +46,7 @@ parameters:
   context_mode:
     value: True
   encoder_path:
-    value: '/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt'
+    value: '/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=07.ckpt'
   d_model:
     value: 768
   # num_layers:

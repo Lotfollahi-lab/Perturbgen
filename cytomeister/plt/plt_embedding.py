@@ -31,17 +31,17 @@ def get_args():
     parser.add_argument(
         '--res_dir',
         type=str,
-        # default='./T_perturb/T_perturb/plt/res/eb',
-        default='./T_perturb/T_perturb/plt/res/cytoimmgen',
+        # default='./T_perturb/cytomeister/plt/res/eb',
+        default='./T_perturb/cytomeister/plt/res/cytoimmgen',
         help='Dataset to use for analysis',
     )
     parser.add_argument(
         '--full_data_dir',
         type=str,
-        # default='./T_perturb/T_perturb/pp/res/'
+        # default='./T_perturb/tokenized_data/'
         # 'h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad',
         default=(
-            './T_perturb/T_perturb/pp/eb/res/'
+            './T_perturb/cytomeister/pp/eb/res/'
             'h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad'
         ),
         help='Dataset to use for analysis',
@@ -54,7 +54,7 @@ args = get_args()
 # colorblind friendly palette
 plt.rcParams['axes.prop_cycle'] = plt.cycler(color=sns.color_palette('colorblind'))
 
-style.use('./T_perturb/T_perturb/pp/mpl_style.mplstyle')
+style.use('./T_perturb/cytomeister/pp/mpl_style.mplstyle')
 
 # Plotting CLS embeddings
 # --------------------------------
@@ -404,7 +404,7 @@ sc.pl.umap(
 )
 plt.savefig(f'./res/true_umap_{mode}.pdf', dpi=300, bbox_inches='tight')
 adata_full = sc.read_h5ad(
-    './T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg/cytoimmgen_hvg.h5ad'
+    './T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg/cytoimmgen_hvg.h5ad'
 )
 adata_random = adata_full.copy()
 sc.pp.subsample(adata_random, n_obs=adata_true.n_obs)

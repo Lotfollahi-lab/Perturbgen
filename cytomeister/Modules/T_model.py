@@ -435,7 +435,7 @@ class Block(nn.Module):
 class Geneformerwrapper(nn.Module):
     def __init__(
         self,
-        model_path='/lustre/scratch126/cellgen/team361/kl11/'
+        model_path='/lustre/scratch126/cellgen/lotfollahi/kl11/'
         't_generative/T_perturb/Geneformer/gf-12L-95M-i4096',
         output_attentions=False,
         output_hidden_states=True,
@@ -490,9 +490,9 @@ class Geneformerwrapper(nn.Module):
 class scmaskgitwrapper(nn.Module):
     def __init__(
         self,
-        # model_path='/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output1/checkpoints/20250107_1024_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=08.ckpt',
+        # model_path='/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/scmaskgit/output1/checkpoints/20250107_1024_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=08.ckpt',
         model_path=(
-            '/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/'
+            '/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/scmaskgit/'
             'output2/checkpoints/20250110_2325_cellgen_train_masking_lr_5e'
             '-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=01.ckpt'
         ),

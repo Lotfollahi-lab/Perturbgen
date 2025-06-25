@@ -41,13 +41,13 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/val.py 
 --return_embed True \
 --return_attn False \
 --generate False \
---ckpt_masking_path "T_perturb/T_perturb/plt/res/hspc/pbmc_median/checkpoints/20250418_2222_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1-2_s_42-epoch=24.ckpt" \
+--ckpt_masking_path "T_perturb/cytomeister/res/hspc/_median/checkpoints/20250418_2222_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1-2_s_42-epoch=24.ckpt" \
 --output_dir $RES_DIR/$RES_NAME/embeddings \
---src_dataset "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_all_tf/dataset_5000_hvg_src/stem.dataset" \
---tgt_dataset_folder "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_all_tf/dataset_5000_hvg_tgt" \
---src_adata "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_all_tf/h5ad_pairing_5000_hvg_src/stem.h5ad" \
---tgt_adata_folder "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_all_tf/h5ad_pairing_5000_hvg_tgt" \
---mapping_dict_path "T_perturb/T_perturb/pp/res/hspc_pbmc_median_inter_tissue_all_tf/token_id_to_genename_5000_hvg.pkl" \
+--src_dataset "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/dataset_5000_hvg_src/stem.dataset" \
+--tgt_dataset_folder "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/dataset_5000_hvg_tgt" \
+--src_adata "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/h5ad_pairing_5000_hvg_src/stem.h5ad" \
+--tgt_adata_folder "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/h5ad_pairing_5000_hvg_tgt" \
+--mapping_dict_path "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/token_id_to_genename_5000_hvg.pkl" \
 --batch_size 32 \
 --max_len 2943 \
 --tgt_vocab_size 5848 \
@@ -62,7 +62,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/val.py 
 --var_list sex phase tissue celltype_v2 diff_state \
 --encoder scmaskgit \
 --encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=04.ckpt" \
---tokenid_to_rowid 'T_perturb/T_perturb/pp/res/hspc_pbmc_median/tokenid_to_rowid_10000_hvg.pkl' \
+--tokenid_to_rowid 'T_perturb/tokenized_data/hspc_pbmc_median/tokenid_to_rowid_10000_hvg.pkl' \
 --context_mode True \
 --mask_scheduler 'pow' \
 --pos_encoding_mode 'time_pos_sin' \
@@ -71,20 +71,20 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/val.py 
 --gene_embs_condition 'diff_state'
 echo "--- Finished computing model"
 
-# --deg_pkl_path 'T_perturb/T_perturb/plt/res/hspc/pbmc_median/figures/20250126_top250_DEG_lmpptissue_v_lmpprest_10k.pkl'
+# --deg_pkl_path 'T_perturb/cytomeister/res/hspc/_median/figures/20250126_top250_DEG_lmpptissue_v_lmpprest_10k.pkl'
 
 # PBMC median
-# --encoder_path '/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt' \
+# --encoder_path '/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=07.ckpt' \
 
 # 20k GF median
-# --encoder_path '/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output2/checkpoints/20250110_2325_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt' \
+# --encoder_path '/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/scmaskgit/output2/checkpoints/20250110_2325_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt' \
 
 # 2k hvgs
-# --src_dataset "./T_perturb/T_perturb/pp/res/hspc/dataset_hvg_src/stem.dataset" \
-# --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/hspc/dataset_hvg_tgt" \
-# --src_adata "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_hvg_src/stem.h5ad" \
-# --tgt_adata_folder "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_hvg_tgt" \
-# --mapping_dict_path  "./T_perturb/T_perturb/pp/res/hspc/token_id_to_genename_hvg.pkl" \
+# --src_dataset "./T_perturb/tokenized_data/hspc/dataset_hvg_src/stem.dataset" \
+# --tgt_dataset_folder "./T_perturb/tokenized_data/hspc/dataset_hvg_tgt" \
+# --src_adata "./T_perturb/tokenized_data/hspc/h5ad_pairing_hvg_src/stem.h5ad" \
+# --tgt_adata_folder "./T_perturb/tokenized_data/hspc/h5ad_pairing_hvg_tgt" \
+# --mapping_dict_path  "./T_perturb/tokenized_data/hspc/token_id_to_genename_hvg.pkl" \
 
 # --max_len 450 \
 # --tgt_vocab_size 1187 \

@@ -8,6 +8,7 @@ import torch
 import yaml  # type: ignore
 from datasets import concatenate_datasets, load_from_disk
 
+from cytomeister.configs import ROOT
 from cytomeister.Dataloaders.datamodule import CytoMeisterDataModule
 from cytomeister.Perturb.trainer import PerturberTrainer
 from cytomeister.src.utils import (
@@ -16,12 +17,8 @@ from cytomeister.src.utils import (
     read_dataset_files,
 )
 
-# --- 1. Data pre-processing ---
-if os.getcwd().split('/')[-1] != 't_generative':
-    # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative/')
-print(os.getcwd())
-# set seed for reproducibility
+os.chdir(ROOT)
+print(f'Current working directory: {os.getcwd()}')
 seed_no = 42
 
 pl.seed_everything(seed_no)
@@ -33,7 +30,7 @@ def get_args():
     parser.add_argument(
         '--config',
         type=str,
-        default='T_perturb/T_perturb/configs/eval/HSPC/perturbation.yaml',
+        default='T_perturb/cytomeister/configs/eval/HSPC/perturbation.yaml',
     )
     return parser.parse_args()
 

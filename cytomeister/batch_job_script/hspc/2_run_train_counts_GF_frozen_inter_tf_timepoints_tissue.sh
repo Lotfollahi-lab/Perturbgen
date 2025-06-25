@@ -25,7 +25,7 @@ echo "--- Start computing model"
 
 # # # ----------------- Create folder to save results and copy the script -----------------
 RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/res"
-RES_NAME="hspc/pbmc_median"
+RES_NAME="hspc/fine_tuning"
 # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
 # # Get the current timestamp
@@ -64,7 +64,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 --var_list sex phase tissue celltype_v2 diff_state \
 --encoder scmaskgit \
 --encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=07.ckpt" \
---ckpt_masking_path "T_perturb/cytomeister/res/hspc/fine_tuning/checkpoints/20250622_2230_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1_s_42-epoch=24.ckpt" \
+--ckpt_masking_path "T_perturb/cytomeister/res/hspc/fine_tuning/checkpoints/20250624_1010_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1_s_42-epoch=24.ckpt" \
 --context_mode False \
 --mask_scheduler 'pow' \
 --pos_encoding_mode 'time_pos_sin' \
@@ -74,11 +74,11 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 echo "--- Finished computing model"
 
 # 2k hvgs
-# --src_dataset "./T_perturb/T_perturb/pp/res/hspc/dataset_hvg_src/stem.dataset" \
-# --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/hspc/dataset_hvg_tgt" \
-# --src_adata "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_hvg_src/stem.h5ad" \
-# --tgt_adata_folder "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_hvg_tgt" \
-# --mapping_dict_path  "./T_perturb/T_perturb/pp/res/hspc/token_id_to_genename_hvg.pkl" \
+# --src_dataset "./T_perturb/tokenized_data/hspc/dataset_hvg_src/stem.dataset" \
+# --tgt_dataset_folder "./T_perturb/tokenized_data/hspc/dataset_hvg_tgt" \
+# --src_adata "./T_perturb/tokenized_data/hspc/h5ad_pairing_hvg_src/stem.h5ad" \
+# --tgt_adata_folder "./T_perturb/tokenized_data/hspc/h5ad_pairing_hvg_tgt" \
+# --mapping_dict_path  "./T_perturb/tokenized_data/hspc/token_id_to_genename_hvg.pkl" \
 
 # --max_len 450 \
 # --tgt_vocab_size 1187 \

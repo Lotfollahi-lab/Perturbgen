@@ -7,7 +7,7 @@ import numpy as np
 from tqdm import tqdm
 
 # Define the input and output directories
-input_dir = "/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/cohort/Processed/TRACE_Approach"
+input_dir = "/lustre/scratch126/cellgen/lotfollahi/am74/Adib/TRACE/cohort/Processed/TRACE_Approach"
 output_dir = "./tdigest/"
 os.makedirs(output_dir, exist_ok=True)
 

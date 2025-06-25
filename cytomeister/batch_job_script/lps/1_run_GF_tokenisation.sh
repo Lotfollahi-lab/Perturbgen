@@ -16,7 +16,7 @@ cwd=$(pwd)
 
 echo '--- Start tokenisation'
 
-python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/GF_tokenisation.py \
+python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/cytomeister/pp/GF_tokenisation.py \
 --h5ad_path '/lustre/scratch126/cellgen/team298/dv8/trace_paper/lps_data/concatenated_lps_data_dv.h5ad' \
 --dataset 2k_hvg_ourMED_all_tps_butNormal \
 --gene_filtering_mode hvg \
@@ -25,7 +25,7 @@ python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb
 --pairing_obs time_after_LPS \
 --nproc 8 \
 --n_hvg 2000 \
---gene_median_path '/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/filtered_trace_median.pkl' \
---token_dict_path '/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/trace_filtered_tokenid.pkl' \
+--gene_median_path '/lustre/scratch126/cellgen/lotfollahi/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/filtered_trace_median.pkl' \
+--token_dict_path '/lustre/scratch126/cellgen/lotfollahi/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/trace_filtered_tokenid.pkl' \
 
 echo '--- Finished tokenisation'

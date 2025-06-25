@@ -14,6 +14,7 @@ from pytorch_lightning.callbacks import TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy  # DeepSpeedStrategy
 
+from cytomeister.configs import ROOT
 from cytomeister.Dataloaders.datamodule import CytoMeisterDataModule
 from cytomeister.Model.trainer import CountDecoderTrainer, CytoMeisterTrainer
 from cytomeister.src.utils import (
@@ -25,10 +26,8 @@ from cytomeister.src.utils import (
     stratified_split,
 )
 
-if os.getcwd().split('/')[-1] != 't_generative':
-    # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative/')
-    print('Changed working directory to root of repository')
+os.chdir(ROOT)
+print(f'Current working directory: {os.getcwd()}')
 
 
 def get_args():
@@ -49,8 +48,8 @@ def get_args():
     parser.add_argument(
         '--output_dir',
         type=str,
-        default='./T_perturb/T_perturb/plt/res/cytoimmgen',
-        # default='./T_perturb/T_perturb/plt/res/eb',
+        default='./T_perturb/cytomeister/plt/res/cytoimmgen',
+        # default='./T_perturb/cytomeister/plt/res/eb',
         help='store dataset name',
     )
     parser.add_argument(
@@ -128,43 +127,43 @@ def get_args():
     parser.add_argument(
         '--mapping_dict_path',
         type=str,
-        # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl',
-        # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
-        default='./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl',
+        # default='./T_perturb/tokenized_data/eb/token_id_to_genename_hvg.pkl',
+        # default='./T_perturb/tokenized_data/eb/token_id_to_genename_all.pkl'
+        default='./T_perturb/tokenized_data/cytoimmgen/token_id_to_genename_hvg.pkl',
     )
     parser.add_argument(
         '--src_dataset',
         type=str,
-        # default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset',
+        # default='./T_perturb/tokenized_data/eb/dataset_hvg_src/Day 00-03.dataset',
         # default=(
-        #     './T_perturb/T_perturb/pp/res/eb/'
+        #     './T_perturb/tokenized_data/eb/'
         #     'dataset_all_src/eb_all_Day 00-03.dataset'
         # ),
-        default='./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset',
+        default='./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_src/0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
         '--tgt_dataset_folder',
         type=str,
-        # default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_tgt',
-        default='./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt/',
+        # default='./T_perturb/tokenized_data/eb/dataset_hvg_tgt',
+        default='./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_tgt/',
         help='path to tokenised activated data',
     )
 
     parser.add_argument(
         '--src_adata',
         type=str,
-        # default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
+        # default='./T_perturb/tokenized_data/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
         default=(
-            './T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad'
+            './T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad'
         ),
         help='path to src',
     )
     parser.add_argument(
         '--tgt_adata_folder',
         type=str,
-        # default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt',
-        default=('./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt'),
+        # default='./T_perturb/tokenized_data/eb/h5ad_pairing_hvg_tgt',
+        default=('./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt'),
         help='path to tgt',
     )
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
@@ -647,7 +646,7 @@ def main() -> None:
     # ----------------------------------------------------------------------------------
     run_id = datetime.now().strftime('%Y%m%d_%H%M_CytoMeister')
     log_path = os.path.join(
-        './T_perturb/T_perturb/wandb/wandb',
+        './T_perturb/cytomeister/wandb/wandb',
         run_id,
     )
     os.makedirs(os.path.join(os.getcwd(), log_path), exist_ok=True)
@@ -658,14 +657,14 @@ def main() -> None:
         wandb_logger = WandbLogger(
             project='ttransformer',
             name=f'{run_id}_{str(uuid.uuid4())[:6]}',
-            save_dir='./T_perturb/T_perturb/wandb/wandb',
+            save_dir='./T_perturb/cytomeister/wandb/wandb',
             log_model=True,
         )  # noqa
     else:
         wandb_logger = WandbLogger(
             project='ttransformer',
             name=f'{run_id}',
-            save_dir='./T_perturb/T_perturb/wandb/wandb',
+            save_dir='./T_perturb/cytomeister/wandb/wandb',
             log_model=True,
         )
 

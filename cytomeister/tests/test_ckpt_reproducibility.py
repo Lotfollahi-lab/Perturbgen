@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative/')
+    os.chdir('/lustre/scratch126/cellgen/lotfollahi/kl11/t_generative/')
 
 
 def load_checkpoint(checkpoint_path):
@@ -45,11 +45,11 @@ class TestCheckpointEquality(unittest.TestCase):
     def test_masking_checkpoints_identical(self):
         # Define paths to your checkpoints compare always to baseline
         checkpoint_path1 = (
-            'T_perturb/T_perturb/tests/checkpoints/'
+            'T_perturb/cytomeister/tests/checkpoints/'
             'test_masking_checkpoint-epoch=00.ckpt'
         )
         checkpoint_path2 = (
-            'T_perturb/T_perturb/tests/checkpoints/'
+            'T_perturb/cytomeister/tests/checkpoints/'
             'test_masking_checkpoint-epoch=00-v1.ckpt'
         )
         # Check if the checkpoints exist
@@ -70,10 +70,10 @@ class TestCheckpointEquality(unittest.TestCase):
     def test_counts_checkpoints_identical(self):
         # Define paths to your checkpoints
         checkpoint_path1 = (
-            'T_perturb/T_perturb/tests/checkpoints/test_counts_checkpoint-epoch=00.ckpt'
+            'T_perturb/cytomeister/tests/checkpoints/test_counts_checkpoint-epoch=00.ckpt'
         )
         checkpoint_path2 = (
-            'T_perturb/T_perturb/tests/checkpoints/'
+            'T_perturb/cytomeister/tests/checkpoints/'
             'test_counts_checkpoint-epoch=00-v1.ckpt'
         )
         # Check if the checkpoints exist

@@ -3,7 +3,7 @@
 #BSUB -gpu 'mode=exclusive_process:num=4:block=yes' # request for exclusive access to gpu
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
-#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
+#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister # working directory
 #BSUB -o logs/extrapolate_count_seed100_%J.out # output file
 #BSUB -e logs/extrapolate_count_seed100_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
@@ -26,13 +26,13 @@ echo "--- Start computing model"
 # --train_mode count \
 # --split False \
 # --splitting_mode stratified \
-# --output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
-# --ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240522_0248_tcell_extrapol_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-2_s_100-epoch=149.ckpt" \
-# --src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_transformer/0h.dataset" \
-# --tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
-# --src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
-# --tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt" \
-# --mapping_dict_path  "./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl" \
+# --output_dir "./T_perturb/cytomeister/plt/res/cytoimmgen" \
+# --ckpt_masking_path "./T_perturb/cytomeister/Model/checkpoints/20240522_0248_tcell_extrapol_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-2_s_100-epoch=149.ckpt" \
+# --src_dataset "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_src_transformer/0h.dataset" \
+# --tgt_dataset_folder "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_tgt" \
+# --src_adata "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
+# --tgt_adata_folder "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt" \
+# --mapping_dict_path  "./T_perturb/tokenized_data/cytoimmgen/token_id_to_genename_hvg.pkl" \
 # --batch_size 64 \
 # --max_len 300 \
 # --epochs 20 \
@@ -58,13 +58,13 @@ python3 $cwd/train.py \
 --train_mode count \
 --split False \
 --splitting_mode stratified \
---output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
---ckpt_masking_path ".//T_perturb/T_perturb/Model/checkpoints/20240809_1245_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-2_s_100-epoch=19.ckpt" \
---src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_transformer/0h.dataset" \
---tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt" \
---src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
---tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt" \
---mapping_dict_path  "./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl" \
+--output_dir "./T_perturb/cytomeister/plt/res/cytoimmgen" \
+--ckpt_masking_path ".//T_perturb/cytomeister/Model/checkpoints/20240809_1245_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-2_s_100-epoch=19.ckpt" \
+--src_dataset "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_src_transformer/0h.dataset" \
+--tgt_dataset_folder "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_tgt" \
+--src_adata "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
+--tgt_adata_folder "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt" \
+--mapping_dict_path  "./T_perturb/tokenized_data/cytoimmgen/token_id_to_genename_hvg.pkl" \
 --batch_size 64 \
 --max_len 300 \
 --epochs 20 \

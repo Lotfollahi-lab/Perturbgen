@@ -16,17 +16,17 @@ parameters:
   epochs:
    value: 3
   output_dir:
-    value: './T_perturb/T_perturb/plt/res/hspc'
+    value: './T_perturb/cytomeister/plt/res/hspc'
   src_dataset:
-    value: "./T_perturb/T_perturb/pp/res/hspc/dataset_10000_hvg_src/stem.dataset"
+    value: "./T_perturb/tokenized_data/hspc/dataset_10000_hvg_src/stem.dataset"
   tgt_dataset_folder:
-    value: "./T_perturb/T_perturb/pp/res/hspc/dataset_10000_hvg_tgt"
+    value: "./T_perturb/tokenized_data/hspc/dataset_10000_hvg_tgt"
   src_adata:
-    value: "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_10000_hvg_src/stem.h5ad"
+    value: "./T_perturb/tokenized_data/hspc/h5ad_pairing_10000_hvg_src/stem.h5ad"
   tgt_adata_folder:
-    value: "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_10000_hvg_tgt"
+    value: "./T_perturb/tokenized_data/hspc/h5ad_pairing_10000_hvg_tgt"
   mapping_dict_path:
-    value: "./T_perturb/T_perturb/pp/res/hspc/token_id_to_genename_10000_hvg.pkl"
+    value: "./T_perturb/tokenized_data/hspc/token_id_to_genename_10000_hvg.pkl"
   max_len:
     value: 2200
   tgt_vocab_size:
@@ -57,5 +57,5 @@ parameters:
   #   high: 0.5
   # batch_size:
   #   value: 256
-program: /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/train.py
+program: /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister/train.py
 project: ttransformer_sweep

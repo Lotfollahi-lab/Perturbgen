@@ -3,7 +3,7 @@
 #BSUB -gpu 'mode=exclusive_process:num=1' # request for exclusive access to gpu
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
-#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
+#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister # working directory
 #BSUB -o logs/sdpa_generate_inter_%J.out # output file
 #BSUB -e logs/sdpa_generate_inter=_%J.err # error file
 #BSUB -M 150000  # RAM memory part 2. Default: 100MB
@@ -22,7 +22,7 @@ export WANDB_DIR=$cwd/wandb
 echo '--- Start computing model'
 
 # ----------------- Create folder to save results and copy the script -----------------
-RES_DIR="/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/iclr"
+RES_DIR="/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister/iclr"
 RES_NAME="sdpa_ablation"
 # if directory does not e
 echo create it with the name $RES_NAME
@@ -35,17 +35,17 @@ echo "Copying script to $RES_DIR/$RES_NAME/4_sdpa_val_generate_interpolation_$TI
 
 # ----------------- Interpolation -----------------
 # python3 $cwd/val.py \
-python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
+python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister/val.py \
 --test_mode count \
 --split False \
 --splitting_mode stratified \
 --generate True \
---ckpt_count_path './T_perturb/T_perturb/iclr/sdpa_ablation/checkpoints/20240916_0757_sdpa_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1-3_s_42-epoch=09.ckpt' \
---output_dir './T_perturb/T_perturb/plt/res/cytoimmgen' \
---src_dataset './T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset' \
---tgt_dataset_folder './T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt' \
---src_adata './T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad' \
---tgt_adata_folder './T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt' \
+--ckpt_count_path './T_perturb/cytomeister/iclr/sdpa_ablation/checkpoints/20240916_0757_sdpa_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1-3_s_42-epoch=09.ckpt' \
+--output_dir './T_perturb/cytomeister/plt/res/cytoimmgen' \
+--src_dataset './T_perturb/tokenized_data/cytoimmgen/dataset_hvg_src/0h.dataset' \
+--tgt_dataset_folder './T_perturb/tokenized_data/cytoimmgen/dataset_hvg_tgt' \
+--src_adata './T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad' \
+--tgt_adata_folder './T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt' \
 --batch_size 256 \
 --max_len 300 \
 --tgt_vocab_size 1261 \

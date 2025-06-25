@@ -19,11 +19,11 @@ from cytomeister.tests.test_cellgen_training import dummy_dataset
 
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative/')
+    os.chdir('/lustre/scratch126/cellgen/lotfollahi/kl11/t_generative/')
 
 # initialize the logger
 csv_logger = CSVLogger(
-    'T_perturb/T_perturb/tests/res', name='test_countdecoder_training'
+    'T_perturb/cytomeister/tests/res', name='test_countdecoder_training'
 )
 
 
@@ -159,7 +159,7 @@ class CytoMeisterTestTrainingCase(unittest.TestCase):
             conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
 
         decoder_module = CountDecoderTrainer(
-            ckpt_masking_path='T_perturb/T_perturb/tests/checkpoints/'
+            ckpt_masking_path='T_perturb/cytomeister/tests/checkpoints/'
             'test_masking_checkpoint-epoch=00.ckpt',
             tgt_vocab_size=self.tgt_vocab_size,
             d_model=self.d_model,
@@ -182,7 +182,7 @@ class CytoMeisterTestTrainingCase(unittest.TestCase):
             iterations=19,
             precision='high',
             mask_scheduler='pow',
-            output_dir='./T_perturb/T_perturb/plt/res/',
+            output_dir='./T_perturb/cytomeister/plt/res/',
             encoder='Transformer_encoder',
             seed=42,
         )
@@ -229,7 +229,7 @@ class CytoMeisterTestTrainingCase(unittest.TestCase):
     def test_countdecoder_training_loop(self, save_checkpoint=False):
         # Setup checkpoint callback
         checkpoint_callback = ModelCheckpoint(
-            dirpath='T_perturb/T_perturb/tests/checkpoints',
+            dirpath='T_perturb/cytomeister/tests/checkpoints',
             filename='test_counts_checkpoint-{epoch:02d}',
             save_top_k=-1,
             every_n_epochs=1,

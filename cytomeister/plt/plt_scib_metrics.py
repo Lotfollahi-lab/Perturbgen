@@ -22,16 +22,16 @@ bm = Benchmarker(
 bm.benchmark()
 bm.plot_results_table(
     save_dir='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-    't_generative/T_perturb/T_perturb/plt/res'
+    't_generative/T_perturb/cytomeister/plt/res'
 )
 bm.plot_results_table(
     min_max_scale=False,
     save_dir='/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-    't_generative/T_perturb/T_perturb/plt/res',
+    't_generative/T_perturb/cytomeister/plt/res',
 )
 df = bm.get_results(min_max_scale=False)
 df.to_csv(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    'T_perturb/T_perturb/plt/res/scib.csv'
+    'T_perturb/cytomeister/plt/res/scib.csv'
 )
 # save results table

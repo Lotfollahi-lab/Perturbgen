@@ -15,7 +15,7 @@
 # activate pyenv
 cwd=$(pwd)
 
-RES_DIR="/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/results"
+RES_DIR="/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/cytomeister/results"
 RES_NAME="lps/generate_6h_interpolation_opthp_ourMED_onST1_e6_b8_old_nompirun"
 # if directory does not e
 # echo create it with the name $RES_NAME
@@ -30,17 +30,17 @@ echo '--- Start computing model'
 
 # interpolation
 
-python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/val.py \
+python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/cytomeister/val.py \
 --test_mode count \
 --split False \
 --splitting_mode stratified \
 --generate True \
 --output_dir $RES_DIR/$RES_NAME/res \
---ckpt_count_path '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/results/lps/count_interpolation_ourMED_ws_on2k_e9_noSplit_nodropout_subset_cond/checkpoints/20250211_1446_cellgen_train_count_lr_0.001_wd_0.001_batch_16_zinb_tp_1-3_s_42_pos_time_pos_sin_m_cosine-epoch=07.ckpt' \
---src_dataset "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/pp/res/st1_ourMED_adib/dataset_hvg_subsetted_src/normal.dataset" \
---tgt_dataset_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/pp/res/st1_ourMED_adib/dataset_hvg_subsetted_tgt" \
---src_adata "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/pp/res/st1_ourMED_adib/h5ad_pairing_1367_hvg_src/normal.h5ad" \
---tgt_adata_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/pp/res/st1_ourMED_adib/h5ad_pairing_1367_hvg_tgt" \
+--ckpt_count_path '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/cytomeister/results/lps/count_interpolation_ourMED_ws_on2k_e9_noSplit_nodropout_subset_cond/checkpoints/20250211_1446_cellgen_train_count_lr_0.001_wd_0.001_batch_16_zinb_tp_1-3_s_42_pos_time_pos_sin_m_cosine-epoch=07.ckpt' \
+--src_dataset "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/tokenized_data/st1_ourMED_adib/dataset_hvg_subsetted_src/normal.dataset" \
+--tgt_dataset_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/tokenized_data/st1_ourMED_adib/dataset_hvg_subsetted_tgt" \
+--src_adata "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/tokenized_data/st1_ourMED_adib/h5ad_pairing_1367_hvg_src/normal.h5ad" \
+--tgt_adata_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/tokenized_data/st1_ourMED_adib/h5ad_pairing_1367_hvg_tgt" \
 --batch_size 8 \
 --max_len 3500 \
 --tgt_vocab_size 20274 \

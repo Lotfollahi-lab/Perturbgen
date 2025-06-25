@@ -14,15 +14,15 @@ parameters:
   epochs:
    value: 10
   output_dir:
-    value: 'T_perturb/T_perturb/plt/res/lps/pbmc_median/sweep'
+    value: 'T_perturb/cytomeister/plt/res/lps/pbmc_median/sweep'
   src_dataset:
-    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED_all_tps/dataset_2000_hvg_src/normal.dataset'
+    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/dataset_2000_hvg_src/normal.dataset'
   tgt_dataset_folder:
-    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED_all_tps/dataset_2000_hvg_tgt'
+    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/dataset_2000_hvg_tgt'
   src_adata:
-    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_src/normal.h5ad'
+    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_src/normal.h5ad'
   tgt_adata_folder:
-    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/T_perturb/pp/res/2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_tgt'
+    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_tgt'
   max_len:
     value: 666
   tgt_vocab_size:
@@ -46,7 +46,7 @@ parameters:
   context_mode:
     value: True
   encoder_path:
-    value: '/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output3/checkpoints/20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt'
+    value: '/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=07.ckpt'
   d_model:
     value: 768
   # num_layers:

@@ -15,7 +15,7 @@ from cytomeister.tests.test_countdecoder_training import dummy_cell_gene_matrix
 
 if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
     # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/team361/kl11/t_generative/')
+    os.chdir('/lustre/scratch126/cellgen/lotfollahi/kl11/t_generative/')
 
 
 class CytoMeisterTestGenerationCase(unittest.TestCase):
@@ -130,11 +130,11 @@ class CytoMeisterTestGenerationCase(unittest.TestCase):
 
         decoder_module = CountDecoderTrainer(
             ckpt_masking_path=(
-                'T_perturb/T_perturb/tests/checkpoints/'
+                'T_perturb/cytomeister/tests/checkpoints/'
                 'test_masking_checkpoint-epoch=00.ckpt'
             ),
             ckpt_count_path=(
-                'T_perturb/T_perturb/tests/checkpoints/'
+                'T_perturb/cytomeister/tests/checkpoints/'
                 'test_counts_checkpoint-epoch=00.ckpt'
             ),
             tgt_vocab_size=self.tgt_vocab_size,
@@ -160,7 +160,7 @@ class CytoMeisterTestGenerationCase(unittest.TestCase):
             iterations=19,
             precision='high',
             mask_scheduler='pow',
-            output_dir='./T_perturb/T_perturb/tests/res',
+            output_dir='./T_perturb/cytomeister/tests/res',
             encoder='Transformer_encoder',
             seed=42,
             generate=True,

@@ -21,7 +21,7 @@ if os.getcwd().split('/')[-3] != 'T_perturb':
     # set working directory to root of repository
     os.chdir(
         '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-        't_generative/T_perturb/T_perturb/pp'
+        't_generative/T_perturb/cytomeister/pp'
     )
     print('Changed working directory to root of repository')
 
@@ -78,7 +78,7 @@ weight_decay = 0.001
 # path to save model
 model_output_dir = (
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-    't_generative/T_perturb/T_perturb/plt/res/Geneformer'
+    't_generative/T_perturb/cytomeister/plt/res/Geneformer'
 )
 # set logging steps
 

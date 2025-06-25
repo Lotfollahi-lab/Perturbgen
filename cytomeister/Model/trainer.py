@@ -88,7 +88,7 @@ class CytoMeisterTrainer(LightningModule):
         iterations: int = 18,
         sequence_length: int = 2048,
         return_rouge_score: bool = True,
-        output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
+        output_dir: str = './T_perturb/cytomeister/plt/res/eb/',
         encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
             'GF_fine_tuned'
         ),
@@ -642,7 +642,7 @@ class CountDecoderTrainer(LightningModule):
         iterations: int = 18,
         n_samples: int = 1,
         precision: Literal['high', 'medium'] = 'medium',
-        output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
+        output_dir: str = './T_perturb/cytomeister/plt/res/eb/',
         encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
             'GF_fine_tuned'
         ),
@@ -744,7 +744,13 @@ class CountDecoderTrainer(LightningModule):
             checkpoint = torch.load(ckpt_count_path, map_location='cpu')
 
             state_dict_ = modify_ckpt_state_dict(checkpoint, 'decoder.')
-            self.decoder.load_state_dict(state_dict_, strict=False)
+            missing, unexpected = self.decoder.load_state_dict(
+                state_dict_, strict=False
+            )
+            if len(missing) > 1:
+                raise Warning(f'Missing keys in state_dict: {missing}')
+            if len(unexpected) > 1:
+                raise Warning(f'Unexpected keys in state_dict: {unexpected}')
 
         self.weight_decay = weight_decay
         self.lr = lr

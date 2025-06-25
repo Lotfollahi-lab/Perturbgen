@@ -13,7 +13,7 @@ if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
 style.use('default')
 style.use(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-    't_generative/T_perturb/T_perturb/pp/mpl_style.mplstyle'
+    't_generative/T_perturb/cytomeister/pp/mpl_style.mplstyle'
 )
 # Table 1: Benchmarking results for interpolation/extrapolation of single cell data
 # ---------------------------------------------------------
@@ -22,18 +22,18 @@ style.use(
 # ---------------------------------------------------------
 # 1.1.1 Cytoimmgen interpolation (ours)
 inter_seed_42_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/cytoimmgen/interpolation/res/'
+    'T_perturb/cytomeister/iclr/cytoimmgen/interpolation/res/'
     '20240928-00:15_psin_learnt_mcosine_t1.0_i20_'
     's{self.sequence_length}_metrics.csv',
     index_col=0,
 )
 inter_seed_100_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/cytoimmgen/interpolation/res/'
+    'T_perturb/cytomeister/iclr/cytoimmgen/interpolation/res/'
     '20240929-10:17_psin_learnt_mcosine_t1.0_i20_s100_metrics.csv',
     index_col=0,
 )
 inter_seed_0_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/cytoimmgen/interpolation/res/'
+    'T_perturb/cytomeister/iclr/cytoimmgen/interpolation/res/'
     '20240929-10:19_psin_learnt_mcosine_t1.0_i20_s0_metrics.csv',
     index_col=0,
 )
@@ -60,19 +60,19 @@ def calc_mean_std(df, prefix):
 
 # 1.1.2 Cytoimmgen extrapolation (ours)
 extra_seed_42_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/cytoimmgen/extrapolation/res/'
+    'T_perturb/cytomeister/iclr/cytoimmgen/extrapolation/res/'
     '20240928-12:44_psin_learnt_mcosine_t1.0'
     '_i20_s{self.sequence_length}_metrics.csv',
     index_col=0,
 )
 extra_seed_100_df = pd.read_csv(
-    './T_perturb/T_perturb/iclr/cytoimmgen/extrapolation/res/'
+    './T_perturb/cytomeister/iclr/cytoimmgen/extrapolation/res/'
     '20240929-10:23_psin_learnt_mcosine_t1.0'
     '_i20_s100_metrics.csv',
     index_col=0,
 )
 extra_seed_0_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/cytoimmgen/extrapolation/res/'
+    'T_perturb/cytomeister/iclr/cytoimmgen/extrapolation/res/'
     '20240929-10:24_psin_learnt_mcosine_t1.0_i20_s0_metrics.csv',
     index_col=0,
 )
@@ -87,7 +87,7 @@ extra_summary = pd.concat([extra_mean, extra_std], axis=1)
 cytoimmgen_summary = pd.concat([inter_summary, extra_summary], axis=1)
 
 cytoimmgen_summary.to_csv(
-    'T_perturb/T_perturb/iclr/final_results/cytoimmgen_summary_ours.csv'
+    'T_perturb/cytomeister/iclr/final_results/cytoimmgen_summary_ours.csv'
 )
 
 # 1.1.3 Cytoimmgen interpolation (CFM)
@@ -130,7 +130,7 @@ extra_summary = calc_mean_std(extra_df, 'extra')
 
 cytoimmgen_summary_cfm = pd.concat([inter_summary, extra_summary], axis=1)
 cytoimmgen_summary_cfm.to_csv(
-    'T_perturb/T_perturb/iclr/final_results/cytoimmgen_summary_cfm.csv'
+    'T_perturb/cytomeister/iclr/final_results/cytoimmgen_summary_cfm.csv'
 )
 
 # 1.1.5 Cytoimmgen interpolation (MIOFlow)
@@ -170,24 +170,24 @@ extra_df = pd.concat([extra_seed_42_df, extra_seed_0_df, extra_seed_100_df])
 extra_summary = calc_mean_std(extra_df, 'extra')
 cytoimmgen_summary_mioflow = pd.concat([inter_summary, extra_summary], axis=1)
 cytoimmgen_summary_mioflow.to_csv(
-    'T_perturb/T_perturb/iclr/final_results/cytoimmgen_summary_mioflow.csv'
+    'T_perturb/cytomeister/iclr/final_results/cytoimmgen_summary_mioflow.csv'
 )
 
 # 1.2 EB
 # ---------------------------------------------------------
 # 1.2.1 EB interpolation
 inter_seed_42_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/eb/interpolation/res/'
+    'T_perturb/cytomeister/iclr/eb/interpolation/res/'
     '20240929-11:42_psin_learnt_mcosine_t1.0_i20_s42_metrics.csv',
     index_col=0,
 )
 inter_seed_100_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/eb/interpolation/res/'
+    'T_perturb/cytomeister/iclr/eb/interpolation/res/'
     '20241001-00:11_psin_learnt_mcosine_t1.0_i20_s100_metrics.csv',
     index_col=0,
 )
 inter_seed_0_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/eb/interpolation/res/'
+    'T_perturb/cytomeister/iclr/eb/interpolation/res/'
     '20241001-00:03_psin_learnt_mcosine_t1.0_i20_s0_metrics.csv',
     index_col=0,
 )
@@ -196,17 +196,17 @@ inter_summary = calc_mean_std(inter_df, 'inter')
 
 # 1.2.2 EB extrapolation
 extra_seed_42_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/eb/extrapolation/'
+    'T_perturb/cytomeister/iclr/eb/extrapolation/'
     'res/20240929-11:41_psin_learnt_mcosine_t1.0_i20_s42_metrics.csv',
     index_col=0,
 )
 extra_seed_100_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/eb/extrapolation/'
+    'T_perturb/cytomeister/iclr/eb/extrapolation/'
     'res/20241001-00:03_psin_learnt_mcosine_t1.0_i20_s0_metrics.csv',
     index_col=0,
 )
 extra_seed_0_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/eb/extrapolation/res/'
+    'T_perturb/cytomeister/iclr/eb/extrapolation/res/'
     '20241001-00:03_psin_learnt_mcosine_t1.0_i20_s100_metrics.csv',
     index_col=0,
 )
@@ -214,7 +214,7 @@ extra_df = pd.concat([extra_seed_42_df, extra_seed_100_df, extra_seed_0_df])
 extra_summary = calc_mean_std(extra_df, 'extra')
 
 eb_summary = pd.concat([inter_summary, extra_summary], axis=1)
-eb_summary.to_csv('T_perturb/T_perturb/iclr/final_results/eb_summary_ours.csv')
+eb_summary.to_csv('T_perturb/cytomeister/iclr/final_results/eb_summary_ours.csv')
 # 1.2.3 EB interpolation (CFM)
 inter_seed_42_df = pd.read_csv(
     'benchmarking/scNODE/benchmark/res/eb/'
@@ -254,7 +254,7 @@ extra_df = pd.concat([extra_seed_42_df, extra_seed_0_df, extra_seed_100_df])
 extra_summary = calc_mean_std(extra_df, 'extra')
 
 eb_summary_cfm = pd.concat([inter_summary, extra_summary], axis=1)
-eb_summary_cfm.to_csv('T_perturb/T_perturb/iclr/final_results/eb_summary_cfm.csv')
+eb_summary_cfm.to_csv('T_perturb/cytomeister/iclr/final_results/eb_summary_cfm.csv')
 
 # 1.2.5 EB interpolation (MIOFlow)
 inter_seed_42_df = pd.read_csv(
@@ -299,7 +299,7 @@ extra_df = pd.concat([extra_seed_42_df, extra_seed_0_df, extra_seed_100_df])
 extra_summary = calc_mean_std(extra_df, 'extra')
 eb_summary_mioflow = pd.concat([inter_summary, extra_summary], axis=1)
 eb_summary_mioflow.to_csv(
-    'T_perturb/T_perturb/iclr/final_results/eb_summary_mioflow.csv'
+    'T_perturb/cytomeister/iclr/final_results/eb_summary_mioflow.csv'
 )
 
 # 1.2.6 EB interpolation (PRESCIENT)
@@ -345,14 +345,14 @@ extra_df = pd.concat([extra_seed_42_df, extra_seed_0_df, extra_seed_100_df])
 extra_summary = calc_mean_std(extra_df, 'extra')
 eb_summary_prescient = pd.concat([inter_summary, extra_summary], axis=1)
 eb_summary_prescient.to_csv(
-    'T_perturb/T_perturb/iclr/final_results/eb_summary_prescient.csv'
+    'T_perturb/cytomeister/iclr/final_results/eb_summary_prescient.csv'
 )
 
 # 2. Encoder ablation
 # ---------------------------------------------------------
 
 gf_frozen_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/cytoimmgen/interpolation/res/'
+    'T_perturb/cytomeister/iclr/cytoimmgen/interpolation/res/'
     '20240928-00:15_psin_learnt_mcosine_t1.0_i20_'
     's{self.sequence_length}_metrics.csv',
     index_col=0,
@@ -360,7 +360,7 @@ gf_frozen_df = pd.read_csv(
 gf_frozen_df = gf_frozen_df.T
 gf_frozen_df.rename(columns={0: 'gf_frozen'}, inplace=True)
 gf_fine_tuned_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/cytoimmgen/encoder/'
+    'T_perturb/cytomeister/iclr/cytoimmgen/encoder/'
     'res/20240930-12:14_psin_learnt_mcosine_t1.0_i20'
     '_s42_gf_fine_tuned_metrics.csv',
     index_col=0,
@@ -368,7 +368,7 @@ gf_fine_tuned_df = pd.read_csv(
 gf_fine_tuned_df = gf_fine_tuned_df.T
 gf_fine_tuned_df.rename(columns={0: 'gf_fine_tuned'}, inplace=True)
 encoder_scratch_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/cytoimmgen/encoder/'
+    'T_perturb/cytomeister/iclr/cytoimmgen/encoder/'
     'res/20240930-12:11_psin_learnt_mcosine'
     '_t1.0_i20_s42_encoder_metrics.csv',
     index_col=0,
@@ -379,27 +379,27 @@ encoder_summary = pd.concat(
     [gf_frozen_df, gf_fine_tuned_df, encoder_scratch_df], axis=1
 )
 encoder_summary.to_csv(
-    'T_perturb/T_perturb/iclr/final_results/encoder_ablation_summary.csv'
+    'T_perturb/cytomeister/iclr/final_results/encoder_ablation_summary.csv'
 )
 
 # 3. Masking scheduler ablation
 # ---------------------------------------------------------
 cosine_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/cytoimmgen/positional_encoding/'
+    'T_perturb/cytomeister/iclr/cytoimmgen/positional_encoding/'
     'res/20240927-12:44_psin_learnt_mcosine_metrics.csv',
     index_col=0,
 )
 cosine_df = cosine_df.T
 cosine_df.rename(columns={0: 'cosine'}, inplace=True)
 exp_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/cytoimmgen/masking_scheduler/'
+    'T_perturb/cytomeister/iclr/cytoimmgen/masking_scheduler/'
     'res/20240927-12:13_psin_learnt_mexp_metrics.csv',
     index_col=0,
 )
 exp_df = exp_df.T
 exp_df.rename(columns={0: 'exp'}, inplace=True)
 pow_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/cytoimmgen/masking_scheduler/'
+    'T_perturb/cytomeister/iclr/cytoimmgen/masking_scheduler/'
     'res/20240927-12:41_psin_learnt_mpow_metrics.csv',
     index_col=0,
 )
@@ -407,27 +407,27 @@ pow_df = pow_df.T
 pow_df.rename(columns={0: 'pow'}, inplace=True)
 masking_scheduler_summary = pd.concat([cosine_df, exp_df, pow_df], axis=1)
 masking_scheduler_summary.to_csv(
-    'T_perturb/T_perturb/iclr/final_results/masking_scheduler_ablation_summary.csv'
+    'T_perturb/cytomeister/iclr/final_results/masking_scheduler_ablation_summary.csv'
 )
 
 # 4. Positional encoding ablation
 # ---------------------------------------------------------
 sin_learnt_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/cytoimmgen/postional_encoding/'
+    'T_perturb/cytomeister/iclr/cytoimmgen/postional_encoding/'
     'res/20240926-00:19_psin_learnt_metrics.csv',
     index_col=0,
 )
 sin_learnt_df = sin_learnt_df.T
 sin_learnt_df.rename(columns={0: 'sin_learnt'}, inplace=True)
 time_pos_sin_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/cytoimmgen/postional_encoding/'
+    'T_perturb/cytomeister/iclr/cytoimmgen/postional_encoding/'
     'res/20240926-00:19_ptime_pos_sin_metrics.csv',
     index_col=0,
 )
 time_pos_sin_df = time_pos_sin_df.T
 time_pos_sin_df.rename(columns={0: 'time_pos_sin'}, inplace=True)
 comb_sin_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/cytoimmgen/postional_encoding/'
+    'T_perturb/cytomeister/iclr/cytoimmgen/postional_encoding/'
     'res/20240926-00:19_pcomb_sin_metrics.csv',
     index_col=0,
 )
@@ -437,14 +437,14 @@ positional_encoding_summary = pd.concat(
     [sin_learnt_df, time_pos_sin_df, comb_sin_df], axis=1
 )
 positional_encoding_summary.to_csv(
-    'T_perturb/T_perturb/iclr/final_results/' 'positional_encoding_ablation_summary.csv'
+    'T_perturb/cytomeister/iclr/final_results/' 'positional_encoding_ablation_summary.csv'
 )
 
 # 6. Generation ablation
 # ---------------------------------------------------------
 
 t2_i5_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/eb/generation/res/'
+    'T_perturb/cytomeister/iclr/eb/generation/res/'
     '20240927-16:06_psin_learnt_mcosine_t2.0_i5_s150_metrics.csv',
     index_col=0,
 )
@@ -452,7 +452,7 @@ t2_i5_df = t2_i5_df.T
 i5_df = t2_i5_df.copy()
 i5_df.rename(columns={0: 'i5'}, inplace=True)
 t2_i10_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/eb/generation/res/'
+    'T_perturb/cytomeister/iclr/eb/generation/res/'
     '20240927-16:43_psin_learnt_mcosine_t2.0_i10_s150_metrics.csv',
     index_col=0,
 )
@@ -460,7 +460,7 @@ t2_i10_df = t2_i10_df.T
 i10_df = t2_i10_df.copy()
 i10_df.rename(columns={0: 'i10'}, inplace=True)
 t2_i15_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/eb/generation/res/'
+    'T_perturb/cytomeister/iclr/eb/generation/res/'
     '20240927-16:42_psin_learnt_mcosine_t2.0_i15_s150_metrics.csv',
     index_col=0,
 )
@@ -468,7 +468,7 @@ t2_i15_df = t2_i15_df.T
 i15_df = t2_i15_df.copy()
 i15_df.rename(columns={0: 'i15'}, inplace=True)
 t2_i20_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/eb/generation/res/'
+    'T_perturb/cytomeister/iclr/eb/generation/res/'
     '20240927-16:52_psin_learnt_mcosine_t2.0_i20_s150_metrics.csv',
     index_col=0,
 )
@@ -478,7 +478,7 @@ i20_df.rename(columns={0: 'i20'}, inplace=True)
 # concatenate the dataframes
 generation_summary = pd.concat([i5_df, i10_df, i15_df, i20_df], axis=1)
 generation_summary.to_csv(
-    'T_perturb/T_perturb/iclr/final_results/generation_ablation_summary.csv'
+    'T_perturb/cytomeister/iclr/final_results/generation_ablation_summary.csv'
 )
 # convert into long format for plotting use one
 # column iteration (i5, i10, i15, i20) and one column for each metric
@@ -515,7 +515,7 @@ plt.legend(
     bbox_to_anchor=(1, 0.5),
 )
 plt.savefig(
-    'T_perturb/T_perturb/iclr/final_results/'
+    'T_perturb/cytomeister/iclr/final_results/'
     'generation_ablation_summary_rouge_plot.pdf',
     bbox_inches='tight',
 )
@@ -523,28 +523,28 @@ plt.close()
 
 # sequence length ablation for emd and pearson_r
 s_50_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/eb/generation/res/'
+    'T_perturb/cytomeister/iclr/eb/generation/res/'
     '20241002-07:43_psin_learnt_mcosine_t1.0_i20_s42_seq50_metrics.csv',
     index_col=0,
 )
 s_50_df = s_50_df.T
 s_50_df.rename(columns={0: 's_50'}, inplace=True)
 s_100_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/eb/generation/res/'
+    'T_perturb/cytomeister/iclr/eb/generation/res/'
     '20241002-07:50_psin_learnt_mcosine_t1.0_i20_s42_s100_metrics.csv',
     index_col=0,
 )
 s_100_df = s_100_df.T
 s_100_df.rename(columns={0: 's_100'}, inplace=True)
 s_150_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/eb/generation/res/'
+    'T_perturb/cytomeister/iclr/eb/generation/res/'
     '20241002-07:52_psin_learnt_mcosine_t1.0_i20_s42_s150_metrics.csv',
     index_col=0,
 )
 s_150_df = s_150_df.T
 s_150_df.rename(columns={0: 's_150'}, inplace=True)
 s_200_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/eb/generation/res/'
+    'T_perturb/cytomeister/iclr/eb/generation/res/'
     '20241002-07:54_psin_learnt_mcosine_t1.0_i20_s42_s200_metrics.csv',
     index_col=0,
 )
@@ -552,7 +552,7 @@ s_200_df = s_200_df.T
 s_200_df.rename(columns={0: 's_200'}, inplace=True)
 # concatenate the dataframes
 s_300_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/eb/generation/res/'
+    'T_perturb/cytomeister/iclr/eb/generation/res/'
     '20241002-07:56_psin_learnt_mcosine_t1.0_i20_s42_s300_metrics.csv',
     index_col=0,
 )
@@ -593,7 +593,7 @@ plt.legend(
     bbox_to_anchor=(1, 0.5),
 )
 plt.savefig(
-    'T_perturb/T_perturb/iclr/final_results/'
+    'T_perturb/cytomeister/iclr/final_results/'
     'sequence_length_ablation_summary_rouge_plot.pdf',
     bbox_inches='tight',
 )
@@ -616,7 +616,7 @@ plt.legend(
     bbox_to_anchor=(1, 0.5),
 )
 plt.savefig(
-    'T_perturb/T_perturb/iclr/final_results/'
+    'T_perturb/cytomeister/iclr/final_results/'
     'sequence_length_ablation_summary_emd_plot.pdf',
     bbox_inches='tight',
 )
@@ -643,7 +643,7 @@ plt.legend(
     bbox_to_anchor=(1, 0.5),
 )
 plt.savefig(
-    'T_perturb/T_perturb/iclr/final_results/'
+    'T_perturb/cytomeister/iclr/final_results/'
     'sequence_length_ablation_summary_pearson_r_plot.pdf',
     bbox_inches='tight',
 )
@@ -660,7 +660,7 @@ plt.legend(
     by_label.values(), by_label.keys(), loc='center left', bbox_to_anchor=(1, 0.5)
 )
 plt.savefig(
-    'T_perturb/T_perturb/iclr/final_results/generation_ablation_summary_emd_plot.pdf',
+    'T_perturb/cytomeister/iclr/final_results/generation_ablation_summary_emd_plot.pdf',
     bbox_inches='tight',
 )
 plt.close()
@@ -679,28 +679,28 @@ plt.legend(
     by_label.values(), by_label.keys(), loc='center left', bbox_to_anchor=(1, 0.5)
 )
 plt.savefig(
-    'T_perturb/T_perturb/iclr/final_results/'
+    'T_perturb/cytomeister/iclr/final_results/'
     'generation_ablation_summary_pearson_r_plot.pdf',
     bbox_inches='tight',
 )
 plt.close()
 
 t_05_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/eb/generation/res/'
+    'T_perturb/cytomeister/iclr/eb/generation/res/'
     '20240927-16:58_psin_learnt_mcosine_t0.5_i20_s150_metrics.csv',
     index_col=0,
 )
 t_05_df = t_05_df.T
 t_05_df.rename(columns={0: 't_05'}, inplace=True)
 t1_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/eb/generation/res/'
+    'T_perturb/cytomeister/iclr/eb/generation/res/'
     '20240927-17:11_psin_learnt_mcosine_t1.0_i20_s150_metrics.csv',
     index_col=0,
 )
 t1_df = t1_df.T
 t1_df.rename(columns={0: 't1'}, inplace=True)
 t_15_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/eb/generation/res/'
+    'T_perturb/cytomeister/iclr/eb/generation/res/'
     '20240927-16:59_psin_learnt_mcosine_t1.5_i20_s150_metrics.csv',
     index_col=0,
 )
@@ -709,7 +709,7 @@ t_15_df.rename(columns={0: 't_15'}, inplace=True)
 t2_df = t2_i20_df.copy()
 t2_df.rename(columns={0: 't2'}, inplace=True)
 t3_df = pd.read_csv(
-    'T_perturb/T_perturb/iclr/eb/generation/res/'
+    'T_perturb/cytomeister/iclr/eb/generation/res/'
     '20240927-17:00_psin_learnt_mcosine_t3.0_i20_s150_metrics.csv',
     index_col=0,
 )
@@ -758,7 +758,7 @@ plt.legend(
     bbox_to_anchor=(1, 0.5),
 )
 plt.savefig(
-    'T_perturb/T_perturb/iclr/final_results/temperature_ablation_summary_plot.pdf',
+    'T_perturb/cytomeister/iclr/final_results/temperature_ablation_summary_plot.pdf',
     bbox_inches='tight',
 )
 plt.close()
@@ -778,7 +778,7 @@ plt.legend(
     bbox_to_anchor=(1, 0.5),
 )
 plt.savefig(
-    'T_perturb/T_perturb/iclr/final_results/temperature_ablation_summary_emd_plot.pdf',
+    'T_perturb/cytomeister/iclr/final_results/temperature_ablation_summary_emd_plot.pdf',
     bbox_inches='tight',
 )
 plt.close()

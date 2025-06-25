@@ -3,7 +3,7 @@
 #BSUB -gpu "mode=exclusive_process:num=1" # request for exclusive access to gpu
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
-#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
+#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister # working directory
 #BSUB -o logs/return_embed_%J.out # output file
 #BSUB -e logs/return_embed_%J.err # error file
 #BSUB -M 150000  # RAM memory part 2. Default: 100MB
@@ -22,7 +22,7 @@ cwd=$(pwd)
 echo "--- Start computing model"
 
 # ----------------- Create folder to save results and copy the script -----------------
-RES_DIR="/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/iclr"
+RES_DIR="/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister/iclr"
 RES_NAME="cytoimmgen/embedding_analysis/"
 # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
@@ -34,18 +34,18 @@ echo "Copying script to $RES_DIR/$RES_NAME/2.1_run_val_return_embed.sh_$TIMESTAM
 
 # # Run python script for rna
 # python3 $cwd/val.py \
-python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/val.py \
+python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister/val.py \
 --test_mode masking \
 --split False \
 --splitting_mode stratified \
 --return_embed True \
 --generate False \
---ckpt_masking_path "./T_perturb/T_perturb/iclr/cytoimmgen/embedding_analysis/res/checkpoints/20240927_2353_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_psin_learnt_m_cosine_tp_1-2-3_s_42-epoch=39.ckpt" \
+--ckpt_masking_path "./T_perturb/cytomeister/iclr/cytoimmgen/embedding_analysis/res/checkpoints/20240927_2353_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_psin_learnt_m_cosine_tp_1-2-3_s_42-epoch=39.ckpt" \
 --output_dir $RES_DIR/$RES_NAME/res \
---src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_subsetted_src/0h.dataset" \
---tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_subsetted_tgt" \
---src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
---tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt" \
+--src_dataset "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_subsetted_src/0h.dataset" \
+--tgt_dataset_folder "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_subsetted_tgt" \
+--src_adata "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
+--tgt_adata_folder "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt" \
 --batch_size 256 \
 --max_len 300 \
 --tgt_vocab_size 1254 \

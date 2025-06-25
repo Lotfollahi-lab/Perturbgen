@@ -3,7 +3,7 @@
 #BSUB -gpu 'mode=exclusive_process:num=2:block=yes' # request for exclusive access to gpu
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
-#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb # working directory
+#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister # working directory
 #BSUB -o logs/count_GF_frozen_extra_%J.out # output file
 #BSUB -e logs/count_GF_frozen_extra_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
@@ -14,7 +14,7 @@
 module load cuda-12.1.1
 
 # activate conda environment
-source /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/.torch25/bin/activate
+source /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister/.torch25/bin/activate
 cwd=$(pwd)
 
 export WANDB_DIR=$cwd/wandb
@@ -22,7 +22,7 @@ export WANDB_DIR=$cwd/wandb
 echo "--- Start computing model"
 
 # ----------------- Create folder to save results and copy the script -----------------
-RES_DIR="/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/T_perturb/iclr"
+RES_DIR="/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister/iclr"
 RES_NAME="sdpa_ablation"
 # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
@@ -37,13 +37,13 @@ python3 $cwd/train.py \
 --train_mode count \
 --split True \
 --splitting_mode stratified \
---output_dir "./T_perturb/T_perturb/plt/res/cytoimmgen" \
---ckpt_masking_path "./T_perturb/T_perturb/Model/checkpoints/20240821_1613_maskgit_masking_train_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-2_s_42-epoch=19.ckpt" \
---src_dataset "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src_random_pairing_4096/0h.dataset" \
---tgt_dataset_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_tgt_random_pairing_4096" \
---src_adata "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_src_random_pairing_4096/0h.h5ad" \
---tgt_adata_folder "./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt_random_pairing_4096" \
---mapping_dict_path  "./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl" \
+--output_dir "./T_perturb/cytomeister/plt/res/cytoimmgen" \
+--ckpt_masking_path "./T_perturb/cytomeister/Model/checkpoints/20240821_1613_maskgit_masking_train_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-2_s_42-epoch=19.ckpt" \
+--src_dataset "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_src_random_pairing_4096/0h.dataset" \
+--tgt_dataset_folder "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_tgt_random_pairing_4096" \
+--src_adata "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_src_random_pairing_4096/0h.h5ad" \
+--tgt_adata_folder "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt_random_pairing_4096" \
+--mapping_dict_path  "./T_perturb/tokenized_data/cytoimmgen/token_id_to_genename_hvg.pkl" \
 --batch_size 512 \
 --max_len 300 \
 --epochs 20 \

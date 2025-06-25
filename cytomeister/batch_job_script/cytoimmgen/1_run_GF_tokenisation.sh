@@ -29,5 +29,5 @@ python3 $cwd/pp/GF_tokenisation.py \
 --reference_time '0h' \
 --time_point_order '0h' '16h' '40h' '5d' \
 --n_hvg 2000 \
---gene_median_path '/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/filtered_trace_median.pkl' \
---token_dict_path '/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/trace_filtered_tokenid.pkl' \
+--gene_median_path '/lustre/scratch126/cellgen/lotfollahi/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/filtered_trace_median.pkl' \
+--token_dict_path '/lustre/scratch126/cellgen/lotfollahi/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/trace_filtered_tokenid.pkl' \

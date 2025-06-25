@@ -27,7 +27,7 @@ python3 $cwd/pp/GF_tokenisation.py \
 --reference_time 'Day 00-03' \
 --time_point_order 'Day 00-03' 'Day 06-09' 'Day 12-15' 'Day 18-21' 'Day 24-27' \
 --n_hvg 2000 \
---gene_median_path '/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/filtered_trace_median.pkl' \
---token_dict_path '/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/trace_filtered_tokenid.pkl' \
+--gene_median_path '/lustre/scratch126/cellgen/lotfollahi/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/filtered_trace_median.pkl' \
+--token_dict_path '/lustre/scratch126/cellgen/lotfollahi/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/trace_filtered_tokenid.pkl' \
 
 echo '--- Finished tokenisation'
