@@ -30,11 +30,11 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --ckpt_masking_path './T_perturb/cytomeister/Model/checkpoints/'\
 '20240520_1055_petra_train_masking_lr_0.001'\
 '_wd_0.0001_batch_32_mlmp_0.15_tp_1-epoch=99.ckpt' \
---src_dataset './T_perturb/tokenized_dataeb/dataset_hvg_src/Day 00-03.dataset' \
---tgt_dataset_folder './T_perturb/tokenized_dataeb/dataset_hvg_tgt' \
---src_adata './T_perturb/tokenized_dataeb/h5ad_pairing_hvg_src/Day 00-03.h5ad' \
---tgt_adata_folder './T_perturb/tokenized_dataeb/h5ad_pairing_hvg_tgt' \
---mapping_dict_path  './T_perturb/tokenized_dataeb/token_id_to_genename_hvg.pkl' \
+--src_dataset './T_perturb/tokenized_data/eb/dataset_hvg_src/Day 00-03.dataset' \
+--tgt_dataset_folder './T_perturb/tokenized_data/eb/dataset_hvg_tgt' \
+--src_adata './T_perturb/tokenized_data/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad' \
+--tgt_adata_folder './T_perturb/tokenized_data/eb/h5ad_pairing_hvg_tgt' \
+--mapping_dict_path  './T_perturb/tokenized_data/eb/token_id_to_genename_hvg.pkl' \
 --batch_size 32 \
 --max_len 263 \
 --epochs 100 \

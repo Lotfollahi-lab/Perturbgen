@@ -38,7 +38,7 @@ def get_args():
     parser.add_argument(
         '--full_data_dir',
         type=str,
-        # default='./T_perturb/tokenized_data'
+        # default='./T_perturb/tokenized_data/'
         # 'h5ad_pairing_hvg/cytoimmgen_tokenised_hvg.h5ad',
         default=(
             './T_perturb/cytomeister/pp/eb/res/'
@@ -404,7 +404,7 @@ sc.pl.umap(
 )
 plt.savefig(f'./res/true_umap_{mode}.pdf', dpi=300, bbox_inches='tight')
 adata_full = sc.read_h5ad(
-    './T_perturb/tokenized_datacytoimmgen/h5ad_pairing_hvg/cytoimmgen_hvg.h5ad'
+    './T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg/cytoimmgen_hvg.h5ad'
 )
 adata_random = adata_full.copy()
 sc.pp.subsample(adata_random, n_obs=adata_true.n_obs)

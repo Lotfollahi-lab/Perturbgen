@@ -42,11 +42,11 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 --splitting_mode stratified \
 --split_obs celltype_v2 \
 --output_dir $RES_DIR/$RES_NAME/ \
---src_dataset "T_perturb/tokenized_datahspc_pbmc_median_tissue_all/dataset_all_src/stem.dataset" \
---tgt_dataset_folder "T_perturb/tokenized_datahspc_pbmc_median_tissue_all/dataset_all_tgt" \
---src_adata "T_perturb/tokenized_datahspc_pbmc_median_tissue_all/h5ad_pairing_all_src/stem.h5ad" \
---tgt_adata_folder "T_perturb/tokenized_datahspc_pbmc_median_tissue_all/h5ad_pairing_all_tgt" \
---mapping_dict_path "T_perturb/tokenized_datahspc_pbmc_median_tissue_all/token_id_to_genename_all.pkl" \
+--src_dataset "T_perturb/tokenized_data/hspc_pbmc_median_tissue_all/dataset_all_src/stem.dataset" \
+--tgt_dataset_folder "T_perturb/tokenized_data/hspc_pbmc_median_tissue_all/dataset_all_tgt" \
+--src_adata "T_perturb/tokenized_data/hspc_pbmc_median_tissue_all/h5ad_pairing_all_src/stem.h5ad" \
+--tgt_adata_folder "T_perturb/tokenized_data/hspc_pbmc_median_tissue_all/h5ad_pairing_all_tgt" \
+--mapping_dict_path "T_perturb/tokenized_data/hspc_pbmc_median_tissue_all/token_id_to_genename_all.pkl" \
 --batch_size 16 \
 --max_len 4096 \
 --epochs 30 \
@@ -70,11 +70,11 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 echo "--- Finished computing model"
 
 # 2k hvgs
-# --src_dataset "./T_perturb/tokenized_datahspc/dataset_hvg_src/stem.dataset" \
-# --tgt_dataset_folder "./T_perturb/tokenized_datahspc/dataset_hvg_tgt" \
-# --src_adata "./T_perturb/tokenized_datahspc/h5ad_pairing_hvg_src/stem.h5ad" \
-# --tgt_adata_folder "./T_perturb/tokenized_datahspc/h5ad_pairing_hvg_tgt" \
-# --mapping_dict_path  "./T_perturb/tokenized_datahspc/token_id_to_genename_hvg.pkl" \
+# --src_dataset "./T_perturb/tokenized_data/hspc/dataset_hvg_src/stem.dataset" \
+# --tgt_dataset_folder "./T_perturb/tokenized_data/hspc/dataset_hvg_tgt" \
+# --src_adata "./T_perturb/tokenized_data/hspc/h5ad_pairing_hvg_src/stem.h5ad" \
+# --tgt_adata_folder "./T_perturb/tokenized_data/hspc/h5ad_pairing_hvg_tgt" \
+# --mapping_dict_path  "./T_perturb/tokenized_data/hspc/token_id_to_genename_hvg.pkl" \
 
 # --max_len 450 \
 # --tgt_vocab_size 1187 \

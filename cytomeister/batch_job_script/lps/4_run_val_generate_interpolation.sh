@@ -34,11 +34,11 @@ python3 $cwd/val.py \
 --generate True \
 --output_dir $RES_DIR/$RES_NAME/res \
 --ckpt_count_path 'T_perturb/cytomeister/plt/res/lps/pbmc_median/interpolation/res/checkpoints/20250513_0921_cellgen_train_count_lr_0.001_wd_0.0001_batch_64_zinb_tp_1-3_s_100_pos_time_pos_sin_m_pow-epoch=04.ckpt' \
---src_dataset "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data2k_hvg_ourMED_all_tps/dataset_2000_hvg_src/normal.dataset" \
---tgt_dataset_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data2k_hvg_ourMED_all_tps/dataset_2000_hvg_tgt" \
---src_adata "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_src/normal.h5ad" \
---tgt_adata_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_tgt" \
---mapping_dict_path "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data2k_hvg_ourMED_all_tps/token_id_to_genename_2000_hvg.pkl" \
+--src_dataset "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/dataset_2000_hvg_src/normal.dataset" \
+--tgt_dataset_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/dataset_2000_hvg_tgt" \
+--src_adata "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_src/normal.h5ad" \
+--tgt_adata_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_tgt" \
+--mapping_dict_path "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/token_id_to_genename_2000_hvg.pkl" \
 --batch_size 64 \
 --max_len 666 \
 --tgt_vocab_size 1990 \

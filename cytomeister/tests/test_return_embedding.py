@@ -136,7 +136,7 @@ class CytoMeisterTestEmbeddingCase(unittest.TestCase):
             pred_tps=self.pred_tps,
             context_tps=self.context_tps,
             n_total_tps=2,
-            mapping_dict_path='./T_perturb/tokenized_data'
+            mapping_dict_path='./T_perturb/tokenized_data/'
             'cytoimmgen/token_id_to_genename_hvg.pkl',
             output_dir='./T_perturb/cytomeister/tests/res',
             encoder='Transformer_encoder',

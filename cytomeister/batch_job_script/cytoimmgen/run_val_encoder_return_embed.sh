@@ -31,10 +31,10 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --generate False \
 --ckpt_masking_path "./T_perturb/cytomeister/Model/checkpoints/20240809_1245_wo_residual_masking_lr_0.0001_wd_0.0001_batch_64_mlmp_0.15_tp_1-2_s_100-epoch=19.ckpt" \
 --output_dir "./T_perturb/cytomeister/plt/res/cytoimmgen" \
---src_dataset "./T_perturb/tokenized_datacytoimmgen/dataset_hvg_src_transformer/0h.dataset" \
---tgt_dataset_folder "./T_perturb/tokenized_datacytoimmgen/dataset_hvg_tgt" \
---src_adata "./T_perturb/tokenized_datacytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
---tgt_adata_folder "./T_perturb/tokenized_datacytoimmgen/h5ad_pairing_hvg_tgt" \
+--src_dataset "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_src_transformer/0h.dataset" \
+--tgt_dataset_folder "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_tgt" \
+--src_adata "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
+--tgt_adata_folder "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt" \
 --batch_size 64 \
 --max_len 300 \
 --tgt_vocab_size 1261 \

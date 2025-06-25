@@ -18,15 +18,15 @@ parameters:
   output_dir:
     value: './T_perturb/cytomeister/plt/res/hspc'
   src_dataset:
-    value: "./T_perturb/tokenized_datahspc/dataset_10000_hvg_src/stem.dataset"
+    value: "./T_perturb/tokenized_data/hspc/dataset_10000_hvg_src/stem.dataset"
   tgt_dataset_folder:
-    value: "./T_perturb/tokenized_datahspc/dataset_10000_hvg_tgt"
+    value: "./T_perturb/tokenized_data/hspc/dataset_10000_hvg_tgt"
   src_adata:
-    value: "./T_perturb/tokenized_datahspc/h5ad_pairing_10000_hvg_src/stem.h5ad"
+    value: "./T_perturb/tokenized_data/hspc/h5ad_pairing_10000_hvg_src/stem.h5ad"
   tgt_adata_folder:
-    value: "./T_perturb/tokenized_datahspc/h5ad_pairing_10000_hvg_tgt"
+    value: "./T_perturb/tokenized_data/hspc/h5ad_pairing_10000_hvg_tgt"
   mapping_dict_path:
-    value: "./T_perturb/tokenized_datahspc/token_id_to_genename_10000_hvg.pkl"
+    value: "./T_perturb/tokenized_data/hspc/token_id_to_genename_10000_hvg.pkl"
   max_len:
     value: 2200
   tgt_vocab_size:

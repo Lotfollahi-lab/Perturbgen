@@ -42,10 +42,10 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --generate True \
 --ckpt_count_path './T_perturb/cytomeister/iclr/sdpa_ablation/checkpoints/20240916_0757_sdpa_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1-3_s_42-epoch=09.ckpt' \
 --output_dir './T_perturb/cytomeister/plt/res/cytoimmgen' \
---src_dataset './T_perturb/tokenized_datacytoimmgen/dataset_hvg_src/0h.dataset' \
---tgt_dataset_folder './T_perturb/tokenized_datacytoimmgen/dataset_hvg_tgt' \
---src_adata './T_perturb/tokenized_datacytoimmgen/h5ad_pairing_hvg_src/0h.h5ad' \
---tgt_adata_folder './T_perturb/tokenized_datacytoimmgen/h5ad_pairing_hvg_tgt' \
+--src_dataset './T_perturb/tokenized_data/cytoimmgen/dataset_hvg_src/0h.dataset' \
+--tgt_dataset_folder './T_perturb/tokenized_data/cytoimmgen/dataset_hvg_tgt' \
+--src_adata './T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad' \
+--tgt_adata_folder './T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt' \
 --batch_size 256 \
 --max_len 300 \
 --tgt_vocab_size 1261 \

@@ -44,10 +44,10 @@ python3 $cwd/val.py \
 --generate True \
 --output_dir $RES_DIR/$RES_NAME/res \
 --ckpt_count_path 'T_perturb/cytomeister/plt/res/eb/pbmc_median/interpolation/res/checkpoints/20250514_2141_cellgen_train_count_lr_0.0001_wd_0.0001_batch_64_drop_0.2_zinb_tp_1-2-4_s_0_pos_time_pos_sin_m_pow-epoch=49.ckpt' \
---src_dataset 'T_perturb/tokenized_dataeb_pbmc_median/dataset_2000_hvg_src/Day 00-03.dataset' \
---tgt_dataset_folder 'T_perturb/tokenized_dataeb_pbmc_median/dataset_2000_hvg_tgt' \
---src_adata 'T_perturb/tokenized_dataeb_pbmc_median/h5ad_pairing_2000_hvg_src/Day 00-03.h5ad' \
---tgt_adata_folder 'T_perturb/tokenized_dataeb_pbmc_median/h5ad_pairing_2000_hvg_tgt' \
+--src_dataset 'T_perturb/tokenized_data/eb_pbmc_median/dataset_2000_hvg_src/Day 00-03.dataset' \
+--tgt_dataset_folder 'T_perturb/tokenized_data/eb_pbmc_median/dataset_2000_hvg_tgt' \
+--src_adata 'T_perturb/tokenized_data/eb_pbmc_median/h5ad_pairing_2000_hvg_src/Day 00-03.h5ad' \
+--tgt_adata_folder 'T_perturb/tokenized_data/eb_pbmc_median/h5ad_pairing_2000_hvg_tgt' \
 --batch_size 64 \
 --max_len 300 \
 --tgt_vocab_size 1750 \

@@ -41,13 +41,13 @@ parameters:
   output_dir:
     value: './T_perturb/cytomeister/plt/res/cytoimmgen'
   src_dataset:
-    value: './T_perturb/tokenized_datacytoimmgen/dataset_hvg_src_transformer/0h.dataset'
+    value: './T_perturb/tokenized_data/cytoimmgen/dataset_hvg_src_transformer/0h.dataset'
   tgt_dataset_folder:
-    value: './T_perturb/tokenized_datacytoimmgen/dataset_hvg_tgt'
+    value: './T_perturb/tokenized_data/cytoimmgen/dataset_hvg_tgt'
   src_adata:
-    value: './T_perturb/tokenized_datacytoimmgen/h5ad_pairing_hvg_src/0h.h5ad'
+    value: './T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad'
   tgt_adata_folder:
-    value: './T_perturb/tokenized_datacytoimmgen/h5ad_pairing_hvg_tgt'
+    value: './T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt'
   mask_scheduler:
     values: ['pow', 'exp', 'cosine']
   temperature:

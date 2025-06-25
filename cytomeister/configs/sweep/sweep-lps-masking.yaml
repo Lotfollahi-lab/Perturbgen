@@ -16,13 +16,13 @@ parameters:
   output_dir:
     value: 'T_perturb/cytomeister/plt/res/lps/pbmc_median/sweep'
   src_dataset:
-    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data2k_hvg_ourMED_all_tps/dataset_2000_hvg_src/normal.dataset'
+    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/dataset_2000_hvg_src/normal.dataset'
   tgt_dataset_folder:
-    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data2k_hvg_ourMED_all_tps/dataset_2000_hvg_tgt'
+    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/dataset_2000_hvg_tgt'
   src_adata:
-    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_src/normal.h5ad'
+    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_src/normal.h5ad'
   tgt_adata_folder:
-    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_tgt'
+    value: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_tgt'
   max_len:
     value: 666
   tgt_vocab_size:

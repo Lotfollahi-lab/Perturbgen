@@ -27,11 +27,11 @@ python3 $cwd/train.py \
 --split False \
 --splitting_mode stratified \
 --output_dir "./T_perturb/cytomeister/plt/res/cytoimmgen" \
---src_dataset "./T_perturb/tokenized_datacytoimmgen/dataset_hvg_src/0h.dataset" \
---tgt_dataset_folder "./T_perturb/tokenized_datacytoimmgen/dataset_hvg_tgt" \
---src_adata "./T_perturb/tokenized_datacytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
---tgt_adata_folder "./T_perturb/tokenized_datacytoimmgen/h5ad_pairing_hvg_tgt" \
---mapping_dict_path  "./T_perturb/tokenized_datacytoimmgen/token_id_to_genename_hvg.pkl" \
+--src_dataset "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_src/0h.dataset" \
+--tgt_dataset_folder "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_tgt" \
+--src_adata "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
+--tgt_adata_folder "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt" \
+--mapping_dict_path  "./T_perturb/tokenized_data/cytoimmgen/token_id_to_genename_hvg.pkl" \
 --batch_size 64 \
 --max_len 300 \
 --epochs 50 \

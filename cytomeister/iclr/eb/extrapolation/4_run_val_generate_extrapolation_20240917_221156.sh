@@ -41,10 +41,10 @@ python3 $cwd/val.py \
 --generate True \
 --ckpt_count_path './T_perturb/cytomeister/iclr/eb/extrapolation/res/checkpoints/20240917_2152_cellgen_train_count_lr_0.0001_wd_0.0001_batch_32_zinb_tp_1-2_s_42-epoch=99.ckpt' \
 --output_dir $RES_DIR/$RES_NAME/res \
---src_dataset './T_perturb/tokenized_dataeb/dataset_hvg_src_4096/Day 00-03.dataset' \
---tgt_dataset_folder './T_perturb/tokenized_dataeb/dataset_hvg_tgt_4096' \
---src_adata './T_perturb/tokenized_dataeb/h5ad_pairing_hvg_src_4096/Day 00-03.h5ad' \
---tgt_adata_folder './T_perturb/tokenized_dataeb/h5ad_pairing_hvg_tgt_4096' \
+--src_dataset './T_perturb/tokenized_data/eb/dataset_hvg_src_4096/Day 00-03.dataset' \
+--tgt_dataset_folder './T_perturb/tokenized_data/eb/dataset_hvg_tgt_4096' \
+--src_adata './T_perturb/tokenized_data/eb/h5ad_pairing_hvg_src_4096/Day 00-03.h5ad' \
+--tgt_adata_folder './T_perturb/tokenized_data/eb/h5ad_pairing_hvg_tgt_4096' \
 --batch_size 32 \
 --max_len 270 \
 --tgt_vocab_size 2001 \

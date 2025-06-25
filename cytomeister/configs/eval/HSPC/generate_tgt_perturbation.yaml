@@ -1,8 +1,8 @@
 data:
-  tgt_dataset_folder: "T_perturb/tokenized_datahspc/dataset_10000_hvg_tgt"
-  src_dataset_file: "T_perturb/tokenized_datahspc/dataset_10000_hvg_src/stem.dataset"
-  src_adata_file: "T_perturb/tokenized_datahspc/h5ad_pairing_10000_hvg_src/stem.h5ad"
-  tgt_adata_folder: "T_perturb/tokenized_datahspc/h5ad_pairing_10000_hvg_tgt"
+  tgt_dataset_folder: "T_perturb/tokenized_data/hspc/dataset_10000_hvg_tgt"
+  src_dataset_file: "T_perturb/tokenized_data/hspc/dataset_10000_hvg_src/stem.dataset"
+  src_adata_file: "T_perturb/tokenized_data/hspc/h5ad_pairing_10000_hvg_src/stem.h5ad"
+  tgt_adata_folder: "T_perturb/tokenized_data/hspc/h5ad_pairing_10000_hvg_tgt"
 trainer:
   tgt_vocab_size: 22044
   d_model: 512
@@ -13,7 +13,7 @@ trainer:
   dropout: 0
   mask_scheduler: 'cosine'
   output_dir: 'T_perturb/cytomeister/res/hspc/ddings/res'
-  mapping_dict_path: 'T_perturb/tokenized_datahspc/token_id_to_genename_10000_hvg.pkl'
+  mapping_dict_path: 'T_perturb/tokenized_data/hspc/token_id_to_genename_10000_hvg.pkl'
   encoder: 'GF_frozen'
   context_mode: true
   temperature: 1.5

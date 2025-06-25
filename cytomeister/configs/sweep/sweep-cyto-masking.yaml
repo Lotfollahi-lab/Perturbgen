@@ -16,13 +16,13 @@ parameters:
   output_dir:
     value: 'T_perturb/cytomeister/iclr/cytoimmgen/pbmc_median/sweep/'
   src_dataset:
-    value: "T_perturb/tokenized_datacytoimmgen_pbmc_median/dataset_2000_hvg_src/0h.dataset"
+    value: "T_perturb/tokenized_data/cytoimmgen_pbmc_median/dataset_2000_hvg_src/0h.dataset"
   tgt_dataset_folder:
-    value: "T_perturb/tokenized_datacytoimmgen_pbmc_median/dataset_2000_hvg_tgt"
+    value: "T_perturb/tokenized_data/cytoimmgen_pbmc_median/dataset_2000_hvg_tgt"
   src_adata:
-    value: "T_perturb/tokenized_datacytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_src/0h.h5ad"
+    value: "T_perturb/tokenized_data/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_src/0h.h5ad"
   tgt_adata_folder:
-    value: "T_perturb/tokenized_datacytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_tgt"
+    value: "T_perturb/tokenized_data/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_tgt"
   max_len:
     value: 400
   tgt_vocab_size:

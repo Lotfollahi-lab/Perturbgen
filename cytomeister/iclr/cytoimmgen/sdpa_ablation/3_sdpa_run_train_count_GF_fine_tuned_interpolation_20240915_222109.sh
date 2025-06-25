@@ -40,11 +40,11 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --splitting_mode stratified \
 --output_dir $RES_DIR/$RES_NAME \
 --ckpt_masking_path "./T_perturb/cytomeister/iclr/sdpa_ablation/checkpoints/20240915_1832_sdpa_train_masking_lr_0.0001_wd_0.0001_batch_512_mlmp_0.15_tp_1-3_s_42-epoch=09.ckpt" \
---src_dataset "./T_perturb/tokenized_datacytoimmgen/dataset_hvg_src_random_pairing_4096/0h.dataset" \
---tgt_dataset_folder "./T_perturb/tokenized_datacytoimmgen/dataset_hvg_tgt_random_pairing_4096" \
---src_adata "./T_perturb/tokenized_datacytoimmgen/h5ad_pairing_hvg_src_random_pairing_4096/0h.h5ad" \
---tgt_adata_folder "./T_perturb/tokenized_datacytoimmgen/h5ad_pairing_hvg_tgt_random_pairing_4096" \
---mapping_dict_path  "./T_perturb/tokenized_datacytoimmgen/token_id_to_genename_hvg.pkl" \
+--src_dataset "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_src_random_pairing_4096/0h.dataset" \
+--tgt_dataset_folder "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_tgt_random_pairing_4096" \
+--src_adata "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_src_random_pairing_4096/0h.h5ad" \
+--tgt_adata_folder "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt_random_pairing_4096" \
+--mapping_dict_path  "./T_perturb/tokenized_data/cytoimmgen/token_id_to_genename_hvg.pkl" \
 --batch_size 64 \
 --max_len 300 \
 --epochs 10 \

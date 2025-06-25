@@ -16,13 +16,13 @@ parameters:
   output_dir:
     value: './T_perturb/cytomeister/plt/res/eb'
   src_dataset:
-    value: './T_perturb/tokenized_dataeb/dataset_hvg_src/Day 00-03.dataset'
+    value: './T_perturb/tokenized_data/eb/dataset_hvg_src/Day 00-03.dataset'
   tgt_dataset_folder:
-    value: './T_perturb/tokenized_dataeb/dataset_hvg_tgt'
+    value: './T_perturb/tokenized_data/eb/dataset_hvg_tgt'
   src_adata:
-    value: './T_perturb/tokenized_dataeb/h5ad_pairing_hvg_src/Day 00-03.h5ad'
+    value: './T_perturb/tokenized_data/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad'
   tgt_adata_folder:
-    value: './T_perturb/tokenized_dataeb/h5ad_pairing_hvg_tgt'
+    value: './T_perturb/tokenized_data/eb/h5ad_pairing_hvg_tgt'
   batch_size:
     value: 32
   max_len:

@@ -44,11 +44,11 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --split False \
 --splitting_mode random \
 --output_dir $RES_DIR/$RES_NAME/res \
---src_dataset './T_perturb/tokenized_dataeb/dataset_hvg_subsetted_src/Day 00-03.dataset' \
---tgt_dataset_folder './T_perturb/tokenized_dataeb/dataset_hvg_subsetted_tgt' \
---src_adata './T_perturb/tokenized_dataeb/h5ad_pairing_hvg_src/Day 00-03.h5ad' \
---tgt_adata_folder './T_perturb/tokenized_dataeb/h5ad_pairing_hvg_tgt' \
---mapping_dict_path  './T_perturb/tokenized_dataeb/token_id_to_genename_hvg.pkl' \
+--src_dataset './T_perturb/tokenized_data/eb/dataset_hvg_subsetted_src/Day 00-03.dataset' \
+--tgt_dataset_folder './T_perturb/tokenized_data/eb/dataset_hvg_subsetted_tgt' \
+--src_adata './T_perturb/tokenized_data/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad' \
+--tgt_adata_folder './T_perturb/tokenized_data/eb/h5ad_pairing_hvg_tgt' \
+--mapping_dict_path  './T_perturb/tokenized_data/eb/token_id_to_genename_hvg.pkl' \
 --batch_size 64 \
 --max_len 270 \
 --epochs 50 \

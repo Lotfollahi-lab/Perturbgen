@@ -40,11 +40,11 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --splitting_mode random \
 --output_dir $RES_DIR/$RES_NAME/res \
 --ckpt_masking_path './T_perturb/cytomeister/iclr/eb/interpolation/res/checkpoints/20240926_1610_cellgen_train_masking_lr_0.001_wd_0.0001_batch_32_mlmp_0.15_tp_1-2-4_s_42-epoch=99.ckpt' \
---src_dataset './T_perturb/tokenized_dataeb/dataset_hvg_subsetted_src/Day 00-03.dataset' \
---tgt_dataset_folder './T_perturb/tokenized_dataeb/dataset_hvg_subsetted_tgt' \
---src_adata './T_perturb/tokenized_dataeb/h5ad_pairing_hvg_src/Day 00-03.h5ad' \
---tgt_adata_folder './T_perturb/tokenized_dataeb/h5ad_pairing_hvg_tgt' \
---mapping_dict_path  './T_perturb/tokenized_dataeb/token_id_to_genename_hvg.pkl' \
+--src_dataset './T_perturb/tokenized_data/eb/dataset_hvg_subsetted_src/Day 00-03.dataset' \
+--tgt_dataset_folder './T_perturb/tokenized_data/eb/dataset_hvg_subsetted_tgt' \
+--src_adata './T_perturb/tokenized_data/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad' \
+--tgt_adata_folder './T_perturb/tokenized_data/eb/h5ad_pairing_hvg_tgt' \
+--mapping_dict_path  './T_perturb/tokenized_data/eb/token_id_to_genename_hvg.pkl' \
 --batch_size 64 \
 --max_len 270 \
 --epochs 100 \

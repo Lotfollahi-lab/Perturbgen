@@ -42,10 +42,10 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --generate True \
 --ckpt_count_path './T_perturb/cytomeister/iclr/cytoimmgen/context/res/checkpoints/20240930_1148_cellgen_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1-3_s_42_pos_sin_learnt_m_cosine-epoch=01.ckpt' \
 --output_dir $RES_DIR/$RES_NAME/res \
---src_dataset "./T_perturb/tokenized_datacytoimmgen/dataset_hvg_subsetted_src/0h.dataset" \
---tgt_dataset_folder "./T_perturb/tokenized_datacytoimmgen/dataset_hvg_subsetted_tgt" \
---src_adata "./T_perturb/tokenized_datacytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
---tgt_adata_folder "./T_perturb/tokenized_datacytoimmgen/h5ad_pairing_hvg_tgt" \
+--src_dataset "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_subsetted_src/0h.dataset" \
+--tgt_dataset_folder "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_subsetted_tgt" \
+--src_adata "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
+--tgt_adata_folder "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt" \
 --mapping_dict_path  "./T_perturb/Geneformer/geneformer/token_dictionary_gc95M.pkl" \
 --batch_size 128 \
 --max_len 300 \

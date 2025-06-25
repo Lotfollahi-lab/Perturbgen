@@ -27,11 +27,11 @@ if os.getcwd().split('/')[-3] != 'T_perturb':
 
 tokenized_dir = (
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-    't_generative/T_perturb/tokenized_datadataset_hvg_tgt'
+    't_generative/T_perturb/tokenized_data/dataset_hvg_tgt'
 )
 adata_dir = (
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/'
-    't_generative/T_perturb/tokenized_datah5ad_pairing_hvg_tgt'
+    't_generative/T_perturb/tokenized_data/h5ad_pairing_hvg_tgt'
 )
 
 
@@ -82,7 +82,7 @@ for i in range(len(dataset_dict_keys)):
     # embs = embex.extract_embs(
     #     './res/Geneformer/240131_geneformer_CellClassifier_L2048_B32_LR5e-05_LSlinear_WU10000_E3_Oadamw_F5_16h/checkpoint-16272',
     #     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    #     'T_perturb/tokenized_datadataset/cytoimmgen_degs_random_pairing_16h.dataset',
+    #     'T_perturb/tokenized_data/dataset/cytoimmgen_degs_random_pairing_16h.dataset',
     #     './res/Geneformer',
     #     'cell_embeddings_finetuned_16h',
     # )

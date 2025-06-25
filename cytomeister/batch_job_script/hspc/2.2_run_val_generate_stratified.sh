@@ -47,11 +47,11 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/val.py 
 --return_gene_embs False \
 --ckpt_masking_path "T_perturb/cytomeister/res/hspc/_median/checkpoints/20250123_1633_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_cosine_tp_1-2_s_42-epoch=19.ckpt" \
 --output_dir $RES_DIR/$RES_NAME/ \
---src_dataset "T_perturb/tokenized_datahspc_pbmc_median/dataset_10000_hvg_src/stem.dataset" \
---tgt_dataset_folder "T_perturb/tokenized_datahspc_pbmc_median/dataset_10000_hvg_tgt" \
---src_adata "T_perturb/tokenized_datahspc_pbmc_median/h5ad_pairing_10000_hvg_src/stem.h5ad" \
---tgt_adata_folder "T_perturb/tokenized_datahspc_pbmc_median/h5ad_pairing_10000_hvg_tgt" \
---mapping_dict_path  "T_perturb/tokenized_datahspc_pbmc_median/token_id_to_genename_10000_hvg.pkl" \
+--src_dataset "T_perturb/tokenized_data/hspc_pbmc_median/dataset_10000_hvg_src/stem.dataset" \
+--tgt_dataset_folder "T_perturb/tokenized_data/hspc_pbmc_median/dataset_10000_hvg_tgt" \
+--src_adata "T_perturb/tokenized_data/hspc_pbmc_median/h5ad_pairing_10000_hvg_src/stem.h5ad" \
+--tgt_adata_folder "T_perturb/tokenized_data/hspc_pbmc_median/h5ad_pairing_10000_hvg_tgt" \
+--mapping_dict_path  "T_perturb/tokenized_data/hspc_pbmc_median/token_id_to_genename_10000_hvg.pkl" \
 --batch_size 64 \
 --max_len 2200 \
 --tgt_vocab_size 5710 \
@@ -66,7 +66,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/val.py 
 --cond_list celltype_v2 diff_state \
 --encoder scmaskgit \
 --encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=04.ckpt" \
---tokenid_to_rowid 'T_perturb/tokenized_datahspc_pbmc_median/tokenid_to_rowid_10000_hvg.pkl' \
+--tokenid_to_rowid 'T_perturb/tokenized_data/hspc_pbmc_median/tokenid_to_rowid_10000_hvg.pkl' \
 --context_mode True \
 --mask_scheduler 'cosine' \
 --pos_encoding_mode 'time_pos_sin' \
@@ -82,11 +82,11 @@ echo "--- Finished computing model"
 # --encoder_path '/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/scmaskgit/output2/checkpoints/20250110_2325_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt' \
 
 # 2k hvgs
-# --src_dataset "./T_perturb/tokenized_datahspc/dataset_hvg_src/stem.dataset" \
-# --tgt_dataset_folder "./T_perturb/tokenized_datahspc/dataset_hvg_tgt" \
-# --src_adata "./T_perturb/tokenized_datahspc/h5ad_pairing_hvg_src/stem.h5ad" \
-# --tgt_adata_folder "./T_perturb/tokenized_datahspc/h5ad_pairing_hvg_tgt" \
-# --mapping_dict_path  "./T_perturb/tokenized_datahspc/token_id_to_genename_hvg.pkl" \
+# --src_dataset "./T_perturb/tokenized_data/hspc/dataset_hvg_src/stem.dataset" \
+# --tgt_dataset_folder "./T_perturb/tokenized_data/hspc/dataset_hvg_tgt" \
+# --src_adata "./T_perturb/tokenized_data/hspc/h5ad_pairing_hvg_src/stem.h5ad" \
+# --tgt_adata_folder "./T_perturb/tokenized_data/hspc/h5ad_pairing_hvg_tgt" \
+# --mapping_dict_path  "./T_perturb/tokenized_data/hspc/token_id_to_genename_hvg.pkl" \
 
 # --max_len 450 \
 # --tgt_vocab_size 1187 \

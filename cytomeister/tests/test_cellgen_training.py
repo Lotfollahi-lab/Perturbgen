@@ -104,7 +104,7 @@ class CytoMeisterTestTrainingCase(unittest.TestCase):
             pos_encoding_mode='time_pos_sin',
             encoder='scmaskgit',
             mapping_dict_path=(
-                './T_perturb/tokenized_data'
+                './T_perturb/tokenized_data/'
                 'cytoimmgen/token_id_to_genename_hvg.pkl'
             ),
         )

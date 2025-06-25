@@ -1,8 +1,8 @@
 data:
-  src_dataset_file: "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data2k_hvg_ourMED_all_tps/dataset_2000_hvg_src/normal.dataset"
-  tgt_dataset_folder: "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data2k_hvg_ourMED_all_tps/dataset_2000_hvg_tgt"
-  src_adata: "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_src/normal.h5ad"
-  tgt_adata_folder: "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_tgt"
+  src_dataset_file: "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/dataset_2000_hvg_src/normal.dataset"
+  tgt_dataset_folder: "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/dataset_2000_hvg_tgt"
+  src_adata: "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_src/normal.h5ad"
+  tgt_adata_folder: "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/h5ad_pairing_2000_hvg_tgt"
   cond_list: 
       - 'cell_type_cellgen_harm'
 
@@ -27,8 +27,8 @@ trainer:
   output_dir: './results/test'
   #ckpt_count_path: "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/cytomeister/results/lps/count_interpolation_ourMED_ws_on2k_T_C_alltps/checkpoints/20250221_1130_cellgen_train_count_lr_0.001_wd_0.001_batch_16_zinb_tp_1-2-3_s_42_pos_time_pos_sin_m_cosine-epoch=03.ckpt"
   #ckpt_masking_path: "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/cytomeister/results/lps/interpolation_2k_all_tps_cond_celltype/res/checkpoints/20250216_1825_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_ptime_pos_sin_m_cosine_tp_1-2-3_s_42-epoch=15.ckpt"
-  mapping_dict_path: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data2k_hvg_ourMED_all_tps/token_id_to_genename_2000_hvg.pkl'
-  tokenid_to_rowid_path: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data2k_hvg_ourMED_all_tps/tokenid_to_rowid_2000_hvg.pkl'
+  mapping_dict_path: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/token_id_to_genename_2000_hvg.pkl'
+  tokenid_to_rowid_path: '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/tokenid_to_rowid_2000_hvg.pkl'
   encoder: 'scmaskgit'
   encoder_path: '/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=07.ckpt'
   context_mode: true

@@ -27,11 +27,11 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --train_mode masking \
 --split False \
 --splitting_mode random \
---src_dataset './T_perturb/tokenized_dataeb/dataset_hvg_src/Day 00-03.dataset' \
---tgt_dataset_folder './T_perturb/tokenized_dataeb/dataset_hvg_tgt' \
---src_adata './T_perturb/tokenized_dataeb/h5ad_pairing_hvg_src/Day 00-03.h5ad' \
---tgt_adata_folder './T_perturb/tokenized_dataeb/h5ad_pairing_hvg_tgt' \
---mapping_dict_path  './T_perturb/tokenized_dataeb/token_id_to_genename_hvg.pkl' \
+--src_dataset './T_perturb/tokenized_data/eb/dataset_hvg_src/Day 00-03.dataset' \
+--tgt_dataset_folder './T_perturb/tokenized_data/eb/dataset_hvg_tgt' \
+--src_adata './T_perturb/tokenized_data/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad' \
+--tgt_adata_folder './T_perturb/tokenized_data/eb/h5ad_pairing_hvg_tgt' \
+--mapping_dict_path  './T_perturb/tokenized_data/eb/token_id_to_genename_hvg.pkl' \
 --batch_size 32 \
 --max_len 263 \
 --epochs 100 \

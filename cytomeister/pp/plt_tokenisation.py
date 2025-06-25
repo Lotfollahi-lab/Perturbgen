@@ -35,7 +35,7 @@ if os.getcwd().split('/')[-3] != 'T_perturb':
 # read pickle file
 with open(
     '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-    'T_perturb/tokenized_datatoken_id_to_genename_hvg.pkl',
+    'T_perturb/tokenized_data/token_id_to_genename_hvg.pkl',
     'rb',
 ) as f:
     tokenid_to_hvg_genename = pickle.load(f)
