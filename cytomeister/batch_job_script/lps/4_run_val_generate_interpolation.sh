@@ -22,7 +22,7 @@ export WANDB_DIR=$cwd/wandb
 # run script
 echo '--- Start computing model'
 
-RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/res"
+RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/"
 RES_NAME="lps/pbmc_median/interpolation"
 
 

@@ -15,7 +15,7 @@ module load cuda-12.1.1
 
 # activate conda environment
 source /nfs/team361/cytomeister/.cytomeister/bin/activate
-RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/res"
+RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/"
 RES_NAME="cytoimmgen/pbmc_median/interpolation"
 cwd=$(pwd)
 

@@ -21,7 +21,7 @@ export WANDB_DIR=$cwd/wandb
 # run script
 echo '--- Start computing model'
 
-RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/res"
+RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/"
 RES_NAME="eb/pbmc_median/interpolation"
 
 # # if directory does not exist, create it with the name $RES_NAME

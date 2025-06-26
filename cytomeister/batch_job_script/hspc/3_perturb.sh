@@ -3,9 +3,9 @@
 #BSUB -gpu "mode=exclusive_process:num=1" # request for exclusive access to gpu  :gmodel=NVIDIA_H100_HBM3_80GB
 #BSUB -n 4 # number of cores
 #BSUB -G team361 # groupname for billing
-#BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister # working directory
-#BSUB -o logs/perturb_cluster_HBG2_%J.out # output file
-#BSUB -e logs/perturb_cluster_HBG2_%J.err # error file
+#BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11 # working directory
+#BSUB -o T_perturb/cytomeister/logs/perturb_cluster_HBG2_%J.out # output file
+#BSUB -e T_perturb/cytomeister/logs/perturb_cluster_HBG2_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
 #BSUB -J hspc_perturb_cluster_HBG2 # job name

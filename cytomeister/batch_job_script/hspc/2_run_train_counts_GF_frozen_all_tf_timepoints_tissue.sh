@@ -24,7 +24,7 @@ export WANDB_DIR=$cwd/wandb
 echo "--- Start computing model"
 
 # # # ----------------- Create folder to save results and copy the script -----------------
-RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/res"
+RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/"
 RES_NAME="hspc/fine_tuning"
 # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
@@ -48,9 +48,9 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 --tgt_adata_folder "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/h5ad_pairing_5000_hvg_tgt" \
 --mapping_dict_path  "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/token_id_to_genename_5000_hvg.pkl" \
 --batch_size 64 \
---max_len 2943 \
+--max_len 2275\
 --epochs 20 \
---tgt_vocab_size 5848 \
+--tgt_vocab_size 5685 \
 --cellgen_lr 0.00001 \
 --cellgen_wd 0.00001 \
 --count_lr 0.005 \

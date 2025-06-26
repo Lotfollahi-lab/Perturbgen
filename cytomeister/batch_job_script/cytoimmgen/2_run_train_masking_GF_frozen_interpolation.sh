@@ -22,7 +22,7 @@ cwd=$(pwd)
 echo "--- Start computing model"
 
 # # ----------------- Create folder to save results and copy the script -----------------
-RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/res"
+RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/"
 RES_NAME="cytoimmgen/pbmc_median/interpolation"
 # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
