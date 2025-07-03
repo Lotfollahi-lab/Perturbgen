@@ -41,14 +41,14 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --splitting_mode stratified \
 --generate True \
 --ckpt_count_path './T_perturb/cytomeister/iclr/cytoimmgen/masking_scheduler/res/checkpoints/20240927_0907_cellgen_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1-3_s_42_pos_sin_learnt_m_pow-epoch=01.ckpt' \
---output_dir $RES_DIR/$RES_NAME/res \
+--output_dir $RES_DIR/$RES_NAME \
 --src_dataset "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_subsetted_src/0h.dataset" \
 --tgt_dataset_folder "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_subsetted_tgt" \
 --src_adata "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
 --tgt_adata_folder "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt" \
 --mapping_dict_path  "./T_perturb/Geneformer/geneformer/token_dictionary_gc95M.pkl" \
 --batch_size 128 \
---max_len 300 \
+--max_len 291 \
 --tgt_vocab_size 1254 \
 --cellgen_lr 0.0001 \
 --cellgen_wd 0.0001 \

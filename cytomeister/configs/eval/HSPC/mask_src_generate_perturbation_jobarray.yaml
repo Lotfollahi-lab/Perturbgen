@@ -12,7 +12,7 @@ trainer:
   max_seq_length: 2275
   dropout: 0
   mask_scheduler: 'pow'
-  output_dir: 'T_perturb/cytomeister/res/hspc/perturbation'
+  output_dir: 'T_perturb/res/hspc/perturbation'
   mapping_dict_path: 'T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/token_id_to_genename_5000_hvg.pkl'
   tokenid_to_rowid_path: 'T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/tokenid_to_rowid_5000_hvg.pkl'
   encoder: 'scmaskgit'
@@ -51,4 +51,4 @@ datamodule:
   pred_tps:
     - 1
 model:
-  ckpt_masking_path: "T_perturb/cytomeister/res/hspc/ddings/res/checkpoints/20241114_1146_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_learnt_m_cosine_tp_1-2_s_42-epoch=09.ckpt"
+  ckpt_masking_path: "T_perturb/res/hspc/ddings/res/checkpoints/20241114_1146_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_learnt_m_cosine_tp_1-2_s_42-epoch=09.ckpt"

@@ -26,6 +26,7 @@ python3 $cwd/pp/GF_tokenisation.py \
 --time_obs 'diff_state' \
 --opt_pairing_obs 'tissue' \
 --gene_filtering_mode 'hvg' \
+--cell_gene_filter True \
 --remove_mito_ribo_genes True \
 --hvg_mode 'after_tokenisation' \
 --n_hvg 5000 \

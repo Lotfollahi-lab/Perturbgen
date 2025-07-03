@@ -22,8 +22,8 @@ cwd=$(pwd)
 echo "--- Start computing model"
 
 # ----------------- Create folder to save results and copy the script -----------------
-RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/"
-RES_NAME="res/hspc/"
+RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/res/"
+RES_NAME="hspc/embeddings"
 # # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
 # # Get the current timestamp
@@ -41,7 +41,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/val.py 
 --return_embed True \
 --return_attn False \
 --generate False \
---ckpt_masking_path "T_perturb/cytomeister/res/hspc/fine_tuning/checkpoints/20250623_2256_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1-2_s_42-epoch=14.ckpt" \
+--ckpt_masking_path "T_perturb/res/hspc/fine_tuning/checkpoints/20250623_2256_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1-2_s_42-epoch=19.ckpt" \
 --output_dir $RES_DIR/$RES_NAME/embeddings \
 --src_dataset "T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf/dataset_5000_hvg_src/stem.dataset" \
 --tgt_dataset_folder "T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf/dataset_5000_hvg_tgt" \
@@ -68,10 +68,10 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/val.py 
 --pos_encoding_mode 'time_pos_sin' \
 --d_model 768 \
 --return_gene_embs True \
---gene_embs_condition 'celltype_v2'
+--gene_embs_condition 'diff_state'
 echo "--- Finished computing model"
 
-# --deg_pkl_path 'T_perturb/cytomeister/res/hspc/_median/figures/20250126_top250_DEG_lmpptissue_v_lmpprest_10k.pkl'
+# --deg_pkl_path 'T_perturb/res/hspc/figures/20250126_top250_DEG_lmpptissue_v_lmpprest_10k.pkl'
 
 # PBMC median
 # --encoder_path '/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=07.ckpt' \

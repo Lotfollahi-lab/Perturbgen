@@ -41,13 +41,13 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/val.py 
 --return_embed True \
 --generate False \
 --ckpt_masking_path "./T_perturb/cytomeister/iclr/cytoimmgen/embedding_analysis/res/checkpoints/20240928_1101_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_psin_learnt_m_cosine_tp_1_s_42-epoch=19.ckpt" \
---output_dir $RES_DIR/$RES_NAME/res \
+--output_dir $RES_DIR/$RES_NAME \
 --src_dataset "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_subsetted_src/0h.dataset" \
 --tgt_dataset_folder "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_subsetted_tgt" \
 --src_adata "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
 --tgt_adata_folder "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt" \
 --batch_size 256 \
---max_len 300 \
+--max_len 291 \
 --tgt_vocab_size 1254 \
 --cellgen_lr 0.0001 \
 --cellgen_wd 0.0001 \

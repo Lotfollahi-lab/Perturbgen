@@ -1,0 +1,70 @@
+data:
+  src_dataset_file: "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/dataset_5000_hvg_src/intermediate.dataset"
+  tgt_dataset_folder: "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/dataset_5000_hvg_tgt"
+  src_adata_file: "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/h5ad_pairing_5000_hvg_src/intermediate.h5ad"
+  tgt_adata_folder: "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/h5ad_pairing_5000_hvg_tgt"
+  # cond_list:
+  #   - 'celltype_v2'
+  #   - 'diff_state'
+  # filter_var: 'celltype_v2'
+  # filter_cond:
+  # - 'DC_pre'
+  # - 'Mono_Pre'
+  # - 'DC_pre'
+  # - 'Macrophage'
+  # perturb_genes_file: 'T_perturb/res/hspc/gene_embedding/20250312_gene_clusters_LMPP_L4.csv'
+  # perturb_cluster:
+  # - '75'
+
+trainer:
+  tgt_vocab_size: 5685
+  d_model: 768
+  num_heads: 8
+  num_layers: 6
+  d_ff: 64
+  max_seq_length: 2275
+  dropout: 0
+  mask_scheduler: 'pow'
+  output_dir: 'T_perturb/res/hspc/perturbation'
+  mapping_dict_path: 'T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/token_id_to_genename_5000_hvg.pkl'
+  tokenid_to_rowid_path: 'T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/tokenid_to_rowid_5000_hvg.pkl'
+  encoder: 'scmaskgit'
+  encoder_path: '/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=07.ckpt'
+  context_mode: False
+  pos_encoding_mode: 'time_pos_sin'
+  perturbation_mode: 'mask'
+  genes_to_perturb:
+    - GOT1
+  validation_mode: 'inference'
+  perturbation_sequence:
+    - 'src'
+  var_list:
+    - 'sex'
+    - 'phase'
+    - 'tissue'
+    - 'celltype_v2'
+    - 'diff_state'
+  pred_tps:
+    - 1
+  #count decoder
+  use_count_decoder: True
+  loss_mode: 'zinb'
+  n_samples: 3
+
+datamodule:
+  batch_size: 32
+  num_workers: 4
+  shuffle: False
+  split: False
+  max_len: 2275
+  var_list:
+    - 'sex'
+    - 'phase'
+    - 'tissue'
+    - 'celltype_v2'
+    - 'diff_state'
+  pred_tps:
+    - 1
+model:
+  precision: 16
+  ckpt_masking_path: "T_perturb/res/hspc/fine_tuning/checkpoints/20250624_1504_cellgen_train_count_lr_0.005_wd_0.001_batch_64_drop_0.0_zinb_tp_1_s_42_pos_time_pos_sin_m_pow-epoch=04.ckpt"

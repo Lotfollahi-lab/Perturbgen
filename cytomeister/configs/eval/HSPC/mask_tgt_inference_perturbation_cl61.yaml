@@ -3,7 +3,7 @@ data:
   tgt_dataset_folder: "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/dataset_5000_hvg_tgt"
   src_adata_file: "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/h5ad_pairing_5000_hvg_src/intermediate.h5ad"
   tgt_adata_folder: "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/h5ad_pairing_5000_hvg_tgt"
-  perturb_genes_file: 'T_perturb/cytomeister/res/hspc/_median/gene_embedding/20250423/gene_clusters_L5.csv'
+  perturb_genes_file: 'T_perturb/res/hspc/gene_embedding/20250423/gene_clusters_L5.csv'
   perturb_colname: 'leiden_5'
   perturb_cluster:
   - 61
@@ -17,7 +17,7 @@ trainer:
   max_seq_length: 2275
   dropout: 0
   mask_scheduler: 'pow'
-  output_dir: 'T_perturb/cytomeister/res/hspc/perturbation'
+  output_dir: 'T_perturb/res/hspc/perturbation'
   mapping_dict_path: 'T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/token_id_to_genename_5000_hvg.pkl'
   tokenid_to_rowid_path: 'T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/tokenid_to_rowid_5000_hvg.pkl'
   encoder: 'scmaskgit'
@@ -59,4 +59,4 @@ datamodule:
     - 1
 model:
   precision: 16
-  ckpt_masking_path: "T_perturb/cytomeister/res/hspc/fine_tuning/checkpoints/20250624_1504_cellgen_train_count_lr_0.005_wd_0.001_batch_64_drop_0.0_zinb_tp_1_s_42_pos_time_pos_sin_m_pow-epoch=04.ckpt"
+  ckpt_masking_path: "T_perturb/res/hspc/fine_tuning/checkpoints/20250624_1504_cellgen_train_count_lr_0.005_wd_0.001_batch_64_drop_0.0_zinb_tp_1_s_42_pos_time_pos_sin_m_pow-epoch=04.ckpt"

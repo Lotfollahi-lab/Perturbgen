@@ -12,7 +12,7 @@ data:
   # - 'Mono_Pre'
   # - 'DC_pre'
   # - 'Macrophage'
-  # perturb_genes_file: 'T_perturb/cytomeister/res/hspc/_median/gene_embedding/20250312_gene_clusters_LMPP_L4.csv'
+  # perturb_genes_file: 'T_perturb/res/hspc/gene_embedding/20250312_gene_clusters_LMPP_L4.csv'
   # perturb_cluster:
   # - '75'
 
@@ -25,7 +25,7 @@ trainer:
   max_seq_length: 2200
   dropout: 0
   mask_scheduler: 'cosine'
-  output_dir: 'T_perturb/cytomeister/res/hspc/perturbation'
+  output_dir: 'T_perturb/res/hspc/perturbation'
   mapping_dict_path: 'T_perturb/tokenized_data/hspc_pbmc_median/token_id_to_genename_10000_hvg.pkl'
   tokenid_to_rowid_path: 'T_perturb/tokenized_data/hspc_pbmc_median/tokenid_to_rowid_10000_hvg.pkl'
   encoder: 'scmaskgit'
@@ -72,4 +72,4 @@ datamodule:
     - 2
 model:
   precision: 16
-  ckpt_masking_path: "T_perturb/cytomeister/res/hspc/_median/checkpoints/20250326_1856_cellgen_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1-2_s_42_pos_time_pos_sin_m_pow-epoch=09.ckpt"
+  ckpt_masking_path: "T_perturb/res/hspc/checkpoints/20250326_1856_cellgen_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1-2_s_42_pos_time_pos_sin_m_pow-epoch=09.ckpt"

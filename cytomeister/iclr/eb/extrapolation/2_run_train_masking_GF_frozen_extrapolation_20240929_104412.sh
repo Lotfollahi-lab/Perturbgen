@@ -39,7 +39,7 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --train_mode masking \
 --split False \
 --splitting_mode random \
---output_dir $RES_DIR/$RES_NAME/res \
+--output_dir $RES_DIR/$RES_NAME \
 --src_dataset './T_perturb/tokenized_data/eb/dataset_hvg_subsetted_src/Day 00-03.dataset' \
 --tgt_dataset_folder './T_perturb/tokenized_data/eb/dataset_hvg_subsetted_tgt' \
 --src_adata './T_perturb/tokenized_data/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad' \

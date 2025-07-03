@@ -1,7 +1,7 @@
 #!/bin/bash
-#BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu "mode=exclusive_process:num=1:gmodel=NVIDIAA100_SXM4_80GB" # request for exclusive access to gpu  :gmodel=NVIDIA_H100_HBM3_80GB
-#BSUB -J hspc_perturb_cluster_[1-35]%4 # job array with 35 jobs, max 4 running at the same time
+#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -gpu "mode=exclusive_process:num=1" # request for exclusive access to gpu  :gmodel=NVIDIA_H100_HBM3_80GB
+#BSUB -J hspc_perturb_cluster_[1-48]%4 # job array with 35 jobs, max 4 running at the same time
 #BSUB -n 4 # number of cores
 #BSUB -G cellulargenetics-priority # groupname for billing team361
 #BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/ # working directory
@@ -22,10 +22,13 @@ export WANDB_DIR=$cwd/wandb
 echo "--- Start computing model"
 
 GENES=(
-  TGFBR2 SLC2A10 INHBA ZNF423 TGFB1I1 CDKN1C BMP10 SMAD3 CITED2 TGFB2 RBPJ
-  BMP2 TSC22D1 SOX11 FOXC1 TGFB3 NOTCH1 DAB2 SMAD4 GDF7 BMPER HIPK2 TGFB1
-  GDF11 HES5 ZEB2 CREBBP ENG BMPR2 THBS1 ACVR2A BMP4 INMG3 BMP6 CRB2
+HK2 ADORA2B GFPT1 FKBP4 GOT2 CYB5A VEGFA FUT8 P4HA1 GALE SLC25A13 HS2ST1 FAM162A ME2 PAXIP1 AURKA
+DEPDC1 TPI1 CDK1 COPB2 PGM2 IDH1 PKM POLR3K PPP2CB PGAM1 PSMC4 GOT1 B4GALT4 HMMR RPE KIF2A AK4
+LDHA SLC16A3 NASP BTK IGHM IGLL1 CD79A CD79B BLNK PIK3R1 PIK3CD RBM8A FLI1 ARPC1B MPIG6B
 )
+
+
+
 INDEX=$((LSB_JOBINDEX - 1))
 PERTURBED_GENE=${GENES[$INDEX]}
 

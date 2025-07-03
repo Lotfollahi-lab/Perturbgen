@@ -44,7 +44,7 @@ python3 $cwd/train.py \
 --tgt_adata_folder "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt_random_pairing_4096" \
 --mapping_dict_path  "./T_perturb/tokenized_data/cytoimmgen/token_id_to_genename_hvg.pkl" \
 --batch_size 512 \
---max_len 300 \
+--max_len 291 \
 --epochs 50 \
 --tgt_vocab_size 1254 \
 --cellgen_lr 0.0001 \

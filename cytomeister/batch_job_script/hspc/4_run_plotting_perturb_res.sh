@@ -18,6 +18,6 @@ echo "--- Start plotting"
 
 python3 $cwd/TRACE-reproducibility/HSPC/3.1_multiple_perturbation.py \
 --perturbed_gene 'HBG2' \
---p_perturbation 'T_perturb/cytomeister/res/hspc/perturbation/20250625-08:50_minference_adata_gHBG2_ssrc_tmask.h5ad' \
+--p_perturbation 'T_perturb/res/hspc/perturbation/20250625-08:50_minference_adata_gHBG2_ssrc_tmask.h5ad' \
 --lineage 'megakaryocyte-erythroid'
 echo "--- Finished plotting"

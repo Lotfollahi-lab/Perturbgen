@@ -38,7 +38,7 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --train_mode count \
 --split False \
 --splitting_mode random \
---output_dir $RES_DIR/$RES_NAME/res \
+--output_dir $RES_DIR/$RES_NAME \
 --ckpt_masking_path './T_perturb/cytomeister/iclr/eb/extrapolation/res/checkpoints/20240929_1044_cellgen_train_masking_lr_0.001_wd_0.0001_batch_64_psin_learnt_m_cosine_tp_1-2_s_42-epoch=49.ckpt' \
 --src_dataset './T_perturb/tokenized_data/eb/dataset_hvg_subsetted_src/Day 00-03.dataset' \
 --tgt_dataset_folder './T_perturb/tokenized_data/eb/dataset_hvg_subsetted_tgt' \

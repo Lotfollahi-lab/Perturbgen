@@ -39,7 +39,7 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --train_mode count \
 --split False \
 --splitting_mode stratified \
---output_dir $RES_DIR/$RES_NAME/res \
+--output_dir $RES_DIR/$RES_NAME \
 --ckpt_masking_path "./T_perturb/cytomeister/iclr/cytoimmgen/encoder/res/checkpoints/20240930_0101_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_psin_learnt_gf_finetuned_s_42-epoch=09.ckpt" \
 --src_dataset "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_subsetted_src/0h.dataset" \
 --tgt_dataset_folder "./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_subsetted_tgt" \
@@ -47,7 +47,7 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --tgt_adata_folder "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt" \
 --mapping_dict_path  "./T_perturb/tokenized_data/cytoimmgen/token_id_to_genename_hvg.pkl" \
 --batch_size 64 \
---max_len 300 \
+--max_len 291 \
 --epochs 2 \
 --tgt_vocab_size 1254 \
 --cellgen_lr 0.0001 \

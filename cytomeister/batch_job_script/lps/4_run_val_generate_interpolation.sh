@@ -22,7 +22,7 @@ export WANDB_DIR=$cwd/wandb
 # run script
 echo '--- Start computing model'
 
-RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/"
+RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/res/"
 RES_NAME="lps/pbmc_median/interpolation"
 
 
@@ -32,7 +32,7 @@ python3 $cwd/val.py \
 --split False \
 --splitting_mode stratified \
 --generate True \
---output_dir $RES_DIR/$RES_NAME/res \
+--output_dir $RES_DIR/$RES_NAME \
 --ckpt_count_path 'T_perturb/cytomeister/plt/res/lps/pbmc_median/interpolation/res/checkpoints/20250513_0921_cellgen_train_count_lr_0.001_wd_0.0001_batch_64_zinb_tp_1-3_s_100_pos_time_pos_sin_m_pow-epoch=04.ckpt' \
 --src_dataset "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/dataset_2000_hvg_src/normal.dataset" \
 --tgt_dataset_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/tokenized_data/2k_hvg_ourMED_all_tps/dataset_2000_hvg_tgt" \
@@ -56,7 +56,7 @@ python3 $cwd/val.py \
 --var_list cell_type_cellgen_harm donor_cellgen_harm time_after_LPS \
 --cond_list time_after_LPS \
 --encoder scmaskgit \
---encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=04.ckpt" \
+--encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=07.ckpt" \
 --add_cell_time False \
 --use_positional_encoding False \
 --context_mode True \

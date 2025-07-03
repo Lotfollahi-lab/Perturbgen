@@ -15,7 +15,7 @@ module load cuda-12.1.1
 
 # activate conda environment
 source /nfs/team361/cytomeister/.cytomeister/bin/activate
-RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/"
+RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/res/"
 RES_NAME="cytoimmgen/pbmc_median/extrapolation"
 cwd=$(pwd)
 
@@ -36,7 +36,7 @@ python3 $cwd/train.py \
 --train_mode count \
 --split False \
 --splitting_mode stratified \
---output_dir $RES_DIR/$RES_NAME/res \
+--output_dir $RES_DIR/$RES_NAME \
 --ckpt_masking_path "T_perturb/cytomeister/plt/res/cytoimmgen/pbmc_median/extrapolation/res/checkpoints/20250512_2125_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1-2_s_100-epoch=19.ckpt" \
 --src_dataset "T_perturb/tokenized_data/cytoimmgen_pbmc_median/dataset_2000_hvg_src/0h.dataset" \
 --tgt_dataset_folder "T_perturb/tokenized_data/cytoimmgen_pbmc_median/dataset_2000_hvg_tgt" \
@@ -60,7 +60,7 @@ python3 $cwd/train.py \
 --cond_list Time_point \
 --var_list Cell_population Cell_type Time_point Donor \
 --encoder scmaskgit \
---encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=04.ckpt" \
+--encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=07.ckpt" \
 --add_cell_time False \
 --use_positional_encoding False \
 --pos_encoding_mode time_pos_sin \

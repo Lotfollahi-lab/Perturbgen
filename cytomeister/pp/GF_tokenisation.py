@@ -159,7 +159,7 @@ def get_args():
     parser.add_argument(
         '--remove_mito_ribo_genes',
         type=str2bool,
-        default=True,
+        default=False,
         help='Exclude mitochondrial and ribosomal genes',
     )
     parser.add_argument(
@@ -174,6 +174,12 @@ def get_args():
         type=int,
         default=10000,
         help='Number of highly variable genes to keep',
+    )
+    parser.add_argument(
+        '--cell_gene_filter',
+        type=str2bool,
+        default=False,
+        help='Filter cells and genes based on expression',
     )
     parser.add_argument(
         '--gene_median_path',
@@ -270,12 +276,13 @@ elif args.gene_filtering_mode == 'degs':
     )
     unique_degs = degs['names'].unique()
     adata = adata[:, adata.var['gene_name'].isin(unique_degs)]
+
 # elif args.gene_filtering_mode == 'hvg':
 #     sc.pp.normalize_total(adata, target_sum=1e4)
 #     sc.pp.log1p(adata)
-
-sc.pp.filter_cells(adata, min_genes=1000)
-sc.pp.filter_genes(adata, min_cells=10)
+if args.cell_gene_filter:
+    sc.pp.filter_cells(adata, min_genes=1000)
+    sc.pp.filter_genes(adata, min_cells=10)
 
 if args.remove_mito_ribo_genes:
     print('Removing mitochondrial and ribosomal genes...')
@@ -356,7 +363,6 @@ if not (issparse(adata.X)):
 # adata.obs = adata.obs[args.var_list]
 adata.var = adata.var[['gene_name', 'ensembl_id']]
 adata.obs['n_counts'] = adata.X.sum(axis=1)
-
 # save adata
 adata.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
 
@@ -372,6 +378,7 @@ adata_subset = filter_adata_for_GF_genes(
     args.token_dict_path,
     exclude_non_GF_genes=args.exclude_non_GF_genes,
 )
+
 
 if args.gene_filtering_mode == 'hvg':
     if ((args.hvg_mode is not None) and
@@ -426,6 +433,7 @@ if args.gene_filtering_mode == 'hvg':
     adata_subset,
     args.token_dict_path,
 )
+
 # save row id to gene name mapping
 with open(
     f'{TOKENIZED_DIR}/{args.dataset}'

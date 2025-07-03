@@ -43,7 +43,7 @@ python3 $cwd/val.py \
 --split False \
 --splitting_mode random \
 --generate True \
---output_dir $RES_DIR/$RES_NAME/res \
+--output_dir $RES_DIR/$RES_NAME \
 --ckpt_count_path './T_perturb/cytomeister/iclr/eb/interpolation/res/checkpoints/20240930_2348_cellgen_train_count_lr_0.0001_wd_0.0001_batch_64_zinb_tp_1-2-4_s_0_pos_sin_learnt_m_cosine-epoch=99.ckpt' \
 --src_dataset './T_perturb/tokenized_data/eb/dataset_hvg_subsetted_src/Day 00-03.dataset' \
 --tgt_dataset_folder './T_perturb/tokenized_data/eb/dataset_hvg_subsetted_tgt' \

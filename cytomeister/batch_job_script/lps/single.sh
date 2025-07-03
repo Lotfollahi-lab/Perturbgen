@@ -35,7 +35,7 @@ python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb
 --split False \
 --splitting_mode stratified \
 --generate True \
---output_dir $RES_DIR/$RES_NAME/res \
+--output_dir $RES_DIR/$RES_NAME \
 --ckpt_count_path '/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb/cytomeister/results/lps/count_interpolation_ourMED_ws_on2k_e9_noSplit_nodropout_subset_cond/checkpoints/20250211_1446_cellgen_train_count_lr_0.001_wd_0.001_batch_16_zinb_tp_1-3_s_42_pos_time_pos_sin_m_cosine-epoch=07.ckpt' \
 --src_dataset "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/tokenized_data/st1_ourMED_adib/dataset_hvg_subsetted_src/normal.dataset" \
 --tgt_dataset_folder "/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/tokenized_data/st1_ourMED_adib/dataset_hvg_subsetted_tgt" \
@@ -57,7 +57,7 @@ python3 /lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_final/T_perturb
 --context_tps 1 3 \
 --var_list cell_type_cellgen_harm donor_cellgen_harm time_after_LPS \
 --encoder Transformer_encoder \
---encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=04.ckpt" \
+--encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=07.ckpt" \
 --context_mode True \
 --pos_encoding_mode time_pos_sin \
 --mask_scheduler 'cosine' \

@@ -22,7 +22,7 @@ cwd=$(pwd)
 echo "--- Start computing model"
 
 # # ----------------- Create folder to save results and copy the script -----------------
-RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/"
+RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/res/"
 RES_NAME="cytoimmgen/pbmc_median/interpolation"
 # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
@@ -37,7 +37,7 @@ python3 $cwd/train.py \
 --train_mode masking \
 --split False \
 --splitting_mode stratified \
---output_dir $RES_DIR/$RES_NAME/res \
+--output_dir $RES_DIR/$RES_NAME \
 --src_dataset "T_perturb/tokenized_data/cytoimmgen_pbmc_median/dataset_2000_hvg_src/0h.dataset" \
 --tgt_dataset_folder "T_perturb/tokenized_data/cytoimmgen_pbmc_median/dataset_2000_hvg_tgt" \
 --src_adata "T_perturb/tokenized_data/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_src/0h.h5ad" \
@@ -58,7 +58,7 @@ python3 $cwd/train.py \
 --encoder scmaskgit \
 --context_mode True \
 --cond_list Time_point \
---encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=04.ckpt" \
+--encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=07.ckpt" \
 --pos_encoding_mode time_pos_sin \
 --seed 0 \
 --mask_scheduler 'pow' \

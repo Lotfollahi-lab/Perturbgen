@@ -15,7 +15,7 @@ module load cuda-12.1.1
 
 # activate conda environment
 source /nfs/team361/cytomeister/.cytomeister/bin/activate
-RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/"
+RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/res/"
 RES_NAME="cytoimmgen/pbmc_median/interpolation"
 cwd=$(pwd)
 
@@ -39,7 +39,7 @@ python3 $cwd/val.py \
 --splitting_mode stratified \
 --generate True \
 --ckpt_count_path 'T_perturb/cytomeister/plt/res/cytoimmgen/pbmc_median/interpolation/res/checkpoints/20250513_0850_cellgen_train_count_lr_0.001_wd_0.001_batch_64_zinb_tp_1-3_s_0_pos_time_pos_sin_m_pow-epoch=01.ckpt' \
---output_dir $RES_DIR/$RES_NAME/res \
+--output_dir $RES_DIR/$RES_NAME \
 --src_dataset "T_perturb/tokenized_data/cytoimmgen_pbmc_median/dataset_2000_hvg_src/0h.dataset" \
 --tgt_dataset_folder "T_perturb/tokenized_data/cytoimmgen_pbmc_median/dataset_2000_hvg_tgt" \
 --src_adata "T_perturb/tokenized_data/cytoimmgen_pbmc_median/h5ad_pairing_2000_hvg_src/0h.h5ad" \
@@ -62,7 +62,7 @@ python3 $cwd/val.py \
 --var_list Cell_population Cell_type Time_point Donor \
 --cond_list Time_point \
 --encoder scmaskgit \
---encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=04.ckpt" \
+--encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=07.ckpt" \
 --pos_encoding_mode time_pos_sin \
 --context_mode True \
 --d_model 768 \

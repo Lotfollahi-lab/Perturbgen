@@ -3,7 +3,7 @@ data:
   src_dataset_file: "T_perturb/tokenized_data/hspc_pbmc_median/dataset_10000_hvg_src_pert/intermediate.dataset"
   src_adata_file: "T_perturb/tokenized_data/hspc_pbmc_median/h5ad_pairing_10000_hvg_src_pert/intermediate.h5ad"
   tgt_adata_folder: "T_perturb/tokenized_data/hspc_pbmc_median/h5ad_pairing_10000_hvg_tgt_pert"
-  # perturb_genes_file: 'T_perturb/cytomeister/res/hspc/_median/gene_embedding/20250312_gene_clusters_LMPP_L4.csv'
+  # perturb_genes_file: 'T_perturb/res/hspc/gene_embedding/20250312_gene_clusters_LMPP_L4.csv'
   # perturb_cluster:
   # - '77'
 
@@ -16,7 +16,7 @@ trainer:
   max_seq_length: 2200
   dropout: 0
   mask_scheduler: 'cosine'
-  output_dir: 'T_perturb/cytomeister/res/hspc/perturbation'
+  output_dir: 'T_perturb/res/hspc/perturbation'
   mapping_dict_path: 'T_perturb/tokenized_data/hspc_pbmc_median/token_id_to_genename_10000_hvg.pkl'
   tokenid_to_rowid_path: 'T_perturb/tokenized_data/hspc_pbmc_median/tokenid_to_rowid_10000_hvg.pkl'
   encoder: 'scmaskgit'
@@ -61,4 +61,4 @@ datamodule:
     - 1
 model:
   precision: 16
-  ckpt_masking_path: "T_perturb/cytomeister/res/hspc/_median/checkpoints/20250321_2317_cellgen_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1_s_42_pos_time_pos_sin_m_pow-epoch=09.ckpt"
+  ckpt_masking_path: "T_perturb/res/hspc/checkpoints/20250321_2317_cellgen_train_count_lr_0.005_wd_0.001_batch_64_zinb_tp_1_s_42_pos_time_pos_sin_m_pow-epoch=09.ckpt"

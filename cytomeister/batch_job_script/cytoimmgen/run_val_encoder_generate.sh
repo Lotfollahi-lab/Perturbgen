@@ -33,7 +33,7 @@ echo "--- Start computing model"
 # --src_adata "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
 # --tgt_adata_folder "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt" \
 # --batch_size 64 \
-# --max_len 300 \
+# --max_len 291 \
 # --tgt_vocab_size 1261 \
 # --cellgen_lr 0.0001 \
 # --cellgen_wd 0.0001 \
@@ -62,7 +62,7 @@ python3 /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/
 --src_adata "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad" \
 --tgt_adata_folder "./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt" \
 --batch_size 64 \
---max_len 300 \
+--max_len 291 \
 --tgt_vocab_size 1261 \
 --cellgen_lr 0.0001 \
 --cellgen_wd 0.0001 \

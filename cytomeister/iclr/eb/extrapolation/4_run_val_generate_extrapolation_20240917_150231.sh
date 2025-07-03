@@ -40,7 +40,7 @@ python3 $cwd/val.py \
 --splitting_mode random \
 --generate True \
 --ckpt_count_path './T_perturb/cytomeister/iclr/eb/extrapolation/res/checkpoints/20240917_1437_cellgen_train_count_lr_0.0001_wd_0.0001_batch_32_zinb_tp_1-2_s_42-epoch=49.ckpt' \
---output_dir $RES_DIR/$RES_NAME/res \
+--output_dir $RES_DIR/$RES_NAME \
 --src_dataset './T_perturb/tokenized_data/eb/dataset_hvg_src_random_pairing_4096/Day 00-03.dataset' \
 --tgt_dataset_folder './T_perturb/tokenized_data/eb/dataset_hvg_tgt_random_pairing_4096' \
 --src_adata './T_perturb/tokenized_data/eb/h5ad_pairing_hvg_src_random_pairing_4096/Day 00-03.h5ad' \
