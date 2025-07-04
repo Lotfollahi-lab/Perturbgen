@@ -1114,7 +1114,6 @@ def pearson(
     print(f'Pearson correlation: {np.corrcoef(x_true, x_pred)[0, 1]}')
     _, _, r_value, _, _ = stats.linregress(x_true, x_pred)
     pearson_r = r_value**2
-    raise
     return pearson_r
 
 
@@ -1518,6 +1517,8 @@ def pairing_src_to_tgt_cells(
                 obs_filter = adata_obs_.loc[
                     adata_obs_['celltype_v2'].isin(celltypes_), :
                 ].copy()
+                print('pairing_obs:', obs_filter['pairing_obs'].unique())
+                
                 for category in obs_filter['pairing_obs'].unique():
                     obs_filter_ = obs_filter.loc[
                         obs_filter['pairing_obs'] == category, :
@@ -1530,6 +1531,8 @@ def pairing_src_to_tgt_cells(
                             obs_dict_opt[intermediate][category] = {}
                         if intermediate not in max_reference_time_opt.keys():
                             max_reference_time_opt[intermediate] = {}
+                        print(obs_dict_opt)
+
                         obs_dict_opt[intermediate][category][time] = obs_filter_.loc[
                             obs_filter_[time_obs] == time, :
                         ]
@@ -1579,6 +1582,7 @@ def pairing_src_to_tgt_cells(
                             )
                         else:
                             continue
+
     else:
         max_rows = 0
         obs_dict = {}
