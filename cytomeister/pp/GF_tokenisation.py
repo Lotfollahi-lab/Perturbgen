@@ -34,14 +34,14 @@ def get_args():
         '--h5ad_path',
         type=str,
         # default='./data/h5d_files/cytoimmgen.h5ad',
-        default='./data/20241026_HSPC/cd34.h5ad',
+        default='data/hspc/cd34.h5ad',
         help='Path to h5ad file',
     )
     parser.add_argument(
         '--dataset',
         type=str,
         # default='cytoimmgen',
-        default='hspc_pbmc_median_tissue',
+        default='hspc_pbmc_median_inter_tissue_all_tf',
         # choices=[
         #     'cytoimmgen',
         #     'cytoimmgen_pbmc_median',
@@ -64,7 +64,7 @@ def get_args():
     parser.add_argument(
         '--hvg_mode',
         type=str,
-        default=None,
+        default='after_tokenisation',
         choices=['before_tokenisation', 'after_tokenisation'],
         help='Mode for highly variable gene selection',
     )
@@ -114,10 +114,22 @@ def get_args():
         'and encoding the different states (e.g. time, hierarchy).',
     )
     parser.add_argument(
+        '--pairing_file',
+        type=str,
+        default='T_perturb/cytomeister/pp/hspc/cd34_pos_mapping.csv',
+        help='Path to cell pairing file for mapping cell types',
+    )
+    parser.add_argument(
+        '--main_pairing_obs',
+        type=str,
+        default='celltype_v2',
+        help='Observation to use for mapping cell types in the dataset',
+    )
+    parser.add_argument(
         '--opt_pairing_obs',
         type=str,
         nargs='+',
-        default=None,
+        default=['tissue'],
         help='Additional obs for cell pairing',
     )
     parser.add_argument(
@@ -159,7 +171,7 @@ def get_args():
     parser.add_argument(
         '--remove_mito_ribo_genes',
         type=str2bool,
-        default=False,
+        default=True,
         help='Exclude mitochondrial and ribosomal genes',
     )
     parser.add_argument(
@@ -172,40 +184,34 @@ def get_args():
     parser.add_argument(
         '--n_hvg',
         type=int,
-        default=10000,
+        default=5000,
         help='Number of highly variable genes to keep',
     )
     parser.add_argument(
         '--cell_gene_filter',
         type=str2bool,
-        default=False,
+        default=True,
         help='Filter cells and genes based on expression',
     )
     parser.add_argument(
         '--gene_median_path',
         type=str,
-        default='/lustre/scratch126/cellgen/lotfollahi/am74/'
-        'Adib/TRACE/Loom_cohort/tdigest/2nd_run/'
-        'Dictionaries/filtered_trace_median.pkl',
-        # default='T_perturb/Geneformer/geneformer/gene_median_dictionary_gc95M.pkl',
+        default='/nfs/team361/am74/Cytomeister/outputs/median/'
+        'aggregate/scenario_3/median_trace_scenario3.pkl',
         help='Path to gene median file',
     )
     parser.add_argument(
         '--token_dict_path',
         type=str,
-        default='/lustre/scratch126/cellgen/lotfollahi/am74/'
-        'Adib/TRACE/Loom_cohort/tdigest/2nd_run/'
-        'Dictionaries/trace_filtered_tokenid.pkl',
-        # default='T_perturb/Geneformer/geneformer/token_dictionary_gc95M.pkl',
+        default='/nfs/team361/am74/Cytomeister/outputs/'
+        'median/aggregate/scenario_3/tokenid_trace_scenario3.pkl',
         help='Path to token dictionary file',
     )
     parser.add_argument(
         '--gene_mapping_path',
         type=str,
-        # default='/lustre/scratch126/cellgen/lotfollahi/am74/'
-        # 'Adib/TRACE/Loom_cohort/tdigest/2nd_run/'
-        # 'Dictionaries/filtered_trace_median.pkl',
-        default='T_perturb/Geneformer/geneformer/gene_name_id_dict_gc95M.pkl',
+        default='/nfs/team361/am74/Cytomeister/outputs/'
+        'median/aggregate/scenario_3/ensembl_mapping_dict_gc95M.pkl',
         help='Path to gene mapping file',
     )
     parser.add_argument(
@@ -217,7 +223,7 @@ def get_args():
     parser.add_argument(
         '--genes_to_include_path',
         type=str,
-        default=None,
+        default='T_perturb/cytomeister/pp/hspc/1639_Human_TF.csv',
     )
     args = parser.parse_args()
     return args
@@ -488,7 +494,7 @@ print('Finished tokenisation.')
 dataset = load_from_disk(f'{output_dir}/{file_name}.dataset')
 # load csv
 if args.pairing_mode == 'mapping':
-    mapping_df = pd.read_csv(f'T_perturb/cytomeister/pp/hspc/cd34_pos_mapping.csv')
+    mapping_df = pd.read_csv(args.pairing_file)
 else:
     mapping_df = None
 adata_subset = sc.read_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
@@ -498,6 +504,7 @@ cell_pairings = pairing_src_to_tgt_cells(
     pairing_mode=args.pairing_mode,
     time_obs=args.time_obs,
     seed_no=seed_no,
+    main_pairing_obs=args.main_pairing_obs, 
     mapping_df=mapping_df,
     opt_pairing_obs=args.opt_pairing_obs,
 )

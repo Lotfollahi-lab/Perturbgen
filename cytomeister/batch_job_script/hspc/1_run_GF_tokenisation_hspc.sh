@@ -18,12 +18,14 @@ echo "--- Start tokenisation"
 
 python3 $cwd/pp/GF_tokenisation.py \
 --h5ad_path '/lustre/scratch126/cellgen/lotfollahi/kl11/data/hspc/cd34.h5ad' \
---dataset hspc_pbmc_median_inter_tissue_all_tf \
+--dataset hspc_pbmc_median_inter_tissue_all_tf_2 \
 --var_list assignment_id sex tissue phase\
  celltype_v2 donor_tissue diff_state dataset\
  cell_pairing_index \
 --pairing_mode mapping \
 --time_obs 'diff_state' \
+--pairing_file 'T_perturb/cytomeister/pp/hspc/cd34_pos_mapping.csv' \
+--main_pairing_obs 'celltype_v2' \
 --opt_pairing_obs 'tissue' \
 --gene_filtering_mode 'hvg' \
 --cell_gene_filter True \
