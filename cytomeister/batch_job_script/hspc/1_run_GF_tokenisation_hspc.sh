@@ -34,8 +34,8 @@ python3 $cwd/pp/GF_tokenisation.py \
 --n_hvg 5000 \
 --nproc 4 \
 --genes_to_include_path 'T_perturb/cytomeister/pp/hspc/1639_Human_TF.csv' \
---reference_time stem \
---time_point_order stem intermediate terminal \
+--reference_time intermediate \
+--time_point_order intermediate terminal \
 --gene_median_path '/nfs/team361/am74/Cytomeister/outputs/median/aggregate/scenario_3/median_trace_scenario3.pkl' \
 --token_dict_path '/nfs/team361/am74/Cytomeister/outputs/median/aggregate/scenario_3/tokenid_trace_scenario3.pkl' \
 --gene_mapping_path '/nfs/team361/am74/Cytomeister/outputs/median/aggregate/scenario_3/ensembl_mapping_dict_gc95M.pkl'

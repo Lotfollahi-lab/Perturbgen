@@ -129,7 +129,7 @@ def get_args():
         '--opt_pairing_obs',
         type=str,
         nargs='+',
-        default=['tissue'],
+        default=None,
         help='Additional obs for cell pairing',
     )
     parser.add_argument(
