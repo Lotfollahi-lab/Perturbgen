@@ -514,10 +514,10 @@ class scmaskgitwrapper(nn.Module):
 
         self.model = scmoscf(
             # tgt_vocab_size=26717,
-            tgt_vocab_size=20274,  # PBMC median
+            tgt_vocab_size=19000,  # PBMC median
             d_model=768,
             num_heads=8,
-            num_layers=6,
+            num_layers=12,
             d_ff=96,
             max_seq_length=4096,
             dropout=0.03,

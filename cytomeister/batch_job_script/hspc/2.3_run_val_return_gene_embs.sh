@@ -1,6 +1,6 @@
 #!/bin/bash
-#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu "mode=exclusive_process:num=1" # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB :gmodel=NVIDIA_H100_HBM3_80GB
+#BSUB -q gpu-basement # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -gpu "mode=exclusive_process:num=1:gmodel=NVIDIA_H100_HBM3_80GB" # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB :gmodel=NVIDIA_H100_HBM3_80GB
 #BSUB -n 4 # number of cores
 #BSUB -G cellulargenetics-priority # groupname for billing team361
 #BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11 # working directory
@@ -23,7 +23,7 @@ echo "--- Start computing model"
 
 # ----------------- Create folder to save results and copy the script -----------------
 RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/res/"
-RES_NAME="hspc/embeddings"
+RES_NAME="hspc/"
 # # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
 # # Get the current timestamp
@@ -41,7 +41,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/val.py 
 --return_embed True \
 --return_attn False \
 --generate False \
---ckpt_masking_path "T_perturb/res/hspc/fine_tuning/checkpoints/20250707_2239_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1-2_s_42-epoch=19.ckpt" \
+--ckpt_masking_path "T_perturb/res/hspc/fine_tuning/checkpoints/20250709_2225_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1-2_s_42-epoch=19.ckpt" \
 --output_dir $RES_DIR/$RES_NAME/embeddings \
 --src_dataset "T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf/dataset_5000_hvg_src/stem.dataset" \
 --tgt_dataset_folder "T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf/dataset_5000_hvg_tgt" \
@@ -50,7 +50,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/val.py 
 --mapping_dict_path "T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf/token_id_to_genename_5000_hvg.pkl" \
 --batch_size 32 \
 --max_len 2277 \
---tgt_vocab_size 5690 \
+--tgt_vocab_size 5693 \
 --cellgen_lr 0.00001 \
 --cellgen_wd 0.00001 \
 --count_lr 0.00005 \
@@ -68,7 +68,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/val.py 
 --pos_encoding_mode 'time_pos_sin' \
 --d_model 768 \
 --return_gene_embs True \
---gene_embs_condition 'diff_state'
+--gene_embs_condition 'celltype_v2'
 echo "--- Finished computing model"
 
 # --deg_pkl_path 'T_perturb/res/hspc/figures/20250126_top250_DEG_lmpptissue_v_lmpprest_10k.pkl'

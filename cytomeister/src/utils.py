@@ -1531,17 +1531,18 @@ def pairing_src_to_tgt_cells(
     adata_obs_ = adata_subset.obs.copy()
     adata_obs_ = adata_obs_.reset_index()
     cell_pairings: Dict[str, List[str]] = {}
+    max_rows = 0
+    obs_dict = {}
+    max_reference_time: None | str = None
+    for time in adata_obs_[time_obs].unique():
+        obs_dict[time] = adata_obs_.loc[adata_obs_[time_obs] == time, :]
+        cell_pairings[time] = []
+        if len(obs_dict[time]) > max_rows:
+            max_rows = len(obs_dict[time])
+            max_reference_time = time
 
     if pairing_mode == 'mapping':
-        max_rows = 0
-        obs_dict = {}
-        max_reference_time: None | str = None
-        for time in adata_obs_[time_obs].unique():
-            obs_dict[time] = adata_obs_.loc[adata_obs_[time_obs] == time, :]
-            cell_pairings[time] = []
-            if len(obs_dict[time]) > max_rows:
-                max_rows = len(obs_dict[time])
-                max_reference_time = time
+
 
         # Optionally group by the opt_pairing_obs (list or str)
         if opt_pairing_obs is not None:

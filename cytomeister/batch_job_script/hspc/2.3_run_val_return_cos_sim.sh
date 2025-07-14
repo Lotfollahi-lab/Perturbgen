@@ -23,7 +23,7 @@ echo "--- Start computing model"
 
 # ----------------- Create folder to save results and copy the script -----------------
 RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/res/"
-RES_NAME="hspc/pbmc_median/"
+RES_NAME="hspc/"
 # # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
 # # Get the current timestamp
