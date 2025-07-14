@@ -32,7 +32,7 @@ def get_args():
     parser.add_argument(
         '--config',
         type=str,
-        default='T_perturb/cytomeister/configs/eval/HSPC/perturbation.yaml',
+        default='T_perturb/cytomeister/configs/eval/HSPC/mask_src_inference_perturbation_B2M.yaml',
     )
     return parser.parse_args()
 
@@ -95,7 +95,8 @@ def main() -> None:
                     sc.pp.log1p(tgt_adata)
 
         # change precision for inference to 16-bit
-        if config['model']['precision'] == 16:
+        # check if device is cuda and if precision is set to 16
+        if torch.cuda.is_available() and config['model']['precision'] == 16:
             device_name = torch.cuda.get_device_name(0)
             precision = (
                 'bf16-mixed'
@@ -213,7 +214,7 @@ def main() -> None:
         trainer = pl.Trainer(
             logger=False,
             accelerator=accelerator,
-            devices=1 if torch.cuda.is_available() else 0,  # inference only on one gpu
+            devices=1,
             precision=precision,
         )
         if config['model']['ckpt_masking_path'] is not None:
@@ -239,6 +240,7 @@ def main() -> None:
                     decoder_module,
                     data_module,
                     ckpt_path=config['model']['ckpt_masking_path'],
+
                 )
     else:
         # Warn if no genes to perturb are provided

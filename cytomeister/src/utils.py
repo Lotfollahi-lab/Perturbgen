@@ -862,15 +862,29 @@ def return_generation_adata(
     return adata
 
 
-def mean_duplicates(
-    obs: pd.DataFrame,
-    data: np.array,
-):
-    remove_duplicates = obs.drop_duplicates(subset='cell_idx')
-    data = pd.DataFrame(data, index=obs['cell_idx'])
-    data_aggregated = data.groupby(data.index).mean()
-    data_aggregated = data_aggregated.reindex(remove_duplicates['cell_idx'])
-    return data_aggregated.values
+def mean_duplicates(obs: pd.DataFrame, data: np.ndarray):
+    """
+    Averages rows in `data` corresponding to duplicated 'cell_idx' entries in `obs`.
+
+    Parameters:
+    - obs (pd.DataFrame): Must contain a 'cell_idx' column
+    - data (np.ndarray): Rows aligned with `obs`, shape (n_cells, n_features)
+
+    Returns:
+    - np.ndarray: Mean-aggregated array with one row per unique cell_idx
+    """
+    assert data.shape[0] == obs.shape[0], "obs and data must have the same number of rows"
+    cell_idx = obs['cell_idx'].values
+
+    # Group by cell_idx and compute mean
+    df = pd.DataFrame(data, index=cell_idx)
+    df_mean = df.groupby(level=0).mean()
+
+    # Reorder to match first occurrence
+    unique_order = obs.drop_duplicates('cell_idx')['cell_idx']
+    df_mean = df_mean.reindex(unique_order)
+
+    return df_mean.values
 
 
 def return_perturbation_adata(
@@ -1517,17 +1531,18 @@ def pairing_src_to_tgt_cells(
     adata_obs_ = adata_subset.obs.copy()
     adata_obs_ = adata_obs_.reset_index()
     cell_pairings: Dict[str, List[str]] = {}
+    max_rows = 0
+    obs_dict = {}
+    max_reference_time: None | str = None
+    for time in adata_obs_[time_obs].unique():
+        obs_dict[time] = adata_obs_.loc[adata_obs_[time_obs] == time, :]
+        cell_pairings[time] = []
+        if len(obs_dict[time]) > max_rows:
+            max_rows = len(obs_dict[time])
+            max_reference_time = time
 
     if pairing_mode == 'mapping':
-        max_rows = 0
-        obs_dict = {}
-        max_reference_time: None | str = None
-        for time in adata_obs_[time_obs].unique():
-            obs_dict[time] = adata_obs_.loc[adata_obs_[time_obs] == time, :]
-            cell_pairings[time] = []
-            if len(obs_dict[time]) > max_rows:
-                max_rows = len(obs_dict[time])
-                max_reference_time = time
+
 
         # Optionally group by the opt_pairing_obs (list or str)
         if opt_pairing_obs is not None:

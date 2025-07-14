@@ -10,5 +10,10 @@ legend.frameon : False
 #font size
 font.family : sans-serif
 font.size: 18
+pdf.fonttype: 42
+ps.fonttype: 42
+svg.fonttype: none
+
 
 #classic style
+
