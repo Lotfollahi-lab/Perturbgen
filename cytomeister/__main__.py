@@ -42,28 +42,40 @@ def main():
     pass
 
 
-@main.command()
-def tokenise():
+@main.command(context_settings={"ignore_unknown_options": True})
+@click.argument("args", nargs=-1)
+def tokenise(args):
     """Data preprocessing, tokenisation"""
-    click.echo("tokenising...")
+    click.echo("loading, please wait...")
+    from cytomeister.pp.GF_tokenisation import main
+    main(args)
 
 
-@main.command()
-def train_mask():
+@main.command(context_settings={"ignore_unknown_options": True})
+@click.argument("args", nargs=-1)
+def train_mask(args):
     """Training the masking model"""
-    click.echo("training mask...")
+    click.echo("loading, please wait...")
+    from cytomeister.train import main
+    main(args)
 
 
-@main.command()
-def train_decoder():
+@main.command(context_settings={"ignore_unknown_options": True})
+@click.argument("args", nargs=-1)
+def train_decoder(args):
     """Training the count decoder model"""
-    click.echo("training decoder...")
+    click.echo("loading, please wait...")
+    from cytomeister.train import main
+    main(args)
 
 
-@main.command()
-def generate():
+@main.command(context_settings={"ignore_unknown_options": True})
+@click.argument("args", nargs=-1)
+def generate(args):
     """Load checkpoint and generate predictions"""
-    click.echo("generating predictions...")
+    click.echo("loading, please wait...")
+    from cytomeister.val import main
+    main(args)
 
 
 if __name__ == "__main__":
