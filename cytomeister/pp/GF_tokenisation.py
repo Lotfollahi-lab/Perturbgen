@@ -225,6 +225,12 @@ def get_args():
         type=str,
         default='T_perturb/cytomeister/pp/hspc/1639_Human_TF.csv',
     )
+    parser.add_argument(
+        '--genes_to_include_min_cells',
+        type=int,
+        default=1000,
+        help='Minimum number of cells a gene must be expressed in to be included',
+    )
     args = parser.parse_args()
     return args
 
@@ -408,8 +414,11 @@ if args.gene_filtering_mode == 'hvg':
         if args.genes_to_include_path is not None:
             genes_to_include = pd.read_csv(args.genes_to_include_path, header=0)
             # filter for TF expressed in min 1000 cells
+            min_cells = args.genes_to_include_min_cells
             high_expressed_genes = (
-                adata_subset[:, np.count_nonzero(adata_subset.X.toarray(), axis=0) >= 1000]
+                adata_subset[
+                    :, 
+                    np.count_nonzero(adata_subset.X.toarray(), axis=0) >= min_cells]
                 .var['gene_name']
                 .unique()
                 .tolist()
