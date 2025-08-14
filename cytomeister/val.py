@@ -30,7 +30,7 @@ os.chdir(ROOT)
 print(f'Current working directory: {os.getcwd()}')
 
 
-def get_args():
+def get_args(argv):
     """Get command line arguments."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -337,13 +337,13 @@ def get_args():
         type=int,
         default=3,
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     return args
 
 
-def main() -> None:
+def main(argv=None) -> None:
     """Run training."""
-    args = get_args()
+    args = get_args(argv)
     print('positional encoding:', args.pos_encoding_mode)
 
     # PyTorch Lightning allows to set all necessary seeds in one function call.

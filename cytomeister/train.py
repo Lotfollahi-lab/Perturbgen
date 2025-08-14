@@ -35,7 +35,7 @@ os.chdir(ROOT)
 print(f'Current working directory: {os.getcwd()}')
 
 
-def get_args():
+def get_args(argv):
     """Get command line arguments."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -327,16 +327,16 @@ def get_args():
         default=False,
         help='use weighted sampler',
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     return args
 
 
-def main() -> None:
+def main(argv=None) -> None:
     # for reproducible results
     # torch.backends.cudnn.benchmark = False
     # torch.backends.cudnn.deterministic = True
     """Run training."""
-    args = get_args()
+    args = get_args(argv)
     # PyTorch Lightning allows to set all necessary seeds in one function call.
     pl.seed_everything(42, workers=True)
     torch.manual_seed(42)
