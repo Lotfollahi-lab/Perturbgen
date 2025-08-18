@@ -10,7 +10,7 @@ deploy-docs-to-s3:
   tags: [autoscale-large]
   image: python:3.12
   script:
-    - apt-get update && apt-get install -y s3cmd
+    - apt-get update && apt-get install -y s3cmd libopenmpi-dev
     - python -m venv .venv
     - source .venv/bin/activate
     - pip install git+https://huggingface.co/ctheodoris/Geneformer@0960cf63969aa0dfdb00c6fd46316a3fbe7a1c9b
