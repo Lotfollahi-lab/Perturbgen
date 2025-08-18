@@ -42,7 +42,7 @@ def main():
     pass
 
 
-@main.command(context_settings={"ignore_unknown_options": True})
+@main.command(context_settings={"ignore_unknown_options": True, "help_option_names": []})
 @click.argument("args", nargs=-1)
 def tokenise(args):
     """Data preprocessing, tokenisation"""
@@ -51,7 +51,7 @@ def tokenise(args):
     main(args)
 
 
-@main.command(context_settings={"ignore_unknown_options": True})
+@main.command(context_settings={"ignore_unknown_options": True, "help_option_names": []})
 @click.argument("args", nargs=-1)
 def train_mask(args):
     """Training the masking model"""
@@ -60,7 +60,7 @@ def train_mask(args):
     main(args)
 
 
-@main.command(context_settings={"ignore_unknown_options": True})
+@main.command(context_settings={"ignore_unknown_options": True, "help_option_names": []})
 @click.argument("args", nargs=-1)
 def train_decoder(args):
     """Training the count decoder model"""
@@ -69,7 +69,7 @@ def train_decoder(args):
     main(args)
 
 
-@main.command(context_settings={"ignore_unknown_options": True})
+@main.command(context_settings={"ignore_unknown_options": True, "help_option_names": []})
 @click.argument("args", nargs=-1)
 def generate(args):
     """Load checkpoint and generate predictions"""
