@@ -7,6 +7,7 @@ variables:
 
 deploy-docs-to-s3:
   stage: build
+  tags: [autoscale-large]
   image: python:3.12
   script:
     - apt-get update && apt-get install -y s3cmd
