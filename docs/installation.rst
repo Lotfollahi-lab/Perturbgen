@@ -35,8 +35,7 @@ PerturbGen is structured as an installable Python package, so installing the dep
    .. _Geneformer: https://huggingface.co/ctheodoris/Geneformer
    .. _scmaskgit: https://github.com/amirvhd/scmaskgit
 
-You can then run the ``perturbgen`` command:
-============================================
+
 You can then run the ``perturbgen`` command:
 >>>>>>> 3a5cf7b (renaming the docs)
 
