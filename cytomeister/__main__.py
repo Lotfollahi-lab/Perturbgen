@@ -51,6 +51,12 @@ def tokenise(args):
     main(args)
 
 
+@main.command(context_settings={"ignore_unknown_options": True, "help_option_names": []}, hidden=True)
+@click.argument("args", nargs=-1)
+def tokenize(args):
+    return tokenise(args)
+
+
 @main.command(context_settings={"ignore_unknown_options": True, "help_option_names": []})
 @click.argument("args", nargs=-1)
 def train_mask(args):
