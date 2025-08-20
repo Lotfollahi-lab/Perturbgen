@@ -19,9 +19,10 @@ author = 'Dikshita'
 
 
 extensions = [
-	"sphinx.ext.apidoc",  
-    	"sphinx.ext.autodoc",
-    	"sphinx.ext.napoleon"	]
+	"sphinx.ext.apidoc",
+    "sphinx.ext.autodoc",
+    "sphinx.ext.napoleon",
+]
 
 
 
@@ -35,3 +36,7 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
+
+apidoc_modules = [
+    {"path": "../cytomeister", "destination": "apidoc/cytomeister"},
+]

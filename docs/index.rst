@@ -14,7 +14,7 @@ documentation for details.
 .. toctree::
    :maxdepth: 2
    :caption: About
-   
+
    introduction
 
 .. toctree::
@@ -33,5 +33,5 @@ documentation for details.
 .. toctree::
    :maxdepth:2
    :caption: API
-   
-   modules
+
+   apidoc/cytomeister/modules

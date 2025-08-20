@@ -24,6 +24,10 @@ Then, to build the docs:
 
 The built HTML will be in the ``docs/_build/html`` directory.
 
+.. note::
+
+   You should not need to run ``sphinx-apidoc`` manually -- it is run automatically when needed.
+
 Live-updating
 -------------
 
