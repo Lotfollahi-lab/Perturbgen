@@ -1,4 +1,4 @@
-"""Command-line interface for cytomeister."""
+"""Command-line interface for PerturbGen."""
 
 
 import click
