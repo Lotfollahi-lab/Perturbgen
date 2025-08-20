@@ -22,6 +22,7 @@ extensions = [
 	"sphinx.ext.apidoc",
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
+    "sphinx.ext.doctest",
 ]
 
 

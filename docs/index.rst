@@ -18,7 +18,7 @@ documentation for details.
    introduction
 
 .. toctree::
-   :maxdepth:2
+   :maxdepth: 2
    :caption: Getting Started
 
    installation
@@ -31,7 +31,7 @@ documentation for details.
    docs-development
 
 .. toctree::
-   :maxdepth:2
+   :maxdepth: 2
    :caption: API
 
    apidoc/cytomeister/modules
