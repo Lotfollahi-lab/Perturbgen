@@ -1,7 +1,7 @@
 Installation
 ============
 
-To get started with Cytomeister, clone the git repository:
+To get started with PerturbGen, clone the git repository:
 
 .. code:: shell-session
 
@@ -15,12 +15,13 @@ It's good practice to create a virtual environment to avoid polluting the rest o
    $ python3 -m venv .venv
    $ source .venv/bin/activate
 
-Cytomeister is structured as an installable Python package, so installing the dependencies is easy:
+PerturbGen is structured as an installable Python package, so installing the dependencies is easy:
 
 .. code:: shell-session
 
    $ pip install -e .
 
+<<<<<<< HEAD
 .. note::
 
    For now, you also need to install `Geneformer`_ and `scmaskgit`_ manually:
@@ -35,11 +36,14 @@ Cytomeister is structured as an installable Python package, so installing the de
    .. _scmaskgit: https://github.com/amirvhd/scmaskgit
 
 You can then run the ``cytomeister`` command:
+=======
+You can then run the ``perturbgen`` command:
+>>>>>>> 3a5cf7b (renaming the docs)
 
 .. code:: shell-session
 
-   $ cytomeister
-   Usage: cytomeister [OPTIONS] COMMAND [ARGS]...
+   $ perturbgen
+   Usage: perturbgen [OPTIONS] COMMAND [ARGS]...
 
    Options:
    --help  Show this message and exit.

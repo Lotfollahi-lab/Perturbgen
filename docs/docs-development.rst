@@ -1,7 +1,7 @@
 Documentation
 =============
 
-The Cytomeister documentation is written with `Sphinx`_ and `reStructuredText`_.
+The PerturbGen documentation is written with `Sphinx`_ and `reStructuredText`_.
 
 .. _Sphinx: https://www.sphinx-doc.org/
 .. _reStructuredText: https://www.sphinx-doc.org/en/master/usage/restructuredtext/basics.html
