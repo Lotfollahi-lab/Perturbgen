@@ -21,7 +21,7 @@ PerturbGen is structured as an installable Python package, so installing the dep
 
    $ pip install -e .
 
-<<<<<<< HEAD
+
 .. note::
 
    For now, you also need to install `Geneformer`_ and `scmaskgit`_ manually:
@@ -37,7 +37,7 @@ PerturbGen is structured as an installable Python package, so installing the dep
 
 
 You can then run the ``perturbgen`` command:
->>>>>>> 3a5cf7b (renaming the docs)
+
 
 .. code:: shell-session
 
