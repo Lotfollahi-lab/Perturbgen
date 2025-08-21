@@ -945,6 +945,7 @@ def return_perturbation_adata(
     if 'pred_counts' in test_dict.keys():
         if len(test_dict['pred_counts']) > 0:
             pred_counts = torch.cat(test_dict['pred_counts']).numpy()
+            print(pred_counts.shape)
     true_counts = None
     if 'true_counts' in test_dict.keys():
         if len(test_dict['true_counts']) > 0:

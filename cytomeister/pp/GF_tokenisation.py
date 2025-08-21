@@ -122,7 +122,7 @@ def get_args():
     parser.add_argument(
         '--main_pairing_obs',
         type=str,
-        default='celltype_v2',
+        default=None,
         help='Observation to use for mapping cell types in the dataset',
     )
     parser.add_argument(

@@ -286,7 +286,7 @@ class PerturberTrainer(CountDecoderTrainer):
                 # exclude padding token to keep the same sequence length
                 input_ids = input_ids[:, : -len(token_to_perturb)]
                 token_to_perturb = token_to_perturb.expand(input_ids.shape[0], -1)
-                if perturbation_sequence == 'tgt':
+                if 'tgt' in perturbation_sequence:
                     input_ids = torch.cat(
                         (
                             token_to_perturb,
@@ -294,7 +294,7 @@ class PerturberTrainer(CountDecoderTrainer):
                         ),
                         dim=1,
                     )
-                elif perturbation_sequence == 'src':
+                elif 'src' in perturbation_sequence:
                     input_ids = torch.cat(
                         (
                             input_ids[:, 0:1],
@@ -458,32 +458,51 @@ class PerturberTrainer(CountDecoderTrainer):
             )
 
     def test_step(self, batch, *args, **kwargs):
-        if self.tgt_pert_tokens is not None:
-            pert_tps_ = self.pert_tps
-            # remove cells where perturbed gene is not present
+        # exclude cells without expressed genes for knockout simulation
+        if self.perturbation_mode in ['mask', 'pad', 'delete']:
+            if self.tgt_pert_tokens is not None:
+                
+                pert_tps_ = self.pert_tps
+                
 
-            tgt_mask_list = []
-            for t in pert_tps_:
-                tgt_mask = torch.isin(
-                    batch[f'tgt_input_ids_t{t}'], self.tgt_pert_tokens
-                )
-                tgt_mask = tgt_mask.sum(dim=1).detach().cpu().numpy()
-                tgt_mask_list.append(tgt_mask)
-            tgt_mask = np.sum(tgt_mask_list, axis=0)
+                tgt_mask_list = []
+                if pert_tps_ is None:
+                    raise ValueError(
+                        'Please specify the pert_tps to filter cells'
+                        'where genes should be perturbed in the target sequence'
+                    )
+                for t in pert_tps_:
+                    tgt_mask = torch.isin(
+                        batch[f'tgt_input_ids_t{t}'], self.tgt_pert_tokens
+                    )
+                    tgt_mask = tgt_mask.sum(dim=1).detach().cpu().numpy()
+                    tgt_mask_list.append(tgt_mask)
+                tgt_mask = np.sum(tgt_mask_list, axis=0)
 
-        if self.src_pert_tokens is not None:
-            src_mask = torch.isin(batch['src_input_ids'], self.src_pert_tokens)
-            src_mask = src_mask.sum(dim=1).detach().cpu().numpy()
-        # combine tgt and src mask
-        if self.tgt_pert_tokens is not None and self.src_pert_tokens is not None:
-            # use logical OR to combine tgt and src mask
-            remove_cells_wo_pert = tgt_mask + src_mask > 0
-        elif self.tgt_pert_tokens is not None:
-            remove_cells_wo_pert = tgt_mask > 0
-        elif self.src_pert_tokens is not None:
-            remove_cells_wo_pert = src_mask > 0
-        else:
+            if self.src_pert_tokens is not None:
+                src_mask = torch.isin(batch['src_input_ids'], self.src_pert_tokens)
+                src_mask = src_mask.sum(dim=1).detach().cpu().numpy()
+            # combine tgt and src mask
+            if self.tgt_pert_tokens is not None and self.src_pert_tokens is not None:
+                # use logical OR to combine tgt and src mask
+                remove_cells_wo_pert = tgt_mask + src_mask > 0
+            elif self.tgt_pert_tokens is not None:
+                remove_cells_wo_pert = tgt_mask > 0
+            elif self.src_pert_tokens is not None:
+                remove_cells_wo_pert = src_mask > 0
+            else:
+                remove_cells_wo_pert = np.ones(batch['src_input_ids'].shape[0], dtype=bool)
+        elif self.perturbation_mode == 'overexpress':
+            # in overexpress mode we do not filter cells
+            # because we want to keep all cells
+            # even if the gene is not expressed
             remove_cells_wo_pert = np.ones(batch['src_input_ids'].shape[0], dtype=bool)
+        else:
+            raise ValueError(
+                f'Invalid perturbation mode: {self.perturbation_mode}:'
+                f'Choose between "mask", "pad", "delete" or "overexpress"'
+            )
+
         # if all cells are removed where boolean mask is all False
         if np.sum(remove_cells_wo_pert) > 0:
             # remove cells without perturbation
@@ -569,11 +588,10 @@ class PerturberTrainer(CountDecoderTrainer):
                     perturbed_gene = perturbed_gene[:, cond_len:, :]
                     true_ids = true_ids[:, cond_len:]
                     perturbed_ids = perturbed_ids[:, cond_len:]
-
                 if (self.perturbation_mode == 'delete') or (
                     self.perturbation_mode == 'overexpress'
                 ):
-                    if self.perturbation_sequence == 'tgt':
+                    if 'tgt' in self.perturbation_sequence:
                         # create a mask for perturbed gene
                         if self.perturbation_mode == 'overexpress':
                             # remove overexpressed genes from
@@ -604,7 +622,6 @@ class PerturberTrainer(CountDecoderTrainer):
                             perturbed_ids = perturbed_ids[
                                 :, len(self.tgt_pert_tokens) :
                             ]
-
                         # check if true_gene_ids is equal to perturbed_gene_ids
                         torch.allclose(true_ids, perturbed_ids)
 
@@ -687,7 +704,10 @@ class PerturberTrainer(CountDecoderTrainer):
                         # var_values = var_values[dupl_within_batch]
                         self.test_dict[var].append(var_values)
         else:
-            pass
+            print(
+                f'No cells with perturbed genes {self.genes_to_perturb} '
+                f'found in the batch. Skipping test step.'
+            )
 
     def on_test_epoch_end(self):
         obs_key = self.var_list if len(self.var_list) > 0 else []

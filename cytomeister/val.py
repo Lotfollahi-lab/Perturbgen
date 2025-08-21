@@ -413,13 +413,11 @@ def main() -> None:
         filter_idx = list(set(filter_idx))
         for i in range(len(tgt_datasets)):
             t = i + 1
-            print('before filtering',tgt_adata.shape)
             tgt_dataset = tgt_datasets[f'tgt_dataset_t{t}']
             tgt_adata = tgt_adatas[f'tgt_h5ad_t{t}']
             tgt_dataset = tgt_dataset.select(filter_idx)
             tgt_datasets[f'tgt_dataset_t{t}'] = tgt_dataset
             tgt_adata = tgt_adata[filter_idx, :]
-            print('after filtering', tgt_adata.shape)
             tgt_adatas[f'tgt_h5ad_t{t}'] = tgt_adata
         # for i, dataset in tgt_datasets.items():
         #     tgt_datasets[i] = dataset.select(filter_idx)
@@ -460,7 +458,6 @@ def main() -> None:
             all_pred_dataset = concatenate_datasets(list(pred_dataset.values()))
             # check if filter_cond is the same as all_pred_dataset
             gene_embs_list = all_pred_dataset.unique(args.gene_embs_condition)
-            print(gene_embs_list)
             print(
                 f'Return gene embs for {gene_embs_list} '
                 f'in {args.gene_embs_condition}.'
@@ -538,7 +535,8 @@ def main() -> None:
     adata_idx = adata_idx.tolist()
     dataset_idx = list(map(str, subset_dataset['cell_pairing_index']))
     assert adata_idx == dataset_idx, (
-        'Cell pairing indices do not match ' 'between AnnData and Dataset objects'
+        'Cell pairing indices do not match ' 
+        'between AnnData and Dataset objects'
     )
     # count number of unique timepoints
     n_total_tps = len(tgt_adatas)
