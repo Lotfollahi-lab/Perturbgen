@@ -40,16 +40,14 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 --split False \
 --splitting_mode random \
 --output_dir $RES_DIR/$RES_NAME \
---ckpt_masking_path 'T_perturb/cytomeister/plt/res/eb/extrapolation/checkpoints/20250512_1603_cellgen_train_masking_lr_0.001_wd_0.0001_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_0-epoch=49.ckpt' \
---src_dataset 'T_perturb/tokenized_data/eb_pbmc_median/dataset_2000_hvg_src/Day 00-03.dataset' \
---tgt_dataset_folder 'T_perturb/tokenized_data/eb_pbmc_median/dataset_2000_hvg_tgt' \
---src_adata 'T_perturb/tokenized_data/eb_pbmc_median/h5ad_pairing_2000_hvg_src/Day 00-03.h5ad' \
---tgt_adata_folder 'T_perturb/tokenized_data/eb_pbmc_median/h5ad_pairing_2000_hvg_tgt' \
---mapping_dict_path  'T_perturb/tokenized_data/eb_pbmc_median/token_id_to_genename_2000_hvg.pkl' \
+--ckpt_masking_path 'T_perturb/res/eb/extrapolation/checkpoints/20250827_1737_cellgen_train_masking_lr_0.001_wd_0.0001_batch_64_ptime_pos_sin_m_uniform_tp_1-2-3_s_42-epoch=49.ckpt' \
+--src_dataset 'T_perturb/tokenized_data/eb_100M/dataset_2000_hvg_src/Day 00-03.dataset' \
+--tgt_dataset_folder 'T_perturb/tokenized_data/eb_100M/dataset_2000_hvg_tgt' \
+--src_adata 'T_perturb/tokenized_data/eb_100M/h5ad_pairing_2000_hvg_src/Day 00-03.h5ad' \
+--tgt_adata_folder 'T_perturb/tokenized_data/eb_100M/h5ad_pairing_2000_hvg_tgt' \
+--mapping_dict_path  'T_perturb/tokenized_data/eb_100M/token_id_to_genename_2000_hvg.pkl' \
 --batch_size 64 \
---max_len 291 \
 --epochs 100 \
---tgt_vocab_size 1740 \
 --cellgen_lr 0.001 \
 --count_lr 0.0001 \
 --cellgen_wd 0.0001 \
@@ -61,13 +59,12 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 --loss_mode zinb \
 --pred_tps 1 2 3 \
 --var_list Time_point \
---cond_list Time_point \
 --encoder scmaskgit \
 --context_mode True \
---encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=07.ckpt" \
+--encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt" \
 --pos_encoding_mode time_pos_sin \
---mask_scheduler 'pow' \
---seed 0 \
+--mask_scheduler 'uniform' \
+--seed 42 \
 --d_model 768 \
 --use_weighted_sampler False
 echo '--- Finished computing model'

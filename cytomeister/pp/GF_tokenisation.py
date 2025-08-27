@@ -33,26 +33,16 @@ def get_args():
     parser.add_argument(
         '--h5ad_path',
         type=str,
-        # default='./data/h5d_files/cytoimmgen.h5ad',
-        default='data/hspc/cd34.h5ad',
+        default='./data/eb/EB.h5ad',
+        # default='data/hspc/cd34.h5ad',
         help='Path to h5ad file',
     )
     parser.add_argument(
         '--dataset',
         type=str,
-        # default='cytoimmgen',
-        default='hspc_pbmc_median_inter_tissue_all_tf',
-        # choices=[
-        #     'cytoimmgen',
-        #     'cytoimmgen_pbmc_median',
-        #     'eb',
-        #     'eb_pbmc_median',
-        #     'eb_GF_26k_median',
-        #     'mnc',
-        #     'hspc',
-        #     'hspc_pbmc_median',
-        #     'hspc_GF_26k_median',
-        # ],
+        default='eb_100M',
+        # default='hspc_pbmc_median_inter_tissue_all_tf',
+        help='Name of the dataset folder',
     )
     parser.add_argument(
         '--gene_filtering_mode',
@@ -64,7 +54,7 @@ def get_args():
     parser.add_argument(
         '--hvg_mode',
         type=str,
-        default='after_tokenisation',
+        default='before_tokenisation',
         choices=['before_tokenisation', 'after_tokenisation'],
         help='Mode for highly variable gene selection',
     )
@@ -72,51 +62,43 @@ def get_args():
         '--var_list',
         type=str,
         nargs='+',
-        # default=[
-        #     'Cell_population',
-        #     'Cell_type',
-        #     'Time_point',
-        #     'Age',
-        #     'Sex',
-        #     'batch',
-        #     'Cell_culture_batch',
-        #     'Phase',
-        #     'Donor',
-        #     'cell_pairing_index',
-        # ],
         default=[
-            'assignment_id',
-            # 'age',
-            'sex',
-            'tissue',
-            'phase',
-            'celltype_v2',
-            'donor_tissue',
-            'diff_state',
-            'dataset',
+            'Time_point',
         ],
+        # default=[
+        #     'assignment_id',
+        #     # 'age',
+        #     'sex',
+        #     'tissue',
+        #     'phase',
+        #     'celltype_v2',
+        #     'donor_tissue',
+        #     'diff_state',
+        #     'dataset',
+        # ],
         help='List of variables to keep in the dataset',
     )
     parser.add_argument(
         '--pairing_mode',
         type=str,
-        # default='stratified',
-        default='mapping',
+        default='random',
+        # default='mapping',
         choices=['stratified', 'random', 'mapping'],
         help='Cell pairing mode',
     )
     parser.add_argument(
         '--time_obs',
         type=str,
-        # default='Time_point',
-        default='diff_state',
+        default='Time_point',
+        # default='diff_state',
         help='Observation to use for cell pairing'
         'and encoding the different states (e.g. time, hierarchy).',
     )
     parser.add_argument(
         '--pairing_file',
         type=str,
-        default='T_perturb/cytomeister/pp/hspc/cd34_pos_mapping.csv',
+        # default='T_perturb/cytomeister/pp/hspc/cd34_pos_mapping.csv',
+        default=None,
         help='Path to cell pairing file for mapping cell types',
     )
     parser.add_argument(
@@ -135,43 +117,44 @@ def get_args():
     parser.add_argument(
         '--nproc',
         type=int,
-        default=8,
+        default=4,
         help='Number of processes to use for tokenisation',
     )
     parser.add_argument(
         '--reference_time',
         type=str,
-        # default='0h',
-        default='stem',
+        default='Day 00-03',
+        # default='stem',
         help='Control time point for cell pairing' 'which is feed into Geneformer',
     )
     parser.add_argument(
         '--time_point_order',
         type=str,
         nargs='+',
-        # default=[
-        #     '0h',
-        #     '16h',
-        #     '40h',
-        #     '5d',
-        # ],
         default=[
-            'stem',
-            'intermediate',
-            'terminal',
+            'Day 00-03',
+            'Day 06-09',
+            'Day 12-15',
+            'Day 18-21',
+            'Day 24-27',
         ],
+        # default=[
+        #     'stem',
+        #     'intermediate',
+        #     'terminal',
+        # ],
         help='Order of time points in the dataset',
     )
     parser.add_argument(
         '--exclude_non_GF_genes',
         type=str2bool,
-        default=True,
+        default=False,
         help='Exclude genes in anndata that are not in Geneformer dictionary',
     )
     parser.add_argument(
         '--remove_mito_ribo_genes',
         type=str2bool,
-        default=True,
+        default=False,
         help='Exclude mitochondrial and ribosomal genes',
     )
     parser.add_argument(
@@ -184,13 +167,14 @@ def get_args():
     parser.add_argument(
         '--n_hvg',
         type=int,
-        default=5000,
+        default=2000,
+        # default=5000,
         help='Number of highly variable genes to keep',
     )
     parser.add_argument(
         '--cell_gene_filter',
         type=str2bool,
-        default=True,
+        default=False,
         help='Filter cells and genes based on expression',
     )
     parser.add_argument(
@@ -223,12 +207,14 @@ def get_args():
     parser.add_argument(
         '--genes_to_include_path',
         type=str,
-        default='T_perturb/cytomeister/pp/hspc/1639_Human_TF.csv',
+        # default='T_perturb/cytomeister/pp/hspc/1639_Human_TF.csv',
+        default=None,
     )
     parser.add_argument(
         '--genes_to_include_min_cells',
         type=int,
-        default=1000,
+        # default=1000,
+        default=None,
         help='Minimum number of cells a gene must be expressed in to be included',
     )
     args = parser.parse_args()
@@ -251,7 +237,7 @@ gene_filter_mode_suffix = (
 if args.dataset.startswith('cytoimmgen'):
     adata = map_ensembl_to_genename(
         adata,
-        './data/h5d_files/phase2_data_qced_cells_cellCycleScored_geneMetadata.csv.gz',
+        './data/cytoimmgen/phase2_data_qced_cells_cellCycleScored_geneMetadata.csv.gz',
     )
     adata.var['ensembl_id'] = adata.var_names
 else:
@@ -361,8 +347,7 @@ paired_h5ad_dir = (
     f'/h5ad_pairing_{gene_filter_mode_suffix}'
 )
 
-if not os.path.exists(paired_h5ad_dir):
-    os.makedirs(paired_h5ad_dir)
+os.makedirs(paired_h5ad_dir, exist_ok=True)
 # add unique index to adata obs for cell pairing
 idx_column = 'cell_pairing_index'
 adata.obs[idx_column] = range(adata.shape[0])
@@ -388,7 +373,7 @@ adata.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
 adata_subset = filter_adata_for_GF_genes(
     adata,
     args.token_dict_path,
-    exclude_non_GF_genes=args.exclude_non_GF_genes,
+    exclude_non_GF_genes=True,
 )
 
 
@@ -464,8 +449,15 @@ with open(
     'wb',
 ) as file:
     pickle.dump(token_id_to_row_id_dict, file)
-if args.exclude_non_GF_genes is True:
-    adata_subset.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
+if args.exclude_non_GF_genes:
+    save_h5ad_dir = paired_h5ad_dir
+    save_h5ad_file = f'{save_h5ad_dir}/{args.dataset}.h5ad'
+else:
+    save_h5ad_dir = f'{paired_h5ad_dir}_GF_genes'
+    os.makedirs(save_h5ad_dir, exist_ok=True)
+    save_h5ad_file = f'{save_h5ad_dir}/{args.dataset}.h5ad'
+
+adata_subset.write_h5ad(save_h5ad_file)
 print('Finished preprocessing adata.')
 print('Start tokenisation of adata...')
 
@@ -491,7 +483,7 @@ tk = TranscriptomeTokenizer(
 file_name = args.dataset
 
 tk.tokenize_data(
-    data_directory=paired_h5ad_dir,
+    data_directory=save_h5ad_dir,
     output_directory=output_dir,
     output_prefix=file_name,
     file_format='h5ad',  # format [loom, h5ad]
@@ -530,9 +522,11 @@ cell_pairings = pairing_src_to_tgt_cells(
 
 dataset_mapped = dataset.map(
     lambda example: map_input_ids_to_row_id(
-        example, token_id_to_row_id_dict, ignore_tokens=[2]
+        example, 
+        token_id_to_row_id_dict, 
+        # ignore_tokens=[2],
     ),
-    num_proc=4,
+    num_proc=args.nproc,
 )
 n_tgt_iter = 1  # for enumerating the timepoints
 for time_point in tqdm.tqdm(args.time_point_order):

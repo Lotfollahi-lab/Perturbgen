@@ -17,15 +17,15 @@ cwd=$(pwd)
 echo "--- Start tokenisation"
 
 python3 $cwd/pp/GF_tokenisation.py \
---h5ad_path 'data/cytoimmgen/cytoimmgen.h5ad' \
+--h5ad_path 'data/cytoimmgen/cytoimmgen_qc.h5ad' \
 --dataset 'cytoimmgen_100M_cellpopulation' \
 --gene_filtering_mode 'hvg' \
---pairing_obs 'Time_point' \
+--time_obs 'Time_point' \
 --var_list Cell_population Cell_type Time_point Age\
  Sex batch Cell_culture_batch Phase\
  Donor cell_pairing_index \
 --pairing_mode stratified \
---main_pairing_obs 'Cell_population' \
+--main_pairing_obs 'Cell_type' \
 --remove_mito_ribo_genes False \
 --cell_gene_filter False \
 --nproc 4 \
