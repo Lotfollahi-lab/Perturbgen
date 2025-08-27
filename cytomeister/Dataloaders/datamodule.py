@@ -190,6 +190,7 @@ class CytoMeisterDataModule(LightningDataModule):
             'shuffle': shuffle,
             'num_workers': num_workers,
             'pin_memory': True,
+            'persistent_workers': True if num_workers > 0 else False,
         }
         token_dictionary_file = TOKEN_DICTIONARY_FILE
         with open(token_dictionary_file, 'rb') as f:
