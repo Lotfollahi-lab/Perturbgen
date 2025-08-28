@@ -37,7 +37,7 @@ python3 $cwd/train.py \
 --split False \
 --splitting_mode stratified \
 --output_dir $RES_DIR/$RES_NAME \
---ckpt_masking_path "T_perturb/res/cytoimmgen/extrapolation/checkpoints/20250827_1429_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1-2_s_42-epoch=19.ckpt" \
+--ckpt_masking_path "T_perturb/res/cytoimmgen/extrapolation/checkpoints/20250828_1130_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1-2_s_0-epoch=19.ckpt" \
 --src_dataset "T_perturb/tokenized_data/cytoimmgen_100M_cellpopulation/dataset_2000_hvg_src/0h.dataset" \
 --tgt_dataset_folder "T_perturb/tokenized_data/cytoimmgen_100M_cellpopulation/dataset_2000_hvg_tgt" \
 --src_adata "T_perturb/tokenized_data/cytoimmgen_100M_cellpopulation/h5ad_pairing_2000_hvg_src/0h.h5ad" \
@@ -62,7 +62,7 @@ python3 $cwd/train.py \
 --use_positional_encoding False \
 --pos_encoding_mode time_pos_sin \
 --mask_scheduler 'pow' \
---seed 42 \
+--seed 0 \
 --context_mode True \
 --use_weighted_sampler True \
 --sampling_keys Cell_type \

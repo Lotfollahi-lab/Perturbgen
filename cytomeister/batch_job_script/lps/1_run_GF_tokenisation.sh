@@ -1,8 +1,8 @@
 #make a date directory if it does not exist
 #!/bin/bash
 #BSUB -q normal # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -n 8 # number of cores
-#BSUB -G cellulargenetics-priority # groupname for billing
+#BSUB -n 4 # number of cores
+#BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister # working directory
 #BSUB -o logs/GF_tokenisation_lps_%J.out # output file
 #BSUB -e logs/GF_tokenisation_lps_%J.err # error file
@@ -17,11 +17,12 @@ cwd=$(pwd)
 echo '--- Start tokenisation'
 
 python3 $cwd/pp/GF_tokenisation.py \
---h5ad_path '/nfs/team361/am74/Cytomeister/Evaluation_datasets/LPS/full_lps_new.h5ad' \
+--h5ad_path '/nfs/team361/cytomeister/data/lps/full_lps.h5ad' \
 --dataset lps_100M \
 --gene_filtering_mode hvg \
 --cell_gene_filter False \
 --remove_mito_ribo_genes False \
+--exclude_non_GF_genes False \
 --hvg_mode 'before_tokenisation' \
 --var_list cell_pairing_index time_after_LPS cell_type_harmonized \
 --pairing_mode stratified \
@@ -29,10 +30,10 @@ python3 $cwd/pp/GF_tokenisation.py \
 --time_obs time_after_LPS \
 --reference_time 'normal' \
 --time_point_order 'normal' '90m_LPS' '6h_LPS' '10h_LPS' \
---nproc 8 \
+--nproc 4 \
 --n_hvg 2000 \
---gene_median_path '/nfs/team361/am74/Cytomeister/outputs/median_100m/aggregated_median/total1000_subsetgeneformertokenID_TRACE/median_trace_subsetgeneformertokenid.pkl' \
---token_dict_path '/nfs/team361/am74/Cytomeister/outputs/median_100m/aggregated_median/total1000_subsetgeneformertokenID_TRACE/tokenid_trace_subsetfeneformer.pkl' \
---gene_mapping_path '/nfs/team361/am74/Cytomeister/outputs/median_100m/aggregated_median/total1000_subsetgeneformertokenID_TRACE/ensembl_mapping_dict_gc95M.pkl' \
+--gene_median_path '/nfs/team361/am74/Cytomeister/outputs/median/aggregate/scenario_3/median_trace_scenario3.pkl' \
+--token_dict_path '/nfs/team361/am74/Cytomeister/outputs/median/aggregate/scenario_3/tokenid_trace_scenario3.pkl' \
+--gene_mapping_path '/nfs/team361/am74/Cytomeister/outputs/median/aggregate/scenario_3/ensembl_mapping_dict_gc95M.pkl'
 
 echo '--- Finished tokenisation'

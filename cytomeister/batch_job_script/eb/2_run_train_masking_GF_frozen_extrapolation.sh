@@ -58,8 +58,8 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 --context_mode True \
 --encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt" \
 --pos_encoding_mode time_pos_sin \
---mask_scheduler 'uniform' \
---seed 42 \
+--mask_scheduler 'pow' \
+--seed 0 \
 --d_model 768 \
 --use_weighted_sampler False
 echo '--- Finished computing model'

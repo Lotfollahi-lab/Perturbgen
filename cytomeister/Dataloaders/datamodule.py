@@ -198,7 +198,6 @@ class CytoMeisterDataModule(LightningDataModule):
         self.pad_token_id = self.gene_token_dict.get('<pad>')
         self.cls_token_id = self.gene_token_dict.get('<cls>')
         self.eos_token_id = self.gene_token_dict.get('<eos>')
-        print(f'Pad token id: {self.pad_token_id}, CLS token id: {self.cls_token_id}, EOS token id: {self.eos_token_id}')
         self.max_len = max_len
         self.dataset = None
         self.condition_keys = condition_keys

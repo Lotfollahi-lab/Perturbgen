@@ -556,7 +556,7 @@ def main() -> None:
         'var_list': args.var_list,
         'use_weighted_sampler': args.use_weighted_sampler,
         'sampling_keys': args.sampling_keys,
-        'seed': args.seed,
+        'seed': 42, # fix seed for shuffling for reproducibility
     }
     if args.train_mode == 'masking':
         # TODO: Do not pass src into DataModule
