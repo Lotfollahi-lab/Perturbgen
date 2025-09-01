@@ -39,7 +39,7 @@ python3 $cwd/val.py \
 --splitting_mode random \
 --generate True \
 --output_dir $RES_DIR/$RES_NAME \
---ckpt_count_path '/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/res/eb/extrapolation/checkpoints/20250828_1324_cellgen_train_count_lr_0.0001_wd_0.0001_batch_64_drop_0.25_zinb_tp_1-2-3_s_100_pos_time_pos_sin_m_pow-epoch=99.ckpt' \
+--ckpt_count_path 'T_perturb/res/eb/extrapolation/checkpoints/20250829_0944_cellgen_train_count_lr_0.0001_wd_0.0001_batch_64_drop_0.25_zinb_tp_1-2-3_s_0_pos_time_pos_sin_m_pow-epoch=99.ckpt' \
 --src_dataset 'T_perturb/tokenized_data/eb_100M/dataset_2000_hvg_src/Day 00-03.dataset' \
 --tgt_dataset_folder 'T_perturb/tokenized_data/eb_100M/dataset_2000_hvg_tgt' \
 --src_adata 'T_perturb/tokenized_data/eb_100M/h5ad_pairing_2000_hvg_src/Day 00-03.h5ad' \
@@ -59,13 +59,13 @@ python3 $cwd/val.py \
 --var_list Time_point \
 --encoder scmaskgit \
 --encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt" \
---temperature 1.25 \
---sequence_length 125 \
+--temperature 1.0 \
+--sequence_length 150 \
 --iterations 20 \
 --n_samples 2 \
 --context_mode True \
 --pos_encoding_mode time_pos_sin \
 --mask_scheduler 'pow' \
 --d_model 768 \
---seed 100
+--seed 0
 echo '--- Finished computing model'

@@ -8,6 +8,7 @@ from datetime import datetime
 
 import pytorch_lightning as pl
 import scanpy as sc
+from sympy import limit
 import torch
 from datasets import concatenate_datasets, load_from_disk
 from pytorch_lightning.callbacks import TQDMProgressBar
@@ -727,6 +728,7 @@ def main() -> None:
         num_nodes=args.num_node,
         devices=-1 if torch.cuda.is_available() else 1,  # inference only on one gpu
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
+        # limit_test_batches=200,
     )
     # Finally, kick of the training process.
     if args.test_mode == 'masking':

@@ -25,7 +25,7 @@ echo "--- Start computing model"
 
 # # ----------------- Create folder to save results and copy the script -----------------
 RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/res/"
-RES_NAME="lps/pbmc_median/extrapolation/"
+RES_NAME="lps/extrapolation/"
 # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
 
@@ -52,7 +52,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 --var_list cell_type_harmonized cell_pairing_index time_after_LPS \
 --encoder scmaskgit \
 --encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt" \
---seed 42 \
+--seed 100 \
 --context_mode True \
 --pos_encoding_mode time_pos_sin \
 --mask_scheduler 'pow' \

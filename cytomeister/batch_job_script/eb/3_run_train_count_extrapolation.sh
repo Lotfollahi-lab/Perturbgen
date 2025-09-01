@@ -40,7 +40,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 --split False \
 --splitting_mode random \
 --output_dir $RES_DIR/$RES_NAME \
---ckpt_masking_path 'T_perturb/res/eb/interpolation/checkpoints/20250828_2043_cellgen_train_masking_lr_0.001_wd_0.0001_batch_64_ptime_pos_sin_m_pow_tp_1-2-4_s_100-epoch=49.ckpt' \
+--ckpt_masking_path 'T_perturb/res/eb/extrapolation/checkpoints/20250828_1430_cellgen_train_masking_lr_0.001_wd_0.0001_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_0-epoch=49.ckpt' \
 --src_dataset 'T_perturb/tokenized_data/eb_100M/dataset_2000_hvg_src/Day 00-03.dataset' \
 --tgt_dataset_folder 'T_perturb/tokenized_data/eb_100M/dataset_2000_hvg_tgt' \
 --src_adata 'T_perturb/tokenized_data/eb_100M/h5ad_pairing_2000_hvg_src/Day 00-03.h5ad' \
@@ -64,7 +64,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 --encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt" \
 --pos_encoding_mode time_pos_sin \
 --mask_scheduler 'pow' \
---seed 100 \
+--seed 0 \
 --d_model 768 \
 --use_weighted_sampler False
 echo '--- Finished computing model'
