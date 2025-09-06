@@ -54,19 +54,19 @@ The executable scripts for each step are located in the `T_perturb/cytomeister/b
 
 Below is an example of how to run the model on the T cell dataset:
 ```shell
-bash ./T_perturb/cytomeister/batch_job_script/cytoimmgen/1_run_GF_tokenisation.sh
+bash ./T_perturb/perturbgen/batch_job_script/cytoimmgen/1_run_GF_tokenisation.sh
 ```
 
 ```shell
-bash ./T_perturb/cytomeister/batch_job_script/cytoimmgen/2_run_train_masking_GF_frozen_interpolation.sh
+bash ./T_perturb/perturbgen/batch_job_script/cytoimmgen/2_run_train_masking_GF_frozen_interpolation.sh
 ```
 
 ```shell
-bash ./T_perturb/cytomeister/batch_job_script/cytoimmgen/3_run_train_count_GF_frozen_interpolation.sh
+bash ./T_perturb/perturbgen/batch_job_script/cytoimmgen/3_run_train_count_GF_frozen_interpolation.sh
 ```
 
 ```shell
-bash ./T_perturb/cytomeister/batch_job_script/cytoimmgen/4_run_val_generate_interpolation.sh
+bash ./T_perturb/perturbgen/batch_job_script/cytoimmgen/4_run_val_generate_interpolation.sh
 ```
 
 
