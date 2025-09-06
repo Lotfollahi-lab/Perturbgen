@@ -1,16 +1,16 @@
 #make a date directory if it does not exist
 #!/bin/bash
-#BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=4:gmodel=NVIDIAA100_SXM4_80GB' # request for exclusive access to gpu
+#BSUB -q gpu-lotfollahi-train # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -gpu 'mode=exclusive_process:num=4' # request for exclusive access to gpu
 #BSUB -n 4 # number of cores
 #BSUB -R "span[ptile=4]"     # split X cores per host
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister # working directory
-#BSUB -o logs/lps_count_extrapolation_s100_%J.out # output file
-#BSUB -e logs/lps_count_extrapolation_s100_%J.err # error file
+#BSUB -o logs/lps_count_extrapolation_s0_ep09_%J.out # output file
+#BSUB -e logs/lps_count_extrapolation_s0_ep09_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
-#BSUB -J lps_count_extrapolation_s100 # job name
+#BSUB -J lps_count_extrapolation_s0_ep09 # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -34,7 +34,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 --splitting_mode stratified \
 --split_obs cell_type_harmonized \
 --output_dir $RES_DIR/$RES_NAME \
---ckpt_masking_path "T_perturb/res/lps/extrapolation/checkpoints/20250829_1756_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_ptime_pos_sin_m_pow_tp_1-2_s_100-epoch=19.ckpt" \
+--ckpt_masking_path "T_perturb/res/lps/extrapolation/checkpoints/20250829_1348_cellgen_train_masking_lr_0.0001_wd_0.0001_batch_64_ptime_pos_sin_m_pow_tp_1-2_s_0-epoch=09.ckpt" \
 --src_dataset "T_perturb/tokenized_data/lps_100M/dataset_2000_hvg_src/normal.dataset" \
 --tgt_dataset_folder "T_perturb/tokenized_data/lps_100M/dataset_2000_hvg_tgt" \
 --src_adata "T_perturb/tokenized_data/lps_100M/h5ad_pairing_2000_hvg_src/normal.h5ad" \
@@ -62,7 +62,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister/train.p
 --mask_scheduler 'pow' \
 --num_node 1 \
 --d_model 768 \
---seed 100 \
+--seed 0 \
 --use_weighted_sampler True \
 --sampling_keys cell_type_harmonized \
 --ckpt_every_n_epochs 1
