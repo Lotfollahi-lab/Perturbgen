@@ -18,7 +18,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-# from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
+
 from pytorch_lightning import LightningModule
 from scvi.distributions import NegativeBinomial, ZeroInflatedNegativeBinomial
 from torchmetrics import MeanSquaredError

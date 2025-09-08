@@ -9,7 +9,7 @@ import evaluate
 import numpy as np
 import torch
 
-# from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
+
 from torch.nn.functional import cosine_similarity
 
 from perturbgen.Model.trainer import CountDecoderTrainer

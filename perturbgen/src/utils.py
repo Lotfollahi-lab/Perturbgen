@@ -12,15 +12,12 @@ from typing import (
 )
 
 import anndata as ad
-import geneformer.perturber_utils as pu
 import numpy as np
 import pandas as pd
 import scanpy as sc
 import torch
 import tqdm
 from datasets import DatasetDict, load_from_disk
-from geneformer import EmbExtractor
-from geneformer.emb_extractor import get_embs, label_cell_embs
 from scipy import stats
 from scipy.sparse import csr_matrix
 from torch.nn.functional import cosine_similarity
@@ -1837,74 +1834,3 @@ def gen_attention_mask(self, length, max_len=1000):
     ]
 
     return torch.tensor(attention_mask)
-
-
-# inherit EmbExtractor from Geneformer to avoid sorting of embs
-class non_sorted_EmbExtractor(EmbExtractor):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def extract_embs(
-        self,
-        model_directory,
-        input_data_file,
-        output_directory,
-        output_prefix,
-        output_torch_embs=False,
-        cell_state=None,
-    ):
-        filtered_input_data = pu.load_and_filter(
-            self.filter_data, self.nproc, input_data_file
-        )
-        if cell_state is not None:
-            filtered_input_data = pu.filter_by_dict(
-                filtered_input_data, cell_state, self.nproc
-            )
-        model = pu.load_model(self.model_type, self.num_classes, model_directory)
-        layer_to_quant = pu.quant_layers(model) + self.emb_layer
-        embs = get_embs(
-            model,
-            filtered_input_data,  # Remove downsampling code
-            self.emb_mode,
-            layer_to_quant,
-            self.pad_token_id,
-            self.forward_batch_size,
-            self.summary_stat,
-        )
-
-        if self.emb_mode == 'cell':
-            if self.summary_stat is None:
-                embs_df = label_cell_embs(embs, filtered_input_data, self.emb_label)
-            elif self.summary_stat is not None:
-                embs_df = pd.DataFrame(embs.cpu().numpy()).T
-        elif self.emb_mode == 'gene':
-            if self.summary_stat is None:
-                embs_df = self.label_gene_embs(
-                    embs, filtered_input_data, self.token_gene_dict
-                )
-            elif self.summary_stat is not None:
-                embs_df = pd.DataFrame(embs).T
-                embs_df.index = [self.token_gene_dict[token] for token in embs_df.index]
-
-        # save embeddings to output_path
-        if cell_state is None:
-            output_path = (Path(output_directory) / output_prefix).with_suffix('.csv')
-            embs_df.to_csv(output_path)
-
-        if self.exact_summary_stat == 'exact_mean':
-            embs = embs.mean(dim=0)
-            embs_df = pd.DataFrame(
-                embs_df[0:255].mean(axis='rows'), columns=[self.exact_summary_stat]
-            ).T
-        elif self.exact_summary_stat == 'exact_median':
-            embs = torch.median(embs, dim=0)[0]
-            embs_df = pd.DataFrame(
-                embs_df[0:255].median(axis='rows'), columns=[self.exact_summary_stat]
-            ).T
-        if cell_state is not None:
-            return embs
-        else:
-            if output_torch_embs:
-                return embs_df, embs
-            else:
-                return embs_df

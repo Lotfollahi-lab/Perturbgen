@@ -7,8 +7,7 @@ import numpy as np
 # import scanpy as sc
 import torch
 from datasets import DatasetDict
-from geneformer.perturber_utils import pad_tensor_list
-from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
+from perturbgen.pp import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningDataModule
 from scipy.sparse import csr_matrix
 from torch.utils.data import (
@@ -16,6 +15,7 @@ from torch.utils.data import (
     Dataset,
     WeightedRandomSampler,
 )
+from perturbgen.src.gf_utils import pad_tensor_list
 
 
 class PerturbGenDataset(Dataset):

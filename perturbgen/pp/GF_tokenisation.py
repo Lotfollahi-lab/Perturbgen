@@ -8,7 +8,7 @@ import pandas as pd
 import scanpy as sc
 import tqdm
 from datasets import load_from_disk
-from geneformer import TranscriptomeTokenizer
+from perturbgen.pp.tokenizer import TranscriptomeTokenizer
 from scipy.sparse import csr_matrix, issparse
 
 from perturbgen.src.utils import (  # tokenid_mapping,;
