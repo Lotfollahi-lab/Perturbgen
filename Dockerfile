@@ -1,3 +1,5 @@
+# check=skip=FromPlatformFlagConstDisallowed
+
 FROM --platform=linux/amd64 python:3.11
 
 WORKDIR /app
@@ -9,3 +11,5 @@ RUN --mount=type=cache,target=/root/.cache/pip pip install -U pip setuptools whe
 COPY . /app
 
 RUN --mount=type=cache,target=/root/.cache/pip pip install -e .
+
+ENTRYPOINT ["perturbgen"]
