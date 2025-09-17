@@ -21,19 +21,6 @@ PerturbGen is structured as an installable Python package, so installing the dep
 
    $ pip install -e .
 
-
-.. note::
-
-   For now, you also need to install `scmaskgit`_ manually:
-
-   .. code:: shell-session
-
-      $ git clone git@github.com:amirvhd/scmaskgit.git ../scmaskgit
-      $ pip install -e ../scmaskgit
-
-   .. _scmaskgit: https://github.com/amirvhd/scmaskgit
-
-
 You can then run the ``perturbgen`` command:
 
 .. code:: shell-session
