@@ -13,10 +13,6 @@ deploy-docs-to-s3:
     - apt-get update && apt-get install -y s3cmd libopenmpi-dev
     - python -m venv .venv
     - source .venv/bin/activate
-    - pip install git+https://huggingface.co/ctheodoris/Geneformer@0960cf63969aa0dfdb00c6fd46316a3fbe7a1c9b
-    - mkdir -p misc
-    - git clone https://token:$GITHUB_ACCESS_TOKEN@github.com/amirvhd/scmaskgit.git misc/scmaskgit
-    - pip install -e ./misc/scmaskgit
     - pip install -e .
     - pip install sphinx==8.2.3 sphinx-rtd-theme==3.0.2 myst-nb==1.3.0
     - cd docs
@@ -24,4 +20,4 @@ deploy-docs-to-s3:
     # We specify --no-mime-magic because python's `mimetypes.guess_type()` is
     # better at guessing simple MIME types like text/css and text/javascript
     # than the `magic` library is.
-    - s3cmd -c $S3CMD_FILE sync --delete-removed --no-mime-magic _build/html/ s3://cytomeister-temporary-docs/
+    - s3cmd -c $S3CMD_FILE sync --delete-removed --no-mime-magic _build/html/ s3://perturbgen-docs/
