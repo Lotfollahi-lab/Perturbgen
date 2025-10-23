@@ -330,8 +330,8 @@ class PerturberTrainer(CountDecoderTrainer):
                     'to map the perturbation token'
                 )
         tgt_input_id_dict = {}
-        # how to create a list for also iterate over context_tps if available
-        
+        # Create a combined list of timepoints to iterate through
+        # This concatenates pred_tps and context_tps when context_tps is available
         tps = self.pred_tps + self.context_tps if self.context_tps else self.pred_tps
         for i in tps:
             tgt_input_id_ = batch[f'tgt_input_ids_t{i}'].clone()
