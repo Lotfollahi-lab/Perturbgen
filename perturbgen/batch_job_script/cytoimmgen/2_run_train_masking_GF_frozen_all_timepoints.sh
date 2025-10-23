@@ -3,7 +3,7 @@
 #BSUB -gpu 'mode=exclusive_process:num=2:block=yes' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
 #BSUB -n 16 # number of cores
 #BSUB -G teamtrynka # groupname for billing
-#BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister # working directory
+#BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen # working directory
 #BSUB -o logs/cytoimmgen_masking_%J.out # output file
 #BSUB -e logs/cytoimmgen_masking_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB

@@ -14,7 +14,7 @@ parameters:
   epochs:
    value: 25
   output_dir:
-    value: 'T_perturb/cytomeister/plt/res/eb/pbmc_median/sweep'
+    value: 'T_perturb/perturbgen/plt/res/eb/pbmc_median/sweep'
   src_dataset:
     value: 'T_perturb/tokenized_data/eb_pbmc_median/dataset_2000_hvg_src/Day 00-03.dataset'
   tgt_dataset_folder:

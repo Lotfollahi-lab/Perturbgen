@@ -4,8 +4,8 @@
 #BSUB -n 4 # number of cores
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11 # working directory
-#BSUB -o T_perturb/cytomeister/logs/perturb_cluster_CEBPA_src_%J.out # output file
-#BSUB -e T_perturb/cytomeister/logs/perturb_cluster_CEBPA_src_%J.err # error file
+#BSUB -o T_perturb/perturbgen/logs/perturb_cluster_CEBPA_src_%J.out # output file
+#BSUB -e T_perturb/perturbgen/logs/perturb_cluster_CEBPA_src_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
 #BSUB -J hspc_perturb_cluster_CEBPA_src # job name

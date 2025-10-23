@@ -3,7 +3,7 @@
 #BSUB -gpu 'mode=exclusive_process:num=1 ' # request for exclusive access to gpu
 #BSUB -n 4 # number of cores
 #BSUB -G team361 # groupname for billing
-#BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister # working directory
+#BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen # working directory
 #BSUB -o logs/eb_generate_inter_s42_%J.out # output file
 #BSUB -e logs/eb_generate_inter_s42_%J.err # error file
 #BSUB -M 20000  # RAM memory part 2. Default: 100MB

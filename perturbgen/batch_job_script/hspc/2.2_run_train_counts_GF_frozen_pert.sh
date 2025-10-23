@@ -3,7 +3,7 @@
 #BSUB -gpu 'mode=exclusive_process:num=3:block=yes' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
 #BSUB -n 4 # number of cores
 #BSUB -G team361 # groupname for billing
-#BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister # working directory
+#BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen # working directory
 #BSUB -o logs/hspc_count_%J.out # output file
 #BSUB -e logs/hspc_count_%J.err # error file
 #BSUB -M 20000  # RAM memory part 2. Default: 100MB

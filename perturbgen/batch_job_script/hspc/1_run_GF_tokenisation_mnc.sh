@@ -3,7 +3,7 @@
 #BSUB -q normal # run CPU job
 #BSUB -n 16 # number of cores
 #BSUB -G teamtrynka # groupname for billing
-#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister # working directory
+#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/perturbgen # working directory
 #BSUB -o logs/GF_tokenisation_mnc_%J.out # output file
 #BSUB -e logs/GF_tokenisation_mnc_%J.err # error file
 #BSUB -M 100000  # RAM memory part 2. Default: 100MB

@@ -3,7 +3,7 @@
 #BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu
 #BSUB -n 64 # number of cores
 #BSUB -G teamtrynka # groupname for billing
-#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister # working directory
+#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/perturbgen # working directory
 #BSUB -o logs/eb_count_%J.out # output file
 #BSUB -e logs/eb_count_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB

@@ -5,8 +5,8 @@
 #BSUB -n 4 # number of cores
 #BSUB -G team361 # groupname for billing team361
 #BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/ # working directory
-#BSUB -o T_perturb/cytomeister/logs/perturb_cluster_DEG_%J_%I.out # output file
-#BSUB -e T_perturb/cytomeister/logs/perturb_cluster_DEG_%J_%I.err # error file
+#BSUB -o T_perturb/perturbgen/logs/perturb_cluster_DEG_%J_%I.out # output file
+#BSUB -e T_perturb/perturbgen/logs/perturb_cluster_DEG_%J_%I.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>50000] rusage[mem=50000]' # RAM memory part 1. Default: 100MB
 
@@ -26,8 +26,8 @@ PERTURBED_GENE=$(sed -n "${LSB_JOBINDEX}p" $cwd/T_perturb/perturbgen/configs/eva
 echo "[$(date)] Starting job index $LSB_JOBINDEX"
 echo "Current gene to be perturbed: $PERTURBED_GENE"
 
-CONFIG_PATH="T_perturb/cytomeister/configs/eval/HSPC/mask_src_inference_perturbation_jobarray.yaml"
-TMP_CONFIG_PATH="T_perturb/cytomeister/configs/eval/HSPC/mask_src_generate_perturbation_${PERTURBED_GENE}_${LSB_JOBID}.yaml"
+CONFIG_PATH="T_perturb/perturbgen/configs/eval/HSPC/mask_src_inference_perturbation_jobarray.yaml"
+TMP_CONFIG_PATH="T_perturb/perturbgen/configs/eval/HSPC/mask_src_generate_perturbation_${PERTURBED_GENE}_${LSB_JOBID}.yaml"
 
 sed "s/{{PERTURBED_GENE}}/${PERTURBED_GENE}/g" $CONFIG_PATH > $TMP_CONFIG_PATH
 

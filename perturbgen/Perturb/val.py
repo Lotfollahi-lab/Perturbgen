@@ -33,7 +33,7 @@ def get_args():
     parser.add_argument(
         '--config',
         type=str,
-        default='T_perturb/cytomeister/configs/eval/HSPC/mask_src_inference_perturbation_B2M.yaml',
+        default='T_perturb/perturbgen/configs/eval/HSPC/mask_src_inference_perturbation_B2M.yaml',
     )
     return parser.parse_args()
 

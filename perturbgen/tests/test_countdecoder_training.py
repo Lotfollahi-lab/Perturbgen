@@ -23,7 +23,7 @@ if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
 
 # initialize the logger
 csv_logger = CSVLogger(
-    'T_perturb/cytomeister/tests/res', name='test_countdecoder_training'
+    'T_perturb/perturbgen/tests/res', name='test_countdecoder_training'
 )
 
 
@@ -159,7 +159,7 @@ class PerturbGenTestTrainingCase(unittest.TestCase):
             conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
 
         decoder_module = CountDecoderTrainer(
-            ckpt_masking_path='T_perturb/cytomeister/tests/checkpoints/'
+            ckpt_masking_path='T_perturb/perturbgen/tests/checkpoints/'
             'test_masking_checkpoint-epoch=00.ckpt',
             tgt_vocab_size=self.tgt_vocab_size,
             d_model=self.d_model,
@@ -229,7 +229,7 @@ class PerturbGenTestTrainingCase(unittest.TestCase):
     def test_countdecoder_training_loop(self, save_checkpoint=False):
         # Setup checkpoint callback
         checkpoint_callback = ModelCheckpoint(
-            dirpath='T_perturb/cytomeister/tests/checkpoints',
+            dirpath='T_perturb/perturbgen/tests/checkpoints',
             filename='test_counts_checkpoint-{epoch:02d}',
             save_top_k=-1,
             every_n_epochs=1,

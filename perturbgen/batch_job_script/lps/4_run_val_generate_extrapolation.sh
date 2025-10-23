@@ -4,7 +4,7 @@
 #BSUB -n 4 # number of cores
 #BSUB -R "span[ptile=4]"     # split X cores per host
 #BSUB -G team361 # groupname for billing
-#BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/cytomeister # working directory
+#BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen # working directory
 #BSUB -o logs/lps_extra_generate_s100_mask09_s200_%J.out # output file
 #BSUB -e logs/lps_extra_generate_s100_mask09_s200_%J.err # error file
 #BSUB -M 100000  # RAM memory part 2. Default: 100MB

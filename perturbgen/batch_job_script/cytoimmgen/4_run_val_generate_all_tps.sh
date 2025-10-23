@@ -3,7 +3,7 @@
 #BSUB -gpu 'mode=exclusive_process:num=1' # request for exclusive access to gpu (:gmodel=NVIDIAA100_SXM4_80GB if you want to specify the gpu model)
 #BSUB -n 32 # number of cores
 #BSUB -G teamtrynka # groupname for billing
-#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/cytomeister # working directory
+#BSUB -cwd /lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/T_perturb/perturbgen # working directory
 #BSUB -o logs/cyto_generate_imputation_%J.out # output file
 #BSUB -e logs/cyto_generate_imputation_%J.err # error file
 #BSUB -M 50000  # RAM memory part 2. Default: 100MB

@@ -25,7 +25,7 @@ trainer:
   max_seq_length: 2248
   dropout: 0
   mask_scheduler: 'pow'
-  output_dir: 'T_perturb/res/hspc/perturbation_stem'
+  output_dir: 'T_perturb/res/hspc/perturbation_stem_tf'
   mapping_dict_path: 'T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf_100M/token_id_to_genename_5000_hvg.pkl'
   tokenid_to_rowid_path: 'T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf_100M/tokenid_to_rowid_5000_hvg.pkl'
   encoder: 'scmaskgit'

@@ -50,7 +50,7 @@ The model can be run by following the four different steps:
 2. Training the masking model
 3. Training the count decoder model
 4. Load checkpoint and generate predictions
-The executable scripts for each step are located in the `T_perturb/cytomeister/batch_job_script` directory.
+The executable scripts for each step are located in the `T_perturb/perturbgen/batch_job_script` directory.
 
 Below is an example of how to run the model on the T cell dataset:
 ```shell

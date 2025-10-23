@@ -130,11 +130,11 @@ class PerturbGenTestGenerationCase(unittest.TestCase):
 
         decoder_module = CountDecoderTrainer(
             ckpt_masking_path=(
-                'T_perturb/cytomeister/tests/checkpoints/'
+                'T_perturb/perturbgen/tests/checkpoints/'
                 'test_masking_checkpoint-epoch=00.ckpt'
             ),
             ckpt_count_path=(
-                'T_perturb/cytomeister/tests/checkpoints/'
+                'T_perturb/perturbgen/tests/checkpoints/'
                 'test_counts_checkpoint-epoch=00.ckpt'
             ),
             tgt_vocab_size=self.tgt_vocab_size,

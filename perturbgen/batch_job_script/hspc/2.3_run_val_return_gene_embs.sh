@@ -4,8 +4,8 @@
 #BSUB -n 4 # number of cores
 #BSUB -G cellulargenetics-priority # groupname for billing team361
 #BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11 # working directory
-#BSUB -o T_perturb/cytomeister/logs/return_gene_embed_%J.out # output file
-#BSUB -e T_perturb/cytomeister/logs/return_gene_embed_%J.err # error file
+#BSUB -o T_perturb/perturbgen/logs/return_gene_embed_%J.out # output file
+#BSUB -e T_perturb/perturbgen/logs/return_gene_embed_%J.err # error file
 #BSUB -M 250000  # RAM memory part 2. Default: 100MB
 #BSUB -R "select[mem>250000] rusage[mem=250000]" # RAM memory part 1. Default: 100MB
 #BSUB -J return_gene_embed # job name

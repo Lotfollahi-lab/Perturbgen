@@ -97,7 +97,7 @@ def get_args():
     parser.add_argument(
         '--pairing_file',
         type=str,
-        # default='T_perturb/cytomeister/pp/hspc/cd34_pos_mapping.csv',
+        # default='T_perturb/perturbgen/pp/hspc/cd34_pos_mapping.csv',
         default=None,
         help='Path to cell pairing file for mapping cell types',
     )
@@ -207,7 +207,7 @@ def get_args():
     parser.add_argument(
         '--genes_to_include_path',
         type=str,
-        # default='T_perturb/cytomeister/pp/hspc/1639_Human_TF.csv',
+        # default='T_perturb/perturbgen/pp/hspc/1639_Human_TF.csv',
         default=None,
     )
     parser.add_argument(
@@ -216,6 +216,12 @@ def get_args():
         # default=1000,
         default=None,
         help='Minimum number of cells a gene must be expressed in to be included',
+    )
+    parser.add_argument(
+        '--finetune_adata_path',
+        type=str,
+        default=None,
+        help='Path to gene median file',
     )
     args = parser.parse_args()
     return args
@@ -252,6 +258,10 @@ if 'counts' not in adata.layers:
     adata.layers['counts'] = adata.X.copy()
 else:
     adata.X = adata.layers['counts'].copy()
+if args.finetune_adata_path is not None:
+    adata_finetune = sc.read_h5ad(args.finetune_adata_path)
+    adata = adata[:, adata.var_names.isin(adata_finetune.var_names)].copy()
+
 # gene_filtering_mode = 'degs'
 if args.gene_filtering_mode == 'hvg':
     if ((args.hvg_mode is not None) and 

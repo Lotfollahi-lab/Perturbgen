@@ -184,7 +184,7 @@ class PerturbGenTestEmbeddingCase(unittest.TestCase):
             self.decoder_module,
             self.data_module,
             ckpt_path=(
-                'T_perturb/cytomeister/tests/checkpoints/'
+                'T_perturb/perturbgen/tests/checkpoints/'
                 'test_masking_checkpoint-epoch=00.ckpt'
             ),
         )
