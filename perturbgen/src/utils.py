@@ -1874,3 +1874,77 @@ def read_gene_list(file_path: str) -> List[str]:
         # Read all lines, strip whitespace, and filter out empty lines
         genes = [line.strip() for line in f if line.strip()]
     return genes
+
+
+def extract_clinical_disorders(
+    disease_df: pd.DataFrame,
+    column_name: str = 'Clinical disorder',
+    filter_column: Optional[str] = None,
+    filter_value: Optional[str] = None,
+) -> str:
+    """
+    Extract clinical disorder information from a DataFrame and format as comma-separated string.
+    
+    This utility function extracts matching clinical disorder entries from a DataFrame
+    and formats them as a comma-separated list. It can optionally filter rows based
+    on a specific column value before extracting the disorders.
+    
+    Parameters
+    ----------
+    disease_df : pd.DataFrame
+        DataFrame containing clinical disorder information.
+    column_name : str, default='Clinical disorder'
+        The name of the column containing clinical disorder information.
+    filter_column : Optional[str], default=None
+        Optional column name to filter rows before extraction.
+    filter_value : Optional[str], default=None
+        Value to match in the filter_column. Only rows matching this value
+        will be included in the extraction.
+    
+    Returns
+    -------
+    str
+        Comma-separated string of clinical disorders.
+    
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> disease_df = pd.DataFrame({
+    ...     'Clinical disorder': ['Anemia', 'Leukemia', 'Thrombocytopenia'],
+    ...     'Severity': ['Mild', 'Severe', 'Moderate']
+    ... })
+    >>> # Extract all clinical disorders
+    >>> disorders = extract_clinical_disorders(disease_df)
+    >>> print(disorders)
+    'Anemia, Leukemia, Thrombocytopenia'
+    
+    >>> # Extract disorders with specific filter
+    >>> disorders = extract_clinical_disorders(
+    ...     disease_df,
+    ...     filter_column='Severity',
+    ...     filter_value='Severe'
+    ... )
+    >>> print(disorders)
+    'Leukemia'
+    """
+    if disease_df is None or disease_df.empty:
+        return ""
+    
+    # Apply filter if specified
+    if filter_column is not None and filter_value is not None:
+        if filter_column in disease_df.columns:
+            filtered_df = disease_df[disease_df[filter_column] == filter_value]
+        else:
+            raise ValueError(f"Filter column '{filter_column}' not found in DataFrame")
+    else:
+        filtered_df = disease_df
+    
+    # Extract clinical disorders
+    if column_name not in filtered_df.columns:
+        raise ValueError(f"Column '{column_name}' not found in DataFrame")
+    
+    # Get unique disorders and remove NaN values
+    disorders = filtered_df[column_name].dropna().unique()
+    
+    # Format as comma-separated string
+    return ', '.join(str(disorder) for disorder in disorders)
