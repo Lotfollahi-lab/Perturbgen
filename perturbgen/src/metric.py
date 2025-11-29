@@ -342,6 +342,7 @@ def lin_reg_summary(
                 }
             )
         lin_reg_df = pd.DataFrame(lin_reg_list).set_index('condition')
+        return lin_reg_df
     else:
         x_true = np.average(true_adata.X, axis=0)
         x_pred = np.average(pred_adata.X, axis=0)
