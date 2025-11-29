@@ -1834,3 +1834,43 @@ def gen_attention_mask(self, length, max_len=1000):
     ]
 
     return torch.tensor(attention_mask)
+
+
+def read_gene_list(file_path: str) -> List[str]:
+    """
+    Read a list of gene names from a text file for iteration.
+    
+    This utility function reads gene names from a text file where each line
+    contains a single gene name. It's commonly used to load lists of genes
+    for perturbation experiments or other analyses.
+    
+    Parameters
+    ----------
+    file_path : str
+        Path to the text file containing gene names, one per line.
+    
+    Returns
+    -------
+    List[str]
+        A list of gene names that can be iterated through.
+    
+    Examples
+    --------
+    >>> # Read a list of transcription factors for perturbation
+    >>> genes = read_gene_list('configs/eval/HSPC/perturb_TF.txt')
+    >>> print(genes)
+    ['NFE2', 'KLF1', 'FOSL1', 'LMO2', 'SPI1', 'GFI1B', 'LDB1', 'TAL1', 
+     'BCL11A', 'RUNX1', 'GATA1', 'MYB']
+    
+    >>> # Iterate through the genes
+    >>> for gene in genes:
+    ...     print(f"Processing gene: {gene}")
+    
+    >>> # Use with genes_to_perturb parameter
+    >>> genes_to_perturb = read_gene_list('configs/eval/HSPC/perturb_TF.txt')
+    >>> trainer = PerturberTrainer(genes_to_perturb=genes_to_perturb, ...)
+    """
+    with open(file_path, 'r') as f:
+        # Read all lines, strip whitespace, and filter out empty lines
+        genes = [line.strip() for line in f if line.strip()]
+    return genes
