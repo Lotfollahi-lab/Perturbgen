@@ -1419,6 +1419,8 @@ class CountHead(nn.Module):
         d_model: int = 256,  # 256
         dropout: float = 0.0,
         layer_norm: bool = False,  # args
+        use_size_factor: bool = True,
+        use_observed_size_factor: bool = False,
     ):
         '''
         Description:
@@ -1452,17 +1454,34 @@ class CountHead(nn.Module):
             drop=dropout,
             layer_norm=layer_norm,
         )
+        self.use_size_factor = use_size_factor
+        self.use_observed_size_factor = use_observed_size_factor
         if self.loss_mode == 'mse':
             self.relu_output = nn.Sequential(nn.Linear(d_model, n_genes), nn.ReLU())
         elif self.loss_mode == 'zinb':
             self.linear_output = nn.Linear(d_model, n_genes)
-            self.softmax_output = nn.Sequential(
-                nn.Linear(d_model, n_genes), nn.Softmax(dim=-1)
+            if not(use_size_factor):
+                scale_activation = nn.Softplus()
+            else:
+                scale_activation = nn.Softmax(dim=-1)
+            self.scale_decoder = nn.Sequential(
+                nn.Linear(d_model, n_genes), scale_activation
             )
         elif self.loss_mode == 'nb':
-            self.softmax_output = nn.Sequential(
-                nn.Linear(d_model, n_genes), nn.Softmax(dim=-1)
+            if not(use_size_factor):
+                scale_activation = nn.Softplus()
+            else:
+                scale_activation = nn.Softmax(dim=-1)
+            self.scale_decoder = nn.Sequential(
+                nn.Linear(d_model, n_genes), scale_activation
             )
+        if self.use_size_factor and not self.use_observed_size_factor:
+            # only use when size factor is to be predicted
+            # and not using observed size factor
+            self.size_factor_decoder = nn.Sequential(
+                nn.Linear(d_model, 1), nn.Softplus()
+            )
+
 
     def forward(self, x):
         if x.shape[-1] != self.input_dim:
@@ -1476,10 +1495,12 @@ class CountHead(nn.Module):
         if self.loss_mode == 'mse':
             count_outputs['count_lognorm'] = self.relu_output(mlp_output)
         elif self.loss_mode == 'zinb':
-            count_outputs['count_mean'] = self.softmax_output(mlp_output)
+            count_outputs['count_mean'] = self.scale_decoder(mlp_output)
             count_outputs['count_dropout'] = self.linear_output(mlp_output)
         elif self.loss_mode == 'nb':
-            count_outputs['count_mean'] = self.softmax_output(mlp_output)
+            count_outputs['count_mean'] = self.scale_decoder(mlp_output)
+        if self.use_size_factor and not self.use_observed_size_factor:
+            count_outputs['size_factor'] = self.size_factor_decoder(mlp_output)
         return count_outputs
 
 
@@ -1507,6 +1528,8 @@ class CountDecoder(nn.Module):
         seed: int = 42,
         context_tps: list[int] | None = None,
         use_positional_encoding: bool = False,
+        use_size_factor: bool = False,
+        use_observed_size_factor: bool = False,
     ):
         '''
         Description:
@@ -1574,9 +1597,23 @@ class CountDecoder(nn.Module):
             if d_condc is not None:
                 input_size += d_condc
 
-            self.count_decoder = CountHead(loss_mode, n_genes, input_size, dropout)
+            self.count_decoder = CountHead(
+                loss_mode, 
+                n_genes, 
+                input_size, 
+                dropout,
+                use_size_factor=use_size_factor,
+                use_observed_size_factor=use_observed_size_factor,
+                )
         else:
-            self.count_decoder = CountHead(loss_mode, n_genes, d_model, dropout)
+            self.count_decoder = CountHead(
+                loss_mode, 
+                n_genes, 
+                d_model, 
+                dropout,
+                use_size_factor=use_size_factor,
+                use_observed_size_factor=use_observed_size_factor,
+                )
 
         self.pred_tps = pred_tps
         self.context_tps = context_tps

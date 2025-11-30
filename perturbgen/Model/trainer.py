@@ -666,6 +666,8 @@ class CountDecoderTrainer(LightningModule):
         shared_gene_list: Dict[Any, Any] | None = None,
         context_tps: List[int] | None = None,
         mapping_dict_path: str | None = None,
+        use_size_factor: bool = True,
+        use_observed_size_factor: bool = False,
         *args,
         **kwargs,
     ):
@@ -738,6 +740,8 @@ class CountDecoderTrainer(LightningModule):
             n_total_tps=n_total_tps,
             n_genes=n_genes,
             seed=seed,
+            use_size_factor=use_size_factor,
+            use_observed_size_factor=use_observed_size_factor,
         )
         if ckpt_count_path is not None:
             checkpoint = torch.load(ckpt_count_path, map_location='cpu')
@@ -824,6 +828,8 @@ class CountDecoderTrainer(LightningModule):
         self.shared_gene_list = shared_gene_list
 
         self.condition_dict = condition_dict
+        self.use_size_factor = use_size_factor
+        self.use_observed_size_factor = use_observed_size_factor
 
     def forward(self, batch, generate: bool = False):
         tgt_input_id_dict = {}
@@ -872,6 +878,8 @@ class CountDecoderTrainer(LightningModule):
         outputs: Dict[str, torch.Tensor],
         batch: Dict[str, torch.Tensor],
         n_samples: int = 1,
+        use_size_factor: bool = False,
+        use_observed_size_factor: bool = False,
     ):
         """
         Description:
@@ -903,7 +911,8 @@ class CountDecoderTrainer(LightningModule):
         for time_step in self.pred_tps:
             count_ouput = outputs[f'count_output_t{time_step}']
             true_values = batch[f'tgt_counts_t{time_step}']
-            batch_size_factor = batch[f'tgt_size_factor_t{time_step}'].unsqueeze(1)
+            if use_observed_size_factor:
+                batch_size_factor = batch[f'tgt_size_factor_t{time_step}'].unsqueeze(1)
 
             if self.loss_mode == 'mse':
                 # change true counts dtype to count output dtype
@@ -916,9 +925,16 @@ class CountDecoderTrainer(LightningModule):
                 )
                 count_dict[time_step] = count_ouput['count_lognorm']
             elif self.loss_mode in ['zinb', 'nb']:
-                dec_mean = count_ouput['count_mean'] * batch_size_factor.expand_as(
-                    count_ouput['count_mean']
-                )
+                if use_size_factor:
+                    if use_observed_size_factor:
+                        dec_mean = count_ouput['count_mean'] * batch_size_factor.expand_as(
+                            count_ouput['count_mean']
+                        )
+                    else:
+                        dec_mean = count_ouput['count_mean'] * count_ouput['size_factor'].unsqueeze(1)
+                else:
+                    # does not require size factor adjustment because of Softplus
+                    dec_mean = count_ouput['count_mean']
                 if self.loss_mode == 'zinb':
                     dec_dropout = count_ouput['count_dropout']
                     zinb_distribution = ZeroInflatedNegativeBinomial(
@@ -978,7 +994,13 @@ class CountDecoderTrainer(LightningModule):
 
     def training_step(self, batch, *args, **kwargs):
         outputs, _ = self.forward(batch)
-        count_loss, pred_counts_dict = self.compute_count_loss(outputs, batch)
+        count_loss, pred_counts_dict = self.compute_count_loss(
+            outputs, 
+            batch,
+            n_samples=1,
+            use_size_factor=self.use_size_factor,
+            use_observed_size_factor=self.use_observed_size_factor,
+        )
         self.log(
             'train/loss',
             count_loss,
@@ -1043,6 +1065,8 @@ class CountDecoderTrainer(LightningModule):
             outputs,
             batch,
             n_samples=self.n_samples,
+            use_size_factor=self.use_size_factor,
+            use_observed_size_factor=self.use_observed_size_factor,
         )
         self.log(
             'val/loss',
@@ -1148,6 +1172,8 @@ class CountDecoderTrainer(LightningModule):
                 outputs=outputs,
                 batch=batch,
                 n_samples=self.n_samples,
+                use_size_factor=self.use_size_factor,
+                use_observed_size_factor=self.use_observed_size_factor,
             )
             self.log(
                 'test/loss',
