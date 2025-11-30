@@ -940,6 +940,7 @@ def return_perturbation_adata(
     if 'pred_counts' in test_dict.keys():
         if len(test_dict['pred_counts']) > 0:
             pred_counts = torch.cat(test_dict['pred_counts']).numpy()
+            print(pred_counts.shape)
     true_counts = None
     if 'true_counts' in test_dict.keys():
         if len(test_dict['true_counts']) > 0:
@@ -1250,15 +1251,31 @@ def tokenid_mapping(
 def map_input_ids_to_row_id(
     dataset: DatasetDict,
     token_id_to_row_id_dict: Dict,
-    ignore_tokens: Optional[List] = None,
+    # ignore_tokens: Optional[List] = None,
 ):
-    if ignore_tokens is None:
-        ignore_tokens = []
-    dataset['input_ids'] = [
-        token_id_to_row_id_dict.get(item, item)
-        for item in dataset['input_ids']
-        if item not in ignore_tokens
-    ]
+    # if ignore_tokens is None:
+    #     ignore_tokens = []
+    
+    # Debug: Print the structure to understand the issue
+    input_ids = dataset['input_ids']
+    print(f"DEBUG: input_ids type: {type(input_ids)}")
+    print(f"DEBUG: input_ids length: {len(input_ids) if hasattr(input_ids, '__len__') else 'no length'}")
+    if hasattr(input_ids, '__len__') and len(input_ids) > 0:
+        print(f"DEBUG: first element type: {type(input_ids[0])}")
+        print(f"DEBUG: first element value: {input_ids[0]}")
+    
+    # Handle the mapping based on the actual structure
+    try:
+        # Try the original approach first
+        dataset['input_ids'] = [
+            token_id_to_row_id_dict.get(item, item)
+            for item in input_ids
+        ]
+    except TypeError as e:
+        print(f"ERROR: {e}")
+        print("This suggests input_ids contains non-hashable items (like lists)")
+        raise
+    
     return dataset
 
 

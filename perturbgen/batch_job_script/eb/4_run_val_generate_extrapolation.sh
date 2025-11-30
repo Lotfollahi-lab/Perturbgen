@@ -39,15 +39,13 @@ python3 $cwd/val.py \
 --splitting_mode random \
 --generate True \
 --output_dir $RES_DIR/$RES_NAME \
---ckpt_count_path 'T_perturb/cytomeister/plt/res/eb/extrapolation/res/checkpoints/20250512_1534_cellgen_train_count_lr_0.0001_wd_0.0001_batch_64_zinb_tp_1-2-3_s_42_pos_time_pos_sin_m_pow-epoch=69.ckpt' \
---src_dataset 'T_perturb/tokenized_data/eb_pbmc_median/dataset_2000_hvg_src/Day 00-03.dataset' \
---tgt_dataset_folder 'T_perturb/tokenized_data/eb_pbmc_median/dataset_2000_hvg_tgt' \
---src_adata 'T_perturb/tokenized_data/eb_pbmc_median/h5ad_pairing_2000_hvg_src/Day 00-03.h5ad' \
---tgt_adata_folder 'T_perturb/tokenized_data/eb_pbmc_median/h5ad_pairing_2000_hvg_tgt' \
---mapping_dict_path  'T_perturb/tokenized_data/eb_pbmc_median/token_id_to_genename_2000_hvg.pkl' \
+--ckpt_count_path 'T_perturb/res/eb/extrapolation/checkpoints/20250829_0944_cellgen_train_count_lr_0.0001_wd_0.0001_batch_64_drop_0.25_zinb_tp_1-2-3_s_0_pos_time_pos_sin_m_pow-epoch=99.ckpt' \
+--src_dataset 'T_perturb/tokenized_data/eb_100M/dataset_2000_hvg_src/Day 00-03.dataset' \
+--tgt_dataset_folder 'T_perturb/tokenized_data/eb_100M/dataset_2000_hvg_tgt' \
+--src_adata 'T_perturb/tokenized_data/eb_100M/h5ad_pairing_2000_hvg_src/Day 00-03.h5ad' \
+--tgt_adata_folder 'T_perturb/tokenized_data/eb_100M/h5ad_pairing_2000_hvg_tgt' \
+--mapping_dict_path  'T_perturb/tokenized_data/eb_100M/token_id_to_genename_2000_hvg.pkl' \
 --batch_size 64 \
---max_len 291 \
---tgt_vocab_size 1740 \
 --cellgen_lr 0.001 \
 --cellgen_wd 0.0001 \
 --count_lr 0.0001 \
@@ -59,16 +57,15 @@ python3 $cwd/val.py \
 --pred_tps 4 \
 --context_tps 1 2 3 \
 --var_list Time_point \
---cond_list Time_point \
 --encoder scmaskgit \
---encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=07.ckpt" \
---temperature 0.5 \
---sequence_length 125 \
+--encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt" \
+--temperature 1.0 \
+--sequence_length 150 \
 --iterations 20 \
 --n_samples 2 \
 --context_mode True \
 --pos_encoding_mode time_pos_sin \
 --mask_scheduler 'pow' \
 --d_model 768 \
---seed 42
+--seed 0
 echo '--- Finished computing model'

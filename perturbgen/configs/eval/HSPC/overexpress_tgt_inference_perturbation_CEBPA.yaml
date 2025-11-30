@@ -8,10 +8,7 @@ data:
   #   - 'diff_state'
   # filter_var: 'celltype_v2'
   # filter_cond:
-  # - 'DC_pre'
-  # - 'Mono_Pre'
-  # - 'DC_pre'
-  # - 'Macrophage'
+  # - 'LMPP'
   # perturb_genes_file: 'T_perturb/res/hspc/gene_embedding/20250312_gene_clusters_LMPP_L4.csv'
   # perturb_cluster:
   # - '75'
@@ -25,19 +22,19 @@ trainer:
   max_seq_length: 2248
   dropout: 0
   mask_scheduler: 'pow'
-  output_dir: 'T_perturb/res/hspc/perturbation_5k'
+  output_dir: 'T_perturb/res/hspc/perturb_cebpa'
   mapping_dict_path: 'T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf_100M/token_id_to_genename_5000_hvg.pkl'
   tokenid_to_rowid_path: 'T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf_100M/tokenid_to_rowid_5000_hvg.pkl'
   encoder: 'scmaskgit'
   encoder_path: '/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt'
   context_mode: False
   pos_encoding_mode: 'time_pos_sin'
-  perturbation_mode: 'mask'
+  perturbation_mode: 'overexpress'
   genes_to_perturb:
-    - ANKRD65
+    - 'CEBPA'
   validation_mode: 'inference'
   perturbation_sequence:
-    - 'src'
+    - 'tgt'
   var_list:
     - 'sex'
     - 'phase'
@@ -45,6 +42,8 @@ trainer:
     - 'celltype_v2'
     - 'diff_state'
   pred_tps:
+    - 1
+  pert_tps:
     - 1
   #count decoder
   use_count_decoder: True
@@ -67,4 +66,4 @@ datamodule:
     - 1
 model:
   precision: 16
-  ckpt_masking_path: "/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/res/hspc/fine_tuning/checkpoints/20250716_0952_cellgen_train_count_lr_0.005_wd_0.001_batch_64_drop_0.0_zinb_tp_1_s_42_pos_time_pos_sin_m_pow-epoch=12.ckpt"
+  ckpt_masking_path: "T_perturb/res/hspc/fine_tuning/checkpoints/20250716_0952_cellgen_train_count_lr_0.005_wd_0.001_batch_64_drop_0.0_zinb_tp_1_s_42_pos_time_pos_sin_m_pow-epoch=12.ckpt"

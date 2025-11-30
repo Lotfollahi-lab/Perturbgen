@@ -151,22 +151,22 @@ def get_args(argv):
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
     )
-    parser.add_argument(
-        '--max_len',
-        type=int,
-        # default=300,
-        default=666,
-        # default=400,
-        help='max sequence length',
-    )  # check how many genes there are
-    parser.add_argument(
-        '--tgt_vocab_size',
-        type=int,
-        # default=1261,
-        default=1990,
-        # default=1360,
-        help='vocab size (max token id + 1) in dataset for padding',
-    )
+    # parser.add_argument(
+    #     '--max_len',
+    #     type=int,
+    #     # default=300,
+    #     default=666,
+    #     # default=400,
+    #     help='max sequence length',
+    # )  # check how many genes there are
+    # parser.add_argument(
+    #     '--tgt_vocab_size',
+    #     type=int,
+    #     # default=1261,
+    #     default=1990,
+    #     # default=1360,
+    #     help='vocab size (max token id + 1) in dataset for padding',
+    # )
     parser.add_argument(
         '--cellgen_lr', type=float, default=0.0001, help='learning rate'
     )
@@ -327,7 +327,13 @@ def get_args(argv):
         default=False,
         help='use weighted sampler',
     )
-    args = parser.parse_args(argv)
+    parser.add_argument(
+        '--ckpt_every_n_epochs',
+        type=int,
+        default=10,
+        help='save checkpoint every n epochs',
+    )
+    args = parser.parse_args()
     return args
 
 
@@ -347,6 +353,36 @@ def main(argv=None) -> None:
     tgt_adatas = read_dataset_files(args.tgt_adata_folder, 'h5ad')
     src_dataset = load_from_disk(args.src_dataset)
     src_adata = sc.read_h5ad(args.src_adata)
+    # select max input id and max len across all tgt datasets
+    max_tgt_input_id = 0
+    max_len = 0
+    for keys, dataset in tgt_datasets.items():
+        # print max input id
+        input_id = dataset['input_ids']
+        max_tgt_input_id = max(max(max(input_id)), max_tgt_input_id)
+        max_len = max(max_len, max([len(x) for x in input_id]))
+    max_tgt_input_id = max_tgt_input_id + 1 # add 1 for padding
+    max_len = max(max_len, max([len(x) for x in src_dataset['input_ids']]))
+    print(
+        f'---PerturbGen training --- \n'
+        f'Target vocab size: {max_tgt_input_id}, max sequence length: {max_len}'
+    )
+
+    V = max_tgt_input_id + 50
+    for keys, dataset in tgt_datasets.items():
+        k = keys
+
+        ds = dataset
+        bad = []
+        for i in range(min(5000, len(ds))):
+            ids = ds[i]["input_ids"]
+            if ids:
+                lo, hi = min(ids), max(ids)
+                if lo < 0 or hi >= V:
+                    bad.append((i, lo, hi, ds[i].get("input_ids", None)))
+                if len(bad) > 0:
+                    print(k, "bad count:", len(bad), "first:", bad[:10])
+                    raise ValueError(f"Dataset {k} has out of bounds token ids")
 
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
@@ -420,7 +456,6 @@ def main(argv=None) -> None:
     n_total_tps = len(tgt_adatas)
 
     # create dictionnary of metadata for classifier-free guidance
-    token_no = args.tgt_vocab_size
 
     # create full dataset to extract metadata for conditioning
     dataset_list = [src_dataset]
@@ -431,22 +466,22 @@ def main(argv=None) -> None:
         condition_dict = {}
         for condition in args.cond_list:
             condition_dict[condition] = {
-                cell_type: i + token_no
+                cell_type: i + max_tgt_input_id
                 for i, cell_type in enumerate(full_dataset.unique(condition))
             }
-            token_no += len(condition_dict[condition])
+            max_tgt_input_id += len(condition_dict[condition])
     else:
         condition_dict = None
 
     # Initialize model module
     # ----------------------------------------------------------------------------------
     trainer_kwargs = {
-        'tgt_vocab_size': token_no + 50,  # add 50 for extra tokens
+        'tgt_vocab_size': max_tgt_input_id + 50,  # add 50 for extra tokens
         'd_model': args.d_model,
         'num_heads': 8,
         'num_layers': args.num_layers,
         'd_ff': args.d_ff,
-        'max_seq_length': args.max_len + 100,
+        'max_seq_length': max_len + 100,
         'mask_scheduler': args.mask_scheduler,
         'pred_tps': args.pred_tps,
         'context_tps': args.context_tps,
@@ -510,7 +545,7 @@ def main(argv=None) -> None:
         'batch_size': per_gpu_batch_size,
         'num_workers': args.n_workers,
         'shuffle': args.shuffle,
-        'max_len': args.max_len,
+        'max_len': max_len,
         'split': args.split,
         'train_indices': train_indices,
         'val_indices': val_indices,
@@ -521,7 +556,7 @@ def main(argv=None) -> None:
         'var_list': args.var_list,
         'use_weighted_sampler': args.use_weighted_sampler,
         'sampling_keys': args.sampling_keys,
-        'seed': args.seed,
+        'seed': 42, # fix seed for shuffling for reproducibility
     }
     if args.train_mode == 'masking':
         # TODO: Do not pass src into DataModule
@@ -578,7 +613,7 @@ def main(argv=None) -> None:
         dirpath=checkpoint_path,
         filename=f'{filename}-' + '{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=1,
+        every_n_epochs=args.ckpt_every_n_epochs,
         verbose=True,
         monitor=monitor_metric,
         mode=mode,

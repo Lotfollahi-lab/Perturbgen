@@ -60,6 +60,6 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen/train.py
 --cond_list Time_point \
 --mode GF_frozen \
 --context_mode True \
---mask_scheduler 'cosine' \
+--mask_scheduler 'pow' \
 --positional_encoding 'sin_learnt'
 echo "--- Finished computing model"

@@ -23,7 +23,7 @@ from scvi.distributions import NegativeBinomial, ZeroInflatedNegativeBinomial
 from torchmetrics import MeanSquaredError
 from torchmetrics.text import Perplexity
 
-from perturbgen.Modules.T_model import CountDecoder, PerturbGen
+from perturbgen.Modules.transformer import CountDecoder, PerturbGen
 from perturbgen.src.losses import mse_loss
 from perturbgen.src.metric import (
     compute_distribution_distances,

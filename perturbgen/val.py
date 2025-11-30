@@ -8,6 +8,7 @@ from datetime import datetime
 
 import pytorch_lightning as pl
 import scanpy as sc
+from sympy import limit
 import torch
 from datasets import concatenate_datasets, load_from_disk
 from pytorch_lightning.callbacks import TQDMProgressBar
@@ -172,22 +173,22 @@ def get_args(argv):
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
     )
-    parser.add_argument(
-        '--max_len',
-        type=int,
-        default=300,
-        # default=2048,
-        # default=263,
-        help='max sequence length',
-    )
-    parser.add_argument(
-        '--tgt_vocab_size',
-        type=int,
-        # default=1261,
-        # default=15280,
-        default=1997,
-        help='vocab size (max token id + 1) in dataset for padding',
-    )
+    # parser.add_argument(
+    #     '--max_len',
+    #     type=int,
+    #     default=300,
+    #     # default=2048,
+    #     # default=263,
+    #     help='max sequence length',
+    # )
+    # parser.add_argument(
+    #     '--tgt_vocab_size',
+    #     type=int,
+    #     # default=1261,
+    #     # default=15280,
+    #     default=1997,
+    #     help='vocab size (max token id + 1) in dataset for padding',
+    # )
     parser.add_argument(
         '--cellgen_lr', type=float, default=0.0001, help='learning rate'
     )
@@ -362,6 +363,38 @@ def main(argv=None) -> None:
     src_dataset = load_from_disk(args.src_dataset)
     src_adata = sc.read_h5ad(args.src_adata)
 
+    # select max input id and max len across all tgt datasets
+    max_tgt_input_id = 0
+    max_len = 0
+    for keys, dataset in tgt_datasets.items():
+        # print max input id
+        input_id = dataset['input_ids']
+        max_tgt_input_id = max(max(max(input_id)), max_tgt_input_id)
+        max_len = max(max_len, max([len(x) for x in input_id]))
+    max_tgt_input_id = max_tgt_input_id + 1 # add 1 for padding
+    max_len = max(max_len, max([len(x) for x in src_dataset['input_ids']]))
+    print(
+        f'---PerturbGen training --- \n'
+        f'Target vocab size: {max_tgt_input_id}, max sequence length: {max_len}'
+    )
+
+    V = max_tgt_input_id + 50
+    for keys, dataset in tgt_datasets.items():
+        k = keys
+
+        ds = dataset
+        bad = []
+        for i in range(min(5000, len(ds))):
+            ids = ds[i]["input_ids"]
+            if ids:
+                lo, hi = min(ids), max(ids)
+                if lo < 0 or hi >= V:
+                    bad.append((i, lo, hi, ds[i].get("input_ids", None)))
+                if len(bad) > 0:
+                    print(k, "bad count:", len(bad), "first:", bad[:10])
+                    raise ValueError(f"Dataset {k} has out of bounds token ids")
+
+
     if args.loss_mode == 'mse':
         # log normalize data only for mse loss
         sc.pp.normalize_total(src_adata, target_sum=1e4)
@@ -375,16 +408,15 @@ def main(argv=None) -> None:
     # create dictionnary of metadata for classifier-free guidance
     # needs to be completed before any filtering to initialize
     # all condition tokens
-    token_no = args.tgt_vocab_size
     if args.cond_list is not None:
         full_dataset = concatenate_datasets([src_dataset] + list(tgt_datasets.values()))
         condition_dict = {}
         for condition in args.cond_list:
             condition_dict[condition] = {
-                cell_type: i + token_no
+                cell_type: i + max_tgt_input_id
                 for i, cell_type in enumerate(full_dataset.unique(condition))
             }
-            token_no += len(condition_dict[condition])
+            max_tgt_input_id += len(condition_dict[condition])
     else:
         condition_dict = None
 
@@ -413,13 +445,11 @@ def main(argv=None) -> None:
         filter_idx = list(set(filter_idx))
         for i in range(len(tgt_datasets)):
             t = i + 1
-            print('before filtering',tgt_adata.shape)
             tgt_dataset = tgt_datasets[f'tgt_dataset_t{t}']
             tgt_adata = tgt_adatas[f'tgt_h5ad_t{t}']
             tgt_dataset = tgt_dataset.select(filter_idx)
             tgt_datasets[f'tgt_dataset_t{t}'] = tgt_dataset
             tgt_adata = tgt_adata[filter_idx, :]
-            print('after filtering', tgt_adata.shape)
             tgt_adatas[f'tgt_h5ad_t{t}'] = tgt_adata
         # for i, dataset in tgt_datasets.items():
         #     tgt_datasets[i] = dataset.select(filter_idx)
@@ -460,7 +490,6 @@ def main(argv=None) -> None:
             all_pred_dataset = concatenate_datasets(list(pred_dataset.values()))
             # check if filter_cond is the same as all_pred_dataset
             gene_embs_list = all_pred_dataset.unique(args.gene_embs_condition)
-            print(gene_embs_list)
             print(
                 f'Return gene embs for {gene_embs_list} '
                 f'in {args.gene_embs_condition}.'
@@ -538,19 +567,20 @@ def main(argv=None) -> None:
     adata_idx = adata_idx.tolist()
     dataset_idx = list(map(str, subset_dataset['cell_pairing_index']))
     assert adata_idx == dataset_idx, (
-        'Cell pairing indices do not match ' 'between AnnData and Dataset objects'
+        'Cell pairing indices do not match ' 
+        'between AnnData and Dataset objects'
     )
     # count number of unique timepoints
     n_total_tps = len(tgt_adatas)
     # Initialize model module
     # ----------------------------------------------------------------------------------
     test_kwargs = {
-        'tgt_vocab_size': token_no + 50,  # add 50 for extra tokens
+        'tgt_vocab_size': max_tgt_input_id + 50,  # add 50 for extra tokens
         'd_model': args.d_model,
         'num_heads': 8,
         'num_layers': args.num_layers,
         'd_ff': args.d_ff,
-        'max_seq_length': args.max_len + 100,
+        'max_seq_length': max_len + 100,
         'dropout': 0,
         'generate': args.generate,
         'context_tps': args.context_tps,
@@ -621,7 +651,7 @@ def main(argv=None) -> None:
         'batch_size': args.batch_size,
         'num_workers': args.n_workers,
         'shuffle': args.shuffle,
-        'max_len': args.max_len,
+        'max_len': max_len,
         'split': args.split,
         'src_counts': src_counts,
         'tgt_counts_dict': tgt_counts_dict,
@@ -696,7 +726,7 @@ def main(argv=None) -> None:
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
         num_nodes=args.num_node,
-        devices=-1 if torch.cuda.is_available() else 0,  # inference only on one gpu
+        devices=-1 if torch.cuda.is_available() else 1,  # inference only on one gpu
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
     )
     # Finally, kick of the training process.

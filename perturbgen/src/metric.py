@@ -148,11 +148,17 @@ def mmd_loss_calc(source_features, target_features, gamma):
     # cost -= 2 * torch.mean(
     #     gaussian_kernel_matrix(source_features, target_features, alphas)
     # )
+    n , m = source_features.shape[0], target_features.shape[0]
     xx = rbf_kernel(source_features, source_features, gamma)
     xy = rbf_kernel(source_features, target_features, gamma)
     yy = rbf_kernel(target_features, target_features, gamma)
+    # remove diagonal elements
+    sum_Kxx = (xx.sum() - xx.diagonal().sum()) / (n * (n - 1))
+    sum_Kyy = (yy.sum() - yy.diagonal().sum()) / (m * (m - 1))
+    sum_Kxy = xy.mean()
+    return sum_Kxx + sum_Kyy - 2 * sum_Kxy
 
-    return xx.mean() + yy.mean() - 2 * xy.mean()
+    # return xx.mean() + yy.mean() - 2 * xy.mean()
 
 
 # Metrics below were adapted CellOT and CPA from:

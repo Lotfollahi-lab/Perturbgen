@@ -1,7 +1,7 @@
 #make a date directory if it does not exist
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-cellgeni-a100)
-#BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
+#BSUB -gpu 'mode=exclusive_process:num=1' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
 #BSUB -n 4 # number of cores
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen # working directory
@@ -46,9 +46,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen/train.py
 --tgt_adata_folder 'T_perturb/tokenized_data/eb_100M/h5ad_pairing_2000_hvg_tgt' \
 --mapping_dict_path  'T_perturb/tokenized_data/eb_100M/token_id_to_genename_2000_hvg.pkl' \
 --batch_size 4 \
---max_len 291 \
 --epochs 50 \
---tgt_vocab_size 1740 \
 --cellgen_lr 0.001 \
 --cellgen_wd 0.0001 \
 --n_workers 4 \
@@ -56,10 +54,9 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen/train.py
 --d_ff 32 \
 --pred_tps 1 2 3 \
 --var_list Time_point \
---cond_list Time_point \
 --encoder scmaskgit \
 --context_mode True \
---encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/output2/checkpoints/20250620_1508_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=07.ckpt" \
+--encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt" \
 --pos_encoding_mode time_pos_sin \
 --mask_scheduler 'pow' \
 --seed 0 \
