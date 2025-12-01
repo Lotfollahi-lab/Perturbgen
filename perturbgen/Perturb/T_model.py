@@ -9,11 +9,7 @@ import torch
 from einops import rearrange
 from torch import nn
 
-<<<<<<<< HEAD:perturbgen/Perturb/T_model.py
-from perturbgen.Modules.T_model import CountDecoder, PerturbGen
-========
 from perturbgen.Modules.transformer import CountDecoder, PerturbGen
->>>>>>>> 63-rerun-previous-results:perturbgen/Perturb/transformer.py
 from perturbgen.src.utils import (
     generate_pad,
     gumbel_sample,

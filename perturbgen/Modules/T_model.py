@@ -748,6 +748,8 @@ class PerturbGen(nn.Module):
 
         # set model seed for reproducibility
         self.set_seed(seed)
+        print('call this module for masking')
+        raise
 
         self.pos_embedding = PositionalEncoding(
             d_model=d_model,
@@ -1002,6 +1004,7 @@ class PerturbGen(nn.Module):
         tgt_input_id_dict,
         tgt_pad_dict,
         cond_dict,
+        agg_mode: str = 'mean',
     ):
         context_embs_list = [enc_output]
         context_pad_list = [src_attention_mask]
@@ -1034,8 +1037,34 @@ class PerturbGen(nn.Module):
                         labels=None,
                         tgt_input_id=None,
                     )
-                    context_embs_list.append(dec_outputs['dec_embedding'])
-                    context_pad_list.append(tgt_pad)
+                    if agg_mode == 'concat':
+                        print('concat mode')
+                        context_embs_list.append(dec_outputs['dec_embedding'])
+                        context_pad_list.append(tgt_pad)
+                        raise
+                    elif agg_mode == 'mean':
+                        print('mean mode')
+                        dec_emb = dec_outputs['dec_embedding']
+                        mean_emb = mean_nonpadding_embs(
+                            embs=dec_emb,
+                            input_ids=tgt_input_id,
+                            mapping_dict=self.gene_to_rowid,
+                            condition_dict=cond_dict,
+                        )
+                        print('mean_emb shape:', mean_emb.shape)
+                        mean_pad = torch.zeros(
+                            mean_emb.shape[:2],
+                            dtype=torch.bool,
+                            device=mean_emb.device,
+                        )
+                        print('mean_pad shape:', mean_pad.shape)
+                        print('---')
+                        print('mean_pad:', mean_pad)
+                        raise
+                        context_embs_list.append(mean_emb)
+                        context_pad_list.append(mean_pad)
+                    else:
+                        raise ValueError(f'Invalid agg_mode: {agg_mode}')
         context_embedding = torch.cat(context_embs_list, dim=1)
         context_pad = torch.cat(context_pad_list, dim=1)
         return context_embedding, context_pad
@@ -1074,6 +1103,8 @@ class PerturbGen(nn.Module):
         outputs: `dict`
             Output dictionary
         '''
+        print('context_mode:', self.context_mode)
+        raise
         if self.context_tps is None:
             all_modelling_tps = self.pred_tps
         else:
@@ -1114,6 +1145,7 @@ class PerturbGen(nn.Module):
                     'tgt_input_id_dict or generate_id_dict must be provided'
                 )
             if self.context_mode:
+                print('start generating context for time step:', tgt_time_step)
                 # distinction between selected time step and rest time steps
                 context_output, context_mask = self.generate_context(
                     enc_output=enc_output,
@@ -1124,6 +1156,7 @@ class PerturbGen(nn.Module):
                     tgt_pad_dict=tgt_pad_dict,
                     cond_dict=cond_dict,
                 )
+                raise
             if (not_masked is False) and (generate_id_dict is None):
                 # apply masking during first stage of MLM training
                 tgt_input_id, labels = self.generate_mask(
@@ -1479,8 +1512,9 @@ class CountHead(nn.Module):
             # only use when size factor is to be predicted
             # and not using observed size factor
             self.size_factor_decoder = nn.Sequential(
-                nn.Linear(d_model, 1), nn.Softplus()
+                nn.Linear(d_model, 1)
             )
+    
 
 
     def forward(self, x):
@@ -1491,6 +1525,7 @@ class CountHead(nn.Module):
         # use cls token for count prediction
         count_outputs = {}
         mlp_output = self.mlp(x)
+        
         mlp_output = nn.functional.normalize(mlp_output, dim=-1, p=2)
         if self.loss_mode == 'mse':
             count_outputs['count_lognorm'] = self.relu_output(mlp_output)
@@ -1500,7 +1535,9 @@ class CountHead(nn.Module):
         elif self.loss_mode == 'nb':
             count_outputs['count_mean'] = self.scale_decoder(mlp_output)
         if self.use_size_factor and not self.use_observed_size_factor:
-            count_outputs['size_factor'] = self.size_factor_decoder(mlp_output)
+            count_outputs['size_factor'] = torch.exp(
+                self.size_factor_decoder(mlp_output)
+            )
         return count_outputs
 
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-#BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -q gpu-normal # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
 #BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
 #BSUB -n 4 # number of cores
 #BSUB -G team361 # groupname for billing
@@ -19,7 +19,7 @@ source /nfs/team361/cytomeister/.cytomeister/bin/activate
 
 # results directory
 RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/res/"
-RES_NAME="eb/extrapolation"
+RES_NAME="eb/extrapolation_lib_size"
 
 # Point runs to the target project
 export WANDB_MODE=online

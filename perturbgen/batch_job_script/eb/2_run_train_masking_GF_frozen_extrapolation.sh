@@ -20,7 +20,7 @@ cwd=$(pwd)
 
 # ----------------- Create folder to save results and copy the script -----------------
 RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/res/"
-RES_NAME="eb/extrapolation"
+RES_NAME="eb/extrapolation_mean_test"
 # if directory does not exist, create it with the name $RES_NAME
 mkdir -p $RES_DIR/$RES_NAME
 # # Get the current timestamp

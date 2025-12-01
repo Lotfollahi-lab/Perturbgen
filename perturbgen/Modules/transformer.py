@@ -812,6 +812,11 @@ class PerturbGen(nn.Module):
         self.gene_to_rowid = gene_to_rowid
         self.condition_dict = condition_dict
 
+        # caching variables for encoder outputs
+        self._enc_cache_key = None
+        self._enc_cache_output = None
+        self._enc_cache_mask = None
+
     def set_seed(self, seed: Optional[int]):
         if seed is not None:
             torch.manual_seed(seed)
@@ -1002,9 +1007,11 @@ class PerturbGen(nn.Module):
         tgt_input_id_dict,
         tgt_pad_dict,
         cond_dict,
+        agg_mode: str = 'concat',
     ):
         context_embs_list = [enc_output]
         context_pad_list = [src_attention_mask]
+
         # retrieve the embeddings to provide as context
         # pad the rest of the time steps
         all_time_steps = sorted(all_time_steps)
@@ -1034,9 +1041,30 @@ class PerturbGen(nn.Module):
                         labels=None,
                         tgt_input_id=None,
                     )
-                    context_embs_list.append(dec_outputs['dec_embedding'])
-                    context_pad_list.append(tgt_pad)
+                    if agg_mode == 'concat':
+                        context_embs_list.append(dec_outputs['dec_embedding'])
+                        context_pad_list.append(tgt_pad)
+
+                    elif agg_mode == 'mean':
+                        dec_emb = dec_outputs['dec_embedding']
+                        mean_emb = mean_nonpadding_embs(
+                            embs=dec_emb,
+                            input_ids=tgt_input_id,
+                            mapping_dict=self.gene_to_rowid,
+                            condition_dict=cond_dict,
+                        )
+                        mean_emb = mean_emb.unsqueeze(1)
+                        mean_pad = torch.zeros(
+                            mean_emb.shape[:2],
+                            dtype=torch.bool,
+                            device=mean_emb.device,
+                        )
+                        context_embs_list.append(mean_emb)
+                        context_pad_list.append(mean_pad)
+                    else:
+                        raise ValueError(f'Invalid agg_mode: {agg_mode}')
         context_embedding = torch.cat(context_embs_list, dim=1)
+        # print('-- context embedding shape:', context_embedding.shape)
         context_pad = torch.cat(context_pad_list, dim=1)
         return context_embedding, context_pad
 
@@ -1085,8 +1113,14 @@ class PerturbGen(nn.Module):
             )
         else:
             tgt_pad_dict = generate_pad_dict
-        src_attention_mask = generate_pad(src_input_id)
-        enc_output = self.call_encoder(src_input_id, src_attention_mask)
+        if generate_id_dict is not None:
+            # MASKGIT generation: src_input_id is reused across iterations
+            enc_output, src_attention_mask = self._encode_with_cache(src_input_id)
+        else:
+            # training / normal inference
+            src_attention_mask = generate_pad(src_input_id)
+            enc_output = self.call_encoder(src_input_id, src_attention_mask)
+
         if (not_masked) and (tgt_input_id_dict is not None):
             # not masked for count prediction and predicted embeddings
             sorted_time_steps = sorted(self.pred_tps)
@@ -1150,6 +1184,35 @@ class PerturbGen(nn.Module):
             )
             all_outputs[tgt_time_step] = outputs
         return all_outputs
+
+    def _encode_with_cache(self, src_input_id: torch.Tensor):
+        # caching only works when encoder is frozen
+        # and input is the same across calls as during generation
+        
+
+
+        # build a key from src_input_id
+        key = src_input_id.detach().cpu().numpy().tobytes()
+
+        if key == self._enc_cache_key:
+            # reuse cached CPU tensors
+            enc_cpu = self._enc_cache_output
+            mask_cpu = self._enc_cache_mask
+            device = src_input_id.device
+            return enc_cpu.to(device), mask_cpu.to(device)
+
+        # first time for this src_input_id
+        src_attention_mask = generate_pad(src_input_id)
+        with torch.no_grad():
+            enc_output = self.call_encoder(src_input_id, src_attention_mask)
+
+        # store CPU copies
+        self._enc_cache_key = key
+        self._enc_cache_output = enc_output.detach().cpu()
+        self._enc_cache_mask = src_attention_mask.detach().cpu()
+
+        return enc_output, src_attention_mask
+
 
     def generate(
         self,
@@ -1467,10 +1530,12 @@ class CountHead(nn.Module):
             self.scale_decoder = nn.Sequential(
                 nn.Linear(d_model, n_genes), scale_activation
             )
+            
         elif self.loss_mode == 'nb':
             if not(use_size_factor):
                 scale_activation = nn.Softplus()
             else:
+                print('scale activation softmax for nb')
                 scale_activation = nn.Softmax(dim=-1)
             self.scale_decoder = nn.Sequential(
                 nn.Linear(d_model, n_genes), scale_activation
@@ -1479,8 +1544,9 @@ class CountHead(nn.Module):
             # only use when size factor is to be predicted
             # and not using observed size factor
             self.size_factor_decoder = nn.Sequential(
-                nn.Linear(d_model, 1), nn.Softplus()
+                nn.Linear(d_model, 1)
             )
+    
 
 
     def forward(self, x):
@@ -1491,6 +1557,7 @@ class CountHead(nn.Module):
         # use cls token for count prediction
         count_outputs = {}
         mlp_output = self.mlp(x)
+        
         mlp_output = nn.functional.normalize(mlp_output, dim=-1, p=2)
         if self.loss_mode == 'mse':
             count_outputs['count_lognorm'] = self.relu_output(mlp_output)
@@ -1500,7 +1567,9 @@ class CountHead(nn.Module):
         elif self.loss_mode == 'nb':
             count_outputs['count_mean'] = self.scale_decoder(mlp_output)
         if self.use_size_factor and not self.use_observed_size_factor:
-            count_outputs['size_factor'] = self.size_factor_decoder(mlp_output)
+            count_outputs['size_factor'] = torch.exp(
+                self.size_factor_decoder(mlp_output)
+            )
         return count_outputs
 
 

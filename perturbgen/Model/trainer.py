@@ -121,6 +121,7 @@ class PerturbGenTrainer(LightningModule):
             self.total_tps = pred_tps
         else:
             self.total_tps = context_tps + pred_tps
+
         self.pred_tps = pred_tps
         self.n_total_tps = n_total_tps
         self.context_tps = context_tps
@@ -666,7 +667,7 @@ class CountDecoderTrainer(LightningModule):
         shared_gene_list: Dict[Any, Any] | None = None,
         context_tps: List[int] | None = None,
         mapping_dict_path: str | None = None,
-        use_size_factor: bool = True,
+        use_size_factor: bool = False,
         use_observed_size_factor: bool = False,
         *args,
         **kwargs,
@@ -754,7 +755,6 @@ class CountDecoderTrainer(LightningModule):
                 raise Warning(f'Missing keys in state_dict: {missing}')
             if len(unexpected) > 1:
                 raise Warning(f'Unexpected keys in state_dict: {unexpected}')
-
         self.weight_decay = weight_decay
         self.lr = lr
         self.loss_mode = loss_mode
@@ -878,7 +878,7 @@ class CountDecoderTrainer(LightningModule):
         outputs: Dict[str, torch.Tensor],
         batch: Dict[str, torch.Tensor],
         n_samples: int = 1,
-        use_size_factor: bool = False,
+        use_size_factor: bool = True,
         use_observed_size_factor: bool = False,
     ):
         """
@@ -927,11 +927,15 @@ class CountDecoderTrainer(LightningModule):
             elif self.loss_mode in ['zinb', 'nb']:
                 if use_size_factor:
                     if use_observed_size_factor:
+                        
                         dec_mean = count_ouput['count_mean'] * batch_size_factor.expand_as(
                             count_ouput['count_mean']
                         )
                     else:
-                        dec_mean = count_ouput['count_mean'] * count_ouput['size_factor'].unsqueeze(1)
+                        
+                        dec_mean = count_ouput['count_mean'] * count_ouput['size_factor'].expand_as(
+                            count_ouput['count_mean']
+                        )
                 else:
                     # does not require size factor adjustment because of Softplus
                     dec_mean = count_ouput['count_mean']

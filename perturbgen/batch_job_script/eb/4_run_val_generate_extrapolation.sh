@@ -39,7 +39,7 @@ python3 $cwd/val.py \
 --splitting_mode random \
 --generate True \
 --output_dir $RES_DIR/$RES_NAME \
---ckpt_count_path 'T_perturb/res/eb/extrapolation/checkpoints/20250829_0944_cellgen_train_count_lr_0.0001_wd_0.0001_batch_64_drop_0.25_zinb_tp_1-2-3_s_0_pos_time_pos_sin_m_pow-epoch=99.ckpt' \
+--ckpt_count_path 'T_perturb/res/eb/extrapolation_lib_size/checkpoints/20251130_2139_cellgen_train_count_lr_0.0001_wd_0.0001_batch_64_drop_0.25_zinb_tp_1-2-3_s_0_pos_time_pos_sin_m_pow-epoch=99.ckpt' \
 --src_dataset 'T_perturb/tokenized_data/eb_100M/dataset_2000_hvg_src/Day 00-03.dataset' \
 --tgt_dataset_folder 'T_perturb/tokenized_data/eb_100M/dataset_2000_hvg_tgt' \
 --src_adata 'T_perturb/tokenized_data/eb_100M/h5ad_pairing_2000_hvg_src/Day 00-03.h5ad' \
