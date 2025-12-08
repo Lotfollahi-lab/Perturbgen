@@ -1007,7 +1007,7 @@ class PerturbGen(nn.Module):
         tgt_input_id_dict,
         tgt_pad_dict,
         cond_dict,
-        agg_mode: str = 'concat',
+        agg_mode: str = 'mean',
     ):
         context_embs_list = [enc_output]
         context_pad_list = [src_attention_mask]
@@ -1116,10 +1116,12 @@ class PerturbGen(nn.Module):
         if generate_id_dict is not None:
             # MASKGIT generation: src_input_id is reused across iterations
             enc_output, src_attention_mask = self._encode_with_cache(src_input_id)
+            
         else:
-            # training / normal inference
+        # training / normal inference
             src_attention_mask = generate_pad(src_input_id)
             enc_output = self.call_encoder(src_input_id, src_attention_mask)
+        
 
         if (not_masked) and (tgt_input_id_dict is not None):
             # not masked for count prediction and predicted embeddings
@@ -1200,7 +1202,6 @@ class PerturbGen(nn.Module):
             mask_cpu = self._enc_cache_mask
             device = src_input_id.device
             return enc_cpu.to(device), mask_cpu.to(device)
-
         # first time for this src_input_id
         src_attention_mask = generate_pad(src_input_id)
         with torch.no_grad():
@@ -1310,6 +1311,8 @@ class PerturbGen(nn.Module):
             tgt_input_id_dict_[tgt_input_id_key] = ids
             # pad ids
             scores = torch.zeros_like(tgt_input_id, dtype=torch.float)
+            import time
+            start_time = time.time()
             outputs, generated_ids = self.generate_sequence(
                 generate_id_dict=tgt_input_id_dict_,
                 generate_pad_dict=tgt_pad_dict_,
@@ -1324,6 +1327,8 @@ class PerturbGen(nn.Module):
                 tgt_time_step=time_step,
                 cond_length=cond_length,
             )
+            end_time = time.time()
+            print(f'-- Time taken for generating time step {time_step}: {end_time - start_time:.2f} seconds')
             generate_id_dict[f'tgt_input_ids_t{time_step}'] = generated_ids
             all_outputs[time_step] = outputs
         return all_outputs, generate_id_dict
@@ -1483,7 +1488,7 @@ class CountHead(nn.Module):
         dropout: float = 0.0,
         layer_norm: bool = False,  # args
         use_size_factor: bool = True,
-        use_observed_size_factor: bool = False,
+        use_observed_size_factor: bool = True,
     ):
         '''
         Description:
@@ -1527,7 +1532,7 @@ class CountHead(nn.Module):
                 scale_activation = nn.Softplus()
             else:
                 scale_activation = nn.Softmax(dim=-1)
-            self.scale_decoder = nn.Sequential(
+            self.softmax_output = nn.Sequential(
                 nn.Linear(d_model, n_genes), scale_activation
             )
             
@@ -1537,7 +1542,7 @@ class CountHead(nn.Module):
             else:
                 print('scale activation softmax for nb')
                 scale_activation = nn.Softmax(dim=-1)
-            self.scale_decoder = nn.Sequential(
+            self.softmax_output = nn.Sequential(
                 nn.Linear(d_model, n_genes), scale_activation
             )
         if self.use_size_factor and not self.use_observed_size_factor:
@@ -1562,14 +1567,17 @@ class CountHead(nn.Module):
         if self.loss_mode == 'mse':
             count_outputs['count_lognorm'] = self.relu_output(mlp_output)
         elif self.loss_mode == 'zinb':
-            count_outputs['count_mean'] = self.scale_decoder(mlp_output)
+            count_outputs['count_mean'] = self.softmax_output(mlp_output)
             count_outputs['count_dropout'] = self.linear_output(mlp_output)
         elif self.loss_mode == 'nb':
-            count_outputs['count_mean'] = self.scale_decoder(mlp_output)
+            count_outputs['count_mean'] = self.softmax_output(mlp_output)
         if self.use_size_factor and not self.use_observed_size_factor:
             count_outputs['size_factor'] = torch.exp(
                 self.size_factor_decoder(mlp_output)
             )
+        elif self.use_observed_size_factor:
+            count_outputs['size_factor'] = None  # to be provided externally
+
         return count_outputs
 
 
@@ -1597,8 +1605,8 @@ class CountDecoder(nn.Module):
         seed: int = 42,
         context_tps: list[int] | None = None,
         use_positional_encoding: bool = False,
-        use_size_factor: bool = False,
-        use_observed_size_factor: bool = False,
+        use_size_factor: bool = True,
+        use_observed_size_factor: bool = True,
     ):
         '''
         Description:

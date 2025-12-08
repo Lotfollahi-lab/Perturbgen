@@ -1,15 +1,15 @@
 #make a date directory if it does not exist
 #!/bin/bash
-#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-cellgeni-a100)
+#BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-cellgeni-a100)
 #BSUB -gpu 'mode=exclusive_process:num=1' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
 #BSUB -n 4 # number of cores
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen # working directory
-#BSUB -o logs/eb_masking_extra_s0_%J.out # output file
-#BSUB -e logs/eb_masking_extra_s0_%J.err # error file
+#BSUB -o logs/eb_masking_extra_s42_%J.out # output file
+#BSUB -e logs/eb_masking_extra_s42_%J.err # error file
 #BSUB -M 20000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>20000] rusage[mem=20000]' # RAM memory part 1. Default: 100MB
-#BSUB -J eb_masking_extra_s0 # job name
+#BSUB -J eb_masking_extra_s42 # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -45,7 +45,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen/train.py
 --src_adata 'T_perturb/tokenized_data/eb_100M/h5ad_pairing_2000_hvg_src/Day 00-03.h5ad' \
 --tgt_adata_folder 'T_perturb/tokenized_data/eb_100M/h5ad_pairing_2000_hvg_tgt' \
 --mapping_dict_path  'T_perturb/tokenized_data/eb_100M/token_id_to_genename_2000_hvg.pkl' \
---batch_size 4 \
+--batch_size 64 \
 --epochs 50 \
 --cellgen_lr 0.001 \
 --cellgen_wd 0.0001 \
@@ -59,7 +59,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen/train.py
 --encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt" \
 --pos_encoding_mode time_pos_sin \
 --mask_scheduler 'pow' \
---seed 0 \
+--seed 42 \
 --d_model 768 \
 --use_weighted_sampler False
 echo '--- Finished computing model'

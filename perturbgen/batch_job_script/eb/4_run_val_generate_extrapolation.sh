@@ -1,14 +1,14 @@
 #!/bin/bash
-#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -q gpu-normal # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
 #BSUB -gpu 'mode=exclusive_process:num=1' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB :gmodel=NVIDIA_H100_HBM3_80GB
 #BSUB -n 4 # number of cores
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen # working directory
-#BSUB -o logs/eb_generate_extra_s0_%J.out # output file
-#BSUB -e logs/eb_generate_extra_s0_%J.err # error file
+#BSUB -o logs/eb_generate_extra_s100_%J.out # output file
+#BSUB -e logs/eb_generate_extra_s100_%J.err # error file
 #BSUB -M 20000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>20000] rusage[mem=20000]' # RAM memory part 1. Default: 100MB
-#BSUB -J eb_generate_extra_s0 # job name
+#BSUB -J eb_generate_extra_s100 # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -22,7 +22,7 @@ cwd=$(pwd)
 echo '--- Start computing model'
 
 RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/res/"
-RES_NAME="eb/extrapolation"
+RES_NAME="eb/extrapolation_mean_test"
 
 # # if directory does not exist, create it with the name $RES_NAME
 # mkdir -p $RES_DIR/$RES_NAME
@@ -39,7 +39,7 @@ python3 $cwd/val.py \
 --splitting_mode random \
 --generate True \
 --output_dir $RES_DIR/$RES_NAME \
---ckpt_count_path 'T_perturb/res/eb/extrapolation_lib_size/checkpoints/20251130_2139_cellgen_train_count_lr_0.0001_wd_0.0001_batch_64_drop_0.25_zinb_tp_1-2-3_s_0_pos_time_pos_sin_m_pow-epoch=99.ckpt' \
+--ckpt_count_path 'T_perturb/res/eb/extrapolation_mean_test/checkpoints/20251208_0738_cellgen_train_count_lr_0.0001_wd_0.0001_batch_64_drop_0.25_zinb_tp_1-2-3_s_100_pos_time_pos_sin_m_pow-epoch=99.ckpt' \
 --src_dataset 'T_perturb/tokenized_data/eb_100M/dataset_2000_hvg_src/Day 00-03.dataset' \
 --tgt_dataset_folder 'T_perturb/tokenized_data/eb_100M/dataset_2000_hvg_tgt' \
 --src_adata 'T_perturb/tokenized_data/eb_100M/h5ad_pairing_2000_hvg_src/Day 00-03.h5ad' \
@@ -67,5 +67,5 @@ python3 $cwd/val.py \
 --pos_encoding_mode time_pos_sin \
 --mask_scheduler 'pow' \
 --d_model 768 \
---seed 0
+--seed 100
 echo '--- Finished computing model'

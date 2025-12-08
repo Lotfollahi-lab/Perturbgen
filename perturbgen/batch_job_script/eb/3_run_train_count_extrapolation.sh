@@ -1,6 +1,6 @@
 #!/bin/bash
 #BSUB -q gpu-normal # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
+#BSUB -gpu 'mode=exclusive_process:num=1' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
 #BSUB -n 4 # number of cores
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen # working directory
@@ -19,7 +19,7 @@ source /nfs/team361/cytomeister/.cytomeister/bin/activate
 
 # results directory
 RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/res/"
-RES_NAME="eb/extrapolation_lib_size"
+RES_NAME="eb/extrapolation_mean_test"
 
 # Point runs to the target project
 export WANDB_MODE=online
@@ -37,7 +37,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen/train.py
 --split False \
 --splitting_mode random \
 --output_dir $RES_DIR/$RES_NAME \
---ckpt_masking_path 'T_perturb/res/eb/extrapolation/checkpoints/20250828_1430_cellgen_train_masking_lr_0.001_wd_0.0001_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_0-epoch=49.ckpt' \
+--ckpt_masking_path 'T_perturb/res/eb/extrapolation_mean_test/checkpoints/20251208_0656_cellgen_train_masking_lr_0.001_wd_0.0001_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_100-epoch=49.ckpt' \
 --src_dataset 'T_perturb/tokenized_data/eb_100M/dataset_2000_hvg_src/Day 00-03.dataset' \
 --tgt_dataset_folder 'T_perturb/tokenized_data/eb_100M/dataset_2000_hvg_tgt' \
 --src_adata 'T_perturb/tokenized_data/eb_100M/h5ad_pairing_2000_hvg_src/Day 00-03.h5ad' \
@@ -61,7 +61,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen/train.py
 --encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt" \
 --pos_encoding_mode time_pos_sin \
 --mask_scheduler 'pow' \
---seed 0 \
+--seed 100 \
 --d_model 768 \
 --use_weighted_sampler False
 echo '--- Finished computing model'

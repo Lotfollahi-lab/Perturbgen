@@ -667,8 +667,8 @@ class CountDecoderTrainer(LightningModule):
         shared_gene_list: Dict[Any, Any] | None = None,
         context_tps: List[int] | None = None,
         mapping_dict_path: str | None = None,
-        use_size_factor: bool = False,
-        use_observed_size_factor: bool = False,
+        use_size_factor: bool = True,
+        use_observed_size_factor: bool = True,
         *args,
         **kwargs,
     ):
@@ -879,7 +879,7 @@ class CountDecoderTrainer(LightningModule):
         batch: Dict[str, torch.Tensor],
         n_samples: int = 1,
         use_size_factor: bool = True,
-        use_observed_size_factor: bool = False,
+        use_observed_size_factor: bool = True,
     ):
         """
         Description:
@@ -910,10 +910,10 @@ class CountDecoderTrainer(LightningModule):
         total_loss = 0
         for time_step in self.pred_tps:
             count_ouput = outputs[f'count_output_t{time_step}']
+
             true_values = batch[f'tgt_counts_t{time_step}']
             if use_observed_size_factor:
                 batch_size_factor = batch[f'tgt_size_factor_t{time_step}'].unsqueeze(1)
-
             if self.loss_mode == 'mse':
                 # change true counts dtype to count output dtype
                 true_values = true_values.type(count_ouput['count_lognorm'].dtype)
@@ -927,6 +927,7 @@ class CountDecoderTrainer(LightningModule):
             elif self.loss_mode in ['zinb', 'nb']:
                 if use_size_factor:
                     if use_observed_size_factor:
+
                         
                         dec_mean = count_ouput['count_mean'] * batch_size_factor.expand_as(
                             count_ouput['count_mean']

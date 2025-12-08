@@ -38,6 +38,8 @@ class PerturberTrainer(CountDecoderTrainer):
         use_count_decoder: bool = False,
         pad_condition: bool = False,
         batch_size: int = 16,
+        use_size_factor: bool = True,
+        use_observed_size_factor: bool = True,
         # gene_module_list: List[str] | None = None,
         # num_of_background_genes: int | None = None,
         *args,
@@ -198,6 +200,8 @@ class PerturberTrainer(CountDecoderTrainer):
                 context_tps=kwargs['context_tps'] if 'context_tps' in kwargs else None,
                 n_total_tps=kwargs['n_total_tps'],
                 n_genes=kwargs['n_genes'],
+                use_size_factor=use_size_factor,
+                use_observed_size_factor=use_observed_size_factor
             )
 
         for key in [
