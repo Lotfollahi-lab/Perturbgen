@@ -1,5 +1,5 @@
  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
- ![python](https://img.shields.io/badge/Python-3.10-brightgreen)
+ ![python](https://img.shields.io/badge/Python-3.11-brightgreen)
 
 
 # PerturbGen Foundation model for dynamic cellular states
@@ -45,17 +45,13 @@ jupytext --to ipynb --execute <your_file>_nb.py
 ## Examples
 
 For usage, see:
-- [Preprocessing and data curation](docs/examples/01_preprocessing_and_curation.ipynb)
-- [Tokenizing transcriptomes and training the model](docs/examples/02_tokenize_and_train.ipynb)
-- [In silico perturbation and analyses](docs/examples/03_analysis.ipynb)
-
-The model can be run ALSO by following the three different steps:
-1. Data preprocessing, tokenisation
-2. Training the masking model
-3. Training the count decoder model
-4. Load checkpoint and generate predictions
-The executable scripts for each step are located in the `T_perturb/cytomeister/batch_job_script` directory.
-
+- [Preprocessing and data curation](docs/examples/01_preprocessing_curation.ipynb)
+- [Tokenization and pairing](docs/examples/02_tokenization_pairing.ipynb)
+- [Train PerturbGen](docs/examples/03_train_perturbgen.ipynb)
+- [Gene Embedding Extraction](docs/examples/04_GeneEmbedding_Extraction.ipynb)
+- [Gene Program Discovery](docs/examples/05_GeneProgram_Discovery.ipynb)
+- [Perturbation](docs/examples/06_perturbation.ipynb)
+- [Post Perturbation Analyses](docs/examples/07_PostPerturbation_Analyses.ipynb)
 
 ## Citation
 

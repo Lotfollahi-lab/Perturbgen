@@ -168,7 +168,7 @@ def get_args(argv):
     parser.add_argument(
         '--remove_mito_ribo_genes',
         type=str2bool,
-        default=True,
+        default=False,
         help='Exclude mitochondrial and ribosomal genes',
     )
     parser.add_argument(
@@ -187,7 +187,7 @@ def get_args(argv):
     parser.add_argument(
         '--cell_gene_filter',
         type=str2bool,
-        default=True,
+        default=False,
         help='Filter cells and genes based on expression',
     )
     parser.add_argument(
