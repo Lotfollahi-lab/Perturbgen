@@ -10,9 +10,11 @@ To get started with PerturbGen, clone the git repository:
 
 Install Poetry (one-time):
 (wanna know what is poetry? have a look at https://python-poetry.org)
+
 .. code:: shell-session
 
     $ curl -sSL https://install.python-poetry.org | python3 -
+
 
 Optional: alternative way to install poetry using pipx (https://pipx.pypa.io/stable/installation/)
 
