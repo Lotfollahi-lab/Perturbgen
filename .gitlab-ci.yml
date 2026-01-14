@@ -24,4 +24,4 @@ deploy-docs-to-s3:
     # We specify --no-mime-magic because python's `mimetypes.guess_type()` is
     # better at guessing simple MIME types like text/css and text/javascript
     # than the `magic` library is.
-    - s3cmd -c $S3CMD_FILE sync --delete-removed --no-mime-magic _build/html/ s3://perturbgen-docs/
+    - s3cmd -c $S3CMD_FILE sync --delete-removed --no-mime-magic _build/html/ s3://perturbgen/docs/
