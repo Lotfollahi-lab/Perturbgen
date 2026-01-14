@@ -6,7 +6,7 @@ To get started with PerturbGen, clone the git repository:
 .. code:: shell-session
 
     $ git clone https://github.com/Lotfollahi-lab/Perturbgen.git
-    $ cd T_perturb/
+    $ cd Perturbgen/
 
 Install Poetry (one-time):
 (wanna know what is poetry? have a look at https://python-poetry.org)
@@ -32,7 +32,7 @@ Create/install the environment and dependencies:
 
 
 It's good practice to create a virtual environment to avoid polluting the rest of the system:
-Activate the enviroment
+Activate the environment
 
 .. code:: shell-session
 
@@ -47,10 +47,6 @@ These files end with `_nb.py` and can be converted back to a `.ipynb` file with
 
    $ jupytext --to ipynb --execute <your_file>_nb.py
 
-## Examples
-
-For usage, see:
-Examples in readme
 
 PerturbGen is structured as an installable Python package, so installing the dependencies is easy:
 

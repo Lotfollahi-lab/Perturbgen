@@ -4,14 +4,24 @@
    contain the root `toctree` directive.
 
 PerturbGen
-==========
+**********
 
-.. toctree::
-   :maxdepth: 2
-   :caption: Getting Started
+PerturbGen is a scientific Python library for modeling, generating, and analyzing cellular perturbation effects from high-dimensional biological data. It is designed for researchers and developers working with perturbation experiments (e.g. genetic, chemical, or CRISPR-based perturbations) who want reproducible, model-driven ways to simulate and interpret perturbational responses.
 
-   installation
-   tutorial
+Conceptual overview
+===================
+
+At a high level, a typical PerturbGen workflow looks like:
+
+- Prepare perturbation-aware biological data (e.g. single-cell expression)
+
+- Configure or load a perturbation model
+
+- Apply perturbations in silico to generate predicted responses
+
+- Analyze, compare, or visualize the resulting perturbation effects
+
+PerturbGen does not aim to be a general-purpose machine learning framework. Instead, it provides abstractions that encode biological perturbations as first-class objects, making downstream analyses easier to reason about and reproduce.
 
 See Also
 --------
@@ -19,14 +29,13 @@ See Also
 - `GitHub repo <https://github.com/Lotfollahi-lab/Perturbgen>`__
 - `Hugging Face repo <https://huggingface.co/lotfollahi-lab/PerturbGen/tree/main>`__
 
-.. toctree::
-   :maxdepth: 1
-   :caption: Development
-
-   docs-development
 
 .. toctree::
+      
    :maxdepth: 2
-   :caption: API
 
-   apidoc/perturbgen/modules
+   installation
+   data
+   tutorial
+
+   API <apidoc/perturbgen/modules>
