@@ -47,7 +47,7 @@ jupytext --to ipynb --execute <your_file>_nb.py
 ```
 ## Examples
 
-For usage, see:
+For usage, see the [documentation](https://perturbgen.cog.sanger.ac.uk/docs/examples/01_preprocessing_curation.html) or the local notebooks:
 - [Preprocessing and data curation](docs/examples/01_preprocessing_curation.ipynb)
 - [Tokenization and pairing](docs/examples/02_tokenization_pairing.ipynb)
 - [Train PerturbGen](docs/examples/03_train_perturbgen.ipynb)
@@ -58,10 +58,23 @@ For usage, see:
 
 See Perturbation notebook for more explaination about how to perturb a gene or list of genes
 
+## Documentation
+
+Full documentation and tutorials are available at: [perturbgen.cog.sanger.ac.uk](https://perturbgen.cog.sanger.ac.uk/docs/examples/01_preprocessing_curation.html)
+
 ## Citation
 
-If you use our repository or code in your research, please cite us:
+If you use our repository or code in your research, please cite our paper:
 
 ```
-
+@article{chi2026predicting,
+  title={Predicting how perturbations reshape cellular trajectories with PerturbGen},
+  author={Chi Hao Ly, Kevin and Miraki Feriz, Adib and Isobe, Tomoya and Vahidi, Amirhossein and Vaghari, Delshad and Rostron, Anthony and Quiroga Londono, Mariana and Mende, Nicole and Vijayabaskar, MS and Moullet, Marie and others},
+  journal={bioRxiv},
+  pages={2026--03},
+  year={2026},
+  publisher={Cold Spring Harbor Laboratory}
+}
 ```
+
+**Paper:** [Predicting how perturbations reshape cellular trajectories with PerturbGen (bioRxiv 2026)](https://www.biorxiv.org/content/10.64898/2026.03.04.709254v1)
