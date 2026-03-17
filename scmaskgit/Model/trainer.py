@@ -85,7 +85,7 @@ class CellGenTrainer(LightningModule):
         num_epochs: int = 5,
         warmup_epochs: int = 1,
         pad_token_id: int = 0,
-        output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
+        output_dir: str = './T_perturb/perturbgen/plt/res/eb/',
         encoder: str = 'GF_fine_tuned',
         mask_scheduler: str = 'cosine',
         context_mode: bool = True,
@@ -341,7 +341,7 @@ class CountDecoderTrainer(LightningModule):
         iterations: int = 18,
         n_samples: int = 1,
         precision: Literal['high', 'medium'] = 'medium',
-        output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
+        output_dir: str = './T_perturb/perturbgen/plt/res/eb/',
         encoder: str = 'GF_fine_tuned',
         mapping_dict_path: str = (
             './T_perturb/Geneformer/geneformer/' 'token_dictionary_gc95M.pkl'

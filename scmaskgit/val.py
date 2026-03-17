@@ -59,7 +59,7 @@ def get_args():
     parser.add_argument(
         '--output_dir',
         type=str,
-        # default='./T_perturb/T_perturb/plt/res/cytoimmgen',
+        # default='./T_perturb/perturbgen/plt/res/cytoimmgen',
         default='./output/',
         help='store dataset name',
     )
@@ -90,38 +90,38 @@ def get_args():
         type=str,
         default='/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/concatenated_dataset.dataset',
         # default=(
-        #     './T_perturb/T_perturb/pp/res/eb/'
+        #     './T_perturb/perturbgen/pp/res/eb/'
         #     'dataset_all_src/eb_all_Day 00-03.dataset'
         # ),
-        # default='./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset',
+        # default='./T_perturb/perturbgen/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
         '--src_adata',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
+        default='./T_perturb/perturbgen/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
         # default=(
-        #     './T_perturb/T_perturb/pp/'
+        #     './T_perturb/perturbgen/pp/'
         #     'res/eb/h5ad_pairing_all_src/eb_all_Day 00-03.h5ad'
         # ),
-        # default='./T_perturb/T_perturb/pp/res/cytoimmgen/'
+        # default='./T_perturb/perturbgen/pp/res/cytoimmgen/'
         # 'h5ad_pairing_hvg_src/0h.h5ad',
         help='path to src',
     )
     parser.add_argument(
         '--tgt_adata_folder',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt',
-        # default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_all_tgt',
-        # default='./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt',
+        default='./T_perturb/perturbgen/pp/res/eb/h5ad_pairing_hvg_tgt',
+        # default='./T_perturb/perturbgen/pp/res/eb/h5ad_pairing_all_tgt',
+        # default='./T_perturb/perturbgen/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt',
         help='path to tgt',
     )
     parser.add_argument(
         '--mapping_dict_path',
         type=str,
-        # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl',
-        # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
-        default='./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl',
+        # default='./T_perturb/perturbgen/pp/res/eb/token_id_to_genename_hvg.pkl',
+        # default='./T_perturb/perturbgen/pp/res/eb/token_id_to_genename_all.pkl'
+        default='./T_perturb/perturbgen/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl',
     )
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--shuffle', type=str2bool, default=False, help='shuffle')
@@ -334,8 +334,8 @@ def main() -> None:
         )
         # test_dataset = load_from_disk("/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/tokenized_geneformer_Han_et_al_multi_organ_normal_harmonized_qc.dataset")
         # test_dataset = load_from_disk("/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/tokenized_geneformer_Nusayhah_et_al_adult_skin_normal_harmonized_qc.dataset")
-        # test_dataset = load_from_disk("/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/pp/res/lps_new_median/dataset_all_subsetted/lps_new_median_all_subsetted.dataset")
-        # test_dataset = load_from_disk("/lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/T_perturb/pp/res/hspc/dataset_10000_all/hspc.dataset")
+        # test_dataset = load_from_disk("/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/perturbgen/pp/res/lps_new_median/dataset_all_subsetted/lps_new_median_all_subsetted.dataset")
+        # test_dataset = load_from_disk("/lustre/scratch126/cellgen/team361/kl11/t_generative/T_perturb/perturbgen/pp/res/hspc/dataset_10000_all/hspc.dataset")
         
         # test_dataset = load_from_disk("/lustre/scratch126/cellgen/team361/av13/data/tokenized_data/trace/tokenized_geneformer.dataset")
         test_dataset = load_from_disk("/lustre/scratch126/cellgen/team361/av13/data/tokenized_data/trace/tokenized_geneformer_multi_organ.dataset")

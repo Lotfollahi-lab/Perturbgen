@@ -93,40 +93,40 @@ def get_args():
     parser.add_argument(
         '--src_dataset',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/dataset_hvg_src/Day 00-03.dataset',
+        default='./T_perturb/perturbgen/pp/res/eb/dataset_hvg_src/Day 00-03.dataset',
         # default=(
-        #     './T_perturb/T_perturb/pp/res/eb/'
+        #     './T_perturb/perturbgen/pp/res/eb/'
         #     'dataset_all_src/eb_all_Day 00-03.dataset'
         # ),
-        # default='./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset',
+        # default='./T_perturb/perturbgen/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
         '--src_adata',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
+        default='./T_perturb/perturbgen/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
         # default=(
-        #     './T_perturb/T_perturb/pp/'
+        #     './T_perturb/perturbgen/pp/'
         #     'res/eb/h5ad_pairing_all_src/eb_all_Day 00-03.h5ad'
         # ),
-        # default='./T_perturb/T_perturb/pp/res/cytoimmgen/'
+        # default='./T_perturb/perturbgen/pp/res/cytoimmgen/'
         # 'h5ad_pairing_hvg_src/0h.h5ad',
         help='path to src',
     )
     parser.add_argument(
         '--tgt_adata_folder',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt',
-        # default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_all_tgt',
-        # default='./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt',
+        default='./T_perturb/perturbgen/pp/res/eb/h5ad_pairing_hvg_tgt',
+        # default='./T_perturb/perturbgen/pp/res/eb/h5ad_pairing_all_tgt',
+        # default='./T_perturb/perturbgen/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt',
         help='path to tgt',
     )
     parser.add_argument(
         '--mapping_dict_path',
         type=str,
-        # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl',
-        # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
-        default='./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl',
+        # default='./T_perturb/perturbgen/pp/res/eb/token_id_to_genename_hvg.pkl',
+        # default='./T_perturb/perturbgen/pp/res/eb/token_id_to_genename_all.pkl'
+        default='./T_perturb/perturbgen/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl',
     )
     parser.add_argument('--batch_size', type=int, default=2, help='batch_size')
     parser.add_argument('--shuffle', type=bool, default=True, help='shuffle')
@@ -268,7 +268,7 @@ def train_model(config, args):
 
     # Load and preprocess data
     print('Loading and preprocessing data...')
-    src_dataset = load_from_disk("/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/T_perturb/pp/res/concatenated_all_25k_all_subsetted.dataset")
+    src_dataset = load_from_disk("/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/perturbgen/pp/res/concatenated_all_25k_all_subsetted.dataset")
     src_dataset = src_dataset.select(range(1000000))
     # length = []
     # for i in range(len(src_dataset)):
