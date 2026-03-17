@@ -3,19 +3,18 @@ import unittest
 
 import numpy as np
 import pandas as pd
+import tempfile
 import pytorch_lightning as pl
 import scanpy as sc
 import torch
+from datasets import concatenate_datasets
 
+from pytorch_lightning.callbacks import ModelCheckpoint
 from perturbgen.Dataloaders.datamodule import PerturbGenDataModule
 from perturbgen.Model.trainer import PerturbGenTrainer
 from perturbgen.src.utils import label_encoder
 from perturbgen.tests.test_cellgen_training import dummy_dataset
 from perturbgen.tests.test_countdecoder_training import dummy_cell_gene_matrix
-
-if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
-    # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/lotfollahi/kl11/t_generative/')
 
 
 class PerturbGenTestEmbeddingCase(unittest.TestCase):
@@ -28,8 +27,9 @@ class PerturbGenTestEmbeddingCase(unittest.TestCase):
         self.tgt_vocab_size = 101  # +1 for padding token
         self.num_genes = self.tgt_vocab_size - 1
         self.batch_size = 4
-        self.d_model = 12
+        self.d_model = 768
         self.num_samples = 100
+        self.gene_embs_condition = 'cell_type'
 
     def setUp(self):
         pl.seed_everything(42)
@@ -48,6 +48,7 @@ class PerturbGenTestEmbeddingCase(unittest.TestCase):
             num_samples=100,
             total_time_steps=self.n_total_tps,
         )
+
         tgt_counts_dict = dummy_cell_gene_matrix(
             num_cells=self.num_samples,
             num_genes=self.num_genes,
@@ -98,6 +99,26 @@ class PerturbGenTestEmbeddingCase(unittest.TestCase):
         conditions_combined_encodings = {
             k: v for k, v in zip(conditions_combined_, range(len(conditions_combined_)))
         }
+        
+        if self.gene_embs_condition is not None:
+            pred_dataset = {
+                key: tgt_datasets[key]
+                for key in tgt_datasets
+                if key in {f'tgt_dataset_t{tp}' for tp in self.pred_tps}
+            }
+
+            all_pred_dataset = concatenate_datasets(list(pred_dataset.values()))
+
+            gene_embs_list = all_pred_dataset.unique(self.gene_embs_condition)
+
+            print(
+                f"Return gene embs for {gene_embs_list} "
+                f"in {self.gene_embs_condition}."
+            )
+        else:
+            gene_embs_list = None
+        self.gene_embs_list = gene_embs_list
+            
 
         tgt_adata_tmp = sc.AnnData(
             X=tgt_counts_dict['tgt_h5ad_t1'].squeeze(), obs=tmp_series
@@ -119,30 +140,30 @@ class PerturbGenTestEmbeddingCase(unittest.TestCase):
                 condition_key='conditions_combined',
             )
             conditions_combined = torch.tensor(conditions_combined, dtype=torch.long)
+            model_config = {
+                "tgt_vocab_size": self.tgt_vocab_size,
+                "d_model": self.d_model,
+                "num_heads": 4,
+                "num_layers": 1,
+                "d_ff": 8,
+                "max_seq_length": self.max_seq_length + 10,
+                "end_lr": 1e-3,
+                "weight_decay": 0.0,
+                "return_embeddings": False,
+                "dropout": 0.0,
+                "pred_tps": self.pred_tps,
+                "n_total_tps": 3,
+                "tokenid_to_rowid_path": "T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf/tokenid_to_rowid_5000_hvg.pkl",
+                "mapping_dict_path": "/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf/token_id_to_genename_5000_hvg.pkl",
+                "output_dir": "./T_perturb/perturbgen/tests/res",
+                "encoder": "scmaskgit",
+                "encoder_path": "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt",
+                "var_list": ["cell_type"],
+                "context_mode": True,
+                "mask_scheduler": "pow",
+            }
+        self.model_config = model_config
 
-        decoder_module = PerturbGenTrainer(
-            tgt_vocab_size=self.tgt_vocab_size,
-            d_model=self.d_model,
-            num_heads=4,
-            num_layers=1,
-            d_ff=8,
-            max_seq_length=self.max_seq_length + 10,
-            initial_lr=1e-3,
-            weight_decay=0.0,
-            # lr_scheduler_patience=5.0,
-            # lr_scheduler_factor=0.8,
-            return_embeddings=True,
-            dropout=0.0,
-            pred_tps=self.pred_tps,
-            context_tps=self.context_tps,
-            n_total_tps=2,
-            mapping_dict_path='./T_perturb/tokenized_data/'
-            'cytoimmgen/token_id_to_genename_hvg.pkl',
-            output_dir='./T_perturb/perturbgen/tests/res',
-            encoder='Transformer_encoder',
-            var_list=None,
-        )
-        self.decoder_module = decoder_module
         # Load the data module
         self.data_module = PerturbGenDataModule(
             src_dataset=src_dataset,
@@ -151,15 +172,17 @@ class PerturbGenTestEmbeddingCase(unittest.TestCase):
             batch_size=self.batch_size,
             num_workers=1,
             pred_tps=self.pred_tps,
-            context_tps=self.context_tps,
-            n_total_tps=self.n_total_tps,
+            n_total_tps=self.n_total_tps+1,
             max_len=self.max_seq_length,
             train_indices=None,
-            test_indices=np.random.choice(100, 20, replace=False),
+            test_indices=np.arange(20),
             condition_keys=condition_keys_,
             condition_encodings=condition_encodings,
             conditions=conditions,
             conditions_combined=conditions_combined,
+            var_list=self.model_config["var_list"],
+            use_weighted_sampler=False,
+            context_tps=self.context_tps,
         )
         self.data_module.setup()
 
@@ -176,15 +199,50 @@ class PerturbGenTestEmbeddingCase(unittest.TestCase):
     def test_return_embedding(self):
         # Test generation
         # Use the PyTorch Lightning Trainer to test the training loop
-        trainer = pl.Trainer(
-            limit_test_batches=1,  # Limit to a single batch for quick testing
-            logger=False,
-        )
-        trainer.test(
-            self.decoder_module,
-            self.data_module,
-            ckpt_path=(
-                'T_perturb/cytomeister/tests/checkpoints/'
-                'test_masking_checkpoint-epoch=00.ckpt'
-            ),
-        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint_callback = ModelCheckpoint(
+                dirpath=tmpdir,
+                filename="test-checkpoint",
+                save_top_k=1,
+                monitor=None,  # no validation metric needed
+                save_last=True,
+            )
+            train_module = PerturbGenTrainer(
+                **self.model_config
+            )
+            self.train_module = train_module
+        
+        
+
+
+            trainer = pl.Trainer(
+                max_epochs=1,
+                limit_train_batches=1,
+                limit_test_batches=1,
+                logger=False,
+                enable_checkpointing=True,
+                callbacks=[checkpoint_callback],
+            )
+
+            # --- TRAIN (just enough to produce a checkpoint) ---
+            trainer.fit(self.train_module, self.data_module)
+
+            # Get the saved checkpoint path
+            ckpt_path = checkpoint_callback.last_model_path
+            self.assertTrue(os.path.exists(ckpt_path), "Checkpoint was not created")
+            self.model_config["generate"] = False
+            self.model_config["return_gene_embs"] = True
+            
+            self.model_config["gene_embs_list"] = self.gene_embs_list
+            self.model_config["gene_embs_condition"] = self.gene_embs_condition
+            self.model_config["context_tps"] = self.context_tps
+            model = PerturbGenTrainer.load_from_checkpoint(
+                ckpt_path,
+                **self.model_config  # includes gene_embs stuff
+            )
+
+            # --- TEST using the generated checkpoint ---
+            trainer.test(
+                model,
+                self.data_module,
+            )

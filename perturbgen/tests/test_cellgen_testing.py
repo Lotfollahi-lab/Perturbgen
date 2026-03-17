@@ -13,11 +13,6 @@ from perturbgen.src.utils import label_encoder
 from perturbgen.tests.test_cellgen_training import dummy_dataset
 from perturbgen.tests.test_countdecoder_training import dummy_cell_gene_matrix
 
-if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
-    # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/lotfollahi/kl11/t_generative/')
-
-
 class PerturbGenTestGenerationCase(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super(PerturbGenTestGenerationCase, self).__init__(*args, **kwargs)

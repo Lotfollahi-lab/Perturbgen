@@ -858,6 +858,7 @@ class PerturbGen(nn.Module):
         labels: `torch.Tensor`
             True labels for masked tokens. Return -100 for non-masked tokens.
         '''
+
         device = tgt_input_id.device
         labels = tgt_input_id.clone()
         if (mask_mode == 'BERT') and (self.mlm_probability is not None):
@@ -988,6 +989,7 @@ class PerturbGen(nn.Module):
             )
         else:
             mean_embedding = None
+        
         outputs = {
             'dec_embedding': dec_embedding,
             'self_attn_weights': self_attn_weights,
@@ -1007,7 +1009,7 @@ class PerturbGen(nn.Module):
         tgt_input_id_dict,
         tgt_pad_dict,
         cond_dict,
-        agg_mode: str = 'mean',
+        agg_mode: str = 'concat',
     ):
         context_embs_list = [enc_output]
         context_pad_list = [src_attention_mask]
@@ -1122,13 +1124,13 @@ class PerturbGen(nn.Module):
             src_attention_mask = generate_pad(src_input_id)
             enc_output = self.call_encoder(src_input_id, src_attention_mask)
         
-
         if (not_masked) and (tgt_input_id_dict is not None):
             # not masked for count prediction and predicted embeddings
             sorted_time_steps = sorted(self.pred_tps)
             context_time_steps = (
                 sorted(self.context_tps) if self.context_tps else sorted_time_steps
             )
+
         if not_masked is False:
             context_time_steps = (
                 sorted(self.context_tps) if self.context_tps else sorted(self.pred_tps)
@@ -1161,6 +1163,7 @@ class PerturbGen(nn.Module):
                     cond_dict=cond_dict,
                 )
             if (not_masked is False) and (generate_id_dict is None):
+                print('masking')
                 # apply masking during first stage of MLM training
                 tgt_input_id, labels = self.generate_mask(
                     tgt_input_id,
@@ -1168,11 +1171,14 @@ class PerturbGen(nn.Module):
                     mask_mode='MASKGIT',
                 )
             else:
+                print('no masking')
                 # no true labels for MLM loss
                 labels = None
+        
 
             tgt_embedding = self.token_embedding(tgt_input_id)
             dec_embedding = self.pos_embedding(tgt_embedding, tgt_time_step)
+            print('labels',labels)
             # does not include any context
             outputs = self.call_decoder(
                 enc_output=context_output if self.context_mode else enc_output,

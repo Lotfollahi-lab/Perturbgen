@@ -4,10 +4,6 @@ import unittest
 import torch
 import torch.nn.functional as F
 
-if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
-    # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/lotfollahi/kl11/t_generative/')
-
 
 def load_checkpoint(checkpoint_path):
     # Load checkpoint using PyTorch Lightning

@@ -58,8 +58,8 @@ def main(rootdir, output_dir):
 
     print("Processing completed. Results saved in:", output_dir)
 
-rootdir = "./"  #
-output_dir = "./" 
+rootdir = "/nfs/team361/am74/Cytomeister/outputs/median_100m"  #
+output_dir = "/nfs/team361/am74/Cytomeister/outputs/median_100m/aggregated_median/" 
 
 if __name__ == "__main__":
     main(rootdir, output_dir)

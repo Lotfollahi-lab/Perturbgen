@@ -269,7 +269,9 @@ class PerturbGenTrainer(LightningModule):
 
     def forward(self, batch, generate: bool = False):
         tgt_input_id_dict = {}
+        print('total_tps', self.total_tps)
         for i in self.total_tps:
+            print('time step', i)
             tgt_input_id_ = batch[f'tgt_input_ids_t{i}'].clone()
             if self.condition_dict is not None:
                 cond_ids = concat_cond_tokens(
@@ -288,6 +290,7 @@ class PerturbGenTrainer(LightningModule):
                 tgt_input_id_dict=tgt_input_id_dict,
                 not_masked=self.return_embeddings,
             )
+            
         return outputs, tgt_input_id_dict
 
     def configure_optimizers(self):
@@ -311,10 +314,13 @@ class PerturbGenTrainer(LightningModule):
         )
 
         outputs, _ = self.forward(batch)
+
         for t in outputs.keys():
             dec_logits = outputs[t]['dec_logits']
             labels = outputs[t]['labels']
             with torch.no_grad():
+                print(f"Dec logits shape: {dec_logits.shape}, Labels shape: {labels.shape}")
+ 
                 perp = self.perplexity(dec_logits, labels)
                 self.log(
                     'train/perplexity',
@@ -387,6 +393,7 @@ class PerturbGenTrainer(LightningModule):
             batch,
             generate=self.generate,
         )
+
         if self.condition_dict is not None:
             cond_length = len(self.condition_dict)
 
@@ -409,7 +416,7 @@ class PerturbGenTrainer(LightningModule):
                 **decoder_kwargs,
             )
 
-        for t in self.pred_tps:
+        for t in outputs.keys():
             token_ids = tgt_input_id_dict[f'tgt_input_ids_t{t}']
 
             if self.return_gene_embs:

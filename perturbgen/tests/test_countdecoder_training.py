@@ -17,15 +17,10 @@ from perturbgen.Model.trainer import CountDecoderTrainer
 from perturbgen.src.utils import label_encoder
 from perturbgen.tests.test_cellgen_training import dummy_dataset
 
-if os.getcwd().split('/')[-1] != 'healthy_imm_expr':
-    # set working directory to root of repository
-    os.chdir('/lustre/scratch126/cellgen/lotfollahi/kl11/t_generative/')
-
 # initialize the logger
 csv_logger = CSVLogger(
     'T_perturb/cytomeister/tests/res', name='test_countdecoder_training'
 )
-
 
 # create cell x gene matrix with 100 cells and 100 genes
 def dummy_cell_gene_matrix(
@@ -182,8 +177,12 @@ class PerturbGenTestTrainingCase(unittest.TestCase):
             iterations=19,
             precision='high',
             mask_scheduler='pow',
+            tokenid_to_rowid_path='T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf/tokenid_to_rowid_5000_hvg.pkl',
+            mapping_dict_path='/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf/token_id_to_genename_5000_hvg.pkl',
             output_dir='./T_perturb/perturbgen/plt/res/',
-            encoder='Transformer_encoder',
+            encoder='scmaskgit',
+            encoder_path='/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt',
+
             seed=42,
         )
         self.decoder_module = decoder_module
@@ -204,6 +203,7 @@ class PerturbGenTestTrainingCase(unittest.TestCase):
             condition_encodings=condition_encodings,
             conditions=conditions,
             conditions_combined=conditions_combined,
+            use_weighted_sampler=False
         )
         self.data_module.setup()
 

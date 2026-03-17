@@ -1,0 +1,11 @@
+input_dir: "/nfs/team361/am74/Cytomeister/pretrain_cohort_version_2/raw/HTAN_Neuroblastoma/"
+output_base_dir: "/nfs/team361/am74/Cytomeister/pretrain_cohort_version_2/processed_harmonized_/"
+dev_stage_map: "/nfs/team361/am74/Cytomeister/dictionaries/cohort_2/development_stage.pkl"
+tissue_map: "/nfs/team361/am74/Cytomeister/dictionaries/cohort_2/tissue_mapping.pkl"
+disease_map: "/nfs/team361/am74/Cytomeister/dictionaries/cohort_2/disease_mapping.pkl"  
+excluded_file: "file_to_exclude.h5ad"   
+do_exclude_file: False                   # or True
+
+gene_filtering:
+  remove_ensembl_txt: "/nfs/team361/am74/Cytomeister/files/non_coding_genes.txt"
+  ensembl_mapping_dict: "/nfs/team361/am74/Cytomeister/geneformer_files/dictionaries/ensembl_mapping_dict_gc95M.pkl"

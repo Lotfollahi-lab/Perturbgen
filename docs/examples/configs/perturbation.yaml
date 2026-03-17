@@ -1,0 +1,64 @@
+data:
+  src_dataset_file: "T_perturb/tokenized_data/LPS_all_tps_2k/dataset_2000_hvg_src/normal.dataset" # path to src_dataset.dataset from tokenization step
+  tgt_dataset_folder: "T_perturb/tokenized_data/LPS_all_tps_2k/dataset_2000_hvg_tgt" # path to tgt_datasets_folder from tokenization step
+  src_adata: "T_perturb/tokenized_data/LPS_all_tps_2k/h5ad_pairing_2000_hvg_src/normal.h5ad" # path to src_adata.h5ad from tokenization step
+  tgt_adata_folder: "T_perturb/tokenized_data/LPS_all_tps_2k/h5ad_pairing_2000_hvg_tgt" # path to tgt_adata_folder from tokenization step
+  # cond_list:
+  #   - "cell_type_harmonized"  # list of condition columns used during training
+
+trainer:
+  use_count_decoder: true # whether to use the count decoder
+  n_samples: 3 # number of samples to generate per input during inference
+  tgt_vocab_size: 2002 # size of the target vocabulary (number of tokens)
+  d_model: 768 # dimension of the model
+  generate: false # whether to generate perturbations
+  use_positional_encoding: false # whether to use positional encoding
+  dropout: 0 # dropout rate for prediction
+  num_heads: 8 # number of attention heads
+  num_layers: 6 # number of transformer layers
+  loss_mode: "zinb" # loss function mode: "mse", "nb", "zinb"
+  d_ff: 32 # dimension of the feedforward network
+  max_seq_length: 797 # maximum sequence length
+  mask_scheduler: "pow" # masking scheduler type
+  output_dir: "T_perturb/res/perturbation" # output directory for results
+  mapping_dict_path: "T_perturb/tokenized_data/LPS_all_tps_2k/token_id_to_genename_2000_hvg.pkl" # path to mapping dictionary from tokenization step
+  tokenid_to_rowid_path: "T_perturb/tokenized_data/LPS_all_tps_2k/tokenid_to_rowid_2000_hvg.pkl" # path to tokenid to rowid mapping from tokenization step
+  encoder: "scmaskgit" # encoder type (Pretrain model)
+  encoder_path: "Perturbgen/pretraining_cohort/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt" # path to pretrained encoder weights
+  context_mode: false # whether to use context mode, True is recommeneded for perturbation prediction of data with multiple time points
+  temperature: 1.5 # temperature for generation
+  iterations: 19 # number of generation iterations
+  pos_encoding_mode: "time_pos_sin" # positional encoding mode
+  exclude_src: false # whether to exclude source data during inference
+  perturbation_mode: "mask" # perturbation mode: "mask"
+  genes_to_perturb:
+    - "ENSG00000125538" # or gene name to perturb, here we give the model a list of genes to perturb
+  validation_mode: "inference" # validation mode: "inference"
+  perturbation_sequence:
+    - "src" # perturbation sequence: "src" or "tgt"
+  var_list: # list of data.var retained during tokenization
+    - "cell_type_harmonized" 
+    - "cell_pairing_index"
+    - "time_after_LPS"
+  pred_tps: # time points to predict
+    - 1
+    - 2
+
+
+datamodule:
+  batch_size: 64 # batch size for training
+  num_workers: 8 # number of workers for data loading
+  shuffle: false # whether to shuffle the data
+  split: false # whether to split the data
+  max_len: 797 # maximum sequence length
+  var_list: # list of data.var retained during tokenization, same as in trainer
+    - "cell_type_harmonized"
+    - "time_after_LPS"
+    - "cell_pairing_index"
+  pred_tps: # time points to predict/ perturb, same as in trainer
+    - 1
+    - 2
+
+model:
+  precision: 16 # precision for training
+  ckpt_masking_path: "path/to/count_decoder_checkpoint.ckpt" # path to count decoder checkpoint from previous count decoder training step (notebook 3)
