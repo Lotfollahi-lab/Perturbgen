@@ -4,7 +4,7 @@
 
 # PerturbGen Foundation model for dynamic cellular states
 
-![PerturbGen overview](docs/fig1.png)
+![PerturbGen overview](docs/architecture.png)
 
 A major challenge in biology is predicting how cells transition between states over time and how perturbations disrupt these transitions. Although recent approaches can predict single-cell perturbation responses in silico, they cannot predict responses across dynamic cell trajectories—for example, how early perturbations reconfigure later cell states. **PerturbGen** is a generative foundation model trained on over 100 million single-cell transcriptomes that predicts perturbation responses along cellular trajectories. It predicts how genetic perturbation at a source state shapes downstream states, alters gene programs, and modifies trajectories across time (e.g., in differentiation or disease progression).
 
