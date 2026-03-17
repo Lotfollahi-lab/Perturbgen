@@ -24,7 +24,7 @@ python3 $cwd/pp/GF_tokenisation.py \
  cell_pairing_index \
 --pairing_mode mapping \
 --time_obs 'diff_state' \
---pairing_file 'T_perturb/cytomeister/pp/hspc/cd34_pos_mapping.csv' \
+--pairing_file 'T_perturb/perturbgen/pp/hspc/cd34_pos_mapping.csv' \
 --main_pairing_obs 'celltype_v2' \
 --opt_pairing_obs 'tissue' \
 --gene_filtering_mode 'hvg' \
@@ -33,7 +33,7 @@ python3 $cwd/pp/GF_tokenisation.py \
 --hvg_mode 'after_tokenisation' \
 --n_hvg 5000 \
 --nproc 4 \
---genes_to_include_path 'T_perturb/cytomeister/pp/hspc/1639_Human_TF.csv' \
+--genes_to_include_path 'T_perturb/perturbgen/pp/hspc/1639_Human_TF.csv' \
 --reference_time intermediate \
 --time_point_order intermediate terminal \
 --gene_median_path '/nfs/team361/am74/Cytomeister/outputs/median_100m/aggregated_median/total1000_subsetgeneformertokenID_TRACE/median_trace_subsetgeneformertokenid.pkl' \

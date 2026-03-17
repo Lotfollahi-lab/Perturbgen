@@ -188,9 +188,9 @@ def evaluate_mmd(
             adata_ = adata[adata.obs[condition_key] == cond].copy()
             pred_adata_ = pred_adata[pred_adata.obs[condition_key] == cond].copy()
             if issparse(adata_.X):
-                adata_.X = adata_.X.A
+                adata_.X = adata_.X.toarray()
             if issparse(pred_adata_.X):
-                pred_adata_.X = pred_adata_.X.A
+                pred_adata_.X = pred_adata_.X.toarray()
 
             gammas = [2, 1, 0.5, 0.1, 0.01, 0.005]
             print('start mmd calculation')
@@ -213,9 +213,9 @@ def evaluate_mmd(
         adata_ = adata.copy()
         pred_adata_ = pred_adata.copy()
         if issparse(adata_.X):
-            adata_.X = adata_.X.A
+            adata_.X = adata_.X.toarray()
         if issparse(pred_adata_.X):
-            pred_adata_.X = pred_adata_.X.A
+            pred_adata_.X = pred_adata_.X.toarray()
         gammas = [2, 1, 0.5, 0.1, 0.01, 0.005]
         mmd = np.mean(
             list(map(lambda x: mmd_loss_calc(adata_.X, pred_adata_.X, x), gammas))
@@ -242,9 +242,9 @@ def evaluate_emd(
             adata_ = true_data[true_data.obs[condition_key] == cond].copy()
             pred_adata_ = pred_data[pred_data.obs[condition_key] == cond].copy()
             if issparse(adata_.X):
-                adata_.X = adata_.X.A
+                adata_.X = adata_.X.toarray()
             if issparse(pred_adata_.X):
-                pred_adata_.X = pred_adata_.X.A
+                pred_adata_.X = pred_adata_.X.toarray()
             wd = []
             for i, _ in enumerate(adata_.var_names):
                 wd.append(
@@ -274,9 +274,9 @@ def evaluate_emd(
         wd = []
         for i, _ in enumerate(true_data_.var_names):
             if issparse(true_data_.X):
-                true_data_.X = true_data_.X.A
+                true_data_.X = true_data_.X.toarray()
             if issparse(pred_data_.X):
-                pred_data_.X = pred_data_.X.A
+                pred_data_.X = pred_data_.X.toarray()
             wd.append(
                 wasserstein_distance(
                     torch.Tensor(true_data_.X[:, i]), torch.Tensor(pred_data_.X[:, i])
@@ -316,9 +316,9 @@ def lin_reg_summary(
             adata_ = true_adata[true_adata.obs[condition_key] == cond].copy()
             pred_adata_ = pred_adata[pred_adata.obs[condition_key] == cond].copy()
             if issparse(adata_.X):
-                adata_.X = adata_.X.A
+                adata_.X = adata_.X.toarray()
             if issparse(pred_adata_.X):
-                pred_adata_.X = pred_adata_.X.A
+                pred_adata_.X = pred_adata_.X.toarray()
             if de_genes_dict:
                 de_genes = de_genes_dict[cond]
                 adata_ = adata_[:, de_genes]

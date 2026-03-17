@@ -976,6 +976,7 @@ def return_perturbation_adata(
     # convert columns to string
     cos_similarity_df_.columns = cos_similarity_df_.columns.astype(str)
 
+
     #     # 'delta_gene_probs': delta_gene_probs_df.T,
     # }
 
@@ -1001,6 +1002,11 @@ def return_perturbation_adata(
         test_obs = test_obs.drop_duplicates(subset='cell_idx')
         cos_similarity_df_.index = test_obs.index
         cos_similarity_df_ = cos_similarity_df_.T
+        # remove all the columns with zero sum
+        # avoid non-expressed genes
+        cos_similarity_df_ = cos_similarity_df_.loc[
+            :, cos_similarity_df_.sum() != 0
+        ]
     # create dataframe to store perturbation results
     obsm_dict = {
         'true_cls': true_cls,

@@ -24,5 +24,5 @@ export WANDB_DIR=$cwd/wandb
 echo "--- Start computing model"
 
 python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen/Perturb/val.py \
---config /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen/configs/eval/LPS/mask_src_inference_perturbation_IL1B.yaml
+--config /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen/configs/eval/LPS/mask_src_inference_perturbation_IL1B_90min.yaml
 echo "--- Completed perturbation"

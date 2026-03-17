@@ -1,7 +1,7 @@
 #make a date directory if it does not exist
 #!/bin/bash
-#BSUB -q gpu-normal # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=1' # request for exclusive access to gpu
+#BSUB -q gpu-huge # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -gpu 'mode=exclusive_process:num=2:gmodel=NVIDIAA100_SXM4_80GB' # request for exclusive access to gpu
 #BSUB -n 4 # number of cores
 #BSUB -R "span[ptile=4]"     # split X cores per host
 #BSUB -G team361 # groupname for billing
@@ -36,19 +36,19 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen/train.py
 --splitting_mode stratified \
 --split_obs cell_type_harmonized \
 --output_dir $RES_DIR/$RES_NAME \
---src_dataset "T_perturb/tokenized_data/lps_100M/dataset_2000_hvg_src/normal.dataset" \
---tgt_dataset_folder "T_perturb/tokenized_data/lps_100M/dataset_2000_hvg_tgt" \
---src_adata "T_perturb/tokenized_data/lps_100M/h5ad_pairing_2000_hvg_src/normal.h5ad" \
---tgt_adata_folder "T_perturb/tokenized_data/lps_100M/h5ad_pairing_2000_hvg_tgt" \
---mapping_dict_path "T_perturb/tokenized_data/lps_100M/token_id_to_genename_2000_hvg.pkl" \
+--src_dataset "T_perturb/tokenized_data/lps_90min_perturb/dataset_2000_hvg_src/90m_LPS.dataset" \
+--tgt_dataset_folder "T_perturb/tokenized_data/lps_90min_perturb/dataset_2000_hvg_tgt" \
+--src_adata "T_perturb/tokenized_data/lps_90min_perturb/h5ad_pairing_2000_hvg_src/90m_LPS.h5ad" \
+--tgt_adata_folder "T_perturb/tokenized_data/lps_90min_perturb/h5ad_pairing_2000_hvg_tgt" \
+--mapping_dict_path "T_perturb/tokenized_data/lps_90min_perturb/token_id_to_genename_2000_hvg.pkl" \
 --batch_size 64 \
---epochs 20 \
+--epochs 15 \
 --cellgen_lr 0.0001 \
 --cellgen_wd 0.0001 \
 --n_workers 4 \
 --num_layers 6 \
 --d_ff 64 \
---pred_tps 1 2 3 \
+--pred_tps 1 2 \
 --var_list cell_type_harmonized cell_pairing_index time_after_LPS \
 --encoder scmaskgit \
 --encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt" \

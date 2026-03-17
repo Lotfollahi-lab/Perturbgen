@@ -16,7 +16,7 @@ cwd=$(pwd)
 
 echo "--- Start plotting"
 
-python3 /lustre/scratch126/cellgen/lotfollahi/kl11/TRACE-reproducibility/HSPC/3.1_multiple_perturbation.py \
+python3 /lustre/scratch126/cellgen/lotfollahi/kl11/TRACE-reproducibility/HSPC/1_multiple_perturbation.py \
 --path 'T_perturb/res/hspc/perturbation_5k' \
 --perturbed_gene S100A12 \
 --output_dir 'T_perturb/res/hspc/perturbation_5k_res' \

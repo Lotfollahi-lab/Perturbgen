@@ -34,7 +34,7 @@ trainer:
   pos_encoding_mode: 'time_pos_sin'
   perturbation_mode: 'mask'
   genes_to_perturb:
-    - {{PERTURBED_GENE}}
+    - 'RUNX1'
   validation_mode: 'inference'
   perturbation_sequence:
     - 'src'
@@ -52,7 +52,7 @@ trainer:
   n_samples: 3
 
 datamodule:
-  batch_size: 64
+  batch_size: 32
   num_workers: 4
   shuffle: False
   split: False
@@ -67,4 +67,4 @@ datamodule:
     - 1
 model:
   precision: 16
-  ckpt_masking_path: 
+  ckpt_masking_path: "/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/res/hspc/fine_tuning/checkpoints/20250716_0952_cellgen_train_count_lr_0.005_wd_0.001_batch_64_drop_0.0_zinb_tp_1_s_42_pos_time_pos_sin_m_pow-epoch=12.ckpt"
