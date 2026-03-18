@@ -182,7 +182,6 @@ class PerturbGenTestTrainingCase(unittest.TestCase):
             output_dir='./T_perturb/perturbgen/plt/res/',
             encoder='scmaskgit',
             encoder_path='/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt',
-
             seed=42,
         )
         self.decoder_module = decoder_module

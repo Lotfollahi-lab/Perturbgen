@@ -20,5 +20,5 @@ cwd=$(pwd)
 # run script
 echo "--- Start testing CellGen training"
 # python -m unittest discover /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen/tests/
-python -m unittest perturbgen.tests.test_return_embedding
+python -m unittest perturbgen.tests.test_cellgen_training
 echo "Testing CellGen training finished ---"

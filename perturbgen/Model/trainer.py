@@ -314,7 +314,7 @@ class PerturbGenTrainer(LightningModule):
         )
 
         outputs, _ = self.forward(batch)
-
+        # double check that this also works with self.pred_tps
         for t in outputs.keys():
             dec_logits = outputs[t]['dec_logits']
             labels = outputs[t]['labels']
