@@ -748,8 +748,6 @@ class PerturbGen(nn.Module):
 
         # set model seed for reproducibility
         self.set_seed(seed)
-        print('call this module for masking')
-        raise
 
         self.pos_embedding = PositionalEncoding(
             d_model=d_model,
@@ -1038,12 +1036,9 @@ class PerturbGen(nn.Module):
                         tgt_input_id=None,
                     )
                     if agg_mode == 'concat':
-                        print('concat mode')
                         context_embs_list.append(dec_outputs['dec_embedding'])
                         context_pad_list.append(tgt_pad)
-                        raise
                     elif agg_mode == 'mean':
-                        print('mean mode')
                         dec_emb = dec_outputs['dec_embedding']
                         mean_emb = mean_nonpadding_embs(
                             embs=dec_emb,
@@ -1051,16 +1046,11 @@ class PerturbGen(nn.Module):
                             mapping_dict=self.gene_to_rowid,
                             condition_dict=cond_dict,
                         )
-                        print('mean_emb shape:', mean_emb.shape)
                         mean_pad = torch.zeros(
                             mean_emb.shape[:2],
                             dtype=torch.bool,
                             device=mean_emb.device,
                         )
-                        print('mean_pad shape:', mean_pad.shape)
-                        print('---')
-                        print('mean_pad:', mean_pad)
-                        raise
                         context_embs_list.append(mean_emb)
                         context_pad_list.append(mean_pad)
                     else:
@@ -1103,8 +1093,6 @@ class PerturbGen(nn.Module):
         outputs: `dict`
             Output dictionary
         '''
-        print('context_mode:', self.context_mode)
-        raise
         if self.context_tps is None:
             all_modelling_tps = self.pred_tps
         else:

@@ -1066,7 +1066,6 @@ class PerturbGen(nn.Module):
                     else:
                         raise ValueError(f'Invalid agg_mode: {agg_mode}')
         context_embedding = torch.cat(context_embs_list, dim=1)
-        # print('-- context embedding shape:', context_embedding.shape)
         context_pad = torch.cat(context_pad_list, dim=1)
         return context_embedding, context_pad
 
@@ -1163,7 +1162,6 @@ class PerturbGen(nn.Module):
                     cond_dict=cond_dict,
                 )
             if (not_masked is False) and (generate_id_dict is None):
-                print('masking')
                 # apply masking during first stage of MLM training
                 tgt_input_id, labels = self.generate_mask(
                     tgt_input_id,
@@ -1171,14 +1169,12 @@ class PerturbGen(nn.Module):
                     mask_mode='MASKGIT',
                 )
             else:
-                print('no masking')
                 # no true labels for MLM loss
                 labels = None
         
 
             tgt_embedding = self.token_embedding(tgt_input_id)
             dec_embedding = self.pos_embedding(tgt_embedding, tgt_time_step)
-            print('labels',labels)
             # does not include any context
             outputs = self.call_decoder(
                 enc_output=context_output if self.context_mode else enc_output,
@@ -1546,7 +1542,6 @@ class CountHead(nn.Module):
             if not(use_size_factor):
                 scale_activation = nn.Softplus()
             else:
-                print('scale activation softmax for nb')
                 scale_activation = nn.Softmax(dim=-1)
             self.softmax_output = nn.Sequential(
                 nn.Linear(d_model, n_genes), scale_activation

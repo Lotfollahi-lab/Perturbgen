@@ -269,9 +269,7 @@ class PerturbGenTrainer(LightningModule):
 
     def forward(self, batch, generate: bool = False):
         tgt_input_id_dict = {}
-        print('total_tps', self.total_tps)
         for i in self.total_tps:
-            print('time step', i)
             tgt_input_id_ = batch[f'tgt_input_ids_t{i}'].clone()
             if self.condition_dict is not None:
                 cond_ids = concat_cond_tokens(
