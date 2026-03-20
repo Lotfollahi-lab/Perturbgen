@@ -985,9 +985,12 @@ def return_perturbation_adata(
     test_obs = pd.DataFrame(obs_dict)
 
     if (aggregate is True) and ('cell_idx' in test_obs.columns):
-        pert_counts = mean_duplicates(test_obs, pert_counts)
-        true_counts = mean_duplicates(test_obs, true_counts)
-        pred_counts = mean_duplicates(test_obs, pred_counts)
+        if pred_counts is not None:
+            pert_counts = mean_duplicates(test_obs, pert_counts)
+        if true_counts is not None:
+            true_counts = mean_duplicates(test_obs, true_counts)
+        if pred_counts is not None:
+            pred_counts = mean_duplicates(test_obs, pred_counts)
         # cls_cos_similarity = mean_duplicates(test_obs, cls_cos_similarity)
         mean_cos_similarity = mean_duplicates(test_obs, mean_cos_similarity)
         # mean_cos_similarity_l1 = mean_duplicates(test_obs, mean_cos_similarity_l1)

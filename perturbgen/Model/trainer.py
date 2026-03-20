@@ -317,7 +317,6 @@ class PerturbGenTrainer(LightningModule):
             dec_logits = outputs[t]['dec_logits']
             labels = outputs[t]['labels']
             with torch.no_grad():
-                print(f"Dec logits shape: {dec_logits.shape}, Labels shape: {labels.shape}")
  
                 perp = self.perplexity(dec_logits, labels)
                 self.log(

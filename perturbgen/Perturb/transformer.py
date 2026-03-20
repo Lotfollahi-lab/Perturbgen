@@ -292,9 +292,16 @@ class PerturberMasking(PerturbGen):
                 cross_attn_list.append(cross_attn_weights)
             if current_dec_l == 1:
                 dec_embedding_l1 = dec_embedding
-            elif current_dec_l == len(self.decoder_block) // 2:
-                dec_embedding_lmid = dec_embedding
-            current_dec_l += 1
+            if len(self.decoder_block) == 1:
+                # check if you can return the middle layer embedding and also if there is only one layer return the embedding of that layer as the middle layer embedding
+                if len(self.decoder_block) % 2 == 1:
+                    if current_dec_l == (len(self.decoder_block) + 1) // 2:
+                        dec_embedding_lmid = dec_embedding
+                elif current_dec_l == len(self.decoder_block) // 2:
+                    dec_embedding_lmid = dec_embedding
+                current_dec_l += 1
+            else:
+                dec_embedding_lmid = None
         # also convert to float 16 for memory efficiency
         if len(self_attn_list) > 0:
             self_attn_weights = (
