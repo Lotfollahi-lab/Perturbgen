@@ -432,9 +432,6 @@ checkpoint_pairs = {
     # Add more pairs as needed
 }
 
-    # def resolve_ckpt_path(path):
-    #     return os.path.abspath(path)
-
 def load_state_dict(ckpt_path):
     ckpt = torch.load(ckpt_path, map_location="cpu")
     return ckpt["state_dict"] if "state_dict" in ckpt else ckpt
@@ -462,7 +459,6 @@ class TestCheckpointConsistency(unittest.TestCase):
     def test_checkpoint_match(self):
         paths = [REF_MASK_CKPT, NEW_MASK_CKPT, REF_COUNT_CKPT, NEW_COUNT_CKPT]
         for path in paths:
-            # abs_path = resolve_ckpt_path(path)
             if not os.path.exists(path):
                 raise FileNotFoundError(f"Checkpoint not found at {path}")
             else:

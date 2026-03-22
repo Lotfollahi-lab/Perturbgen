@@ -30,34 +30,6 @@ from perturbgen.src.utils import (
     uniform,
 )
 
-# def drop_path(x, drop_prob: float = 0.0, training: bool = False):
-#     if drop_prob == 0.0 or not training:
-#         return x
-#     keep_prob = 1 - drop_prob
-#     shape = (x.shape[0],) + (1,) * (
-#         x.ndim - 1
-#     )  # work with diff dim tensors, not just 2D ConvNets
-#     random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
-#     random_tensor.floor_()  # binarize
-#     output = x.div(keep_prob) * random_tensor
-#     return output
-
-
-# class DropPath(nn.Module):
-#     '''
-#     Drop paths (Stochastic Depth) per sample
-#     (when applied in main path of residual blocks).
-#     '''
-
-#     def __init__(self, drop_prob=None):
-#         super(DropPath, self).__init__()
-#         self.drop_prob = drop_prob
-
-
-#     def forward(self, x):
-#         return drop_path(x, self.drop_prob, self.training)
-
-
 class PositionalEncoding(nn.Module):
     def __init__(
         self,
@@ -287,7 +259,6 @@ class CrossAttention(nn.Module):
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=h), (q, k, v))
         if mask is not None:
             # Expand the mask to match the target shape:
-            # [batch_size, num_heads, seq_len, seq_len]
             mask = mask.unsqueeze(1).unsqueeze(2)
             mask = mask.expand(-1, h, seq_len_q, seq_len_k)
             # negate mask so that padding tokens=False
@@ -431,66 +402,9 @@ class Block(nn.Module):
         x = self.norm3(x + self.dropout(ff_output))
         return x, self_attn_weigths, cross_attn_weights
 
-
-class Geneformerwrapper(nn.Module):
-    def __init__(
-        self,
-        model_path='/lustre/scratch126/cellgen/lotfollahi/kl11/'
-        't_generative/T_perturb/Geneformer/gf-12L-95M-i4096',
-        output_attentions=False,
-        output_hidden_states=True,
-        mode='GF_frozen',
-    ):
-        '''
-        Description:
-        ------------
-        Wrapper for Geneformer model.
-
-        Parameters:
-        -----------
-        model_path: `str`
-            Path to the Geneformer model.
-        output_attentions: `bool`
-            Whether to output attentions.
-        output_hidden_states: `bool`
-            Whether to output hidden states.
-        mode: `str`
-            Mode of the Geneformer model.
-            Options: ['GF_frozen', 'GF_fine_tuned']
-        '''
-        super(Geneformerwrapper, self).__init__()
-        if mode in ['GF_frozen', 'GF_fine_tuned']:
-            self.model = BertForMaskedLM.from_pretrained(
-                model_path,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-            )
-        if mode == 'GF_frozen':
-            for param in self.model.parameters():
-                param.requires_grad = False
-        self.mode = mode
-        self.model = self.model
-
-    def forward(self, src_input_id, src_attention_mask):
-        # reduce precision for memory efficiency
-        if self.mode == 'GF_frozen':
-            with torch.no_grad():
-                outputs = self.model.forward(
-                    input_ids=src_input_id, attention_mask=src_attention_mask
-                )
-
-        elif self.mode == 'GF_fine_tuned':
-            outputs = self.model.forward(
-                input_ids=src_input_id, attention_mask=src_attention_mask
-            )
-        embs = outputs.hidden_states[-1]
-        return embs
-
-
 class scmaskgitwrapper(nn.Module):
     def __init__(
         self,
-        # model_path='/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/scmaskgit/output1/checkpoints/20250107_1024_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=08.ckpt',
         model_path=(
             '/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/scmaskgit/'
             'output2/checkpoints/20250110_2325_cellgen_train_masking_lr_5e'
@@ -514,12 +428,10 @@ class scmaskgitwrapper(nn.Module):
         # how can I check if model path contains foundation_107m
         if 'foundation_107m' in model_path:
             self.model = scmoscf(
-                # tgt_vocab_size=20274,
                 tgt_vocab_size=19000,  # PBMC median
                 d_model=768,
                 num_heads=8,
                 num_layers=12,
-                # num_layers=6,
                 d_ff=96,
                 max_seq_length=4096,
                 dropout=0.03,
@@ -527,10 +439,8 @@ class scmaskgitwrapper(nn.Module):
         elif 'output2' in model_path:
             self.model = scmoscf(
                 tgt_vocab_size=20274,
-                # tgt_vocab_size=19000,  # PBMC median
                 d_model=768,
                 num_heads=8,
-                # num_layers=12,
                 num_layers=6,
                 d_ff=96,
                 max_seq_length=4096,
@@ -543,7 +453,6 @@ class scmaskgitwrapper(nn.Module):
             k.replace('transformer.', ''): v for k, v in pretrained_dict.items()
         }
         self.model.load_state_dict(corrected_dict)
-        # self.model = self.model.to(torch.bfloat16)
         for param in self.model.parameters():
             param.requires_grad = False
         self.model.eval()
@@ -772,9 +681,7 @@ class PerturbGen(nn.Module):
         self.token_embedding = nn.Embedding(
             tgt_vocab_size, d_model, padding_idx=pad_token
         )
-        if encoder in ['GF_frozen', 'GF_fine_tuned']:
-            self.encoder_layers = Geneformerwrapper(mode=encoder)
-        elif encoder == 'scmaskgit':
+        if encoder == 'scmaskgit':
             print('-- Initializing scmaskgit model')
             self.encoder_layers = scmaskgitwrapper(encoder_path)
         elif encoder == 'Transformer_encoder':
@@ -1021,8 +928,6 @@ class PerturbGen(nn.Module):
             # exclude tgt_time_step from the context
             if time_step != tgt_time_step:
                 context = torch.cat(context_embs_list, dim=1)
-                # else:
-                #     context = enc_output
                 context_pad = torch.cat(context_pad_list, dim=1)
                 tgt_input_id = tgt_input_id_dict[f'tgt_input_ids_t{time_step}']
                 tgt_pad = tgt_pad_dict[f'tgt_pad_t{time_step}']
@@ -1224,7 +1129,6 @@ class PerturbGen(nn.Module):
         can_remask_prev_masked: bool = False,
         topk_filter_thres: float = 0.9,
         temperature: float = 2.0,  # keep in range 2.0-3.0
-        # self_cond_prob=0.9,
         iterations: int = 18,  # optimal of iterations in MaskGIT
         cond_length: int = 0,
         mask_scheduler: str = 'cosine',
@@ -1589,8 +1493,6 @@ class CountDecoder(nn.Module):
         loss_mode: str = 'zinb',
         d_model: int = 128,
         max_seq_length: int = 2048,
-        d_condc: int | None = None,
-        d_condt: int = 768,
         encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
             'GF_fine_tuned'
         ),
@@ -1598,7 +1500,6 @@ class CountDecoder(nn.Module):
             'time_pos_sin', 'comb_sin', 'sin_learnt'
         ] = 'time_pos_sin',
         layer_norm: bool = False,
-        add_cell_time: bool = False,
         dropout: float = 0.0,
         pred_tps: list = [1, 2],
         n_total_tps: int = 3,
@@ -1649,77 +1550,21 @@ class CountDecoder(nn.Module):
         self.set_seed(seed=seed)
         self.pretrained_model = pretrained_model
         self.embed_dim = d_model
-        self.add_cell_time = add_cell_time
-
         self.loss_mode = loss_mode
-        if self.add_cell_time:
-            self.use_positional_encoding = use_positional_encoding
-            self.pos_embedding = (
-                PositionalEncoding(
-                    d_model=d_model,
-                    length=max_seq_length,
-                    n_time_steps=n_total_tps,
-                    encoder=encoder,
-                    mode=pos_encoding_mode,
-                )
-                if use_positional_encoding
-                else None
+        self.count_decoder = CountHead(
+            loss_mode, 
+            n_genes, 
+            d_model, 
+            dropout,
+            use_size_factor=use_size_factor,
+            use_observed_size_factor=use_observed_size_factor,
             )
-
-        if self.add_cell_time:
-            if use_positional_encoding:
-                d_condc = d_model
-
-        if self.add_cell_time:
-            input_size = d_model + d_condt
-            if d_condc is not None:
-                input_size += d_condc
-
-            self.count_decoder = CountHead(
-                loss_mode, 
-                n_genes, 
-                input_size, 
-                dropout,
-                use_size_factor=use_size_factor,
-                use_observed_size_factor=use_observed_size_factor,
-                )
-        else:
-            self.count_decoder = CountHead(
-                loss_mode, 
-                n_genes, 
-                d_model, 
-                dropout,
-                use_size_factor=use_size_factor,
-                use_observed_size_factor=use_observed_size_factor,
-                )
 
         self.pred_tps = pred_tps
         self.context_tps = context_tps
         self.total_tps = list(range(1, n_total_tps + 1))
         self.cls_embedding = None
-        if self.add_cell_time:
-            self.condition_dict_oh = {}
-            # Dynamically create entries for each key in 1..max_value
-            for i in self.total_tps:
-                # Create a list with i ones, then (max_value - i) zeros
-                vector = [1.0] * i + [0.0] * (n_total_tps - i)
-                self.condition_dict_oh[i] = torch.tensor(vector, dtype=torch.float32)
-            self.condition_layer_time = Mlp(
-                in_features=n_total_tps,
-                hidden_features=int(d_condt / 2),
-                out_features=d_condt,
-                drop=dropout,
-                layer_norm=layer_norm,
-            )  # New MLP layer
-            self.condition_layer_celltype: nn.Module | None = None
-            if d_condc is not None:
-                self.condition_layer_celltype = Mlp(
-                    in_features=d_model,
-                    hidden_features=d_condc * 2,
-                    out_features=d_condc,
-                    drop=dropout,
-                    layer_norm=layer_norm,
-                )
+
 
     def set_seed(self, seed: Optional[int]):
         if seed is not None:
@@ -1741,29 +1586,6 @@ class CountDecoder(nn.Module):
         count_outputs = {}
         for t in self.pred_tps:
             cls_embedding = outputs[t]['mean_embedding']
-            if self.add_cell_time:
-                if self.use_positional_encoding and self.pos_embedding is not None:
-                    condition_emb_time = self.pos_embedding.time_pe[:, t + 1]
-                else:
-                    device = next(
-                        self.parameters()
-                    ).device  # Get the device of the model
-                    condition_emb_time = self.condition_layer_time(
-                        self.condition_dict_oh[t].to(device)
-                    )
-                    if self.condition_layer_celltype is not None:
-                        condition_emb_celltype = self.condition_layer_celltype(
-                            outputs[t]['dec_embedding'][:, 1, :]
-                        )  # Use one-hot
-                        condition_emb_time = condition_emb_time.unsqueeze(0).expand(
-                            condition_emb_celltype.shape[0], -1
-                        )
-                        condition_emb = torch.cat(
-                            (condition_emb_time, condition_emb_celltype), dim=1
-                        )
-                    else:
-                        condition_emb = condition_emb_time
-                cls_embedding = torch.cat((cls_embedding, condition_emb), dim=1)
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
             count_outputs[f'count_output_t{t}'] = count_outputs_tmp
 
@@ -1776,7 +1598,6 @@ class CountDecoder(nn.Module):
         can_remask_prev_masked: bool = False,
         topk_filter_thres: float = 0.9,
         temperature: float = 2.0,  # keep in range 2.0-3.0
-        # self_cond_prob=0.9,
         iterations: int = 18,  # optimal of iterations in MaskGIT
         mask_scheduler: str = 'cosine',
         sequence_length: int = 2048,
@@ -1793,42 +1614,10 @@ class CountDecoder(nn.Module):
             sequence_length=sequence_length,
             cond_length=cond_length,
         )
-
         count_outputs = {}
         for t in self.pred_tps:
-            # cls_embedding = outputs['dec_embedding'][:, 0, :]
-            cls_embedding = outputs[t]['mean_embedding']
-            if self.add_cell_time:
-                if self.use_positional_encoding and self.pos_embedding is not None:
-                    condition_emb_time = self.pos_embedding.time_pe[:, t + 1].to(
-                        outputs[t]['mean_embedding'].device
-                    )
-                else:
-                    device = cls_embedding.device
-                    condition_emb_time = self.condition_layer_time(
-                        self.condition_dict_oh[t].to(device)
-                    )
-                    if self.condition_layer_celltype is not None:
-                        condition_emb_celltype = self.condition_layer_celltype(
-                            outputs[t]['dec_embedding'][:, 1, :]
-                        )
-                        condition_emb_time = condition_emb_time.unsqueeze(0).expand(
-                            condition_emb_celltype.shape[0], -1
-                        )
-                        condition_emb = torch.cat(
-                            (condition_emb_time, condition_emb_celltype), dim=1
-                        )
-                    else:
-                        condition_emb = condition_emb_time
-                cls_embedding = torch.cat((cls_embedding, condition_emb), dim=-1)
-                count_outputs[f'count_output_t{t}'] = self.count_decoder.forward(
-                    cls_embedding
-                )
-                count_outputs[f'cls_embedding_t{t}'] = outputs[t]['mean_embedding']
-            else:
-                # cls_embedding = outputs['dec_embedding'][:, 0, :]
-                count_outputs[f'count_output_t{t}'] = self.count_decoder.forward(
-                    outputs[t]['mean_embedding']
-                )
-                count_outputs[f'cls_embedding_t{t}'] = outputs[t]['mean_embedding']
+            count_outputs[f'count_output_t{t}'] = self.count_decoder.forward(
+                outputs[t]['mean_embedding']
+            )
+            count_outputs[f'cls_embedding_t{t}'] = outputs[t]['mean_embedding']
         return count_outputs, generate_id_dict

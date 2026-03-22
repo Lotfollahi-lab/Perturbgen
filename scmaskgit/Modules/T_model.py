@@ -29,34 +29,6 @@ from scmaskgit.src.utils import (
     uniform,
 )
 
-# def drop_path(x, drop_prob: float = 0.0, training: bool = False):
-#     if drop_prob == 0.0 or not training:
-#         return x
-#     keep_prob = 1 - drop_prob
-#     shape = (x.shape[0],) + (1,) * (
-#         x.ndim - 1
-#     )  # work with diff dim tensors, not just 2D ConvNets
-#     random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
-#     random_tensor.floor_()  # binarize
-#     output = x.div(keep_prob) * random_tensor
-#     return output
-
-
-# class DropPath(nn.Module):
-#     '''
-#     Drop paths (Stochastic Depth) per sample
-#     (when applied in main path of residual blocks).
-#     '''
-
-#     def __init__(self, drop_prob=None):
-#         super(DropPath, self).__init__()
-#         self.drop_prob = drop_prob
-
-
-#     def forward(self, x):
-#         return drop_path(x, self.drop_prob, self.training)
-
-
 class PositionalEncoding(nn.Module):
     def __init__(
         self,
@@ -101,12 +73,7 @@ class PositionalEncoding(nn.Module):
         self.d_model = d_model
         self.length = length
         self.n_time_steps = n_time_steps
-        # self.encoder = encoder
         self.mode = mode
-
-        # if self.encoder == 'Transformer_encoder':
-        #     # add one time step to included src time step
-        #     n_time_steps = n_time_steps + 1
 
         if self.mode == 'time_pos_sin':
             self.register_buffer(
@@ -152,12 +119,6 @@ class PositionalEncoding(nn.Module):
         return nn.Embedding(length, d_model)
 
     def forward(self, x, tgt_time_step=None):
-        # if self.encoder in ['GF_frozen', 'GF_fine_tuned']:
-        #     tgt_time_step_ = tgt_time_step - 1
-        # elif self.encoder == 'Transformer_encoder':
-        #     # start from 0 to include src time step
-        #     tgt_time_step_ = tgt_time_step
-
         if self.mode == 'time_pos_sin':
             time_pe = self.time_pe[:, tgt_time_step]
             time_pe = time_pe.unsqueeze(0).expand(x.size(0), x.size(1), -1)
@@ -279,7 +240,6 @@ class CrossAttention(nn.Module):
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=h), (q, k, v))
         if mask is not None:
             # Expand the mask to match the target shape:
-            # [batch_size, num_heads, seq_len, seq_len]
             mask = mask.unsqueeze(1).unsqueeze(2)
             mask = mask.expand(-1, h, seq_len_q, seq_len_k)
             # negate mask so that padding tokens=False
@@ -397,15 +357,6 @@ class Block(nn.Module):
             dropout=dropout,
             return_attn=return_attn,
         )
-        # self.norm2 = norm_layer(dim)
-        # self.cross_attn = CrossAttention(
-        #     query_dim=dim,
-        #     context_dim=context_dim,
-        #     num_heads=num_heads,
-        #     dim_head=d_ff,
-        #     dropout=dropout,
-        #     return_attn=return_attn,
-        # )
         self.norm3 = norm_layer(dim)
         self.feed_forward = Mlp(
             in_features=dim, hidden_features=hidden_size, act_layer=act_layer
@@ -415,69 +366,9 @@ class Block(nn.Module):
     def forward(self, x, tgt_mask=None):
         attn_out, self_attn_weigths = self.self_attn(x, mask=tgt_mask)
         x = self.norm1(x + self.dropout(attn_out))
-        # attn_out, cross_attn_weights = self.cross_attn(
-        #     x, context=enc_output, mask=src_mask
-        # )
-        # x = self.norm2(x + self.dropout(attn_out))  # disabled residual connection
         ff_output = self.feed_forward(x)
         x = self.norm3(x + self.dropout(ff_output))
         return x, self_attn_weigths
-        # , cross_attn_weights
-
-
-class Geneformerwrapper(nn.Module):
-    def __init__(
-        self,
-        model_path='/lustre/scratch126/cellgen/team361/kl11/'
-        't_generative/T_perturb/Geneformer/gf-12L-95M-i4096',
-        output_attentions=False,
-        output_hidden_states=True,
-        mode='GF_frozen',
-    ):
-        '''
-        Description:
-        ------------
-        Wrapper for Geneformer model.
-
-        Parameters:
-        -----------
-        model_path: `str`
-            Path to the Geneformer model.
-        output_attentions: `bool`
-            Whether to output attentions.
-        output_hidden_states: `bool`
-            Whether to output hidden states.
-        mode: `str`
-            Mode of the Geneformer model.
-            Options: ['GF_frozen', 'GF_fine_tuned']
-        '''
-        super(Geneformerwrapper, self).__init__()
-        if mode in ['GF_frozen', 'GF_fine_tuned']:
-            self.model = BertForMaskedLM.from_pretrained(
-                model_path,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-            )
-        if mode == 'GF_frozen':
-            for param in self.model.parameters():
-                param.requires_grad = False
-        self.mode = mode
-        self.model = self.model
-
-    def forward(self, src_input_id, src_attention_mask):
-        # reduce precision for memory efficiency
-        if self.mode == 'GF_frozen':
-            with torch.no_grad():
-                outputs = self.model.forward(
-                    input_ids=src_input_id, attention_mask=src_attention_mask
-                )
-
-        elif self.mode == 'GF_fine_tuned':
-            outputs = self.model.forward(
-                input_ids=src_input_id, attention_mask=src_attention_mask
-            )
-        embs = outputs.hidden_states[-1]
-        return embs
 
 
 class Encoder(nn.Module):
@@ -662,7 +553,6 @@ class scmoscf(nn.Module):
             d_model=d_model,
             length=max_seq_length,
             n_time_steps=n_total_tps,
-            # encoder=encoder,
             mode=pos_encoding_mode,
         )
         self.num_features = self.embed_dim = d_model
@@ -680,25 +570,9 @@ class scmoscf(nn.Module):
         self.mask_token = 1
         # add number of CLS tokens to the vocab size
         total_vocab_size = tgt_vocab_size + n_total_tps
-        # total_vocab_size = total_vocab_size + 1  # add one for padding token
         self.token_embedding = nn.Embedding(
             total_vocab_size, d_model, padding_idx=pad_token
         )
-        # if encoder in ['GF_frozen', 'GF_fine_tuned']:
-        #     self.encoder_layers = Geneformerwrapper(mode=encoder)
-        # elif encoder == 'Transformer_encoder':
-        #     self.encoder_layers = Encoder(
-        #         total_vocab_size=tgt_vocab_size,
-        #         max_seq_length=max_seq_length,
-        #         n_time_steps=n_total_tps,
-        #         d_model=d_model,
-        #         pos_encoding_mode=pos_encoding_mode,
-        #         pad_token=pad_token,
-        #     )
-        # else:
-        #     raise ValueError(f'Invalid encoder mode: {encoder}')
-        # self.encoder = encoder
-
         self.decoder_block = nn.ModuleList(
             [
                 Block(
@@ -825,13 +699,6 @@ class scmoscf(nn.Module):
             tgt_pad_dict[f'tgt_pad_t{time_step}'] = generate_pad(tgt_input_id)
         return tgt_pad_dict
 
-    # def call_encoder(self, src_input_id, src_attention_mask):
-    #     if self.encoder in ['GF_frozen', 'GF_fine_tuned']:
-    #         # BERT mask: 1 for tokens to keep, 0 for tokens to mask. Thus, negate mask.
-    #         src_attention_mask = ~src_attention_mask.clone().int()
-    #     enc_output = self.encoder_layers(src_input_id, src_attention_mask)
-    #     return enc_output
-
     def call_decoder(
         self,
         enc_output,
@@ -847,34 +714,24 @@ class scmoscf(nn.Module):
             # see if concatenation of cls embedding
             dec_embedding, self_attn_weights = dec_layer(
                 x=enc_output,
-                # src_mask=src_attention_mask,
                 tgt_mask=src_attention_mask,
-                # enc_output=enc_output,
             )
             if self_attn_weights is not None:
                 self_attn_list.append(self_attn_weights)
-            # if cross_attn_weights is not None:
-            #     cross_attn_list.append(cross_attn_weights)
         # also convert to float 16 for memory efficiency
         if len(self_attn_list) > 0:
             self_attn_weights = (
                 torch.stack(self_attn_list).mean(dim=0).to(torch.float16)
             )
-        # if len(cross_attn_list) > 0:
-        #     cross_attn_weights = (
-        #         torch.stack(cross_attn_list).mean(dim=0).to(torch.float16)
-        #     )
         # :TODO rewrite this part logits not needed for running the other timepoints
         decoder_logits = self.decoder_fc(dec_embedding)
 
         outputs = {
             'dec_embedding': dec_embedding,
             'self_attn_weights': self_attn_weights,
-            # 'cross_attn_weights': cross_attn_weights,
             'dec_logits': decoder_logits,
             'labels': labels,
             'mean_embedding': mean_nonpadding_embs(embs=dec_embedding, pad=src_attention_mask),
-            # 'mean_embedding': dec_embedding[:,0,:]
         }
         return outputs
 
@@ -882,7 +739,6 @@ class scmoscf(nn.Module):
         self,
         src_input_id: torch.Tensor,
         masked: bool = True,
-        # context_mode: bool = True,
         tgt_time_step: Optional[int] = None,
         tgt_input_id_dict: Optional[dict] = None,
         generate_id_dict: Optional[dict] = None,
@@ -1106,7 +962,6 @@ class CountDecoder(nn.Module):
         can_remask_prev_masked: bool = False,
         topk_filter_thres: float = 0.9,
         temperature: float = 2.0,  # keep in range 2.0-3.0
-        # self_cond_prob=0.9,
         iterations: int = 18,  # optimal of iterations in MaskGIT
         mask_scheduler: str = 'cosine',
         sequence_length: int = 2048,
@@ -1207,7 +1062,6 @@ class CountDecoder(nn.Module):
                 embs=outputs['dec_embedding'],
                 pad=tgt_pad,
             )
-            # cls_embedding = outputs['dec_embedding'][:, 0, :]
 
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
             count_outputs[f'count_output_t{time_step}'] = count_outputs_tmp
@@ -1220,9 +1074,7 @@ class CountDecoder(nn.Module):
         tgt_input_id_dict: dict,
         can_remask_prev_masked: bool = False,
         topk_filter_thres: float = 0.9,
-        # time_steps=[1, 2, 3],
         temperature: float = 2.0,  # keep in range 2.0-3.0
-        # self_cond_prob=0.9,
         iterations: int = 18,  # optimal of iterations in MaskGIT
         mask_scheduler: str = 'cosine',
         sequence_length: int = 2048,
@@ -1305,7 +1157,6 @@ class CountDecoder(nn.Module):
                 tgt_input_id_dict_[tgt_input_id_key] = ids_
             # generate the rest of the genes
             # use max shape instead of genes you like to generate
-            # guided_gene_list = None
             pad_tensor[:, sequence_length:] = 0
             ids[:, sequence_length:] = 0
             tgt_pad = self.generate_pad(pad_tensor)
@@ -1332,7 +1183,6 @@ class CountDecoder(nn.Module):
                 embs=outputs['dec_embedding'],
                 pad=tgt_pad,
             )
-            # cls_embedding = outputs['dec_embedding'][:, 0, :]
             count_outputs_tmp = self.count_decoder.forward(cls_embedding)
             count_outputs[f'count_output_t{time_step}'] = count_outputs_tmp
             count_outputs[f'cls_embedding_t{time_step}'] = cls_embedding
@@ -1450,22 +1300,11 @@ class CountDecoder(nn.Module):
             logits = outputs['dec_logits'][:, prompt_length:, :]
 
             if (unique_gene_list is not None) and (shared_gene_list is not None):
-                # all_genes = torch.arange(
-                #     logits.shape[-1], device=logits.device, dtype=torch.long
-                # )
-                # set all the logits to -inf
-                # except for the genes in the guided gene list
-                # select all genes except the guided genes
-                # remove guided genes from all genes
-
                 # increase the logits of the genes_to_keep
                 unique_genes = list(unique_gene_list.values())
                 shared_genes = list(shared_gene_list.values())
                 logits[:, :, unique_genes] = logits[:, :, unique_genes] + 5
                 logits[:, :, shared_genes] = logits[:, :, shared_genes] + 2
-                # mask = ~torch.isin(all_genes, genes_to_keep)
-                # genes_to_mask = all_genes[mask]
-                # logits[:, :, genes_to_mask] = max_neg_value
             # exclude cls token
             tmp_ids_ = tmp_ids[:, prompt_length:].clone()
             scores_ = scores[:, prompt_length:].clone()

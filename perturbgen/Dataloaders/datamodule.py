@@ -4,7 +4,6 @@ from warnings import warn
 
 import numpy as np
 
-# import scanpy as sc
 import torch
 from datasets import DatasetDict
 from perturbgen.pp import TOKEN_DICTIONARY_FILE

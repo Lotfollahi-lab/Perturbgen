@@ -70,7 +70,6 @@ def main() -> None:
         # put column 0 as index
         perturb_genes_df.set_index(perturb_genes_df.columns[0], inplace=True)
         # # assign column names being the first row
-        # perturb_genes_df.columns = perturb_genes_df.iloc[0]
         # filter based on cluster
         if 'perturb_cluster' in config['data'] and 'perturb_colname' in config['data']:
             colname = config['data']['perturb_colname']
@@ -199,10 +198,6 @@ def main() -> None:
                     config['data']['filter_cond'],
                     config['data']['filter_var'],
                 )
-                # if len(filter_idx) == 0:
-                #     filtered_dataset = None
-                # else:
-                #     filtered_dataset = dataset.select(idx_)
                 filter_idx.extend(idx_)
         if len(filter_idx) > 0:
             # apply condition filter to all datasets
@@ -215,8 +210,6 @@ def main() -> None:
                 tgt_datasets[f'tgt_dataset_t{t}'] = tgt_dataset
                 tgt_adata = tgt_adata[filter_idx, :]
                 tgt_adatas[f'tgt_h5ad_t{t}'] = tgt_adata
-            # for i, dataset in tgt_datasets.items():
-            #     tgt_datasets[i] = dataset.select(filter_idx)
             src_dataset = src_dataset.select(filter_idx)
 
         # Define path to load checkpoint

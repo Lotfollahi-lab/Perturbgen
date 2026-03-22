@@ -86,12 +86,6 @@ trainer_params = {
     'encoder_path': '/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt',
     'var_list': None,
     'genes_to_perturb': genes_to_perturb,
-    # 'gene_module_list': [
-    #     'TNFRSF18', 'TNFRSF4','C1QTNF12', 
-    #     'TAS1R3', 'ANKRD65', 'VWA1', 
-    #     'ATAD3C', 'TMEM240', 'MIB2'
-    #     ],
-    # 'num_of_background_genes': 10,
     'perturbation_mode': 'overexpress',
     'perturbation_sequence': 'tgt',
     'validation_mode': 'inference',

@@ -12,7 +12,6 @@ from typing import (
 )
 
 import anndata as ad
-# import geneformer.perturber_utils as pu
 import numpy as np
 import pandas as pd
 import scanpy as sc
@@ -20,7 +19,6 @@ import torch
 import tqdm
 from datasets import DatasetDict, load_from_disk
 from geneformer import EmbExtractor
-# from geneformer.emb_extractor import get_embs, label_cell_embs
 from scipy.sparse import csr_matrix
 from torch.nn.functional import cosine_similarity
 from torch.optim import Optimizer
@@ -326,14 +324,6 @@ def return_attn_weights(
     --------
     attn_weights_res: `torch.tensor`
     """
-
-    # filter for marker genes and swap key value
-    # if marker_genes is not None:
-    #     marker_genes_ids = {
-    #         v: k for v, k in tgt_mapping_dict.items() if v in marker_genes
-    #     }
-    # else:
-
     # map self attention weights
     pad_token_id = torch.tensor(pad_token_id, device=token_ids.device)
     self_attn_weights = outputs['self_attn_weights'][time_step]
@@ -533,7 +523,6 @@ def return_gene_embeddings(
             v: k for v, k in marker_genes_ids.items() if not v.startswith('cls')
         }
     # filter for marker genes and swap key value
-    # marker_genes_ids = {v: k for v, k in mapping_dict.items() if v in marker_genes}
     gene_embeddings_res = torch.zeros(
         gene_embeddings.shape[0],
         len(marker_genes_ids.keys()),
@@ -646,7 +635,6 @@ def return_prediction_adata(
     cos_similarity_df.to_csv(
         os.path.join(output_dir, f'{file_name}_cosine_similarity.csv')
     )
-    # adata.obsm['cosine_similarity'] = cos_similarity_df
     print('End saving embeddings---')
 
 
@@ -690,7 +678,6 @@ def return_generation_adata(
     # TODO: clean up no if and else needed
     # adata.X
     pred_counts = torch.cat(test_dict['pred_counts']).numpy()
-    # adata.layers['counts']
     true_counts = torch.cat(test_dict['true_counts']).numpy()
     # adata.obsm
     cls_embeddings = torch.cat(test_dict['cls_embeddings']).numpy()
@@ -1197,11 +1184,6 @@ def randomised_split(adata: ad.AnnData, train_prop: float, test_prop: float, see
     # define train, val and test size
     train_size = np.round(train_prop * n_cells).astype(int)
     test_size = np.round(test_prop * n_cells).astype(int)
-    # val_size = adata.shape - train_size - test_size
-    # generator = torch.Generator().manual_seed(seed)
-    # train, val, test = random_split(
-    #     dataset, [train_size, val_size, test_size], generator=generator
-    # )
     train_indices = np.random.choice(indices, train_size, replace=False)
 
     indices_ = np.setdiff1d(indices, train_indices)
@@ -1249,7 +1231,6 @@ def stratified_split(
         np.random.shuffle(indices)
         train_size = np.round(train_prop * len(indices)).astype(int)
         test_size = np.round(test_prop * len(indices)).astype(int)
-        # val_size = len(indices) - train_size - test_size
         train_indices.extend(indices[:train_size])
         test_indices.extend(indices[train_size : train_size + test_size])
         val_indices.extend(indices[train_size + test_size :])

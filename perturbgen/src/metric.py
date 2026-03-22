@@ -114,40 +114,6 @@ def mmd_loss_calc(source_features, target_features, gamma):
     -------
     Returns the computed MMD between x and y.
     """
-    # alphas = [
-    #     1e-6,
-    #     1e-5,
-    #     1e-4,
-    #     1e-3,
-    #     1e-2,
-    #     1e-1,
-    #     1,
-    #     5,
-    #     10,
-    #     15,
-    #     20,
-    #     25,
-    #     30,
-    #     35,
-    #     100,
-    #     1e3,
-    #     1e4,
-    #     1e5,
-    #     1e6,
-    # ]
-    # alphas = torch.autograd.Variable(torch.FloatTensor(alphas)).to(
-    #     device=source_features.device
-    # )
-
-    # cost = torch.mean(
-    #     gaussian_kernel_matrix(source_features, source_features, alphas)
-    #     )
-    # cost += torch.mean(
-    #     gaussian_kernel_matrix(target_features, target_features, alphas)
-    #     )
-    # cost -= 2 * torch.mean(
-    #     gaussian_kernel_matrix(source_features, target_features, alphas)
-    # )
     n , m = source_features.shape[0], target_features.shape[0]
     xx = rbf_kernel(source_features, source_features, gamma)
     xy = rbf_kernel(source_features, target_features, gamma)
@@ -157,9 +123,6 @@ def mmd_loss_calc(source_features, target_features, gamma):
     sum_Kyy = (yy.sum() - yy.diagonal().sum()) / (m * (m - 1))
     sum_Kxy = xy.mean()
     return sum_Kxx + sum_Kyy - 2 * sum_Kxy
-
-    # return xx.mean() + yy.mean() - 2 * xy.mean()
-
 
 # Metrics below were adapted CellOT and CPA from:
 # https://github.com/facebookresearch/CPA/blob/main/cpa/helper.py
@@ -198,7 +161,6 @@ def evaluate_mmd(
                 list(map(lambda x: mmd_loss_calc(adata_.X, pred_adata_.X, x), gammas))
             )
             print('end mmd calculation')
-            # mmd = mmd_loss_calc(torch.Tensor(), torch.Tensor())
             mmd_list.append({'condition': cond, 'mmd': mmd})
             if de_genes_dict:
                 de_genes = de_genes_dict[cond]

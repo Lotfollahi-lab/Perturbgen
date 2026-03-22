@@ -412,14 +412,6 @@ def return_attn_weights(
     --------
     attn_weights_res: `torch.tensor`
     """
-
-    # filter for marker genes and swap key value
-    # if marker_genes is not None:
-    #     marker_genes_ids = {
-    #         v: k for v, k in tgt_mapping_dict.items() if v in marker_genes
-    #     }
-    # else:
-
     # map self attention weights
     pad_token_id = torch.tensor(pad_token_id, device=token_ids.device)
     self_attn_weights = outputs[time_step]['self_attn_weights']
@@ -664,7 +656,6 @@ def return_gene_embeddings(
     """
     marker_genes_ids = exclude_special_tokens(mapping_dict, marker_genes)
     # filter for marker genes and swap key value
-    # marker_genes_ids = {v: k for v, k in mapping_dict.items() if v in marker_genes}
     gene_embeddings_res = torch.zeros(
         gene_embeddings.shape[0],
         len(marker_genes_ids.keys()),
@@ -747,7 +738,6 @@ def return_prediction_adata(
 
     if (aggregate is True) and ('cell_idx' in test_obs.columns):
         true_counts = mean_duplicates(test_obs, true_counts)
-        # cls_cos_similarity = mean_duplicates(test_obs, cls_cos_similarity)
         cls_embeddings = mean_duplicates(test_obs, cls_embeddings)
         test_obs = test_obs.drop_duplicates(subset='cell_idx')
 
@@ -763,18 +753,6 @@ def return_prediction_adata(
         for condition in sum_gene_embs.keys():
             adata.varm[condition] = sum_gene_embs[condition]
     adata.write_h5ad(os.path.join(output_dir, f'{file_name}.h5ad'))
-    # if len(test_dict['cosine_similarities']) > 0:
-    #     # save cosine similarity separately due to large size
-    #     cos_similarity = torch.cat(test_dict['cosine_similarities'], dim=0).numpy()
-    #     cos_similarity_df = pd.DataFrame(cos_similarity, columns=marker_genes.keys())
-    #     # remove all non-expressed genes
-    #     cos_similarity_df = cos_similarity_df.loc[:, cos_similarity_df.sum() != 0]
-    #     # save as csv file for downstream analysis
-    #     cos_similarity_df.index = adata.obs.index
-    #     cos_similarity_df.to_csv(
-    #         os.path.join(output_dir, f'{file_name}_cosine_similarity.csv')
-    #     )
-    # adata.obsm['cosine_similarity'] = cos_similarity_df
     print('End saving embeddings---')
 
 
@@ -945,41 +923,13 @@ def return_perturbation_adata(
     if 'true_counts' in test_dict.keys():
         if len(test_dict['true_counts']) > 0:
             true_counts = torch.cat(test_dict['true_counts']).numpy()
-
-    # cls_cos_similarity = torch.cat(test_dict['cls_cosine_similarity']).numpy()
     mean_cos_similarity = torch.cat(test_dict['mean_cosine_similarity']).numpy()
-    # if 'mean_cosine_similarity_l1' in test_dict.keys():
-    #     mean_cos_similarity_l1 = torch.cat(
-    #         test_dict['mean_cosine_similarity_l1']
-    #     ).numpy()
-    # else:
-    #     mean_cos_similarity_l1 = None
-    # if 'mean_cosine_similarity_lmid' in test_dict.keys():
-    #     mean_cos_similarity_lmid = torch.cat(
-    #         test_dict['mean_cosine_similarity_lmid']
-    #     ).numpy()
-    # else:
-    #     mean_cos_similarity_lmid = None
-    # delta_probs = torch.cat(test_dict['delta_probs']).numpy()
-    # wasserstein_distance = np.concatenate(test_dict['wasserstein_distance'])
     # adata.varm
     gene_cos_similarity = torch.cat(test_dict['gene_cosine_similarity'], dim=0).numpy()
     cos_similarity_df = pd.DataFrame(gene_cos_similarity, columns=marker_genes.keys())
-    # cos_similarity_df = cos_similarity_df.T
-    # cos_similarity_df.columns = cos_similarity_df.columns.astype(str)
-    # delta_gene_probs = torch.cat(test_dict['delta_gene_probs'], dim=0).numpy()
-    # delta_gene_probs_df = pd.DataFrame(
-    #     delta_gene_probs, columns=marker_genes.keys()
-    # )
-
     cos_similarity_df_ = cos_similarity_df.T
     # convert columns to string
     cos_similarity_df_.columns = cos_similarity_df_.columns.astype(str)
-
-
-    #     # 'delta_gene_probs': delta_gene_probs_df.T,
-    # }
-
     # adata.obs
     obs_dict = {obs: np.concatenate(test_dict[obs]) for obs in obs_key}
     test_obs = pd.DataFrame(obs_dict)
@@ -991,10 +941,7 @@ def return_perturbation_adata(
             true_counts = mean_duplicates(test_obs, true_counts)
         if pred_counts is not None:
             pred_counts = mean_duplicates(test_obs, pred_counts)
-        # cls_cos_similarity = mean_duplicates(test_obs, cls_cos_similarity)
         mean_cos_similarity = mean_duplicates(test_obs, mean_cos_similarity)
-        # mean_cos_similarity_l1 = mean_duplicates(test_obs, mean_cos_similarity_l1)
-        # mean_cos_similarity_lmid = mean_duplicates(test_obs, mean_cos_similarity_lmid)
         true_cls = mean_duplicates(test_obs, true_cls)
         perturbed_cls = mean_duplicates(test_obs, perturbed_cls)
         remove_duplicates = test_obs.drop_duplicates(subset='cell_idx')
@@ -1014,11 +961,7 @@ def return_perturbation_adata(
     obsm_dict = {
         'true_cls': true_cls,
         'perturbed_cls': perturbed_cls,
-        # 'cls_cos_similarity': cls_cos_similarity,
         'mean_cos_similarity': mean_cos_similarity,
-        # 'mean_cos_similarity_l1': mean_cos_similarity_l1,
-        # 'mean_cos_similarity_lmid': mean_cos_similarity_lmid,
-        # 'delta_probs': delta_probs,
     }
     if mode == 'generate':
         rouge_dict = {
@@ -1119,12 +1062,6 @@ def pearson(
     if ctrl_counts is not None:
         pred_counts = pred_counts - ctrl_counts
         true_counts = true_counts - ctrl_counts
-    # num_outputs = true_counts.shape[0]
-    # pearson = PearsonCorrCoef(num_outputs=num_outputs)
-    # pred_counts_t = pred_counts.transpose(0, 1)
-    # true_counts_t = true_counts.transpose(0, 1)
-    # pearson_output = pearson(pred_counts_t, true_counts_t)
-    # mean_pearson = torch.mean(pearson_output)
     x_true = np.average(true_counts, axis=1)
     x_pred = np.average(pred_counts, axis=1)
     print(f'x_true: {x_true.shape}')
@@ -1260,19 +1197,8 @@ def tokenid_mapping(
 def map_input_ids_to_row_id(
     dataset: DatasetDict,
     token_id_to_row_id_dict: Dict,
-    # ignore_tokens: Optional[List] = None,
 ):
-    # if ignore_tokens is None:
-    #     ignore_tokens = []
-    
-    # Debug: Print the structure to understand the issue
-    input_ids = dataset['input_ids']
-    print(f"DEBUG: input_ids type: {type(input_ids)}")
-    print(f"DEBUG: input_ids length: {len(input_ids) if hasattr(input_ids, '__len__') else 'no length'}")
-    if hasattr(input_ids, '__len__') and len(input_ids) > 0:
-        print(f"DEBUG: first element type: {type(input_ids[0])}")
-        print(f"DEBUG: first element value: {input_ids[0]}")
-    
+    input_ids = dataset['input_ids']  
     # Handle the mapping based on the actual structure
     try:
         # Try the original approach first
@@ -1433,73 +1359,6 @@ def generate_pad(input_ids):
     pad = input_ids == 0
     return pad
 
-
-# def annotate_hspc_metadata(adata: ad.AnnData) -> ad.AnnData:
-#     adata.obs['tissue'] = adata.obs['tissue'].replace('EL', 'FL')
-#     adata.obs['age_group'] = None
-#     adata.obs.loc[(adata.obs['age'].str.contains('PCW')), 'age_group'] = 'Fetal'
-#     adata.obs.loc[(adata.obs['age'] == '0'), 'age_group'] = 'Cord Blood'
-#     # replace all PCW rows with empty string, e.g. 14PCW -> ''
-#     adata.obs['age'] = adata.obs['age'].str.replace(r'\d+PCW', '', regex=True)
-#     adata.obs['age'] = adata.obs['age'].replace('', np.nan)
-#     adata.obs['age'] = adata.obs['age'].astype(float)
-#     adata.obs.loc[
-#         (adata.obs['age'] > 0) & (adata.obs['age'] < 17), 'age_group'
-#     ] = 'Pediatric'
-#     adata.obs.loc[
-#         (adata.obs['age'] >= 17) & (adata.obs['age'] <= 30), 'age_group'
-#     ] = 'Young Adult'
-#     adata.obs.loc[
-#         (adata.obs['age'] > 30) & (adata.obs['age'] <= 50), 'age_group'
-#     ] = 'Middle Age'
-#     adata.obs.loc[adata.obs['age'] > 50, 'age_group'] = 'Aged'
-#     adata.obs['age_group'] = pd.Categorical(adata.obs['age_group'])
-#     # distinguish between adult bone marrow Aged (60+) and normal (<60)
-#     adata.obs['tissue'] = adata.obs['tissue'].cat.add_categories(
-#         ['ABM_+60y', 'ABM_29-50y', 'PBM_1-16y']
-#     )
-#     adata.obs.loc[adata.obs['age'] >= 60, 'tissue'] = 'ABM_+60y'
-#     adata.obs.loc[
-#         (adata.obs['age'] < 60) & (adata.obs['age'] >= 17), 'tissue'
-#     ] = 'ABM_29-50y'
-#     adata.obs.loc[
-#         (adata.obs['age'] < 17) & (adata.obs['age'] >= 1), 'tissue'
-#     ] = 'PBM_1-16y'
-#     # drop categories with 0 samples in tissue
-#     adata.obs['tissue'] = adata.obs['tissue'].cat.remove_unused_categories()
-#     # order categories
-#     adata.obs['tissue'] = adata.obs['tissue'].cat.reorder_categories(
-#         ['YS', 'FL', 'FBM', 'CB', 'PBM_1-16y', 'ABM_29-50y', 'ABM_+60y']
-#     )
-#     adata.obs['age_group'] = adata.obs['age_group'].cat.reorder_categories(
-#         ['Fetal', 'Cord Blood', 'Pediatric', 'Young Adult', 'Middle Age', 'Aged']
-#     )
-#     adata.obs[main_pairing_obs] = adata.obs[main_pairing_obs].cat.reorder_categories(
-#         [
-#             'LT-HSC',
-#             'ST-HSC',
-#             'MPP',
-#             'LMPP',
-#             'PreProB',
-#             'Small_Pre_B',
-#             'Immature_B',
-#             'Pro_B',
-#             'Cycling_Pro_B',
-#             'Large_Pre_B',
-#             'pDC',
-#             'MEMP',
-#             'MK',
-#             'Early_Ery',
-#             'Late_Ery',
-#             'BaEoMa',
-#             'GMP',
-#             'DC_pre',
-#             'Mono_pre',
-#             'Macrophage',
-#         ]
-#     )
-#     return adata
-
 def group_mask(df, cols, key):
     if len(cols) > 1:
         # Multiple columns, row-wise tuple comparison
@@ -1618,36 +1477,6 @@ def pairing_src_to_tgt_cells(
                     else:
                         continue
 
-
-        # if pairing_mode == 'mapping':
-        #     for condition in mapping_df[max_reference_time].unique():
-        #         mapping_df_ = mapping_df[mapping_df[max_reference_time] == condition]
-        #         obs_ = obs_dict[max_reference_time]
-        #         cell_to_pair = obs_[main_pairing_obs][
-        #             obs_[main_pairing_obs].isin(mapping_df_[max_reference_time])
-        #         ].index
-        #         cell_pairings[max_reference_time].extend(cell_to_pair)
-        #         n_cells_to_pair = len(cell_to_pair)
-                
-        #         for stage, obs_ in obs_dict.items():
-        #             if stage != max_reference_time:
-        #                 cell_to_pair = obs_[main_pairing_obs][
-        #                     obs_[main_pairing_obs].isin(mapping_df_[stage])
-        #                 ].index
-        #                 # only sample with replacement if needed
-        #                 if n_cells_to_pair > cell_to_pair.shape[0]:
-        #                     sample_with_replacement = True
-        #                 else:
-        #                     sample_with_replacement = False
-        #                 cell_pairings[stage].extend(
-        #                     np.random.choice(
-        #                         cell_to_pair,
-        #                         n_cells_to_pair,
-        #                         replace=sample_with_replacement,
-        #                     )
-        #                 )
-        #             else:
-        #                 continue
     elif pairing_mode == 'random':
         if max_reference_time is not None:
             # randomly sample from each time point
@@ -1745,11 +1574,6 @@ def randomised_split(adata: ad.AnnData, train_prop: float, test_prop: float, see
     # define train, val and test size
     train_size = np.round(train_prop * n_cells).astype(int)
     test_size = np.round(test_prop * n_cells).astype(int)
-    # val_size = adata.shape - train_size - test_size
-    # generator = torch.Generator().manual_seed(seed)
-    # train, val, test = random_split(
-    #     dataset, [train_size, val_size, test_size], generator=generator
-    # )
     train_indices = np.random.choice(indices, train_size, replace=False)
 
     indices_ = np.setdiff1d(indices, train_indices)
@@ -1797,7 +1621,6 @@ def stratified_split(
         np.random.shuffle(indices)
         train_size = np.round(train_prop * len(indices)).astype(int)
         test_size = np.round(test_prop * len(indices)).astype(int)
-        # val_size = len(indices) - train_size - test_size
         train_indices.extend(indices[:train_size])
         test_indices.extend(indices[train_size : train_size + test_size])
         val_indices.extend(indices[train_size + test_size :])

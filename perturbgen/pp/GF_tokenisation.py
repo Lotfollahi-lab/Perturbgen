@@ -34,14 +34,12 @@ def get_args():
         '--h5ad_path',
         type=str,
         default='./data/eb/EB.h5ad',
-        # default='data/hspc/cd34.h5ad',
         help='Path to h5ad file',
     )
     parser.add_argument(
         '--dataset',
         type=str,
         default='eb_100M',
-        # default='hspc_pbmc_median_inter_tissue_all_tf',
         help='Name of the dataset folder',
     )
     parser.add_argument(
@@ -65,24 +63,12 @@ def get_args():
         default=[
             'Time_point',
         ],
-        # default=[
-        #     'assignment_id',
-        #     # 'age',
-        #     'sex',
-        #     'tissue',
-        #     'phase',
-        #     'celltype_v2',
-        #     'donor_tissue',
-        #     'diff_state',
-        #     'dataset',
-        # ],
         help='List of variables to keep in the dataset',
     )
     parser.add_argument(
         '--pairing_mode',
         type=str,
         default='random',
-        # default='mapping',
         choices=['stratified', 'random', 'mapping'],
         help='Cell pairing mode',
     )
@@ -90,14 +76,12 @@ def get_args():
         '--time_obs',
         type=str,
         default='Time_point',
-        # default='diff_state',
         help='Observation to use for cell pairing'
         'and encoding the different states (e.g. time, hierarchy).',
     )
     parser.add_argument(
         '--pairing_file',
         type=str,
-        # default='T_perturb/cytomeister/pp/hspc/cd34_pos_mapping.csv',
         default=None,
         help='Path to cell pairing file for mapping cell types',
     )
@@ -124,7 +108,6 @@ def get_args():
         '--reference_time',
         type=str,
         default='Day 00-03',
-        # default='stem',
         help='Control time point for cell pairing' 'which is feed into Geneformer',
     )
     parser.add_argument(
@@ -138,11 +121,6 @@ def get_args():
             'Day 18-21',
             'Day 24-27',
         ],
-        # default=[
-        #     'stem',
-        #     'intermediate',
-        #     'terminal',
-        # ],
         help='Order of time points in the dataset',
     )
     parser.add_argument(
@@ -168,7 +146,6 @@ def get_args():
         '--n_hvg',
         type=int,
         default=2000,
-        # default=5000,
         help='Number of highly variable genes to keep',
     )
     parser.add_argument(
@@ -207,13 +184,11 @@ def get_args():
     parser.add_argument(
         '--genes_to_include_path',
         type=str,
-        # default='T_perturb/cytomeister/pp/hspc/1639_Human_TF.csv',
         default=None,
     )
     parser.add_argument(
         '--genes_to_include_min_cells',
         type=int,
-        # default=1000,
         default=None,
         help='Minimum number of cells a gene must be expressed in to be included',
     )
@@ -222,7 +197,6 @@ def get_args():
 
 
 # Preprocess adata
-# default='0h',
 # ----------------
 args = get_args()
 print('Start preprocessing adata...')
@@ -244,15 +218,11 @@ else:
     adata.var['gene_name'] = adata.var_names
     adata.var_names = adata.var['ensembl_id']
 
-# if args.dataset.startswith('hspc'):
-#     adata = annotate_hspc_metadata(adata)
-
 # data preprocessing
 if 'counts' not in adata.layers:
     adata.layers['counts'] = adata.X.copy()
 else:
     adata.X = adata.layers['counts'].copy()
-# gene_filtering_mode = 'degs'
 if args.gene_filtering_mode == 'hvg':
     if ((args.hvg_mode is not None) and 
         (args.hvg_mode == 'before_tokenisation')):
@@ -265,19 +235,7 @@ if args.gene_filtering_mode == 'hvg':
         sc.pp.highly_variable_genes(adata, n_top_genes=args.n_hvg, batch_key=args.time_obs)
         adata = adata[:, adata.var['highly_variable']].copy()
         adata.X = adata.layers['counts']  # need raw counts
-elif args.gene_filtering_mode == 'degs':
-    # Filter adata for only DEGs
-    degs = pd.read_csv(
-        '/lustre/scratch123/hgi/projects/healthy_imm_expr/t_generative/'
-        'generative_modelling_omic_notebooks/'
-        'pp/res/deg/significant_deg_1.5logfc_0.05padj_hvg_5k.csv'
-    )
-    unique_degs = degs['names'].unique()
-    adata = adata[:, adata.var['gene_name'].isin(unique_degs)]
 
-# elif args.gene_filtering_mode == 'hvg':
-#     sc.pp.normalize_total(adata, target_sum=1e4)
-#     sc.pp.log1p(adata)
 if args.cell_gene_filter:
     sc.pp.filter_cells(adata, min_genes=1000)
     sc.pp.filter_genes(adata, min_cells=10)
@@ -294,9 +252,6 @@ if args.remove_mito_ribo_genes:
     genes_to_keep = ~(mito_genes | ribo_genes | mito_ribo_genes)
     adata = adata[:, genes_to_keep]
     print(f'Filtered out {np.sum(~genes_to_keep)} genes')
-
-# else:
-#     raise ValueError('Invalid gene filtering mode')
 
 # create gene mapping file
 with open(args.token_dict_path, 'rb') as f:
@@ -328,19 +283,6 @@ with open(
 ) as file:
     pickle.dump(token_to_genename, file)
 
-# # ignore CLS token because of redudancy with time task token
-# if pd.NA in token_id_to_row_id_dict:
-#     del token_id_to_row_id_dict[pd.NA]
-
-# # save mapping dictionnary
-# with open(
-#     f'{TOKENIZED_DIR}/{args.dataset}/'
-#     f'tokenid_to_rowid_{args.gene_filtering_mode}.pkl',
-#     'wb',
-# ) as f:
-#     pickle.dump(token_id_to_row_id_dict, f)
-
-
 # make new directory to store h5ad files
 paired_h5ad_dir = (
     f'{TOKENIZED_DIR}/{args.dataset}'
@@ -357,16 +299,10 @@ adata.obs.index.name = None
 # create sparse matrix if not already
 if not (issparse(adata.X)):
     adata.X = csr_matrix(adata.X)
-# adata.obs = adata.obs[args.var_list]
 adata.var = adata.var[['gene_name', 'ensembl_id']]
 adata.obs['n_counts'] = adata.X.sum(axis=1)
 # save adata
 adata.write_h5ad(f'{paired_h5ad_dir}/{args.dataset}.h5ad')
-
-# # load adata
-# adata = sc.read_h5ad(
-#     f'{paired_h5ad_dir}/{args.dataset}.h5ad'
-# )
 
 # subset adata to only genes in the token dictionary
 # filter adata for only genes occuring in the token dictionary
@@ -476,7 +412,6 @@ tk = TranscriptomeTokenizer(
     special_token=True,
     gene_median_file=args.gene_median_path,
     token_dictionary_file=args.token_dict_path,
-    # gene_mapping_file=args.gene_mapping_path,
 )
 # time it
 # Proceed with your main logic
@@ -511,20 +446,10 @@ cell_pairings = pairing_src_to_tgt_cells(
     opt_pairing_obs=args.opt_pairing_obs,
 )
 
-
-# token_id_to_row_id_dict = pickle.load(
-#     open(
-#         f'{TOKENIZED_DIR}/{args.dataset}/'
-#         f'tokenid_to_rowid_{args.gene_filtering_mode}.pkl',
-#         'rb',
-#     )
-# )
-
 dataset_mapped = dataset.map(
     lambda example: map_input_ids_to_row_id(
         example, 
         token_id_to_row_id_dict, 
-        # ignore_tokens=[2],
     ),
     num_proc=args.nproc,
 )

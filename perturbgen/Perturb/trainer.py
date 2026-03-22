@@ -40,8 +40,6 @@ class PerturberTrainer(CountDecoderTrainer):
         batch_size: int = 16,
         use_size_factor: bool = True,
         use_observed_size_factor: bool = True,
-        # gene_module_list: List[str] | None = None,
-        # num_of_background_genes: int | None = None,
         *args,
         **kwargs,
     ):
@@ -180,8 +178,6 @@ class PerturberTrainer(CountDecoderTrainer):
             self.decoder = PerturberCountDecoder(
                 pretrained_model=self.pretrained_model,
                 loss_mode=kwargs['loss_mode'],
-                d_condc=kwargs['d_condc'] if 'd_condc' in kwargs else None,
-                d_condt=kwargs['d_condt'] if 'd_condt' in kwargs else None,
                 layer_norm=kwargs['layer_norm'] if 'layer_norm' in kwargs else False,
                 max_seq_length=kwargs['max_seq_length'],
                 use_positional_encoding=(
@@ -191,9 +187,6 @@ class PerturberTrainer(CountDecoderTrainer):
                 ),
                 encoder=kwargs['encoder'],
                 pos_encoding_mode=kwargs['pos_encoding_mode'],
-                add_cell_time=kwargs['add_cell_time']
-                if 'add_cell_time' in kwargs
-                else None,
                 d_model=kwargs['d_model'],
                 dropout=kwargs['dropout'],
                 pred_tps=kwargs['pred_tps'],
@@ -510,7 +503,6 @@ class PerturberTrainer(CountDecoderTrainer):
         # if all cells are removed where boolean mask is all False
         if np.sum(remove_cells_wo_pert) > 0:
             # remove cells without perturbation
-            # filtered_batch = batch
             filtered_batch = {
                 k: self.apply_mask(v, remove_cells_wo_pert)
                 for k, v in batch.items()
@@ -658,28 +650,12 @@ class PerturberTrainer(CountDecoderTrainer):
                 mean_cos_sim_l1 = mean_cos_sim_l1.detach().cpu().to(torch.float16)
                 mean_cos_sim_lmid = mean_cos_sim_lmid.detach().cpu().to(torch.float16)
                 gene_cos_sim = gene_cos_sim.detach().cpu().to(torch.float16)
-                # true_cls = true_cls.detach().cpu().to(torch.float16)
-                # perturbed_cls = perturbed_cls.detach().cpu().to(torch.float16)
                 true_mean_embs = true_mean_embs.detach().cpu().to(torch.float16)
                 perturbed_mean_embs = (
                     perturbed_mean_embs.detach().cpu().to(torch.float16)
                 )
 
-                # mean_cos_sim = mean_cos_sim[dupl_outside_batch]
-                # mean_cos_sim_l1 = mean_cos_sim_l1[dupl_outside_batch]
-                # mean_cos_sim_lmid = mean_cos_sim_lmid[dupl_outside_batch]
-                # gene_cos_sim = gene_cos_sim[dupl_outside_batch]
-                # true_mean_embs = true_mean_embs[dupl_outside_batch]
-                # perturbed_mean_embs = perturbed_mean_embs[dupl_outside_batch]
-                # mean_cos_sim = mean_cos_sim[dupl_within_batch]
-                # mean_cos_sim_l1 = mean_cos_sim_l1[dupl_within_batch]
-                # mean_cos_sim_lmid = mean_cos_sim_lmid[dupl_within_batch]
-                # gene_cos_sim = gene_cos_sim[dupl_within_batch]
-                # true_mean_embs = true_mean_embs[dupl_within_batch]
-                # perturbed_mean_embs = perturbed_mean_embs[dupl_within_batch]
                 self.test_dict['mean_cosine_similarity'].append(mean_cos_sim)
-                # self.test_dict['mean_cosine_similarity_l1'].append(mean_cos_sim_l1)
-                # self.test_dict['mean_cosine_similarity_lmid'].append(mean_cos_sim_lmid)
                 self.test_dict['gene_cosine_similarity'].append(gene_cos_sim)
                 self.test_dict['true_cls'].append(true_mean_embs)
                 self.test_dict['perturbed_cls'].append(perturbed_mean_embs)
@@ -688,12 +664,6 @@ class PerturberTrainer(CountDecoderTrainer):
                         true_counts_ = filtered_batch[f'tgt_counts_t{t}'].detach().cpu()
                         pred_counts_ = pred_counts[t].detach().cpu()
                         pert_counts_ = pert_counts[t].detach().cpu()
-                        # true_counts_ = true_counts_[dupl_outside_batch]
-                        # pred_counts_ = pred_counts_[dupl_outside_batch]
-                        # pert_counts_ = pert_counts_[dupl_outside_batch]
-                        # true_counts_ = true_counts_[dupl_within_batch]
-                        # pred_counts_ = pred_counts_[dupl_within_batch]
-                        # pert_counts_ = pert_counts_[dupl_within_batch]
                         self.test_dict['true_counts'].append(true_counts_)
                         self.test_dict['pred_counts'].append(pred_counts_)
                         self.test_dict['pert_counts'].append(pert_counts_)
@@ -704,8 +674,6 @@ class PerturberTrainer(CountDecoderTrainer):
                     for var in self.var_list:
                         # remove duplicates
                         var_values = np.array(filtered_batch[f'{var}_t{t}'])
-                        # var_values = var_values[dupl_outside_batch]
-                        # var_values = var_values[dupl_within_batch]
                         self.test_dict[var].append(var_values)
         else:
             print(

@@ -8,7 +8,6 @@ import scanpy as sc
 import torch
 from datasets import load_from_disk, Dataset
 
-# from pytorch_lightning import Callback
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy  # ,DeepSpeedStrategy
@@ -72,7 +71,6 @@ def get_args():
         '--splitting_mode',
         type=str,
         default='random',
-        # default='stratified',
         choices=['random', 'stratified', 'unseen_cond'],
         help='splitting mode',
     )
@@ -80,7 +78,6 @@ def get_args():
         '--split_obs',
         type=str,
         nargs='+',
-        # default=['Donor', 'Cell_type'],
         default=['celltype_v2'],
     )
     parser.add_argument('--split_value', type=str, default='D351')
@@ -94,38 +91,23 @@ def get_args():
         '--src_dataset',
         type=str,
         default='./T_perturb/perturbgen/pp/res/eb/dataset_hvg_src/Day 00-03.dataset',
-        # default=(
-        #     './T_perturb/perturbgen/pp/res/eb/'
-        #     'dataset_all_src/eb_all_Day 00-03.dataset'
-        # ),
-        # default='./T_perturb/perturbgen/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
         '--src_adata',
         type=str,
         default='./T_perturb/perturbgen/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
-        # default=(
-        #     './T_perturb/perturbgen/pp/'
-        #     'res/eb/h5ad_pairing_all_src/eb_all_Day 00-03.h5ad'
-        # ),
-        # default='./T_perturb/perturbgen/pp/res/cytoimmgen/'
-        # 'h5ad_pairing_hvg_src/0h.h5ad',
         help='path to src',
     )
     parser.add_argument(
         '--tgt_adata_folder',
         type=str,
         default='./T_perturb/perturbgen/pp/res/eb/h5ad_pairing_hvg_tgt',
-        # default='./T_perturb/perturbgen/pp/res/eb/h5ad_pairing_all_tgt',
-        # default='./T_perturb/perturbgen/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt',
         help='path to tgt',
     )
     parser.add_argument(
         '--mapping_dict_path',
         type=str,
-        # default='./T_perturb/perturbgen/pp/res/eb/token_id_to_genename_hvg.pkl',
-        # default='./T_perturb/perturbgen/pp/res/eb/token_id_to_genename_all.pkl'
         default='./T_perturb/perturbgen/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl',
     )
     parser.add_argument('--batch_size', type=int, default=2, help='batch_size')
@@ -139,16 +121,12 @@ def get_args():
     parser.add_argument(
         '--max_len',
         type=int,
-        # default=300,
-        # default=2048,
         default=4096,
         help='max sequence length',
     )  # check how many genes there are
     parser.add_argument(
         '--tgt_vocab_size',
         type=int,
-        # default=1261,
-        # default=15280,
         default=24939,
         help='vocab size (max token id + 1) in dataset for padding',
     )
@@ -177,7 +155,6 @@ def get_args():
         '--condition_keys',
         nargs='+',
         default=None,
-        # default='Cell_culture_batch',
         type=str,
         help='Selection of condition keys to use for model',
     )
@@ -209,12 +186,8 @@ def get_args():
     )
     parser.add_argument(
         '--var_list',
-        # type=list,
         nargs='+',
         type=str,
-        # default=['Time_point'],
-        # default=['Cell_population', 'Cell_type', 'Time_point', 'Donor'],
-        # default=['celltype_v2', 'sex', 'phase', 'tissue', 'diff_state'],
         default=[],
         help='List of variables to keep in the dataset',
     )
@@ -270,10 +243,6 @@ def train_model(config, args):
     print('Loading and preprocessing data...')
     src_dataset = load_from_disk("/lustre/scratch126/cellgen/team298/dv8/trace_paper/trace_repo/T_perturb/perturbgen/pp/res/concatenated_all_25k_all_subsetted.dataset")
     src_dataset = src_dataset.select(range(1000000))
-    # length = []
-    # for i in range(len(src_dataset)):
-    #     length.append(max(src_dataset[i]["input_ids"]))
-    # print(max(length))
     # raise
     train_indices = list(range(len(src_dataset)))
     val_indices = None
@@ -285,8 +254,6 @@ def train_model(config, args):
         'shuffle': args.shuffle,
         'max_len': args.max_len,
         'split': args.split,
-        # 'train_indices': train_indices,
-        # 'val_indices': val_indices,
         'test_indices': [],
         'pred_tps': args.pred_tps,
         'context_tps': args.context_tps,
@@ -352,7 +319,6 @@ def train_model(config, args):
 
     # Initialize Trainer
     trainer = pl.Trainer(
-        # logger=wandb_logger,
         callbacks=[tune_callback],
         max_epochs=2,
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
@@ -377,21 +343,9 @@ def main():
     "learning_rate": tune.choice([1e-5, 5e-5, 1e-4, 5e-4]),  # Discrete values
     "weight_decay": tune.choice([1e-6, 1e-5, 1e-4]),  # Discrete values
     "batch_size": tune.choice([8, 16, 32]),
-    # "max_epochs": tune.choice([5, 10, 15]),
 }
 
 
-    # search_space = {
-    #     "d_model": 256,
-    #     "num_heads": 4,
-    #     "num_layers": 2,
-    #     "d_ff": 512,
-    #     "dropout": 0.1,
-    #     "learning_rate": 1e-5,
-    #     "weight_decay": 1e-6,
-    #     "batch_size": 16,
-    # }
-    # train_model(search_space, args)
     # Set up BOHB
     bohb_search = TuneBOHB()
     bohb_scheduler = HyperBandForBOHB(time_attr="training_iteration", max_t=1)
