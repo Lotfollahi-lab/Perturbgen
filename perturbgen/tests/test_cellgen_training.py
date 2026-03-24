@@ -236,10 +236,11 @@ class MaskCheckpointFixture(TestConfigMixin):
         trainer.fit(model, dm)
 
         cls.ckpt_path = checkpoint_callback.last_model_path
-        cls.output_dir = os.path.join(cls.tmpdir, "res")
+        
+        cls.output_dir = os.path.join(OUTPUT_DIR, "res")
         os.makedirs(cls.output_dir, exist_ok=True)
 
-        shutil.copy(cls.ckpt_path, os.path.join(cls.output_dir, "new_mask.ckpt"))
+        shutil.copy(cls.ckpt_path, os.path.join(OUTPUT_DIR, "new_mask.ckpt"))
         MaskCheckpointFixture._shared_ckpt_path = cls.ckpt_path
         MaskCheckpointFixture._shared_tmpdir = cls.tmpdir
 
@@ -331,10 +332,6 @@ class TestCountDecoder(MaskCheckpointFixture, unittest.TestCase):
         dm = cls.build_count_datamodule()
         trainer.fit(model, dm)
         cls.count_ckpt_path = checkpoint_callback.last_model_path
-
-        cls.output_dir = os.path.join(cls.tmpdir, "res")
-        os.makedirs(cls.output_dir, exist_ok=True)
-
         shutil.copy(cls.count_ckpt_path, os.path.join(cls.output_dir, "new_count.ckpt"))
         TestCountDecoder._shared_count_ckpt = cls.count_ckpt_path
 
@@ -454,38 +451,46 @@ def compare_weights(ref_sd, new_sd, atol=1e-5, rtol=1e-4):
             mismatches.append((k, diff))
 
     return mismatches, max_diff
+
 class TestCheckpointConsistency(unittest.TestCase):
 
     def test_checkpoint_match(self):
         paths = [REF_MASK_CKPT, NEW_MASK_CKPT, REF_COUNT_CKPT, NEW_COUNT_CKPT]
         for path in paths:
             if not os.path.exists(path):
-                raise FileNotFoundError(f"Checkpoint not found at {path}")
+                raise Warning(f"Checkpoint {path} not found. Skipping consistency test.")
             else:
                 pass    
         failures = []
 
-        for name, (ref_path, new_path) in checkpoint_pairs.items():
-            print(f"\n--- Testing {name} checkpoint ---")
+        if len(failures) > 0:
+            msg = "\n".join([
+                f"{name}: {n} mismatches (max diff {d})"
+                for name, n, d in failures
+            ])
+            self.fail(f"Checkpoint mismatches found:\n{msg}")
+        else:
+            for name, (ref_path, new_path) in checkpoint_pairs.items():
+                print(f"\n--- Testing {name} checkpoint ---")
 
-            ref_path = os.path.abspath(ref_path)
-            new_path = os.path.abspath(new_path)
+                ref_path = os.path.abspath(ref_path)
+                new_path = os.path.abspath(new_path)
 
-            self.assertTrue(os.path.exists(ref_path), f"Missing {ref_path}")
-            self.assertTrue(os.path.exists(new_path), f"Missing {new_path}")
+                self.assertTrue(os.path.exists(ref_path), f"Missing {ref_path}")
+                self.assertTrue(os.path.exists(new_path), f"Missing {new_path}")
 
-            ref_sd = load_state_dict(ref_path)
-            new_sd = load_state_dict(new_path)
+                ref_sd = load_state_dict(ref_path)
+                new_sd = load_state_dict(new_path)
 
-            mismatches, max_diff = compare_weights(ref_sd, new_sd)
+                mismatches, max_diff = compare_weights(ref_sd, new_sd)
 
-            if len(mismatches) > 0:
-                print(f"[{name}] ❌ {len(mismatches)} mismatches (max diff: {max_diff})")
-                for k, d in mismatches[:5]:
-                    print(f" - {k}: {d}")
-                failures.append((name, len(mismatches), max_diff))
-            else:
-                print(f"[{name}] ✅ match")
+                if len(mismatches) > 0:
+                    print(f"[{name}] ❌ {len(mismatches)} mismatches (max diff: {max_diff})")
+                    for k, d in mismatches[:5]:
+                        print(f" - {k}: {d}")
+                    failures.append((name, len(mismatches), max_diff))
+                else:
+                    print(f"[{name}] ✅ match")
 
         # Fail once at the end (so all checkpoints are checked)
         if failures:

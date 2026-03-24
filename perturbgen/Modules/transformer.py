@@ -1,5 +1,5 @@
 '''
-Mostly copy-paste from timm library.
+Adopted from timm library.
 https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
 '''
 import math
@@ -19,7 +19,6 @@ from torch import einsum, nn
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from torch.nn.attention import SDPBackend, sdpa_kernel
 from torch.nn.functional import scaled_dot_product_attention
-from transformers import BertForMaskedLM
 
 from perturbgen.src.utils import (
     generate_pad,
@@ -37,8 +36,8 @@ class PositionalEncoding(nn.Module):
         length: int,
         n_time_steps: int,
         encoder: Literal[
-            'GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'
-        ] = 'GF_frozen',
+            'scmaskgit', 'Transformer_encoder',
+        ] = 'scmaskgit',
         mode: Literal[
             'time_pos_sin',
             'comb_sin',
@@ -425,27 +424,16 @@ class scmaskgitwrapper(nn.Module):
         super(scmaskgitwrapper, self).__init__()
         if model_path is None:
             raise ValueError('Model path is required for scmaskgit encoder')
-        # how can I check if model path contains foundation_107m
-        if 'foundation_107m' in model_path:
-            self.model = scmoscf(
-                tgt_vocab_size=19000,  # PBMC median
-                d_model=768,
-                num_heads=8,
-                num_layers=12,
-                d_ff=96,
-                max_seq_length=4096,
-                dropout=0.03,
-            )
-        elif 'output2' in model_path:
-            self.model = scmoscf(
-                tgt_vocab_size=20274,
-                d_model=768,
-                num_heads=8,
-                num_layers=6,
-                d_ff=96,
-                max_seq_length=4096,
-                dropout=0.03,
-            )
+
+        self.model = scmoscf(
+            tgt_vocab_size=19000,  # PBMC median
+            d_model=768,
+            num_heads=8,
+            num_layers=12,
+            d_ff=96,
+            max_seq_length=4096,
+            dropout=0.03,
+        )
         pretrained_dict = torch.load(model_path, map_location='cpu', weights_only=True)
         if 'state_dict' in pretrained_dict:
             pretrained_dict = pretrained_dict['state_dict']
@@ -587,8 +575,8 @@ class PerturbGen(nn.Module):
         ],
         n_total_tps: int = 3,
         mask_scheduler: str = 'cosine',
-        encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
-            'GF_fine_tuned'
+        encoder: Literal['scmaskgit', 'Transformer_encoder'] = (
+            'scmaskgit'
         ),
         pos_encoding_mode: Literal[
             'time_pos_sin', 'comb_sin', 'sin_learnt', 'time_pos_learnt'
@@ -1097,9 +1085,6 @@ class PerturbGen(nn.Module):
     def _encode_with_cache(self, src_input_id: torch.Tensor):
         # caching only works when encoder is frozen
         # and input is the same across calls as during generation
-        
-
-
         # build a key from src_input_id
         key = src_input_id.detach().cpu().numpy().tobytes()
 
@@ -1456,8 +1441,6 @@ class CountHead(nn.Module):
             self.size_factor_decoder = nn.Sequential(
                 nn.Linear(d_model, 1)
             )
-    
-
 
     def forward(self, x):
         if x.shape[-1] != self.input_dim:
@@ -1485,7 +1468,6 @@ class CountHead(nn.Module):
 
         return count_outputs
 
-
 class CountDecoder(nn.Module):
     def __init__(
         self,
@@ -1493,8 +1475,8 @@ class CountDecoder(nn.Module):
         loss_mode: str = 'zinb',
         d_model: int = 128,
         max_seq_length: int = 2048,
-        encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
-            'GF_fine_tuned'
+        encoder: Literal['scmaskgit', 'Transformer_encoder'] = (
+            'scmaskgit'
         ),
         pos_encoding_mode: Literal[
             'time_pos_sin', 'comb_sin', 'sin_learnt'

@@ -208,11 +208,9 @@ def get_args(argv):
     )
     parser.add_argument(
         '--encoder',
-        default='GF_frozen',
+        default='scmaskgit',
         type=str,
         choices=[
-            'GF_fine_tuned',
-            'GF_frozen',
             'Transformer_encoder',
             'scmaskgit',
         ],

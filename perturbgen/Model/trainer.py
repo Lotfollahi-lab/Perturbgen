@@ -56,7 +56,6 @@ def set_matmul_precision_for_device(precision: Literal['high', 'medium'] = 'medi
     else:
         print('CUDA is not available, using CPU for training.')
 
-
 class PerturbGenTrainer(LightningModule):
     def __init__(
         self,
@@ -85,8 +84,8 @@ class PerturbGenTrainer(LightningModule):
         sequence_length: int = 2048,
         return_rouge_score: bool = True,
         output_dir: str = './T_perturb/perturbgen/plt/res/eb/',
-        encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
-            'GF_fine_tuned'
+        encoder: Literal['scmaskgit', 'Transformer_encoder'] = (
+            'scmaskgit'
         ),
         mask_scheduler: str = 'cosine',
         context_mode: bool = True,
@@ -584,8 +583,8 @@ class CountDecoderTrainer(LightningModule):
         n_samples: int = 1,
         precision: Literal['high', 'medium'] = 'medium',
         output_dir: str = './T_perturb/perturbgen/plt/res/eb/',
-        encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
-            'GF_fine_tuned'
+        encoder: Literal['scmaskgit', 'Transformer_encoder'] = (
+            'scmaskgit'
         ),
         seed: int = 42,
         n_genes: int = 25426,

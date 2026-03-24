@@ -26,7 +26,7 @@ from perturbgen.src.utils import (
 os.chdir(ROOT)
 print(f'Current working directory: {os.getcwd()}')
 
-def get_args(argv):
+def get_args(args=None):
     """Get command line arguments."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -197,8 +197,6 @@ def get_args(argv):
         default='scmaskgit',
         type=str,
         choices=[
-            'GF_fine_tuned',
-            'GF_frozen',
             'Transformer_encoder',
             'scmaskgit',
         ],
@@ -258,7 +256,7 @@ def get_args(argv):
         default=10,
         help='save checkpoint every n epochs',
     )
-    args = parser.parse_args()
+    args = parser.parse_args(args)
     return args
 import perturbgen.Model.trainer as trainer_mod
 import inspect
@@ -374,9 +372,6 @@ def main(argv=None) -> None:
         )
     # count number of unique timepoints
     n_total_tps = len(tgt_adatas)
-
-    # create dictionnary of metadata for classifier-free guidance
-
     # create full dataset to extract metadata for conditioning
     dataset_list = [src_dataset]
     for dataset in tgt_datasets.values():

@@ -343,7 +343,7 @@ class CountDecoderTrainer(LightningModule):
             pos_encoding_mode=pos_encoding_mode,
         )
         self.pos_encoding_mode = pos_encoding_mode
-        # load PETRA checkpoint
+        # load masking checkpoint
         if ckpt_masking_path is not None:
             checkpoint = torch.load(ckpt_masking_path, map_location='cpu')
             state_dict_ = modify_ckpt_state_dict(checkpoint, 'transformer.')
@@ -618,9 +618,9 @@ class CountDecoderTrainer(LightningModule):
         # convert all int to str
         pred_ids_ = pred_ids.astype(str)
         tgt_ids_ = tgt_ids.astype(str)
-        # # Vectorize the function to apply to the entire matrix
-        # # TODO: rewrite the function without mapping dict
-        # # Apply the mapping
+        # Vectorize the function to apply to the entire matrix
+        # TODO: rewrite the function without mapping dict
+        # Apply the mapping
         for seq_len in rouge_len_list:
             if max_seq_length > seq_len:
                 pred_genes_short = pred_ids_[:, :seq_len]
