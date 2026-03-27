@@ -25,7 +25,7 @@ curl -sSL https://install.python-poetry.org | python3 -
 ```
 Optional: alternative way to install poetry using pipx (https://pipx.pypa.io/stable/installation/)
 ```shell
-pipx install poetry
+pip install poetry
 ```
 
 Create/install the environment and dependencies:
