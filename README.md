@@ -2,7 +2,7 @@
  ![python](https://img.shields.io/badge/Python-3.11-brightgreen)
 
 
-# PerturbGen Foundation model for dynamic cellular states
+# PerturbGen foundation model for dynamic cellular states
 
 ![PerturbGen overview](docs/architecture.png)
 
