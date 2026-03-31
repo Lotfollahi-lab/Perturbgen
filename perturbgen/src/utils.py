@@ -683,7 +683,7 @@ def return_prediction_adata(
     marker_genes: dict,
     output_dir: str,
     file_name: str,
-    # gene_names: list,
+    gene_names: dict,
     sum_gene_embs: dict | None = None,
     aggregate: bool = True,
 ):
@@ -734,6 +734,9 @@ def return_prediction_adata(
     # # adata.var
     if marker_genes is not None:
         test_var = pd.DataFrame(marker_genes, index=[0]).T
+        # create binary column for marker genes if in gene_names to filter true_counts
+        gene_marker_bool = [g in test_var[0].index for g in gene_names.keys()]
+        true_counts = true_counts[:, gene_marker_bool]
         test_var.columns = ['token_id']
 
     if (aggregate is True) and ('cell_idx' in test_obs.columns):

@@ -242,6 +242,7 @@ class PerturbGenTrainer(LightningModule):
                         self.gene_to_rowid,
                         self.marker_genes,
                     )
+
                     n_genes = len(genes_dict)
                     self.sum_gene_embs: Dict[str, torch.Tensor] = {
                         f'{condition}': torch.zeros(
@@ -270,7 +271,6 @@ class PerturbGenTrainer(LightningModule):
                 )
                 tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
             tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
-
         if generate:
             outputs = None
         else:
@@ -524,6 +524,7 @@ class PerturbGenTrainer(LightningModule):
                 test_dict=self.test_dict,
                 obs_key=obs_key,
                 marker_genes=self.marker_genes_dict,
+                gene_names=self.gene_names,
                 output_dir=self.output_dir,
                 sum_gene_embs=self.sum_gene_embs,
                 file_name=f'{self.date}_inference_embs_'

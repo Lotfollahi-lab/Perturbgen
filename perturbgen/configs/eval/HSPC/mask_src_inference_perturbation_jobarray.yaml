@@ -3,18 +3,6 @@ data:
   tgt_dataset_folder: "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf_100M/dataset_5000_hvg_tgt"
   src_adata_file: "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf_100M/h5ad_pairing_5000_hvg_src/intermediate.h5ad"
   tgt_adata_folder: "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf_100M/h5ad_pairing_5000_hvg_tgt"
-  # cond_list:
-  #   - 'celltype_v2'
-  #   - 'diff_state'
-  # filter_var: 'celltype_v2'
-  # filter_cond:
-  # - 'DC_pre'
-  # - 'Mono_Pre'
-  # - 'DC_pre'
-  # - 'Macrophage'
-  # perturb_genes_file: 'T_perturb/res/hspc/gene_embedding/20250312_gene_clusters_LMPP_L4.csv'
-  # perturb_cluster:
-  # - '75'
 
 trainer:
   tgt_vocab_size: 5700
