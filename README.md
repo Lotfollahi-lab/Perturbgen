@@ -1,8 +1,7 @@
  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
  ![python](https://img.shields.io/badge/Python-3.11-brightgreen)
 
-
-# PerturbGen Foundation model for dynamic cellular states
+# PerturbGen foundation model for dynamic cellular states
 
 ![PerturbGen overview](docs/architecture.png)
 
@@ -25,7 +24,7 @@ curl -sSL https://install.python-poetry.org | python3 -
 ```
 Optional: alternative way to install poetry using pipx (https://pipx.pypa.io/stable/installation/)
 ```shell
-pipx install poetry
+pip install poetry
 ```
 
 Create/install the environment and dependencies:
@@ -64,6 +63,15 @@ See Perturbation notebook for more explaination about how to perturb a gene or l
 ## Documentation
 
 Full documentation and tutorials are available at: [perturbgen.cog.sanger.ac.uk](https://perturbgen.cog.sanger.ac.uk/docs/examples/01_preprocessing_curation.html)
+
+## Pretrained Checkpoints
+
+The pretrained model checkpoint is available via Hugging Face:
+
+👉 https://huggingface.co/lotfollahi-lab/PerturbGen/tree/main
+
+⚠️ Note: The checkpoint in `pretraining_cohort/` is stored using Git LFS, and due to bandwidth limits, `git lfs pull` may fail with a 403 error.  
+Please use the Hugging Face link above instead.
 
 ## Citation
 
