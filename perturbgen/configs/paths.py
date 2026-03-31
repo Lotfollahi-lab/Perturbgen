@@ -4,7 +4,7 @@ ROOT = Path(__file__).resolve().parents[3]
 # This assumes the structure is like:
 # T_perturb/
 # ├── data/
-# ├── T_perturb/
+# ├── perturbgen/
 # │   ├── configs/
 # │   ├── res/
 # │   └── tokenized_data/

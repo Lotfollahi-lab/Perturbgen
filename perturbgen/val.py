@@ -1,5 +1,3 @@
-"""Script for validating a classifier on with Pytorch Lightning."""
-
 import argparse
 import os
 import uuid
@@ -8,6 +6,7 @@ from datetime import datetime
 
 import pytorch_lightning as pl
 import scanpy as sc
+from sympy import limit
 import torch
 from datasets import concatenate_datasets, load_from_disk
 from pytorch_lightning.callbacks import TQDMProgressBar
@@ -49,13 +48,11 @@ def get_args(argv):
         '--output_dir',
         type=str,
         default='./T_perturb/perturbgen/plt/res/cytoimmgen',
-        # default='./T_perturb/perturbgen/plt/res/eb',
         help='store dataset name',
     )
     parser.add_argument(
         '--splitting_mode',
         type=str,
-        # default='random',
         default='stratified',
         choices=['random', 'stratified', 'unseen_cond'],
         help='splitting mode',
@@ -75,25 +72,10 @@ def get_args(argv):
         type=str,
         nargs='+',
         default=None,
-        # default=['celltype_v2'],
     )
     parser.add_argument('--split_value', type=str, default='D351')
     parser.add_argument('--use_positional_encoding', type=str2bool, default=False)
     parser.add_argument('--layer_norm', type=str2bool, default=False)
-    parser.add_argument('--add_cell_time', type=str2bool, default=False)
-
-    parser.add_argument(
-        '--d_condc',
-        type=int,
-        default=None,
-        help='One Hot dimension',
-    )
-    parser.add_argument(
-        '--d_condt',
-        type=int,
-        default=768,
-        help='One Hot dimension',
-    )
     parser.add_argument(
         '--generate',
         type=str2bool,
@@ -127,25 +109,17 @@ def get_args(argv):
     parser.add_argument(
         '--mapping_dict_path',
         type=str,
-        # default='./T_perturb/tokenized_data/eb/token_id_to_genename_hvg.pkl',
-        # default='./T_perturb/tokenized_data/eb/token_id_to_genename_all.pkl'
         default='./T_perturb/tokenized_data/cytoimmgen/token_id_to_genename_hvg.pkl',
     )
     parser.add_argument(
         '--src_dataset',
         type=str,
-        # default='./T_perturb/tokenized_data/eb/dataset_hvg_src/Day 00-03.dataset',
-        # default=(
-        #     './T_perturb/tokenized_data/eb/'
-        #     'dataset_all_src/eb_all_Day 00-03.dataset'
-        # ),
         default='./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_src/0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
         '--tgt_dataset_folder',
         type=str,
-        # default='./T_perturb/tokenized_data/eb/dataset_hvg_tgt',
         default='./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_tgt/',
         help='path to tokenised activated data',
     )
@@ -153,7 +127,6 @@ def get_args(argv):
     parser.add_argument(
         '--src_adata',
         type=str,
-        # default='./T_perturb/tokenized_data/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
         default=(
             './T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_src/0h.h5ad'
         ),
@@ -162,7 +135,6 @@ def get_args(argv):
     parser.add_argument(
         '--tgt_adata_folder',
         type=str,
-        # default='./T_perturb/tokenized_data/eb/h5ad_pairing_hvg_tgt',
         default=('./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt'),
         help='path to tgt',
     )
@@ -171,22 +143,6 @@ def get_args(argv):
     parser.add_argument('--num_node', type=int, default=1)
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
-    )
-    parser.add_argument(
-        '--max_len',
-        type=int,
-        default=300,
-        # default=2048,
-        # default=263,
-        help='max sequence length',
-    )
-    parser.add_argument(
-        '--tgt_vocab_size',
-        type=int,
-        # default=1261,
-        # default=15280,
-        default=1997,
-        help='vocab size (max token id + 1) in dataset for padding',
     )
     parser.add_argument(
         '--cellgen_lr', type=float, default=0.0001, help='learning rate'
@@ -207,7 +163,6 @@ def get_args(argv):
     parser.add_argument(
         '--condition_keys',
         nargs='+',
-        # default='Cell_culture_batch',
         default=None,
         type=str,
         help='Selection of condition keys to use for model',
@@ -240,10 +195,8 @@ def get_args(argv):
     )
     parser.add_argument(
         '--var_list',
-        # type=list,
         nargs='+',
         type=str,
-        # default=['Time_point'],
         default=['Cell_population', 'Cell_type', 'Time_point', 'Donor'],
         help='List of variables to keep in the dataset',
     )
@@ -255,11 +208,9 @@ def get_args(argv):
     )
     parser.add_argument(
         '--encoder',
-        default='GF_frozen',
+        default='scmaskgit',
         type=str,
         choices=[
-            'GF_fine_tuned',
-            'GF_frozen',
             'Transformer_encoder',
             'scmaskgit',
         ],
@@ -362,6 +313,38 @@ def main(argv=None) -> None:
     src_dataset = load_from_disk(args.src_dataset)
     src_adata = sc.read_h5ad(args.src_adata)
 
+    # select max input id and max len across all tgt datasets
+    max_tgt_input_id = 0
+    max_len = 0
+    for keys, dataset in tgt_datasets.items():
+        # print max input id
+        input_id = dataset['input_ids']
+        max_tgt_input_id = max(max(max(input_id)), max_tgt_input_id)
+        max_len = max(max_len, max([len(x) for x in input_id]))
+    max_tgt_input_id = max_tgt_input_id + 1 # add 1 for padding
+    max_len = max(max_len, max([len(x) for x in src_dataset['input_ids']]))
+    print(
+        f'---PerturbGen training --- \n'
+        f'Target vocab size: {max_tgt_input_id}, max sequence length: {max_len}'
+    )
+
+    V = max_tgt_input_id + 50
+    for keys, dataset in tgt_datasets.items():
+        k = keys
+
+        ds = dataset
+        bad = []
+        for i in range(min(5000, len(ds))):
+            ids = ds[i]["input_ids"]
+            if ids:
+                lo, hi = min(ids), max(ids)
+                if lo < 0 or hi >= V:
+                    bad.append((i, lo, hi, ds[i].get("input_ids", None)))
+                if len(bad) > 0:
+                    print(k, "bad count:", len(bad), "first:", bad[:10])
+                    raise ValueError(f"Dataset {k} has out of bounds token ids")
+
+
     if args.loss_mode == 'mse':
         # log normalize data only for mse loss
         sc.pp.normalize_total(src_adata, target_sum=1e4)
@@ -375,16 +358,15 @@ def main(argv=None) -> None:
     # create dictionnary of metadata for classifier-free guidance
     # needs to be completed before any filtering to initialize
     # all condition tokens
-    token_no = args.tgt_vocab_size
     if args.cond_list is not None:
         full_dataset = concatenate_datasets([src_dataset] + list(tgt_datasets.values()))
         condition_dict = {}
         for condition in args.cond_list:
             condition_dict[condition] = {
-                cell_type: i + token_no
+                cell_type: i + max_tgt_input_id
                 for i, cell_type in enumerate(full_dataset.unique(condition))
             }
-            token_no += len(condition_dict[condition])
+            max_tgt_input_id += len(condition_dict[condition])
     else:
         condition_dict = None
 
@@ -402,10 +384,6 @@ def main(argv=None) -> None:
                 args.filter_cond,
                 args.filter_var,
             )
-            # if len(filter_idx) == 0:
-            #     filtered_dataset = None
-            # else:
-            #     filtered_dataset = dataset.select(idx_)
             filter_idx.extend(idx_)
 
     if len(filter_idx) > 0:
@@ -413,16 +391,12 @@ def main(argv=None) -> None:
         filter_idx = list(set(filter_idx))
         for i in range(len(tgt_datasets)):
             t = i + 1
-            print('before filtering',tgt_adata.shape)
             tgt_dataset = tgt_datasets[f'tgt_dataset_t{t}']
             tgt_adata = tgt_adatas[f'tgt_h5ad_t{t}']
             tgt_dataset = tgt_dataset.select(filter_idx)
             tgt_datasets[f'tgt_dataset_t{t}'] = tgt_dataset
             tgt_adata = tgt_adata[filter_idx, :]
-            print('after filtering', tgt_adata.shape)
             tgt_adatas[f'tgt_h5ad_t{t}'] = tgt_adata
-        # for i, dataset in tgt_datasets.items():
-        #     tgt_datasets[i] = dataset.select(filter_idx)
         src_dataset = src_dataset.select(filter_idx)
         src_adata = src_adata[filter_idx, :]
         if args.gene_embs_condition is not None:
@@ -460,7 +434,6 @@ def main(argv=None) -> None:
             all_pred_dataset = concatenate_datasets(list(pred_dataset.values()))
             # check if filter_cond is the same as all_pred_dataset
             gene_embs_list = all_pred_dataset.unique(args.gene_embs_condition)
-            print(gene_embs_list)
             print(
                 f'Return gene embs for {gene_embs_list} '
                 f'in {args.gene_embs_condition}.'
@@ -510,8 +483,6 @@ def main(argv=None) -> None:
                 test_prop=args.test_prop,
                 seed=args.seed,
             )
-        # elif split == 'unseen_donor':
-        #     train, val, test = unseen_donor_split()
         else:
             raise ValueError(
                 "split is not available, must be either '"
@@ -538,19 +509,20 @@ def main(argv=None) -> None:
     adata_idx = adata_idx.tolist()
     dataset_idx = list(map(str, subset_dataset['cell_pairing_index']))
     assert adata_idx == dataset_idx, (
-        'Cell pairing indices do not match ' 'between AnnData and Dataset objects'
+        'Cell pairing indices do not match ' 
+        'between AnnData and Dataset objects'
     )
     # count number of unique timepoints
     n_total_tps = len(tgt_adatas)
     # Initialize model module
     # ----------------------------------------------------------------------------------
     test_kwargs = {
-        'tgt_vocab_size': token_no + 50,  # add 50 for extra tokens
+        'tgt_vocab_size': max_tgt_input_id + 50,  # add 50 for extra tokens
         'd_model': args.d_model,
         'num_heads': 8,
         'num_layers': args.num_layers,
         'd_ff': args.d_ff,
-        'max_seq_length': args.max_len + 100,
+        'max_seq_length': max_len + 100,
         'dropout': 0,
         'generate': args.generate,
         'context_tps': args.context_tps,
@@ -587,12 +559,9 @@ def main(argv=None) -> None:
         test_kwargs['ckpt_masking_path'] = args.ckpt_masking_path
         test_kwargs['ckpt_count_path'] = args.ckpt_count_path
         test_kwargs['loss_mode'] = args.loss_mode
-        test_kwargs['d_condc'] = args.d_condc
-        test_kwargs['d_condt'] = args.d_condt
         test_kwargs['layer_norm'] = args.layer_norm
         test_kwargs['dropout'] = args.count_dropout
         test_kwargs['use_positional_encoding'] = args.use_positional_encoding
-        test_kwargs['add_cell_time'] = args.add_cell_time
         test_kwargs['weight_decay'] = args.count_wd
         test_kwargs['lr'] = args.count_lr
         test_kwargs['conditions'] = conditions_
@@ -621,7 +590,7 @@ def main(argv=None) -> None:
         'batch_size': args.batch_size,
         'num_workers': args.n_workers,
         'shuffle': args.shuffle,
-        'max_len': args.max_len,
+        'max_len': max_len,
         'split': args.split,
         'src_counts': src_counts,
         'tgt_counts_dict': tgt_counts_dict,
@@ -679,24 +648,13 @@ def main(argv=None) -> None:
     # further information.
     # Lightning allows for simple multi-gpu training, gradient accumulation, half
     # precision training, etc. using the trainer class.
-
-    # deepspeed_strategy = DeepSpeedStrategy(
-    #     stage=2,
-    # )
-    # if torch.cuda.is_available():
-    #     cuda_device_name = torch.cuda.get_device_name()
-    # if ('A100' in cuda_device_name) or ('NVIDIA H100 80GB HBM' in cuda_device_name):
-    #     print(f'Using {cuda_device_name} for training')
-    #     precision = 'bf16-mixed'
-    # else:
-    #     precision = '16-mixed'
     ddp_strategy = DDPStrategy(find_unused_parameters=False)
     trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=[TQDMProgressBar(refresh_rate=10)],
         accelerator=accelerator,
         num_nodes=args.num_node,
-        devices=-1 if torch.cuda.is_available() else 0,  # inference only on one gpu
+        devices=-1 if torch.cuda.is_available() else 1,  # inference only on one gpu
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
     )
     # Finally, kick of the training process.

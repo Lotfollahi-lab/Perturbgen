@@ -9,10 +9,11 @@ import evaluate
 import numpy as np
 import torch
 
+
 from torch.nn.functional import cosine_similarity
 
 from perturbgen.Model.trainer import CountDecoderTrainer
-from perturbgen.Perturb.T_model import PerturberCountDecoder, PerturberMasking
+from perturbgen.Perturb.transformer import PerturberCountDecoder, PerturberMasking
 from perturbgen.src.utils import (
     compute_rouge_score,
     concat_cond_tokens,
@@ -37,8 +38,8 @@ class PerturberTrainer(CountDecoderTrainer):
         use_count_decoder: bool = False,
         pad_condition: bool = False,
         batch_size: int = 16,
-        # gene_module_list: List[str] | None = None,
-        # num_of_background_genes: int | None = None,
+        use_size_factor: bool = True,
+        use_observed_size_factor: bool = True,
         *args,
         **kwargs,
     ):
@@ -177,8 +178,6 @@ class PerturberTrainer(CountDecoderTrainer):
             self.decoder = PerturberCountDecoder(
                 pretrained_model=self.pretrained_model,
                 loss_mode=kwargs['loss_mode'],
-                d_condc=kwargs['d_condc'] if 'd_condc' in kwargs else None,
-                d_condt=kwargs['d_condt'] if 'd_condt' in kwargs else None,
                 layer_norm=kwargs['layer_norm'] if 'layer_norm' in kwargs else False,
                 max_seq_length=kwargs['max_seq_length'],
                 use_positional_encoding=(
@@ -188,15 +187,14 @@ class PerturberTrainer(CountDecoderTrainer):
                 ),
                 encoder=kwargs['encoder'],
                 pos_encoding_mode=kwargs['pos_encoding_mode'],
-                add_cell_time=kwargs['add_cell_time']
-                if 'add_cell_time' in kwargs
-                else None,
                 d_model=kwargs['d_model'],
                 dropout=kwargs['dropout'],
                 pred_tps=kwargs['pred_tps'],
                 context_tps=kwargs['context_tps'] if 'context_tps' in kwargs else None,
                 n_total_tps=kwargs['n_total_tps'],
                 n_genes=kwargs['n_genes'],
+                use_size_factor=use_size_factor,
+                use_observed_size_factor=use_observed_size_factor
             )
 
         for key in [
@@ -285,7 +283,7 @@ class PerturberTrainer(CountDecoderTrainer):
                 # exclude padding token to keep the same sequence length
                 input_ids = input_ids[:, : -len(token_to_perturb)]
                 token_to_perturb = token_to_perturb.expand(input_ids.shape[0], -1)
-                if perturbation_sequence == 'tgt':
+                if 'tgt' in perturbation_sequence:
                     input_ids = torch.cat(
                         (
                             token_to_perturb,
@@ -293,7 +291,7 @@ class PerturberTrainer(CountDecoderTrainer):
                         ),
                         dim=1,
                     )
-                elif perturbation_sequence == 'src':
+                elif 'src' in perturbation_sequence:
                     input_ids = torch.cat(
                         (
                             input_ids[:, 0:1],
@@ -457,36 +455,54 @@ class PerturberTrainer(CountDecoderTrainer):
             )
 
     def test_step(self, batch, *args, **kwargs):
-        if self.tgt_pert_tokens is not None:
-            pert_tps_ = self.pert_tps
-            # remove cells where perturbed gene is not present
+        # exclude cells without expressed genes for knockout simulation
+        if self.perturbation_mode in ['mask', 'pad', 'delete']:
+            if self.tgt_pert_tokens is not None:
+                
+                pert_tps_ = self.pert_tps
+                
 
-            tgt_mask_list = []
-            for t in pert_tps_:
-                tgt_mask = torch.isin(
-                    batch[f'tgt_input_ids_t{t}'], self.tgt_pert_tokens
-                )
-                tgt_mask = tgt_mask.sum(dim=1).detach().cpu().numpy()
-                tgt_mask_list.append(tgt_mask)
-            tgt_mask = np.sum(tgt_mask_list, axis=0)
+                tgt_mask_list = []
+                if pert_tps_ is None:
+                    raise ValueError(
+                        'Please specify the pert_tps to filter cells'
+                        'where genes should be perturbed in the target sequence'
+                    )
+                for t in pert_tps_:
+                    tgt_mask = torch.isin(
+                        batch[f'tgt_input_ids_t{t}'], self.tgt_pert_tokens
+                    )
+                    tgt_mask = tgt_mask.sum(dim=1).detach().cpu().numpy()
+                    tgt_mask_list.append(tgt_mask)
+                tgt_mask = np.sum(tgt_mask_list, axis=0)
 
-        if self.src_pert_tokens is not None:
-            src_mask = torch.isin(batch['src_input_ids'], self.src_pert_tokens)
-            src_mask = src_mask.sum(dim=1).detach().cpu().numpy()
-        # combine tgt and src mask
-        if self.tgt_pert_tokens is not None and self.src_pert_tokens is not None:
-            # use logical OR to combine tgt and src mask
-            remove_cells_wo_pert = tgt_mask + src_mask > 0
-        elif self.tgt_pert_tokens is not None:
-            remove_cells_wo_pert = tgt_mask > 0
-        elif self.src_pert_tokens is not None:
-            remove_cells_wo_pert = src_mask > 0
-        else:
+            if self.src_pert_tokens is not None:
+                src_mask = torch.isin(batch['src_input_ids'], self.src_pert_tokens)
+                src_mask = src_mask.sum(dim=1).detach().cpu().numpy()
+            # combine tgt and src mask
+            if self.tgt_pert_tokens is not None and self.src_pert_tokens is not None:
+                # use logical OR to combine tgt and src mask
+                remove_cells_wo_pert = tgt_mask + src_mask > 0
+            elif self.tgt_pert_tokens is not None:
+                remove_cells_wo_pert = tgt_mask > 0
+            elif self.src_pert_tokens is not None:
+                remove_cells_wo_pert = src_mask > 0
+            else:
+                remove_cells_wo_pert = np.ones(batch['src_input_ids'].shape[0], dtype=bool)
+        elif self.perturbation_mode == 'overexpress':
+            # in overexpress mode we do not filter cells
+            # because we want to keep all cells
+            # even if the gene is not expressed
             remove_cells_wo_pert = np.ones(batch['src_input_ids'].shape[0], dtype=bool)
+        else:
+            raise ValueError(
+                f'Invalid perturbation mode: {self.perturbation_mode}:'
+                f'Choose between "mask", "pad", "delete" or "overexpress"'
+            )
+
         # if all cells are removed where boolean mask is all False
         if np.sum(remove_cells_wo_pert) > 0:
             # remove cells without perturbation
-            # filtered_batch = batch
             filtered_batch = {
                 k: self.apply_mask(v, remove_cells_wo_pert)
                 for k, v in batch.items()
@@ -568,11 +584,10 @@ class PerturberTrainer(CountDecoderTrainer):
                     perturbed_gene = perturbed_gene[:, cond_len:, :]
                     true_ids = true_ids[:, cond_len:]
                     perturbed_ids = perturbed_ids[:, cond_len:]
-
                 if (self.perturbation_mode == 'delete') or (
                     self.perturbation_mode == 'overexpress'
                 ):
-                    if self.perturbation_sequence == 'tgt':
+                    if 'tgt' in self.perturbation_sequence:
                         # create a mask for perturbed gene
                         if self.perturbation_mode == 'overexpress':
                             # remove overexpressed genes from
@@ -603,7 +618,6 @@ class PerturberTrainer(CountDecoderTrainer):
                             perturbed_ids = perturbed_ids[
                                 :, len(self.tgt_pert_tokens) :
                             ]
-
                         # check if true_gene_ids is equal to perturbed_gene_ids
                         torch.allclose(true_ids, perturbed_ids)
 
@@ -636,28 +650,12 @@ class PerturberTrainer(CountDecoderTrainer):
                 mean_cos_sim_l1 = mean_cos_sim_l1.detach().cpu().to(torch.float16)
                 mean_cos_sim_lmid = mean_cos_sim_lmid.detach().cpu().to(torch.float16)
                 gene_cos_sim = gene_cos_sim.detach().cpu().to(torch.float16)
-                # true_cls = true_cls.detach().cpu().to(torch.float16)
-                # perturbed_cls = perturbed_cls.detach().cpu().to(torch.float16)
                 true_mean_embs = true_mean_embs.detach().cpu().to(torch.float16)
                 perturbed_mean_embs = (
                     perturbed_mean_embs.detach().cpu().to(torch.float16)
                 )
 
-                # mean_cos_sim = mean_cos_sim[dupl_outside_batch]
-                # mean_cos_sim_l1 = mean_cos_sim_l1[dupl_outside_batch]
-                # mean_cos_sim_lmid = mean_cos_sim_lmid[dupl_outside_batch]
-                # gene_cos_sim = gene_cos_sim[dupl_outside_batch]
-                # true_mean_embs = true_mean_embs[dupl_outside_batch]
-                # perturbed_mean_embs = perturbed_mean_embs[dupl_outside_batch]
-                # mean_cos_sim = mean_cos_sim[dupl_within_batch]
-                # mean_cos_sim_l1 = mean_cos_sim_l1[dupl_within_batch]
-                # mean_cos_sim_lmid = mean_cos_sim_lmid[dupl_within_batch]
-                # gene_cos_sim = gene_cos_sim[dupl_within_batch]
-                # true_mean_embs = true_mean_embs[dupl_within_batch]
-                # perturbed_mean_embs = perturbed_mean_embs[dupl_within_batch]
                 self.test_dict['mean_cosine_similarity'].append(mean_cos_sim)
-                # self.test_dict['mean_cosine_similarity_l1'].append(mean_cos_sim_l1)
-                # self.test_dict['mean_cosine_similarity_lmid'].append(mean_cos_sim_lmid)
                 self.test_dict['gene_cosine_similarity'].append(gene_cos_sim)
                 self.test_dict['true_cls'].append(true_mean_embs)
                 self.test_dict['perturbed_cls'].append(perturbed_mean_embs)
@@ -666,12 +664,6 @@ class PerturberTrainer(CountDecoderTrainer):
                         true_counts_ = filtered_batch[f'tgt_counts_t{t}'].detach().cpu()
                         pred_counts_ = pred_counts[t].detach().cpu()
                         pert_counts_ = pert_counts[t].detach().cpu()
-                        # true_counts_ = true_counts_[dupl_outside_batch]
-                        # pred_counts_ = pred_counts_[dupl_outside_batch]
-                        # pert_counts_ = pert_counts_[dupl_outside_batch]
-                        # true_counts_ = true_counts_[dupl_within_batch]
-                        # pred_counts_ = pred_counts_[dupl_within_batch]
-                        # pert_counts_ = pert_counts_[dupl_within_batch]
                         self.test_dict['true_counts'].append(true_counts_)
                         self.test_dict['pred_counts'].append(pred_counts_)
                         self.test_dict['pert_counts'].append(pert_counts_)
@@ -682,11 +674,12 @@ class PerturberTrainer(CountDecoderTrainer):
                     for var in self.var_list:
                         # remove duplicates
                         var_values = np.array(filtered_batch[f'{var}_t{t}'])
-                        # var_values = var_values[dupl_outside_batch]
-                        # var_values = var_values[dupl_within_batch]
                         self.test_dict[var].append(var_values)
         else:
-            pass
+            print(
+                f'No cells with perturbed genes {self.genes_to_perturb} '
+                f'found in the batch. Skipping test step.'
+            )
 
     def on_test_epoch_end(self):
         obs_key = self.var_list if len(self.var_list) > 0 else []

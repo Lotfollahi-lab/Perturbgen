@@ -1,5 +1,3 @@
-"""Script for training a classifier on with Pytorch Lightning."""
-
 import argparse
 import os
 import uuid
@@ -10,7 +8,6 @@ import scanpy as sc
 import torch
 from datasets import concatenate_datasets, load_from_disk
 
-# from pytorch_lightning import Callback
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy, DeepSpeedStrategy
@@ -26,16 +23,10 @@ from perturbgen.src.utils import (
     stratified_split,
 )
 
-# from pytorch_lightning.utilities.deepspeed import (
-#     convert_zero_checkpoint_to_fp32_state_dict,
-# )
-
-
 os.chdir(ROOT)
 print(f'Current working directory: {os.getcwd()}')
 
-
-def get_args(argv):
+def get_args(args=None):
     """Get command line arguments."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -60,13 +51,11 @@ def get_args(argv):
         '--output_dir',
         type=str,
         default='./T_perturb/perturbgen/plt/res/cytoimmgen/pbmc_median',
-        # default='./T_perturb/perturbgen/plt/res/eb',
         help='store dataset name',
     )
     parser.add_argument(
         '--splitting_mode',
         type=str,
-        # default='random',
         default='stratified',
         choices=['random', 'stratified', 'unseen_cond'],
         help='splitting mode',
@@ -76,7 +65,6 @@ def get_args(argv):
         type=str,
         nargs='+',
         default=['cell_type_cellgen_harm'],
-        # default=['Cell_type'],
     )
     parser.add_argument(
         '--ckpt_masking_path',
@@ -88,50 +76,29 @@ def get_args(argv):
         '--src_dataset',
         type=str,
         default='./T_perturb/tokenized_data/eb/dataset_hvg_src/Day 00-03.dataset',
-        # default=(
-        #     './T_perturb/tokenized_data/eb/'
-        #     'dataset_all_src/eb_all_Day 00-03.dataset'
-        # ),
-        # default='./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_src/0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
         '--tgt_dataset_folder',
         type=str,
         default='./T_perturb/tokenized_data/eb/dataset_hvg_tgt',
-        # default='./T_perturb/tokenized_data/eb/dataset_all_tgt',
-        # default='./T_perturb/tokenized_data/cytoimmgen/dataset_hvg_tgt',
         help='path to tokenised activated data',
     )
     parser.add_argument(
         '--src_adata',
         type=str,
         default='./T_perturb/tokenized_data/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
-        # default=(
-        #     './T_perturb/perturbgen/pp/'
-        #     'res/eb/h5ad_pairing_all_src/eb_all_Day 00-03.h5ad'
-        # ),
-        # default='./T_perturb/tokenized_data/cytoimmgen/'
-        # 'h5ad_pairing_hvg_src/0h.h5ad',
         help='path to src',
     )
     parser.add_argument(
         '--tgt_adata_folder',
         type=str,
         default='./T_perturb/tokenized_data/eb/h5ad_pairing_hvg_tgt',
-        # default='./T_perturb/tokenized_data/eb/h5ad_pairing_all_tgt',
-        # default='./T_perturb/tokenized_data/cytoimmgen/h5ad_pairing_hvg_tgt',
         help='path to tgt',
     )
     parser.add_argument(
         '--mapping_dict_path',
         type=str,
-        # default='./T_perturb/tokenized_data/eb/token_id_to_genename_hvg.pkl',
-        # default='./T_perturb/tokenized_data/eb/token_id_to_genename_all.pkl'
-        # default=(
-        #     'T_perturb/tokenized_data/'
-        #     'cytoimmgen_pbmc_median/token_id_to_genename_2000_hvg.pkl'
-        # ),
         default=(
             '/lustre/scratch126/cellgen/team298/dv8/trace_paper/'
             'trace_final/T_perturb/tokenized_data/'
@@ -142,8 +109,6 @@ def get_args(argv):
     parser.add_argument('--num_node', type=int, default=1)
     parser.add_argument('--use_positional_encoding', type=str2bool, default=False)
     parser.add_argument('--layer_norm', type=str2bool, default=False)
-    parser.add_argument('--add_cell_time', type=str2bool, default=False)
-
     parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle')
     parser.add_argument(
         '--epochs', type=int, default=5, help='number of training epochs'
@@ -152,25 +117,8 @@ def get_args(argv):
         '--log_dir', type=str, default='logs', help='path to data directory'
     )
     parser.add_argument(
-        '--max_len',
-        type=int,
-        # default=300,
-        default=666,
-        # default=400,
-        help='max sequence length',
-    )  # check how many genes there are
-    parser.add_argument(
-        '--tgt_vocab_size',
-        type=int,
-        # default=1261,
-        default=1990,
-        # default=1360,
-        help='vocab size (max token id + 1) in dataset for padding',
-    )
-    parser.add_argument(
         '--cellgen_lr', type=float, default=0.0001, help='learning rate'
     )
-
     parser.add_argument('--count_lr', type=float, default=0.00005, help='learning rate')
     parser.add_argument('--cellgen_wd', type=float, default=0.0001, help='weight decay')
     parser.add_argument('--count_wd', type=float, default=0.01, help='weight decay')
@@ -178,11 +126,10 @@ def get_args(argv):
         '--num_layers', type=int, default=6, help='number of decoder layers'
     )
     parser.add_argument('--d_ff', type=int, default=64, help='feed forward dimension')
-
     parser.add_argument('--mlm_prob', type=float, default=0.15, help='mlm probability')
     parser.add_argument(
         '--n_workers', type=int, default=4, help='number of workers'
-    )  # 64
+    )
     parser.add_argument(
         '--loss_mode', type=str, default='zinb', help='loss mode [zinb, nb, mse]'
     )
@@ -192,7 +139,6 @@ def get_args(argv):
         '--condition_keys',
         nargs='+',
         default=None,
-        # default='Cell_culture_batch',
         type=str,
         help='Selection of condition keys to use for model',
     )
@@ -224,18 +170,9 @@ def get_args(argv):
     )
     parser.add_argument(
         '--var_list',
-        # type=list,
         nargs='+',
         type=str,
-        # default=[
-        #     'Time_point',
-        #     'Cell_type',
-        #     'Cell_culture_batch',
-        #     'Cell_population',
-        #     'Donor',
-        # ],
         default=['cell_type_cellgen_harm', 'donor_cellgen_harm', 'time_after_LPS'],
-        # default=['celltype_v2', 'sex', 'phase', 'tissue', 'diff_state'],
         help='List of variables to keep in the dataset',
     )
     parser.add_argument(
@@ -260,8 +197,6 @@ def get_args(argv):
         default='scmaskgit',
         type=str,
         choices=[
-            'GF_fine_tuned',
-            'GF_frozen',
             'Transformer_encoder',
             'scmaskgit',
         ],
@@ -298,18 +233,6 @@ def get_args(argv):
         help='context mode for timepoints',
     )
     parser.add_argument(
-        '--d_condc',
-        type=int,
-        default=1,
-        help='One Hot dimension',
-    )
-    parser.add_argument(
-        '--d_condt',
-        type=int,
-        default=768,
-        help='One Hot dimension',
-    )
-    parser.add_argument(
         '--d_model',
         type=int,
         default=768,
@@ -327,14 +250,19 @@ def get_args(argv):
         default=False,
         help='use weighted sampler',
     )
-    args = parser.parse_args(argv)
+    parser.add_argument(
+        '--ckpt_every_n_epochs',
+        type=int,
+        default=10,
+        help='save checkpoint every n epochs',
+    )
+    args = parser.parse_args(args)
     return args
-
+import perturbgen.Model.trainer as trainer_mod
+import inspect
 
 def main(argv=None) -> None:
-    # for reproducible results
-    # torch.backends.cudnn.benchmark = False
-    # torch.backends.cudnn.deterministic = True
+
     """Run training."""
     args = get_args(argv)
     # PyTorch Lightning allows to set all necessary seeds in one function call.
@@ -347,6 +275,35 @@ def main(argv=None) -> None:
     tgt_adatas = read_dataset_files(args.tgt_adata_folder, 'h5ad')
     src_dataset = load_from_disk(args.src_dataset)
     src_adata = sc.read_h5ad(args.src_adata)
+    # select max input id and max len across all tgt datasets
+    max_tgt_input_id = 0
+    max_len = 0
+    for keys, dataset in tgt_datasets.items():
+        input_id = dataset['input_ids']
+        max_tgt_input_id = max(max(max(input_id)), max_tgt_input_id)
+        max_len = max(max_len, max([len(x) for x in input_id]))
+    max_tgt_input_id = max_tgt_input_id + 1 # add 1 for padding
+    max_len = max(max_len, max([len(x) for x in src_dataset['input_ids']]))
+    print(
+        f'---PerturbGen training --- \n'
+        f'Target vocab size: {max_tgt_input_id}, max sequence length: {max_len}'
+    )
+
+    V = max_tgt_input_id + 50
+    for keys, dataset in tgt_datasets.items():
+        k = keys
+
+        ds = dataset
+        bad = []
+        for i in range(min(5000, len(ds))):
+            ids = ds[i]["input_ids"]
+            if ids:
+                lo, hi = min(ids), max(ids)
+                if lo < 0 or hi >= V:
+                    bad.append((i, lo, hi, ds[i].get("input_ids", None)))
+                if len(bad) > 0:
+                    print(k, "bad count:", len(bad), "first:", bad[:10])
+                    raise ValueError(f"Dataset {k} has out of bounds token ids")
 
     # use the tmp adata for all operation
     # where the metadata and information is shared across timepoints
@@ -372,8 +329,6 @@ def main(argv=None) -> None:
                 test_prop=args.test_prop,
                 seed=42,
             )
-        # elif split == 'unseen_donor':
-        #     train, val, test = unseen_donor_split()
         else:
             raise ValueError(
                 "split is not available, must be either '"
@@ -387,7 +342,6 @@ def main(argv=None) -> None:
     else:
         # return all the indices
         train_indices = list(range(len(src_dataset)))
-        # train_indices = list(range(100))
         val_indices = None
         test_indices = list(
             range(len(tgt_datasets[f'tgt_dataset_t{args.pred_tps[0]}']))
@@ -418,10 +372,6 @@ def main(argv=None) -> None:
         )
     # count number of unique timepoints
     n_total_tps = len(tgt_adatas)
-
-    # create dictionnary of metadata for classifier-free guidance
-    token_no = args.tgt_vocab_size
-
     # create full dataset to extract metadata for conditioning
     dataset_list = [src_dataset]
     for dataset in tgt_datasets.values():
@@ -431,22 +381,22 @@ def main(argv=None) -> None:
         condition_dict = {}
         for condition in args.cond_list:
             condition_dict[condition] = {
-                cell_type: i + token_no
+                cell_type: i + max_tgt_input_id
                 for i, cell_type in enumerate(full_dataset.unique(condition))
             }
-            token_no += len(condition_dict[condition])
+            max_tgt_input_id += len(condition_dict[condition])
     else:
         condition_dict = None
 
     # Initialize model module
     # ----------------------------------------------------------------------------------
     trainer_kwargs = {
-        'tgt_vocab_size': token_no + 50,  # add 50 for extra tokens
+        'tgt_vocab_size': max_tgt_input_id + 50,  # add 50 for extra tokens
         'd_model': args.d_model,
         'num_heads': 8,
         'num_layers': args.num_layers,
         'd_ff': args.d_ff,
-        'max_seq_length': args.max_len + 100,
+        'max_seq_length': max_len + 100,
         'mask_scheduler': args.mask_scheduler,
         'pred_tps': args.pred_tps,
         'context_tps': args.context_tps,
@@ -472,11 +422,8 @@ def main(argv=None) -> None:
         trainer_kwargs['ckpt_masking_path'] = args.ckpt_masking_path
         trainer_kwargs['ckpt_count_path'] = None
         trainer_kwargs['loss_mode'] = args.loss_mode
-        trainer_kwargs['d_condc'] = args.d_condc
-        trainer_kwargs['d_condt'] = args.d_condt
         trainer_kwargs['layer_norm'] = args.layer_norm
         trainer_kwargs['use_positional_encoding'] = args.use_positional_encoding
-        trainer_kwargs['add_cell_time'] = args.add_cell_time
         trainer_kwargs['lr'] = args.count_lr
         trainer_kwargs['weight_decay'] = args.count_wd
         trainer_kwargs['conditions'] = conditions_
@@ -486,7 +433,6 @@ def main(argv=None) -> None:
         trainer_kwargs['iterations'] = args.iterations
         trainer_kwargs['n_genes'] = src_adata.shape[1]
         trainer_kwargs['dropout'] = args.count_dropout
-        # trainer_kwargs['use_positional_encoding'] = args.use_positional_encoding
         decoder_module = CountDecoderTrainer(**trainer_kwargs)
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
@@ -510,7 +456,7 @@ def main(argv=None) -> None:
         'batch_size': per_gpu_batch_size,
         'num_workers': args.n_workers,
         'shuffle': args.shuffle,
-        'max_len': args.max_len,
+        'max_len': max_len,
         'split': args.split,
         'train_indices': train_indices,
         'val_indices': val_indices,
@@ -521,7 +467,7 @@ def main(argv=None) -> None:
         'var_list': args.var_list,
         'use_weighted_sampler': args.use_weighted_sampler,
         'sampling_keys': args.sampling_keys,
-        'seed': args.seed,
+        'seed': 42, # fix seed for shuffling for reproducibility
     }
     if args.train_mode == 'masking':
         # TODO: Do not pass src into DataModule
@@ -578,7 +524,7 @@ def main(argv=None) -> None:
         dirpath=checkpoint_path,
         filename=f'{filename}-' + '{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=1,
+        every_n_epochs=args.ckpt_every_n_epochs,
         verbose=True,
         monitor=monitor_metric,
         mode=mode,
@@ -613,65 +559,9 @@ def main(argv=None) -> None:
     if args.parallel_distribution == 'deepspeed':
         parallel_comp_strategy = DeepSpeedStrategy(
             stage=2,
-            # offload_optimizer=True,
-            # offload_parameters=True,
         )
     elif args.parallel_distribution == 'ddp':
         parallel_comp_strategy = DDPStrategy(find_unused_parameters=False)
-
-    # if torch.cuda.is_available():
-    #     cuda_device_name = torch.cuda.get_device_name()
-    # if ('A100' in cuda_device_name) or ('NVIDIA H100 80GB HBM' in cuda_device_name):
-    #     print(f'Using {cuda_device_name} for training')
-    #     precision = 'bf16-mixed'
-    # else:
-    #     precision = '16-mixed'
-    # # After each epoch, convert DeepSpeed checkpoint to FP32 and save
-    # class DeepSpeedCheckpointConverter(Callback):
-    #     def __init__(self, checkpoint_path, filename, save_interval=5):
-    #         super().__init__()
-    #         self.checkpoint_path = checkpoint_path
-    #         print(f'Checkpoint path: {checkpoint_path}')
-    #         self.filename = filename
-    #         print(f'Filename: {filename}')
-    #         self.save_interval = save_interval
-
-    #     def on_train_epoch_end(self, trainer, pl_module):
-    #         # Only save at specified intervals
-    #         if trainer.current_epoch % self.save_interval == 0:
-    #             # Try accessing DeepSpeed through pl_module
-    #             deepspeed_engine = getattr(pl_module, 'deepspeed', None)
-
-    #             if isinstance(trainer.strategy, DeepSpeedStrategy):
-    #                 # Define DeepSpeed checkpoint path
-    #                 deepspeed_epoch_checkpoint_path = os.path.join(
-    #                     self.checkpoint_path, f'epoch_{trainer.current_epoch:02d}'
-    #                 )
-
-    #                 # Save the checkpoint using DeepSpeed’s save_checkpoint method
-    #                 deepspeed_engine.save_checkpoint(deepspeed_epoch_checkpoint_path)
-    #                 print(
-    #                     f'DeepSpeed checkpoint saved at'
-    #                     f'{deepspeed_epoch_checkpoint_path}'
-    #                 )
-
-    #                 # Convert the DeepSpeed checkpoint to FP32 format
-    #                 fp32_state_dict = os.path.join(
-    #                     self.checkpoint_path,
-    #                     f'{self.filename}-epoch={trainer.current_epoch:02d}-fp32.pth',
-    #                 )
-    #                 convert_zero_checkpoint_to_fp32_state_dict(
-    #                     zero_checkpoint_path=deepspeed_epoch_checkpoint_path,
-    #                     output_path=fp32_state_dict,
-    #                 )
-    #                 print(f'FP32 checkpoint saved at {fp32_state_dict}')
-    #             else:
-    #                 print('DeepSpeed not initialized in pl_module')
-
-    # deepspeed_convert_ckpt = DeepSpeedCheckpointConverter(
-    #     checkpoint_path=checkpoint_path, filename=filename
-    # )
-    # If the device is an A100, set the precision for matrix multiplication
 
     trainer = pl.Trainer(
         logger=wandb_logger,
@@ -680,11 +570,8 @@ def main(argv=None) -> None:
             early_stop_callback,
             checkpoint_callback,
         ],
-        # accumulate_grad_batches=10,
         max_epochs=args.epochs,
         accelerator=accelerator,
-        # precision=precision,
-        # gradient_clip_val=1.0,
         devices=-1 if torch.cuda.is_available() else 1,
         num_nodes=args.num_node,
         strategy=parallel_comp_strategy if torch.cuda.device_count() > 1 else 'auto',
@@ -720,23 +607,6 @@ def main(argv=None) -> None:
         trainer.fit(decoder_module, data_module)
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
-
-    # # #collate deepzero checkpoint
-    # if torch.cuda.device_count() > 1:
-    #     checkpoint_path = os.path.join(
-    #         checkpoint_path,
-    #         f'{filename}-epoch={trainer.current_epoch}.ckpt'
-    #     )
-    #     print(f'Saving checkpoint to {checkpoint_path}')
-    # # check if checkpoint path exists
-    # if os.path.exists(checkpoint_path):
-
-    #     convert_zero_checkpoint_to_fp32_state_dict(
-    #         zero_checkpoint_path=checkpoint_path,
-    #         output_path=checkpoint_path,
-    #         tag='fp32'
-    #     )
-
 
 if __name__ == '__main__':
     main()

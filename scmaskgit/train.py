@@ -11,7 +11,6 @@ import scanpy as sc
 import torch
 from datasets import load_from_disk, Dataset
 
-# from pytorch_lightning import Callback
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy  # ,DeepSpeedStrategy
@@ -32,7 +31,6 @@ import wandb
 
 # from pytorch_lightning.utilities.deepspeed import (
 #     convert_zero_checkpoint_to_fp32_state_dict,
-# )
 
 
 if os.getcwd().split('/')[-1] != 'scmaskgit':
@@ -59,7 +57,6 @@ def get_args():
     parser.add_argument(
         '--output_dir',
         type=str,
-        # default='./T_perturb/T_perturb/plt/res/cytoimmgen',
         default='./output2/',
         help='store dataset name',
     )
@@ -67,7 +64,6 @@ def get_args():
         '--splitting_mode',
         type=str,
         default='random',
-        # default='stratified',
         choices=['random', 'stratified', 'unseen_cond'],
         help='splitting mode',
     )
@@ -75,7 +71,6 @@ def get_args():
         '--split_obs',
         type=str,
         nargs='+',
-        # default=['Donor', 'Cell_type'],
         default=['celltype_v2'],
     )
     parser.add_argument('--split_value', type=str, default='D351')
@@ -89,40 +84,29 @@ def get_args():
         '--src_dataset',
         type=str,
         default='/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/trace_corpus_tokenized_geneformerstyle.dataset',
-        # default='/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/trace_corpus_tokenized.dataset',
-        # default=(
-        #     './T_perturb/T_perturb/pp/res/eb/'
+        #     './T_perturb/perturbgen/pp/res/eb/'
         #     'dataset_all_src/eb_all_Day 00-03.dataset'
-        # ),
-        # default='./T_perturb/T_perturb/pp/res/cytoimmgen/dataset_hvg_src/0h.dataset',
         help='path to tokenised resting data',
     )
     parser.add_argument(
         '--src_adata',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
-        # default=(
-        #     './T_perturb/T_perturb/pp/'
+        default='./T_perturb/perturbgen/pp/res/eb/h5ad_pairing_hvg_src/Day 00-03.h5ad',
+        #     './T_perturb/perturbgen/pp/'
         #     'res/eb/h5ad_pairing_all_src/eb_all_Day 00-03.h5ad'
-        # ),
-        # default='./T_perturb/T_perturb/pp/res/cytoimmgen/'
         # 'h5ad_pairing_hvg_src/0h.h5ad',
         help='path to src',
     )
     parser.add_argument(
         '--tgt_adata_folder',
         type=str,
-        default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_hvg_tgt',
-        # default='./T_perturb/T_perturb/pp/res/eb/h5ad_pairing_all_tgt',
-        # default='./T_perturb/T_perturb/pp/res/cytoimmgen/h5ad_pairing_hvg_tgt',
+        default='./T_perturb/perturbgen/pp/res/eb/h5ad_pairing_hvg_tgt',
         help='path to tgt',
     )
     parser.add_argument(
         '--mapping_dict_path',
         type=str,
-        # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_hvg.pkl',
-        # default='./T_perturb/T_perturb/pp/res/eb/token_id_to_genename_all.pkl'
-        default='./T_perturb/T_perturb/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl',
+        default='./T_perturb/perturbgen/pp/res/cytoimmgen/token_id_to_genename_hvg.pkl',
     )
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle')
@@ -135,17 +119,13 @@ def get_args():
     parser.add_argument(
         '--max_len',
         type=int,
-        # default=300,
-        # default=2048,
         default=4096,
         help='max sequence length',
     )  # check how many genes there are
     parser.add_argument(
         '--tgt_vocab_size',
         type=int,
-        # default=1261,
         default=20274,
-        # default=26717,
         help='vocab size (max token id + 1) in dataset for padding',
     )
     parser.add_argument(
@@ -173,7 +153,6 @@ def get_args():
         '--condition_keys',
         nargs='+',
         default=None,
-        # default='Cell_culture_batch',
         type=str,
         help='Selection of condition keys to use for model',
     )
@@ -205,12 +184,8 @@ def get_args():
     )
     parser.add_argument(
         '--var_list',
-        # type=list,
         nargs='+',
         type=str,
-        # default=['Time_point'],
-        # default=['Cell_population', 'Cell_type', 'Time_point', 'Donor'],
-        # default=['celltype_v2', 'sex', 'phase', 'tissue', 'diff_state'],
         default=[],
         help='List of variables to keep in the dataset',
     )
@@ -260,8 +235,6 @@ def get_args():
 
 def main() -> None:
     # for reproducible results
-    # torch.backends.cudnn.benchmark = False
-    # torch.backends.cudnn.deterministic = True
     """Run training."""
     args = get_args()
     # PyTorch Lightning allows to set all necessary seeds in one function call.
@@ -271,20 +244,9 @@ def main() -> None:
     # ----------------------------------------------------------------------------------
     print('Loading and preprocessing data...')
     src_dataset = load_from_disk(args.src_dataset)
-    # src_dataset = src_dataset.select(range(10000))
-    # length = []
-    # for i in range(len(src_dataset)):
-    #     length.append(max(src_dataset[i]["input_ids"]))
-    # print(max(length))
     # raise
    
-    # src_adata = sc.read_h5ad(args.src_adata)
     src_adata = None
-    # src_dataset = dummy_dataset(
-    #         max_len=50,
-    #         vocab_size=args.tgt_vocab_size,
-    #         num_samples=100,
-    #     )
 
 
 
@@ -311,8 +273,6 @@ def main() -> None:
                 test_prop=args.test_prop,
                 seed=args.seed,
             )
-        # elif split == 'unseen_donor':
-        #     train, val, test = unseen_donor_split()
         else:
             raise ValueError(
                 "split is not available, must be either '"
@@ -369,7 +329,6 @@ def main() -> None:
     # resort to the supposedly optimal AutoAugment policy.
     # change dataloader and input
     # create count dictionnary
-    # src_counts = src_adata.X
     src_counts = None
     # determine global batch size to account for multiple GPUs
     gpu_number = max(torch.cuda.device_count(), 1)
@@ -456,7 +415,6 @@ def main() -> None:
         mode=mode,
     )
     accelerator = 'gpu' if torch.cuda.is_available() else 'cpu'
-    # accelerator = "cpu"
     print('Using device {}.'.format(accelerator))
     ddp_strategy = DDPStrategy(find_unused_parameters=True)
     trainer = pl.Trainer(
@@ -471,34 +429,16 @@ def main() -> None:
         precision='bf16-mixed',
         devices=-1 if torch.cuda.is_available() else 0,
         strategy=ddp_strategy if torch.cuda.device_count() > 1 else 'auto',
-        # num_nodes = 2,
     )
     print('Starting training...')
 
     if args.train_mode == 'masking':
         # Finally, kick of the training process.
         trainer.fit(pretrained_module, data_module,
-        # ckpt_path="/lustre/scratch126/cellgen/team361/av13/scmaskgit/scmaskgit/output1/checkpoints/20250106_1815_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=02.ckpt"
         )
 
     else:
         raise ValueError('train_mode not recognised, needs to be masking or count')
-
-    # # #collate deepzero checkpoint
-    # if torch.cuda.device_count() > 1:
-    #     checkpoint_path = os.path.join(
-    #         checkpoint_path,
-    #         f'{filename}-epoch={trainer.current_epoch}.ckpt'
-    #     )
-    #     print(f'Saving checkpoint to {checkpoint_path}')
-    # # check if checkpoint path exists
-    # if os.path.exists(checkpoint_path):
-
-    #     convert_zero_checkpoint_to_fp32_state_dict(
-    #         zero_checkpoint_path=checkpoint_path,
-    #         output_path=checkpoint_path,
-    #         tag='fp32'
-    #     )
 
 
 if __name__ == '__main__':

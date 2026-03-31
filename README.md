@@ -1,7 +1,6 @@
  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
  ![python](https://img.shields.io/badge/Python-3.11-brightgreen)
 
-
 # PerturbGen foundation model for dynamic cellular states
 
 ![PerturbGen overview](docs/architecture.png)

@@ -4,7 +4,6 @@ import pickle
 from typing import Dict
 import sys
 import numpy as np
-# import pandas as pd
 import scanpy as sc
 import tqdm
 import pickle
@@ -12,7 +11,6 @@ from pathlib import Path
 from datasets import load_from_disk
 from geneformer import TranscriptomeTokenizer
 from scipy.sparse import csr_matrix, issparse
-# sys.path.append('/lustre/scratch126/cellgen/team361/av13/scmaskgit')
 from scmaskgit.src.utils import (  # tokenid_mapping,;
     map_ensembl_to_genename,
     map_input_ids_to_row_id,
@@ -25,10 +23,7 @@ from scmaskgit.src.utils import (  # tokenid_mapping,;
 seed_no = 42
 np.random.seed(seed_no)
 
-# if os.getcwd().split('/')[-1] != 't_generative':
 #     # set working directory to root of repository
-# os.chdir('/lustre/scratch126/cellgen/team361/av13/scmaskgit/')
-# print('Changed working directory to root of repository')
 
 
 def get_args():
@@ -39,14 +34,12 @@ def get_args():
     parser.add_argument(
         '--h5ad_path',
         type=str,
-        # default='./data/h5d_files/cytoimmgen.h5ad',
         default='./data/20241026_HSPC/cd34.h5ad',
         help='Path to h5ad file',
     )
     parser.add_argument(
         '--dataset',
         type=str,
-        # default='cytoimmgen',
         default='foundation_pretrained',
         choices=['cytoimmgen', 'eb', 'hspc', 'mnc'],
     )
@@ -61,21 +54,8 @@ def get_args():
         '--var_list',
         type=str,
         nargs='+',
-        # default=[
-        #     'Cell_population',
-        #     'Cell_type',
-        #     'Time_point',
-        #     'Age',
-        #     'Sex',
-        #     'batch',
-        #     'Cell_culture_batch',
-        #     'Phase',
-        #     'Donor',
-        #     'cell_pairing_index',
-        # ],
         default=[
             'assignment_id',
-            # 'age',
             'sex',
             'tissue',
             'phase',
@@ -89,7 +69,6 @@ def get_args():
     parser.add_argument(
         '--pairing_mode',
         type=str,
-        # default='stratified',
         default='mapping',
         choices=['stratified', 'random', 'mapping'],
         help='Cell pairing mode',
@@ -110,7 +89,6 @@ def get_args():
     parser.add_argument(
         '--reference_time',
         type=str,
-        # default='0h',
         default='stem',
         help='Control time point for cell pairing' 'which is feed into Geneformer',
     )
@@ -118,12 +96,6 @@ def get_args():
         '--time_point_order',
         type=str,
         nargs='+',
-        # default=[
-        #     '0h',
-        #     '16h',
-        #     '40h',
-        #     '5d',
-        # ],
         default=[
             'stem',
             'intermediate',
@@ -175,19 +147,15 @@ for file_path in data_directory.glob(f"*.h5ad"):
         print("Column 'gene_id' does not exist in adata.var.")
     file_name = Path(file_path).name
     adata.write(f"/lustre/scratch126/cellgen/team361/av13/data/pretrained_anndata2/{file_name}")
-    print(file_name)
-raise
+
+
 # Preprocess adata
-# default='0h',
 # ----------------
 args = get_args()
 print('Start preprocessing adata...')
 gene_median_file = "/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/filtered_trace_median.pkl"
 trace_ensemble_mapping= "/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/2nd_run/Dictionaries/trace_filtered_tokenid.pkl"
 trace_gene_token = "/lustre/scratch126/cellgen/team361/am74/Adib/TRACE/Loom_cohort/tdigest/Aggregated_Medians/trace_gene_mapping.pkl"
-# with open(trace_ensemble_mapping, "rb") as f:
-#      predefined_dict = pickle.load(f)
-# print(len(predefined_dict))
 # raise
 tk = TranscriptomeTokenizer(
     custom_attr_name_dict={"cell_type": "cell_type"},
@@ -197,7 +165,6 @@ tk = TranscriptomeTokenizer(
     special_token=True,
     gene_median_file=gene_median_file,
     token_dictionary_file=trace_ensemble_mapping,
-    # gene_mapping_file=trace_ensemble_mapping,
 )
 custom_attr_name_dict={"cell_type": "cell_type"}
 output_base_path = "/lustre/scratch126/cellgen/team361/av13/data/tokenized_data/trace2/"
@@ -216,14 +183,12 @@ for file_path in Path(data_directory).glob("*.h5ad"):
     # Construct the output file path
     output_file_path = Path(output_base_path) / (file_path.stem + ".dataset")
     tokenized_dataset.save_to_disk(str(output_file_path))
-raise
-# file_name = "tokenized_geneformer_all"
+
 tk.tokenize_data(
     data_directory="/lustre/scratch126/cellgen/team361/av13/data/pretrained_anndata/test",
-    output_directory=output_path,
+    output_directory=output_file_path,
     output_prefix=file_name,
     file_format="h5ad",  # format [loom, h5ad]
     use_generator=True,
 )
 
-# print('Finished tokenisation.')

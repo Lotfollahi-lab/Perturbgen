@@ -37,7 +37,7 @@ class OrderedGroup(click.Group):
         return ordered_names + other_names
 
 
-@click.group(cls=OrderedGroup, order=["tokenise", "train-mask", "train-decoder", "generate"])
+@click.group(cls=OrderedGroup, order=["tokenise", "train-mask", "train-decoder", "extract-embedding"])
 def main():
     pass
 
@@ -77,8 +77,8 @@ def train_decoder(args):
 
 @main.command(context_settings={"ignore_unknown_options": True, "help_option_names": []})
 @click.argument("args", nargs=-1)
-def generate(args):
-    """Load checkpoint and generate predictions"""
+def extract_embedding(args):
+    """Load checkpoint and extract the embeddings."""
     click.echo("loading, please wait...")
     from perturbgen.val import main
     main(args)

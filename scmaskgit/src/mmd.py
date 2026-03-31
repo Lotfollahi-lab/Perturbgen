@@ -59,13 +59,11 @@ def _mix_rbf_kernel(X, Y, sigma_list):
 
 def mix_rbf_mmd2(X, Y, sigma_list, biased=True):
     K_XX, K_XY, K_YY, d = _mix_rbf_kernel(X, Y, sigma_list)
-    # return _mmd2(K_XX, K_XY, K_YY, const_diagonal=d, biased=biased)
     return _mmd2(K_XX, K_XY, K_YY, const_diagonal=False, biased=biased)
 
 
 def mix_rbf_mmd2_and_ratio(X, Y, sigma_list, biased=True):
     K_XX, K_XY, K_YY, d = _mix_rbf_kernel(X, Y, sigma_list)
-    # return _mmd2_and_ratio(K_XX, K_XY, K_YY, const_diagonal=d, biased=biased)
     return _mmd2_and_ratio(K_XX, K_XY, K_YY, const_diagonal=False, biased=biased)
 
 

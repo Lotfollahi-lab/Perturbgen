@@ -4,9 +4,9 @@ from warnings import warn
 
 import numpy as np
 
-# import scanpy as sc
 import torch
 from datasets import DatasetDict
+from perturbgen.pp import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningDataModule
 from scipy.sparse import csr_matrix
 from torch.utils.data import (
@@ -14,6 +14,7 @@ from torch.utils.data import (
     Dataset,
     WeightedRandomSampler,
 )
+from perturbgen.src.gf_utils import pad_tensor_list
 
 from perturbgen.pp import TOKEN_DICTIONARY_FILE
 from perturbgen.src.gf_utils import pad_tensor_list
@@ -190,11 +191,14 @@ class PerturbGenDataModule(LightningDataModule):
             'shuffle': shuffle,
             'num_workers': num_workers,
             'pin_memory': True,
+            'persistent_workers': True if num_workers > 0 else False,
         }
         token_dictionary_file = TOKEN_DICTIONARY_FILE
         with open(token_dictionary_file, 'rb') as f:
             self.gene_token_dict = pickle.load(f)
         self.pad_token_id = self.gene_token_dict.get('<pad>')
+        self.cls_token_id = self.gene_token_dict.get('<cls>')
+        self.eos_token_id = self.gene_token_dict.get('<eos>')
         self.max_len = max_len
         self.dataset = None
         self.condition_keys = condition_keys
@@ -326,7 +330,7 @@ class PerturbGenDataModule(LightningDataModule):
         src_dataset = [d['src_dataset'] for d in batch if 'src_dataset' in d]
         if src_dataset:
             src_input_batch_id = [torch.tensor(d['input_ids']) for d in src_dataset]
-            src_length = torch.tensor([d['length'] for d in src_dataset])
+            src_length = torch.tensor([len(d['input_ids']) for d in src_dataset])
             model_input_size = torch.max(src_length)
             src_input_batch_id = pad_tensor_list(
                 src_input_batch_id, self.max_len, self.pad_token_id, model_input_size
@@ -356,7 +360,7 @@ class PerturbGenDataModule(LightningDataModule):
         }
 
         for time_step in self.all_modelling_tps:
-            if batch[0]['tgt_counts_t1'] is not None:
+            if batch[0][f'tgt_counts_t{time_step}'] is not None:
                 if isinstance(batch[0][f'tgt_counts_t{time_step}'], csr_matrix):
                     tgt_counts = [
                         torch.tensor(d[f'tgt_counts_t{time_step}'].toarray())
@@ -384,10 +388,16 @@ class PerturbGenDataModule(LightningDataModule):
                 out[f'tgt_size_factor_t{time_step}'] = torch.cat(tgt_size_factor, dim=0)
             # create input ids
             dataset = f'tgt_dataset_t{time_step}'
-            out[f'tgt_input_ids_t{time_step}'] = [
-                torch.tensor(d[dataset]['input_ids']) for d in batch
-            ]
-            length = [d[dataset]['length'] for d in batch]
+            # remove all CLS tokens based on self.cls_token_id (don't assume it's the first token)
+            tgt_input_ids_list = []
+            length = []
+            for d in batch:
+                seq = torch.as_tensor(d[dataset]['input_ids'])
+                filtered = seq[(seq != self.cls_token_id) & (seq != self.eos_token_id)]
+                tgt_input_ids_list.append(filtered)
+                length.append(int(filtered.size(0)))
+            out[f'tgt_input_ids_t{time_step}'] = tgt_input_ids_list
+            
             out[f'tgt_length_t{time_step}'] = torch.tensor(length)
             model_input_size = torch.max(out[f'tgt_length_t{time_step}'])
             out[f'tgt_cell_idx_t{time_step}'] = [

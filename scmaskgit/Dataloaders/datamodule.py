@@ -3,11 +3,8 @@ from typing import Optional
 from warnings import warn
 
 import numpy as np
-
-# import scanpy as sc
 import torch
 from datasets import DatasetDict
-# from geneformer.perturber_utils import pad_tensor_list
 from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningDataModule
 from scipy.sparse import csr_matrix
@@ -42,7 +39,6 @@ def pad_tensor_list(
             padding_func(tensor, pad_token_id, max_len, dim) for tensor in tensor_list
         ]
     # return stacked tensors
-   
     return torch.stack(tensor_list)
     
 
@@ -166,10 +162,8 @@ class CellGenDataModule(LightningDataModule):
         # Assign train/val datasets for use in dataloaders
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
-            # dataset_args['split_indices'] = self.train_indices
             self.train_dataset = CellGenDataset(**dataset_args)
             if self.val_indices is not None:
-                # dataset_args['split_indices'] = self.val_indices
                 self.val_dataset = CellGenDataset(**dataset_args)
             else:
                 self.val_dataset = None
@@ -181,14 +175,12 @@ class CellGenDataModule(LightningDataModule):
             self.test_dataset = CellGenDataset(**test_dataset_args)
 
     def train_dataloader(self):
-        # train_sampler = weighted_sampler(train_dataset)
         data = DataLoader(
             dataset=self.train_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             collate_fn=self.collate,
             drop_last = True,
-            # sampler=train_sampler,
         )
         return data
 
@@ -220,13 +212,11 @@ class CellGenDataModule(LightningDataModule):
             )
         else:
             src_input_batch_id, src_length = None, None
-        # condition = [d['cell_type_cellgen_harm'] for d in src_dataset]
         
         # compute tgt size factor        
         out = {
             'src_input_ids': src_input_batch_id,
             'src_length': src_length,
-            # 'cell_type': condition,
         }
         if self.var_list is not None:
                 for var in self.var_list:

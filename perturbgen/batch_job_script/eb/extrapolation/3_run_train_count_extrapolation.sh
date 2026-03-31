@@ -1,0 +1,67 @@
+#!/bin/bash
+#BSUB -q gpu-normal # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -gpu 'mode=exclusive_process:num=1' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
+#BSUB -n 4 # number of cores
+#BSUB -G team361 # groupname for billing
+#BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen # working directory
+#BSUB -o logs/eb_count_extra_s100_%J.out # output file
+#BSUB -e logs/eb_count_extra_s100_%J.err # error file
+#BSUB -M 20000  # RAM memory part 2. Default: 100MB
+#BSUB -R 'select[mem>20000] rusage[mem=20000]' # RAM memory part 1. Default: 100MB
+#BSUB -J eb_count_extra_s100 # job name
+
+# load cuda
+module load cuda-12.1.1
+
+# activate python environment
+source /nfs/team361/cytomeister/.cytomeister/bin/activate
+# cwd=$(pwd)
+
+# results directory
+RES_DIR="/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/res/"
+RES_NAME="eb/extrapolation_mean_test"
+
+# Point runs to the target project
+export WANDB_MODE=online
+export WANDB_ENTITY=lotfollahi
+export WANDB_PROJECT=ttransfomer
+
+# export WANDB_DIR=$cwd/wandb
+# Run python script to train count decoder
+echo '--- Start computing model'
+
+# # python3 $cwd/train.py \
+# Extrapolation
+python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen/train.py \
+--train_mode count \
+--split False \
+--splitting_mode random \
+--output_dir $RES_DIR/$RES_NAME \
+--ckpt_masking_path 'T_perturb/res/eb/extrapolation_mean_test/checkpoints/20251208_0656_cellgen_train_masking_lr_0.001_wd_0.0001_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_100-epoch=49.ckpt' \
+--src_dataset 'T_perturb/tokenized_data/eb_100M/dataset_2000_hvg_src/Day 00-03.dataset' \
+--tgt_dataset_folder 'T_perturb/tokenized_data/eb_100M/dataset_2000_hvg_tgt' \
+--src_adata 'T_perturb/tokenized_data/eb_100M/h5ad_pairing_2000_hvg_src/Day 00-03.h5ad' \
+--tgt_adata_folder 'T_perturb/tokenized_data/eb_100M/h5ad_pairing_2000_hvg_tgt' \
+--mapping_dict_path  'T_perturb/tokenized_data/eb_100M/token_id_to_genename_2000_hvg.pkl' \
+--batch_size 64 \
+--epochs 100 \
+--cellgen_lr 0.001 \
+--count_lr 0.0001 \
+--cellgen_wd 0.0001 \
+--count_wd 0.0001 \
+--count_dropout 0.25 \
+--n_workers 4 \
+--num_layers 3 \
+--d_ff 32 \
+--loss_mode zinb \
+--pred_tps 1 2 3 \
+--var_list Time_point \
+--encoder scmaskgit \
+--context_mode True \
+--encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt" \
+--pos_encoding_mode time_pos_sin \
+--mask_scheduler 'pow' \
+--seed 100 \
+--d_model 768 \
+--use_weighted_sampler False
+echo '--- Finished computing model'

@@ -20,7 +20,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-# from geneformer.tokenizer import TOKEN_DICTIONARY_FILE
 from pytorch_lightning import LightningModule
 from scvi.distributions import NegativeBinomial, ZeroInflatedNegativeBinomial
 from torchmetrics import MeanSquaredError
@@ -49,9 +48,6 @@ from scmaskgit.src.utils import (  # WarmupScheduler,;
 )
 
 from ray import tune
-
-# from deepspeed.ops.adam import FusedAdam
-
 
 def set_matmul_precision_for_device(precision: Literal['high', 'medium'] = 'high'):
     if torch.cuda.is_available():
@@ -85,7 +81,7 @@ class CellGenTrainer(LightningModule):
         num_epochs: int = 5,
         warmup_epochs: int = 1,
         pad_token_id: int = 0,
-        output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
+        output_dir: str = './T_perturb/perturbgen/plt/res/eb/',
         encoder: str = 'GF_fine_tuned',
         mask_scheduler: str = 'cosine',
         context_mode: bool = True,
@@ -151,7 +147,6 @@ class CellGenTrainer(LightningModule):
         # initialize cls token for all time steps
         self.output_dir = output_dir
         # create directory if not exist
-        # self.geneformer = Geneformerwrapper()
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
         self.date = datetime.now().strftime('%Y%m%d-%H:%M')
@@ -162,43 +157,15 @@ class CellGenTrainer(LightningModule):
             src_input_id=batch['src_input_ids'],
             masked=self.return_embeddings,
         )
-        # src_attention_mask = (~generate_pad(batch['src_input_ids'])).clone().int()
-        # outputs = self.geneformer(batch['src_input_ids'], src_attention_mask)
-        # outputs = {
-        #     # 'mean_embedding': mean_nonpadding_embs(embs=dec_embedding, pad=src_attention_mask),
-        #     'mean_embedding': outputs[:,0,:]
-        # }
         return outputs
 
     def configure_optimizers(self):
         parameters = [{'params': self.transformer.parameters(), 'lr': self.initial_lr}]
         optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
-
-        # number_of_batches_per_epoch = len(self.trainer.datamodule.train_dataloader())
-        # total_steps = self.num_epochs * number_of_batches_per_epoch
-        # warmup_steps = self.warmup_epochs * number_of_batches_per_epoch
-        # scheduler = WarmupScheduler(
-
-        #     optimizer,
-        #     warmup_steps=warmup_steps,
-        #     initial_lr=self.initial_lr,
-        #     end_lr=self.end_lr,
-        # )
-
-        # optimizer = FusedAdam(
-        #     self.transformer.parameters(),
-        #     lr=self.initial_lr,
-        #     weight_decay=self.weight_decay,
-        #     adam_w_mode=False,
-        # )
         return {
             'optimizer': optimizer,
             'monitor': 'train/masking_loss',
-            # 'lr_scheduler': {
-            #     'scheduler': scheduler,
-            #     'interval': 'step',
             #     'frequency': 1
-            # }
         }
 
     def training_step(self, batch, *args, **kwargs):
@@ -283,38 +250,23 @@ class CellGenTrainer(LightningModule):
     def test_step(self, batch, *args, **kwargs):
         outputs = self.forward(batch)
         cls_embeddings = outputs['mean_embedding'].detach().cpu()
-        # var1_ = batch['phase']
         cell_type_ = batch['cell_type']
         tissue_ = batch['tissue']
-        # var2_ = batch['diff_state']
         self.test_dict['cls_embeddings'].append(cls_embeddings)
         self.cell_type.extend(cell_type_)
-        # self.var1.extend(var1_)
         self.tissue.extend(tissue_)
-        # self.var2.extend(var2_)
         
 
     def on_test_epoch_end(self):
         adata = ad.AnnData(X=np.array(torch.cat(self.test_dict['cls_embeddings'])))
         adata.obs["cell_type"] = [str(x) for x in self.cell_type]
-        # adata.obs["phase"] = [str(x) for x in self.var1]
-        # adata.obs["diff_state"] = [str(x) for x in self.var2]
         adata.obs["tissue"] = [str(x) for x in self.tissue]
         sc.pp.neighbors(adata, use_rep="X")
         sc.tl.umap(adata)
-        # fig, ax = plt.subplots(figsize=(16, 12))
         sc.pl.umap(adata, title='cell_type', color=['cell_type'], frameon=False,show=False)
         plt.savefig('/lustre/scratch126/cellgen/team361/av13/modelv2/umap_plot_multi_celltype_2.png',
         bbox_inches='tight',
         )
-        # sc.pl.umap(adata, title='phase', color=['phase'], frameon=False,show=False)
-        # plt.savefig('/lustre/scratch126/cellgen/team361/av13/modelv2/umap_plot_hspc_phase_9.png',
-        # bbox_inches='tight',
-        # )
-        # sc.pl.umap(adata, title='diff_state', color=['diff_state'], frameon=False,show=False)
-        # plt.savefig('/lustre/scratch126/cellgen/team361/av13/modelv2/umap_plot_hspc_diff_state_9.png',
-        # bbox_inches='tight',
-        # )
         sc.pl.umap(adata, title='tissue', color=['tissue'], frameon=False,show=False)
         plt.savefig('/lustre/scratch126/cellgen/team361/av13/modelv2/umap_plot_multi_tissue_2.png',
         bbox_inches='tight',
@@ -341,7 +293,7 @@ class CountDecoderTrainer(LightningModule):
         iterations: int = 18,
         n_samples: int = 1,
         precision: Literal['high', 'medium'] = 'medium',
-        output_dir: str = './T_perturb/T_perturb/plt/res/eb/',
+        output_dir: str = './T_perturb/perturbgen/plt/res/eb/',
         encoder: str = 'GF_fine_tuned',
         mapping_dict_path: str = (
             './T_perturb/Geneformer/geneformer/' 'token_dictionary_gc95M.pkl'
@@ -391,7 +343,7 @@ class CountDecoderTrainer(LightningModule):
             pos_encoding_mode=pos_encoding_mode,
         )
         self.pos_encoding_mode = pos_encoding_mode
-        # load PETRA checkpoint
+        # load masking checkpoint
         if ckpt_masking_path is not None:
             checkpoint = torch.load(ckpt_masking_path, map_location='cpu')
             state_dict_ = modify_ckpt_state_dict(checkpoint, 'transformer.')
@@ -666,12 +618,9 @@ class CountDecoderTrainer(LightningModule):
         # convert all int to str
         pred_ids_ = pred_ids.astype(str)
         tgt_ids_ = tgt_ids.astype(str)
-        # # Vectorize the function to apply to the entire matrix
-        # vectorized_map = np.vectorize(self.map_token_to_ensembl)
-        # # TODO: rewrite the function without mapping dict
-        # # Apply the mapping
-        # pred_ids_ = vectorized_map(pred_ids)
-        # tgt_ids_ = vectorized_map(tgt_ids)
+        # Vectorize the function to apply to the entire matrix
+        # TODO: rewrite the function without mapping dict
+        # Apply the mapping
         for seq_len in rouge_len_list:
             if max_seq_length > seq_len:
                 pred_genes_short = pred_ids_[:, :seq_len]
@@ -836,7 +785,6 @@ class CountDecoderTrainer(LightningModule):
                 outputs, pred_ids_dict = self.decoder.generate(
                     **decoder_kwargs,
                 )
-            # print(pred_ids_dict)
             for time_step in pred_ids_dict.keys():
                 if self.return_rouge_score:
                     pred_ids = pred_ids_dict[time_step].detach().cpu().numpy()
@@ -993,38 +941,7 @@ class CountDecoderTrainer(LightningModule):
                 f'_s{self.seed}_s{self.sequence_length}_metrics.csv'
             )
 
-        # else:
-        #     var_dict = {}
-        #     for var in self.var_list:
-        #         var_dict[var] = np.concatenate(self.test_dict[var])
-        #     test_obs = pd.DataFrame(var_dict)
-        #     pred_adata = ad.AnnData(X=pred_counts.numpy(), obs=test_obs)
-        #     pred_adata.layers['counts'] = true_counts.numpy()
-        #     pred_adata.write_h5ad(f'{self.output_dir}/pred_adata.h5ad')
-        #     # true counts are stored in the 'counts' layer
-        #     true_adata = pred_adata.copy()
-        #     true_adata.X = true_adata.layers['counts']
-        #     # ----------------- calculate metrics -----------------
-        #     # MSE
-        #     lin_reg_df = lin_reg_summary(true_adata, pred_adata)
-        #     mmd_df = evaluate_mmd(true_adata, pred_adata, n_cells=10000)
-        #     emd = evaluate_emd(true_adata, pred_adata)
-        #     metric_df = pd.concat([lin_reg_df, mmd_df, emd], axis=1)
-        #     metric_df.to_csv(f'{self.output_dir}/test_metrics.csv')
-        #     emd['metric'] = 'emd'
-        #     emd = emd.rename(columns={'emd': 'value'})
-        #     self.log(
-        #         'test/emd',
-        #         emd['value'].mean(),
-        #         on_epoch=True,
-        #         prog_bar=True,
-        #         logger=True,
-        #     )
-
     def configure_optimizers(self):
-        # optimizer = FusedAdam(
-        #     self.decoder.parameters(), lr=self.lr, weight_decay=self.weight_decay
-        # )
         parameters = [{'params': self.decoder.parameters(), 'lr': self.lr}]
         optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
         return {

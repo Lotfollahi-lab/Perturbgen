@@ -23,7 +23,7 @@ from scvi.distributions import NegativeBinomial, ZeroInflatedNegativeBinomial
 from torchmetrics import MeanSquaredError
 from torchmetrics.text import Perplexity
 
-from perturbgen.Modules.T_model import CountDecoder, PerturbGen
+from perturbgen.Modules.transformer import CountDecoder, PerturbGen
 from perturbgen.src.losses import mse_loss
 from perturbgen.src.metric import (
     compute_distribution_distances,
@@ -45,9 +45,6 @@ from perturbgen.src.utils import (  # WarmupScheduler
     scale_pca,
 )
 
-# from deepspeed.ops.adam import FusedAdam
-
-
 def set_matmul_precision_for_device(precision: Literal['high', 'medium'] = 'medium'):
     if torch.cuda.is_available():
         cuda_device_name = torch.cuda.get_device_name()
@@ -58,7 +55,6 @@ def set_matmul_precision_for_device(precision: Literal['high', 'medium'] = 'medi
 
     else:
         print('CUDA is not available, using CPU for training.')
-
 
 class PerturbGenTrainer(LightningModule):
     def __init__(
@@ -88,8 +84,8 @@ class PerturbGenTrainer(LightningModule):
         sequence_length: int = 2048,
         return_rouge_score: bool = True,
         output_dir: str = './T_perturb/perturbgen/plt/res/eb/',
-        encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
-            'GF_fine_tuned'
+        encoder: Literal['scmaskgit', 'Transformer_encoder'] = (
+            'scmaskgit'
         ),
         mask_scheduler: str = 'cosine',
         context_mode: bool = True,
@@ -110,8 +106,6 @@ class PerturbGenTrainer(LightningModule):
         gene_embs_list: List[str] | None = None,
         gene_embs_condition: str | None = None,
         seed: int = 42,
-        # *args,
-        # **kwargs,
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
@@ -121,6 +115,7 @@ class PerturbGenTrainer(LightningModule):
             self.total_tps = pred_tps
         else:
             self.total_tps = context_tps + pred_tps
+
         self.pred_tps = pred_tps
         self.n_total_tps = n_total_tps
         self.context_tps = context_tps
@@ -159,7 +154,6 @@ class PerturbGenTrainer(LightningModule):
             seed=seed,
         )
         self.masking_loss = nn.CrossEntropyLoss()
-
         self.weight_decay = weight_decay
         self.initial_lr = initial_lr
         self.end_lr = end_lr
@@ -181,7 +175,6 @@ class PerturbGenTrainer(LightningModule):
         self.d_model = d_model
         self.generate = generate
         self.tgt_vocab_size = tgt_vocab_size
-
         self.context_mode = context_mode
 
         self.test_dict: Dict[str, List[Any]] = {
@@ -193,7 +186,6 @@ class PerturbGenTrainer(LightningModule):
         }
 
         self.test_dict['gene_embeddings'] = []
-
         self.test_dict['self_attn_weights'] = []
         self.test_dict['cross_attn_weights'] = []
         if var_list is not None:
@@ -250,6 +242,7 @@ class PerturbGenTrainer(LightningModule):
                         self.gene_to_rowid,
                         self.marker_genes,
                     )
+
                     n_genes = len(genes_dict)
                     self.sum_gene_embs: Dict[str, torch.Tensor] = {
                         f'{condition}': torch.zeros(
@@ -278,7 +271,6 @@ class PerturbGenTrainer(LightningModule):
                 )
                 tgt_input_id_ = torch.cat((cond_ids, tgt_input_id_), dim=1)
             tgt_input_id_dict[f'tgt_input_ids_t{i}'] = tgt_input_id_
-
         if generate:
             outputs = None
         else:
@@ -287,6 +279,7 @@ class PerturbGenTrainer(LightningModule):
                 tgt_input_id_dict=tgt_input_id_dict,
                 not_masked=self.return_embeddings,
             )
+            
         return outputs, tgt_input_id_dict
 
     def configure_optimizers(self):
@@ -310,10 +303,12 @@ class PerturbGenTrainer(LightningModule):
         )
 
         outputs, _ = self.forward(batch)
+        # double check that this also works with self.pred_tps
         for t in outputs.keys():
             dec_logits = outputs[t]['dec_logits']
             labels = outputs[t]['labels']
             with torch.no_grad():
+ 
                 perp = self.perplexity(dec_logits, labels)
                 self.log(
                     'train/perplexity',
@@ -386,6 +381,7 @@ class PerturbGenTrainer(LightningModule):
             batch,
             generate=self.generate,
         )
+
         if self.condition_dict is not None:
             cond_length = len(self.condition_dict)
 
@@ -408,7 +404,7 @@ class PerturbGenTrainer(LightningModule):
                 **decoder_kwargs,
             )
 
-        for t in self.pred_tps:
+        for t in outputs.keys():
             token_ids = tgt_input_id_dict[f'tgt_input_ids_t{t}']
 
             if self.return_gene_embs:
@@ -444,45 +440,10 @@ class PerturbGenTrainer(LightningModule):
                 cross_attn_weights = cross_attn_weights.mean(dim=0).detach().cpu()
                 self.test_dict['self_attn_weights'].append(self_attn_weights)
                 self.test_dict['cross_attn_weights'].append(cross_attn_weights)
-            # cell_idx = np.array(batch[f'tgt_cell_idx_t{t}'])
-            # if len(self.test_dict['cell_idx']) == 0:
-            #     all_cell_idx = np.array([])
-            # else:
-            #     all_cell_idx = np.concatenate(self.test_dict['cell_idx'])
-            # (dupl_outside_batch, cell_idx_filter_) = mask_duplicates_across_batches(
-            #     all_cell_idx, cell_idx
-            # )
-            # (dupl_within_batch, cell_idx_filter_) = mask_duplicates_within_batches(
-            #     cell_idx_filter_
-            # )
-            # if self.return_embeddings:
-            #     # 1. compute cosine similarity
-            #     # TODO: compute cosine similarity
-            #     cos_similarity = compute_cos_similarity(outputs=outputs, time_step=t)
-            #     # 2. map cosine similarity to corresponding genes
-            #     marker_cos_similarity, marker_genes_dict = map_results_to_genes(
-            #         res=cos_similarity,
-            #         mapping_dict=(
-            #             self.gene_to_rowid if self.gene_to_rowid is not None else None
-            #         ),
-            #         token_ids=token_ids,
-            #         marker_genes=self.marker_genes,
-            #     )
-            #     cos_similarity = marker_cos_similarity.detach().cpu()
-            #     # remove duplicates
-            #     cos_similarity = cos_similarity[dupl_outside_batch]
-            #     cos_similarity = cos_similarity[dupl_within_batch]
-            #     self.test_dict['cosine_similarities'].append(cos_similarity)
-            #     self.marker_genes_dict = marker_genes_dict
 
             if self.return_gene_embs:
                 gene_embeddings = gene_embeddings.detach().cpu()
                 condition_array = np.array(batch[f'{self.gene_embs_condition}_t{t}'])
-                # remove duplicates
-                # gene_embeddings = gene_embeddings[dupl_outside_batch]
-                # condition_array = condition_array[dupl_outside_batch]
-                # gene_embeddings = gene_embeddings[dupl_within_batch]
-                # condition_array = condition_array[dupl_within_batch]
                 for condition in self.gene_embs_list:
                     condition_mask = condition_array == condition
                     if any(condition_mask):
@@ -502,11 +463,6 @@ class PerturbGenTrainer(LightningModule):
                         tgt_input_id_dict[f'tgt_input_ids_t{t}'].detach().cpu().numpy()
                     )
                     tgt_ids = batch[f'tgt_input_ids_t{t}'].detach().cpu().numpy()
-                    # # TODO: take mean of duplicates
-                    # pred_ids = pred_ids[dupl_outside_batch]
-                    # tgt_ids = tgt_ids[dupl_outside_batch]
-                    # pred_ids = pred_ids[dupl_within_batch]
-                    # tgt_ids = tgt_ids[dupl_within_batch]
                     test_dict = compute_rouge_score(
                         rouge=self.rouge,
                         pred_ids=pred_ids,
@@ -519,14 +475,6 @@ class PerturbGenTrainer(LightningModule):
             true_counts = batch[f'tgt_counts_t{t}'].detach().cpu()
             cls_embeddings = outputs[t]['mean_embedding'].detach().cpu()
             combined_batch = batch['combined_batch'].detach().cpu()
-            # # remove duplicates
-            # true_counts = true_counts[dupl_outside_batch]
-            # cls_embeddings = cls_embeddings[dupl_outside_batch]
-            # combined_batch = combined_batch[dupl_outside_batch]
-            # true_counts = true_counts[dupl_within_batch]
-            # cls_embeddings = cls_embeddings[dupl_within_batch]
-            # combined_batch = combined_batch[dupl_within_batch]
-
             self.test_dict['true_counts'].append(true_counts)
             self.test_dict['cls_embeddings'].append(cls_embeddings)
             self.test_dict['batch'].append(combined_batch)
@@ -534,9 +482,6 @@ class PerturbGenTrainer(LightningModule):
             if len(self.var_list) > 0:
                 for var in self.var_list:
                     var_values = np.array(batch[f'{var}_t{t}'])
-                    # # remove duplicates
-                    # var_values = var_values[dupl_outside_batch]
-                    # var_values = var_values[dupl_within_batch]
                     self.test_dict[var].append(var_values)
 
     def on_test_epoch_end(self):
@@ -579,7 +524,7 @@ class PerturbGenTrainer(LightningModule):
                 test_dict=self.test_dict,
                 obs_key=obs_key,
                 marker_genes=self.marker_genes_dict,
-                # gene_names=self.gene_names,
+                gene_names=self.gene_names,
                 output_dir=self.output_dir,
                 sum_gene_embs=self.sum_gene_embs,
                 file_name=f'{self.date}_inference_embs_'
@@ -626,11 +571,8 @@ class CountDecoderTrainer(LightningModule):
         d_ff=32,
         max_seq_length=2048,
         loss_mode: str = 'mse',
-        d_condc: int | None = None,
-        d_condt: int = 768,
         use_positional_encoding: bool = False,
         layer_norm: bool = False,
-        add_cell_time: bool = False,
         lr: float = 1e-3,
         weight_decay: float = 0.0,
         dropout: float = 0.0,
@@ -642,8 +584,8 @@ class CountDecoderTrainer(LightningModule):
         n_samples: int = 1,
         precision: Literal['high', 'medium'] = 'medium',
         output_dir: str = './T_perturb/perturbgen/plt/res/eb/',
-        encoder: Literal['GF_frozen', 'GF_fine_tuned', 'Transformer_encoder'] = (
-            'GF_fine_tuned'
+        encoder: Literal['scmaskgit', 'Transformer_encoder'] = (
+            'scmaskgit'
         ),
         seed: int = 42,
         n_genes: int = 25426,
@@ -666,6 +608,8 @@ class CountDecoderTrainer(LightningModule):
         shared_gene_list: Dict[Any, Any] | None = None,
         context_tps: List[int] | None = None,
         mapping_dict_path: str | None = None,
+        use_size_factor: bool = True,
+        use_observed_size_factor: bool = True,
         *args,
         **kwargs,
     ):
@@ -723,14 +667,11 @@ class CountDecoderTrainer(LightningModule):
         self.decoder = CountDecoder(
             pretrained_model=self.pretrained_model,
             loss_mode=loss_mode,
-            d_condc=d_condc,
-            d_condt=d_condt,
             layer_norm=layer_norm,
             max_seq_length=max_seq_length,
             use_positional_encoding=use_positional_encoding,
             encoder=encoder,
             pos_encoding_mode=pos_encoding_mode,
-            add_cell_time=add_cell_time,
             d_model=d_model,
             dropout=dropout,
             pred_tps=pred_tps,
@@ -738,6 +679,8 @@ class CountDecoderTrainer(LightningModule):
             n_total_tps=n_total_tps,
             n_genes=n_genes,
             seed=seed,
+            use_size_factor=use_size_factor,
+            use_observed_size_factor=use_observed_size_factor,
         )
         if ckpt_count_path is not None:
             checkpoint = torch.load(ckpt_count_path, map_location='cpu')
@@ -750,12 +693,9 @@ class CountDecoderTrainer(LightningModule):
                 raise Warning(f'Missing keys in state_dict: {missing}')
             if len(unexpected) > 1:
                 raise Warning(f'Unexpected keys in state_dict: {unexpected}')
-
         self.weight_decay = weight_decay
         self.lr = lr
         self.loss_mode = loss_mode
-        self.d_condc = d_condc
-        self.d_condt = d_condt
         self.max_seq_length = max_seq_length
         if (
             (self.loss_mode in ['nb', 'zinb'])
@@ -772,7 +712,6 @@ class CountDecoderTrainer(LightningModule):
             self.theta = None
 
         self.mse = MeanSquaredError()
-        # total_vocab_size = tgt_vocab_size
         self.pred_tps = pred_tps
         if context_tps is None:
             self.total_tps = pred_tps
@@ -822,8 +761,9 @@ class CountDecoderTrainer(LightningModule):
         # guided generation
         self.unique_gene_list = unique_gene_list
         self.shared_gene_list = shared_gene_list
-
         self.condition_dict = condition_dict
+        self.use_size_factor = use_size_factor
+        self.use_observed_size_factor = use_observed_size_factor
 
     def forward(self, batch, generate: bool = False):
         tgt_input_id_dict = {}
@@ -861,7 +801,6 @@ class CountDecoderTrainer(LightningModule):
             self.one_hot_encoder(
                 batch['combined_batch'],
                 self.n_conditions_combined,
-                # self.theta.dtype,
             ),
             self.theta,
         )
@@ -872,6 +811,8 @@ class CountDecoderTrainer(LightningModule):
         outputs: Dict[str, torch.Tensor],
         batch: Dict[str, torch.Tensor],
         n_samples: int = 1,
+        use_size_factor: bool = True,
+        use_observed_size_factor: bool = True,
     ):
         """
         Description:
@@ -902,9 +843,10 @@ class CountDecoderTrainer(LightningModule):
         total_loss = 0
         for time_step in self.pred_tps:
             count_ouput = outputs[f'count_output_t{time_step}']
-            true_values = batch[f'tgt_counts_t{time_step}']
-            batch_size_factor = batch[f'tgt_size_factor_t{time_step}'].unsqueeze(1)
 
+            true_values = batch[f'tgt_counts_t{time_step}']
+            if use_observed_size_factor:
+                batch_size_factor = batch[f'tgt_size_factor_t{time_step}'].unsqueeze(1)
             if self.loss_mode == 'mse':
                 # change true counts dtype to count output dtype
                 true_values = true_values.type(count_ouput['count_lognorm'].dtype)
@@ -916,9 +858,21 @@ class CountDecoderTrainer(LightningModule):
                 )
                 count_dict[time_step] = count_ouput['count_lognorm']
             elif self.loss_mode in ['zinb', 'nb']:
-                dec_mean = count_ouput['count_mean'] * batch_size_factor.expand_as(
-                    count_ouput['count_mean']
-                )
+                if use_size_factor:
+                    if use_observed_size_factor:
+
+                        
+                        dec_mean = count_ouput['count_mean'] * batch_size_factor.expand_as(
+                            count_ouput['count_mean']
+                        )
+                    else:
+                        
+                        dec_mean = count_ouput['count_mean'] * count_ouput['size_factor'].expand_as(
+                            count_ouput['count_mean']
+                        )
+                else:
+                    # does not require size factor adjustment because of Softplus
+                    dec_mean = count_ouput['count_mean']
                 if self.loss_mode == 'zinb':
                     dec_dropout = count_ouput['count_dropout']
                     zinb_distribution = ZeroInflatedNegativeBinomial(
@@ -978,7 +932,13 @@ class CountDecoderTrainer(LightningModule):
 
     def training_step(self, batch, *args, **kwargs):
         outputs, _ = self.forward(batch)
-        count_loss, pred_counts_dict = self.compute_count_loss(outputs, batch)
+        count_loss, pred_counts_dict = self.compute_count_loss(
+            outputs, 
+            batch,
+            n_samples=1,
+            use_size_factor=self.use_size_factor,
+            use_observed_size_factor=self.use_observed_size_factor,
+        )
         self.log(
             'train/loss',
             count_loss,
@@ -1011,7 +971,6 @@ class CountDecoderTrainer(LightningModule):
             # return Pearson correlation coefficient
             true_counts = torch.cat(self.train_dict['true_counts'])
             pred_counts = torch.cat(self.train_dict['pred_counts'])
-            # mean_pearson = pearson(pred_counts=pred_counts, true_counts=true_counts)
             # random sample 10000 or max number of samples
             if len(pred_counts) > 10000:
                 random_ids = torch.randint(
@@ -1043,6 +1002,8 @@ class CountDecoderTrainer(LightningModule):
             outputs,
             batch,
             n_samples=self.n_samples,
+            use_size_factor=self.use_size_factor,
+            use_observed_size_factor=self.use_observed_size_factor,
         )
         self.log(
             'val/loss',
@@ -1077,7 +1038,6 @@ class CountDecoderTrainer(LightningModule):
             # return Pearson correlation coefficient
             true_counts = torch.cat(self.val_dict['true_counts'])
             pred_counts = torch.cat(self.val_dict['pred_counts'])
-            # mean_pearson = pearson(pred_counts=pred_counts, true_counts=true_counts)
             # random sample 10000 or max number of samples
             if len(pred_counts) > 10000:
                 random_ids = torch.randint(
@@ -1148,6 +1108,8 @@ class CountDecoderTrainer(LightningModule):
                 outputs=outputs,
                 batch=batch,
                 n_samples=self.n_samples,
+                use_size_factor=self.use_size_factor,
+                use_observed_size_factor=self.use_observed_size_factor,
             )
             self.log(
                 'test/loss',
@@ -1297,24 +1259,10 @@ class CountDecoderTrainer(LightningModule):
             # ----------------- calculate metrics -----------------
             # MSE
             lin_reg_df = lin_reg_summary(true_adata, pred_adata)
-            # mmd_df = evaluate_mmd(true_adata, pred_adata, n_cells=10000)
-            # emd = evaluate_emd(true_adata, pred_adata)
             metric_df = pd.concat([lin_reg_df], axis=1)
             metric_df.to_csv(f'{self.output_dir}/test_metrics.csv')
-            # emd['metric'] = 'emd'
-            # emd = emd.rename(columns={'emd': 'value'})
-            # self.log(
-            #     'test/emd',
-            #     emd['value'].mean(),
-            #     on_epoch=True,
-            #     prog_bar=True,
-            #     logger=True,
-            # )
 
     def configure_optimizers(self):
-        # optimizer = FusedAdam(
-        #     self.decoder.parameters(), lr=self.lr, weight_decay=self.weight_decay
-        # )
         parameters = [{'params': self.decoder.parameters(), 'lr': self.lr}]
         optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
         return {

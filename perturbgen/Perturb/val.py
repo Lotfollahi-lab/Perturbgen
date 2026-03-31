@@ -50,14 +50,26 @@ def main() -> None:
     # load dataset
     src_dataset = load_from_disk(config['data']['src_dataset_file'])
     tgt_datasets = read_dataset_files(config['data']['tgt_dataset_folder'], 'dataset')
-
+    if 'tgt_vocab_size' in config['trainer'] and 'max_seq_length' in config['trainer']:
+        max_tgt_input_id = config['trainer']['tgt_vocab_size']
+        max_len = config['trainer']['max_seq_length']
+    else:
+        # select max input id and max len across all tgt datasets
+        max_tgt_input_id = 0
+        max_len = 0
+        for keys, dataset in tgt_datasets.items():
+            # print max input id
+            input_id = dataset['input_ids']
+            max_tgt_input_id = max(max(max(input_id)), max_tgt_input_id)
+            max_len = max(max_len, max([len(x) for x in input_id]))
+        max_tgt_input_id = max_tgt_input_id + 1 # add 1 for padding
+        max_len = max(max_len, max([len(x) for x in src_dataset['input_ids']]))
     # read genes to perturb from file
     if 'perturb_genes_file' in config['data']:
         perturb_genes_df = pd.read_csv(config['data']['perturb_genes_file'], header=0)
         # put column 0 as index
         perturb_genes_df.set_index(perturb_genes_df.columns[0], inplace=True)
         # # assign column names being the first row
-        # perturb_genes_df.columns = perturb_genes_df.iloc[0]
         # filter based on cluster
         if 'perturb_cluster' in config['data'] and 'perturb_colname' in config['data']:
             colname = config['data']['perturb_colname']
@@ -133,16 +145,17 @@ def main() -> None:
         else:
             precision = '32'
             print('Using 32-bit precision for inference')
-        token_no = config['trainer']['tgt_vocab_size']
+        
         if 'cond_list' in config['data']:
+            
             full_dataset = concatenate_datasets([src_dataset] + list(tgt_datasets.values()))
             condition_dict = {}
             for condition in config['data']['cond_list']:
                 condition_dict[condition] = {
-                    cell_type: i + token_no
+                    cell_type: i + max_tgt_input_id
                     for i, cell_type in enumerate(full_dataset.unique(condition))
                 }
-                token_no += len(condition_dict[condition])
+                max_tgt_input_id += len(condition_dict[condition])
         else:
             condition_dict = None
 
@@ -185,10 +198,6 @@ def main() -> None:
                     config['data']['filter_cond'],
                     config['data']['filter_var'],
                 )
-                # if len(filter_idx) == 0:
-                #     filtered_dataset = None
-                # else:
-                #     filtered_dataset = dataset.select(idx_)
                 filter_idx.extend(idx_)
         if len(filter_idx) > 0:
             # apply condition filter to all datasets
@@ -201,14 +210,13 @@ def main() -> None:
                 tgt_datasets[f'tgt_dataset_t{t}'] = tgt_dataset
                 tgt_adata = tgt_adata[filter_idx, :]
                 tgt_adatas[f'tgt_h5ad_t{t}'] = tgt_adata
-            # for i, dataset in tgt_datasets.items():
-            #     tgt_datasets[i] = dataset.select(filter_idx)
             src_dataset = src_dataset.select(filter_idx)
 
         # Define path to load checkpoint
         n_total_tps = len(tgt_adatas)
-        config['trainer']['max_seq_length'] = config['trainer']['max_seq_length'] + 100
-        config['trainer']['tgt_vocab_size'] = token_no + 50
+        config['trainer']['max_seq_length'] = max_len + 100
+        config['trainer']['tgt_vocab_size'] = max_tgt_input_id + 50
+        config['datamodule']['max_len'] = max_len
 
         tgt_counts_dict = {}
         for keys, tgt_adata in tgt_adatas.items():

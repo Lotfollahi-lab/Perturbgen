@@ -89,12 +89,6 @@ def nb(x: torch.Tensor, mu: torch.Tensor, theta: torch.Tensor, eps=1e-8):
     return res
 
 
-# def nb_dist(x: torch.Tensor, mu: torch.Tensor, theta: torch.Tensor, eps=1e-8):
-#     loss = -NegativeBinomial(mu=mu, theta=theta).log_prob(x)
-
-#     return res
-
-
 def zinb(
     x: torch.Tensor, mu: torch.Tensor, theta: torch.Tensor, pi: torch.Tensor, eps=1e-8
 ):
