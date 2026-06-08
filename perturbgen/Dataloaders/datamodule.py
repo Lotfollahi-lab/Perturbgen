@@ -193,6 +193,8 @@ class PerturbGenDataModule(LightningDataModule):
             'pin_memory': True,
             'persistent_workers': True if num_workers > 0 else False,
         }
+        if num_workers > 0:
+            self.dataloader_kwargs['prefetch_factor'] = 4
         token_dictionary_file = TOKEN_DICTIONARY_FILE
         with open(token_dictionary_file, 'rb') as f:
             self.gene_token_dict = pickle.load(f)
@@ -329,8 +331,8 @@ class PerturbGenDataModule(LightningDataModule):
     def collate(self, batch):
         src_dataset = [d['src_dataset'] for d in batch if 'src_dataset' in d]
         if src_dataset:
-            src_input_batch_id = [torch.tensor(d['input_ids']) for d in src_dataset]
-            src_length = torch.tensor([len(d['input_ids']) for d in src_dataset])
+            src_input_batch_id = [torch.as_tensor(d['input_ids']) for d in src_dataset]
+            src_length = torch.as_tensor([len(d['input_ids']) for d in src_dataset])
             model_input_size = torch.max(src_length)
             src_input_batch_id = pad_tensor_list(
                 src_input_batch_id, self.max_len, self.pad_token_id, model_input_size
@@ -340,10 +342,10 @@ class PerturbGenDataModule(LightningDataModule):
         src_counts = None
         if batch[0]['src_counts'] is not None:
             if isinstance(batch[0]['src_counts'], csr_matrix):
-                src_counts = [torch.tensor(d['src_counts'].toarray()) for d in batch]
+                src_counts = [torch.as_tensor(d['src_counts'].toarray()) for d in batch]
 
             else:
-                src_counts = [torch.tensor(d['src_counts']) for d in batch]
+                src_counts = [torch.as_tensor(d['src_counts']) for d in batch]
             src_counts = torch.cat(src_counts, dim=0)
         if self.condition_encodings:
             condition = [d['conditions'] for d in batch]
@@ -362,24 +364,18 @@ class PerturbGenDataModule(LightningDataModule):
         for time_step in self.all_modelling_tps:
             if batch[0][f'tgt_counts_t{time_step}'] is not None:
                 if isinstance(batch[0][f'tgt_counts_t{time_step}'], csr_matrix):
-                    tgt_counts = [
-                        torch.tensor(d[f'tgt_counts_t{time_step}'].toarray())
-                        for d in batch
-                    ]
+                    # convert once per sample — reuse dense array for both counts and size factor
+                    _dense = [d[f'tgt_counts_t{time_step}'].toarray() for d in batch]
+                    tgt_counts = [torch.as_tensor(a) for a in _dense]
                     tgt_size_factor = [
-                        torch.tensor(
-                            np.ravel(
-                                d[f'tgt_counts_t{time_step}'].toarray().sum(axis=1)
-                            )
-                        )
-                        for d in batch
+                        torch.as_tensor(np.ravel(a.sum(axis=1))) for a in _dense
                     ]
                 else:
                     tgt_counts = [
-                        torch.tensor(d[f'tgt_counts_t{time_step}']) for d in batch
+                        torch.as_tensor(d[f'tgt_counts_t{time_step}']) for d in batch
                     ]
                     tgt_size_factor = [
-                        torch.tensor(
+                        torch.as_tensor(
                             np.ravel(d[f'tgt_counts_t{time_step}'].sum(axis=1))
                         )
                         for d in batch

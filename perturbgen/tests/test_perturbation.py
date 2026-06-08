@@ -80,7 +80,7 @@ trainer_params = {
     'n_total_tps': n_total_tps,
     'precision': 'high',
     'mask_scheduler': 'pow',
-    'mapping_dict_path': '/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf/token_id_to_genename_5000_hvg.pkl',
+    'mapping_dict_path': '/lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf_100M/token_id_to_genename_5000_hvg.pkl',
     'output_dir': './T_perturb/perturbgen/tests/res',
     'encoder': 'scmaskgit',
     'encoder_path': '/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt',

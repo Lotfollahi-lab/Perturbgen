@@ -42,6 +42,7 @@ def _build_model(
     context_mode=True,
     pred_tps=None,
     seed=42,
+    compile_model=False,
 ):
     if pred_tps is None:
         pred_tps = [3]
@@ -65,6 +66,7 @@ def _build_model(
         condition_dict=None,
         gene_to_rowid=GENE_TO_ROWID,
         seed=seed,
+        compile_model=compile_model,
     )
     model.eval()
     return model
@@ -281,3 +283,62 @@ class TestCountDecoderGenerate:
         assert 'count_output_t3' in count_out
         assert 'count_mean' in count_out['count_output_t3']
         assert count_out['count_output_t3']['count_mean'].shape == (BATCH, 10)
+
+
+# ---------------------------------------------------------------------------
+# Test 6: torch.compile — compiled model output matches uncompiled
+# ---------------------------------------------------------------------------
+
+class TestCompiledModel:
+    def test_compiled_generate_matches_uncompiled(self):
+        """Compiled encoder+decoder blocks must produce identical token IDs."""
+        if not torch.cuda.is_available():
+            pytest.skip("torch.compile test requires CUDA")
+        device = torch.device('cuda')
+
+        torch.manual_seed(42)
+        model_base = _build_model(seed=42, compile_model=False).to(device)
+        torch.manual_seed(42)
+        model_compiled = _build_model(seed=42, compile_model=True).to(device)
+
+        src, tgt = _make_inputs()
+        src = src.to(device)
+        tgt = {k: v.to(device) for k, v in tgt.items()}
+
+        torch.manual_seed(7)
+        with torch.no_grad():
+            _, ids_base = model_base.generate(src, tgt, iterations=ITERATIONS)
+
+        torch.manual_seed(7)
+        with torch.no_grad():
+            _, ids_compiled = model_compiled.generate(src, tgt, iterations=ITERATIONS)
+
+        for t in [3]:
+            k = f'tgt_input_ids_t{t}'
+            assert torch.equal(ids_base[k].cpu(), ids_compiled[k].cpu()), (
+                f"Compiled output differs at {k}"
+            )
+
+    def test_compiled_training_forward_matches_uncompiled(self):
+        """Compiled decoder blocks must give identical logits in training forward."""
+        if not torch.cuda.is_available():
+            pytest.skip("torch.compile test requires CUDA")
+        device = torch.device('cuda')
+
+        model_base = _build_model(seed=42, compile_model=False).to(device)
+        model_compiled = _build_model(seed=42, compile_model=True).to(device)
+
+        src, tgt = _make_inputs()
+        src = src.to(device)
+        tgt = {k: v.to(device) for k, v in tgt.items()}
+
+        with torch.no_grad():
+            out_base = model_base.forward(src_input_id=src, tgt_input_id_dict=tgt, not_masked=True)
+            out_comp = model_compiled.forward(src_input_id=src, tgt_input_id_dict=tgt, not_masked=True)
+
+        for t in [3]:
+            assert torch.allclose(
+                out_base[t]['dec_logits'].cpu(),
+                out_comp[t]['dec_logits'].cpu(),
+                atol=1e-4,
+            ), f"Logits differ at t={t}"

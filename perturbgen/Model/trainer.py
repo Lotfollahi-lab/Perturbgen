@@ -152,6 +152,7 @@ class PerturbGenTrainer(LightningModule):
             condition_dict=condition_dict,
             gene_to_rowid=self.gene_to_rowid,
             seed=seed,
+            compile_model=True,
         )
         self.masking_loss = nn.CrossEntropyLoss()
         self.weight_decay = weight_decay
@@ -284,7 +285,14 @@ class PerturbGenTrainer(LightningModule):
 
     def configure_optimizers(self):
         parameters = [{'params': self.transformer.parameters(), 'lr': self.initial_lr}]
-        optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
+        try:
+            optimizer = optim.Adam(
+                parameters,
+                weight_decay=self.weight_decay,
+                fused=torch.cuda.is_available(),
+            )
+        except (RuntimeError, ValueError, TypeError):
+            optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
 
         return {
             'optimizer': optimizer,
@@ -319,11 +327,11 @@ class PerturbGenTrainer(LightningModule):
                     logger=True,
                     batch_size=batch['tgt_input_ids_t1'].shape[0],
                     rank_zero_only=True,
-                    sync_dist=True,
+                    sync_dist=False,
                 )
-            dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
+            dec_logits = dec_logits.reshape(-1, dec_logits.size(-1))
 
-            labels = labels.contiguous().view(-1)
+            labels = labels.reshape(-1)
 
             masking_loss = self.masking_loss(dec_logits, labels)
             self.log(
@@ -335,7 +343,7 @@ class PerturbGenTrainer(LightningModule):
                 logger=True,
                 batch_size=batch['tgt_input_ids_t1'].shape[0],
                 rank_zero_only=True,
-                sync_dist=True,
+                sync_dist=False,
             )
             return masking_loss
 
@@ -348,8 +356,8 @@ class PerturbGenTrainer(LightningModule):
             dec_logits = outputs[t]['dec_logits']
             labels = outputs[t]['labels']
             perp = self.perplexity(dec_logits, labels)
-            dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
-            labels = labels.contiguous().view(-1)
+            dec_logits = dec_logits.reshape(-1, dec_logits.size(-1))
+            labels = labels.reshape(-1)
             masking_loss = self.masking_loss(dec_logits, labels)
 
             self.log(
@@ -361,7 +369,7 @@ class PerturbGenTrainer(LightningModule):
                 logger=True,
                 batch_size=batch['tgt_input_ids_t1'].shape[0],
                 rank_zero_only=True,
-                sync_dist=True,
+                sync_dist=False,
             )
             self.log(
                 'val/perplexity',
@@ -372,7 +380,7 @@ class PerturbGenTrainer(LightningModule):
                 logger=True,
                 batch_size=batch['tgt_input_ids_t1'].shape[0],
                 rank_zero_only=True,
-                sync_dist=True,
+                sync_dist=False,
             )
             return masking_loss
 
@@ -947,7 +955,7 @@ class CountDecoderTrainer(LightningModule):
             prog_bar=True,
             logger=True,
             batch_size=batch['tgt_input_ids_t1'].shape[0],
-            sync_dist=True,
+            sync_dist=False,
         )
         with torch.no_grad():
             mean_mse, res_dict = self.compute_mse_metric(
@@ -961,7 +969,7 @@ class CountDecoderTrainer(LightningModule):
                 on_epoch=True,
                 prog_bar=True,
                 logger=True,
-                sync_dist=True,
+                sync_dist=False,
             )
 
         return count_loss
@@ -1013,7 +1021,7 @@ class CountDecoderTrainer(LightningModule):
             prog_bar=True,
             logger=True,
             batch_size=batch['tgt_input_ids_t1'].shape[0],
-            sync_dist=True,
+            sync_dist=False,
         )
         mean_mse, res_dict = self.compute_mse_metric(
             pred_counts_dict,
@@ -1030,7 +1038,7 @@ class CountDecoderTrainer(LightningModule):
             on_step=True,
             prog_bar=True,
             logger=True,
-            sync_dist=True,
+            sync_dist=False,
         )
 
     def on_validation_epoch_end(self):
@@ -1264,7 +1272,14 @@ class CountDecoderTrainer(LightningModule):
 
     def configure_optimizers(self):
         parameters = [{'params': self.decoder.parameters(), 'lr': self.lr}]
-        optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
+        try:
+            optimizer = optim.Adam(
+                parameters,
+                weight_decay=self.weight_decay,
+                fused=torch.cuda.is_available(),
+            )
+        except (RuntimeError, ValueError, TypeError):
+            optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
         return {
             'optimizer': optimizer,
             'monitor': 'train/loss',

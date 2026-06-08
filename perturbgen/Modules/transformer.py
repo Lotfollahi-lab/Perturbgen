@@ -135,8 +135,7 @@ class PositionalEncoding(nn.Module):
             # adjust for src embedding starting at 0
             tgt_time_step_ = tgt_time_step + 1
         if self.mode == 'time_pos_sin':
-            time_pe = self.time_pe[:, tgt_time_step_]
-            time_pe = time_pe.unsqueeze(0).expand(x.size(0), x.size(1), -1)
+            time_pe = self.time_pe[:, tgt_time_step_].unsqueeze(0)  # (1, seq, d_model)
             pos_pe = self.pos_pe[:, : x.size(1)]
             return x + time_pe + pos_pe
         elif self.mode == 'comb_sin':
@@ -145,8 +144,7 @@ class PositionalEncoding(nn.Module):
             pe = self.pe[:, start_pos:end_pos]
             return x + pe
         elif self.mode == 'sin_learnt':
-            time_pe = self.time_pe[:, tgt_time_step_]
-            time_pe = time_pe.unsqueeze(0).expand(x.size(0), x.size(1), -1)
+            time_pe = self.time_pe[:, tgt_time_step_].unsqueeze(0)  # (1, seq, d_model)
             pos_ids = self.pos_ids[:, : x.size(1)]
             pos_ids = pos_ids.expand(x.size(0), -1)
             pos_pe = self.pos_encoding(pos_ids)
@@ -257,11 +255,8 @@ class CrossAttention(nn.Module):
         _, seq_len_k, _ = k.shape
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=h), (q, k, v))
         if mask is not None:
-            # Expand the mask to match the target shape:
-            mask = mask.unsqueeze(1).unsqueeze(2)
-            mask = mask.expand(-1, h, seq_len_q, seq_len_k)
-            # negate mask so that padding tokens=False
-            mask = ~mask
+            # (B, seq_k) -> (B, 1, 1, seq_k); SDPA broadcasts over heads and query dim
+            mask = (~mask).unsqueeze(1).unsqueeze(2)
         if return_attn & (identity is not None):
             identity = identity.expand(q.size(0), self.num_heads, -1, -1)
 
@@ -589,6 +584,7 @@ class PerturbGen(nn.Module):
         encoder_path: str | None = None,
         condition_dict: Dict[str, Dict] | None = None,
         gene_to_rowid: Dict[str, int] | None = None,
+        compile_model: bool = False,
     ):
         '''
         Description:
@@ -706,6 +702,17 @@ class PerturbGen(nn.Module):
         self.mask_scheduler = mask_scheduler
         self.gene_to_rowid = gene_to_rowid
         self.condition_dict = condition_dict
+
+        if compile_model:
+            self.encoder_layers = torch.compile(
+                self.encoder_layers, mode='default', fullgraph=False
+            )
+            self._decoder_block_compiled = [
+                torch.compile(block, mode='default', fullgraph=False)
+                for block in self.decoder_block
+            ]
+        else:
+            self._decoder_block_compiled = list(self.decoder_block)
 
         # caching variables for encoder outputs
         self._enc_cache_key = None
@@ -848,10 +855,13 @@ class PerturbGen(nn.Module):
         tgt_pad,
         labels=None,
         tgt_input_id=None,
+        decoder_blocks=None,
     ):
+        if decoder_blocks is None:
+            decoder_blocks = self._decoder_block_compiled
         self_attn_list = []
         cross_attn_list = []
-        for dec_layer in self.decoder_block:
+        for dec_layer in decoder_blocks:
             dec_embedding, self_attn_weights, cross_attn_weights = dec_layer(
                 x=dec_embedding,
                 src_mask=src_attention_mask,
@@ -932,6 +942,7 @@ class PerturbGen(nn.Module):
                         tgt_pad=tgt_pad,
                         labels=None,
                         tgt_input_id=None,
+                        decoder_blocks=self.decoder_block,
                     )
                     if agg_mode == 'concat':
                         context_embs_list.append(dec_outputs['dec_embedding'])
@@ -1007,9 +1018,8 @@ class PerturbGen(nn.Module):
         if generate_id_dict is not None:
             # MASKGIT generation: src_input_id is reused across iterations
             enc_output, src_attention_mask = self._encode_with_cache(src_input_id)
-            
+
         else:
-        # training / normal inference
             src_attention_mask = generate_pad(src_input_id)
             enc_output = self.call_encoder(src_input_id, src_attention_mask)
         
@@ -1510,6 +1520,7 @@ class CountDecoder(nn.Module):
         use_positional_encoding: bool = False,
         use_size_factor: bool = True,
         use_observed_size_factor: bool = True,
+        compile_model: bool = False,
     ):
         '''
         Description:
@@ -1559,6 +1570,11 @@ class CountDecoder(nn.Module):
             dropout,
             use_size_factor=use_size_factor,
             use_observed_size_factor=use_observed_size_factor,
+            )
+
+        if compile_model:
+            self.count_decoder = torch.compile(
+                self.count_decoder, mode='default', fullgraph=False
             )
 
         self.pred_tps = pred_tps

@@ -25,7 +25,7 @@ GENE_TO_ROWID = {'<cls>': 2, '<mask>': 1, '<pad>': 0, '<eos>': 3}
 
 def build_model(d_model=128, num_heads=4, num_layers=4, seq=256, vocab=500,
                 context_tps=None, pred_tps=None, n_total_tps=3,
-                context_mode=True, device='cpu', seed=42):
+                context_mode=True, device='cpu', seed=42, compile_model=False):
     if pred_tps is None:
         pred_tps = [3]
     model = PerturbGen(
@@ -44,6 +44,7 @@ def build_model(d_model=128, num_heads=4, num_layers=4, seq=256, vocab=500,
         condition_dict=None,
         gene_to_rowid=GENE_TO_ROWID,
         seed=seed,
+        compile_model=compile_model,
     )
     model.eval()
     return model.to(device)
@@ -126,10 +127,10 @@ def report(label, times, baseline=None, n_reps=5):
 
 def run_config(label, device, batch, seq, vocab, d_model, num_layers,
                iterations, context_tps, pred_tps, n_reps, baseline=None,
-               ctx_cache_ablation=False):
+               ctx_cache_ablation=False, compile_model=False):
     ctx_str = str(context_tps) if context_tps else 'None'
     print(f"\n[{label}] device={device}  batch={batch}  seq={seq}  vocab={vocab}"
-          f"  d_model={d_model}  layers={num_layers}")
+          f"  d_model={d_model}  layers={num_layers}  compile={compile_model}")
     print(f"  context_tps={ctx_str}  pred_tps={pred_tps}  iterations={iterations}")
     model = build_model(
         d_model=d_model, num_heads=4, num_layers=num_layers,
@@ -137,6 +138,7 @@ def run_config(label, device, batch, seq, vocab, d_model, num_layers,
         context_tps=context_tps, pred_tps=pred_tps,
         context_mode=(context_tps is not None),
         device=device,
+        compile_model=compile_model,
     )
     n_params = sum(p.numel() for p in model.parameters())
     print(f"  Model params: {n_params:,}")
@@ -233,6 +235,26 @@ def main():
             n_reps=n_reps,
             baseline=None,
         )
+
+        # --- torch.compile ablation on GPU ---
+        print(f"\n{'='*60}")
+        print("torch.compile ablation (encoder + decoder blocks)")
+        print(f"{'='*60}")
+        for batch_size in [16, 64, 128]:
+            compile_kwargs = dict(
+                device=device, batch=batch_size, seq=512, vocab=500,
+                d_model=256, num_layers=6, iterations=18,
+                context_tps=[1, 2], pred_tps=[3], n_reps=n_reps,
+            )
+            med_no_compile = run_config(
+                label=f'GPU batch={batch_size} | no compile', **compile_kwargs)
+            med_compiled = run_config(
+                label=f'GPU batch={batch_size} | compile_model=True',
+                compile_model=True, **compile_kwargs)
+            if med_no_compile and med_compiled:
+                speedup = med_no_compile / med_compiled
+                print(f"\n  [batch={batch_size}] torch.compile speedup: {speedup:.2f}x  "
+                      f"({(speedup - 1) * 100:.1f}% {'faster' if speedup > 1 else 'slower'})")
     else:
         print('\n[GPU] CUDA not available — skipping GPU configs.')
 

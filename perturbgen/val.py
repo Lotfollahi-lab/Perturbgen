@@ -237,7 +237,7 @@ def get_args(argv):
     parser.add_argument(
         '--context_mode',
         type=str2bool,
-        default=True,
+        default=False,
         help='context mode for timepoints',
     )
     parser.add_argument(
