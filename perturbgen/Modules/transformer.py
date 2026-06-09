@@ -856,6 +856,7 @@ class PerturbGen(nn.Module):
         labels=None,
         tgt_input_id=None,
         decoder_blocks=None,
+        compute_logits=True,
     ):
         if decoder_blocks is None:
             decoder_blocks = self._decoder_block_compiled
@@ -880,8 +881,7 @@ class PerturbGen(nn.Module):
             cross_attn_weights = (
                 torch.stack(cross_attn_list).mean(dim=0).to(torch.float16)
             )
-        # :TODO rewrite this part logits not needed for running the other timepoints
-        decoder_logits = self.decoder_fc(dec_embedding)
+        decoder_logits = self.decoder_fc(dec_embedding) if compute_logits else None
         if tgt_input_id is not None:
             mean_embedding = mean_nonpadding_embs(
                 embs=dec_embedding,
@@ -943,6 +943,7 @@ class PerturbGen(nn.Module):
                         labels=None,
                         tgt_input_id=None,
                         decoder_blocks=self.decoder_block,
+                        compute_logits=False,
                     )
                     if agg_mode == 'concat':
                         context_embs_list.append(dec_outputs['dec_embedding'])
