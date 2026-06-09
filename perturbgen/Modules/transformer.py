@@ -432,9 +432,20 @@ class scmaskgitwrapper(nn.Module):
         pretrained_dict = torch.load(model_path, map_location='cpu', weights_only=True)
         if 'state_dict' in pretrained_dict:
             pretrained_dict = pretrained_dict['state_dict']
-        corrected_dict = {
-            k.replace('transformer.', ''): v for k, v in pretrained_dict.items()
-        }
+        # Checkpoints saved from a PerturbGenTrainer nest scmaskgit weights under
+        # 'transformer.encoder_layers.model.*'; standalone scmaskgit checkpoints
+        # use 'transformer.*' directly. Strip the appropriate prefix.
+        nested_prefix = 'transformer.encoder_layers.model.'
+        if any(k.startswith(nested_prefix) for k in pretrained_dict):
+            corrected_dict = {
+                k[len(nested_prefix):]: v
+                for k, v in pretrained_dict.items()
+                if k.startswith(nested_prefix)
+            }
+        else:
+            corrected_dict = {
+                k.replace('transformer.', ''): v for k, v in pretrained_dict.items()
+            }
         self.model.load_state_dict(corrected_dict)
         for param in self.model.parameters():
             param.requires_grad = False
