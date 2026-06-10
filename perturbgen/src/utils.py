@@ -1034,6 +1034,7 @@ def modify_ckpt_state_dict(
     for k, v in state_dict.items():
         if k.startswith(replace_str):
             k = k.replace(replace_str, '', 1)
+        k = k.replace('_orig_mod.', '')
         new_state_dict[k] = v
 
     return new_state_dict

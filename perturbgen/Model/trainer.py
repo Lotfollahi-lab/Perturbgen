@@ -1,5 +1,6 @@
 import os
 import pickle
+import warnings
 from datetime import datetime
 from typing import (
     Any,
@@ -94,7 +95,7 @@ class PerturbGenTrainer(LightningModule):
         ] = 'time_pos_sin',
         precision: Literal['high', 'medium'] = 'medium',
         tokenid_to_rowid_path: str = (
-            'T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/tokenid_to_rowid_5000_hvg.pkl'
+            'T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf_100M/tokenid_to_rowid_5000_hvg.pkl'
         ),
         encoder_path: str | None = None,
         deg_pkl_path: str | None = None,
@@ -568,6 +569,14 @@ class PerturbGenTrainer(LightningModule):
                 )
                 print('---Rouge score saved')
 
+    def on_save_checkpoint(self, checkpoint):
+        # torch.compile wraps modules under _orig_mod — strip it so checkpoints
+        # are loadable regardless of whether the model was compiled.
+        checkpoint['state_dict'] = {
+            k.replace('._orig_mod.', '.'): v
+            for k, v in checkpoint['state_dict'].items()
+        }
+
 
 class CountDecoderTrainer(LightningModule):
     def __init__(
@@ -616,6 +625,7 @@ class CountDecoderTrainer(LightningModule):
         shared_gene_list: Dict[Any, Any] | None = None,
         context_tps: List[int] | None = None,
         mapping_dict_path: str | None = None,
+        tokenid_to_rowid_path: str | None = None,
         use_size_factor: bool = True,
         use_observed_size_factor: bool = True,
         *args,
@@ -668,9 +678,9 @@ class CountDecoderTrainer(LightningModule):
             for param in self.pretrained_model.parameters():
                 param.requires_grad = False
             if len(missing) > 1:
-                raise Warning(f'Missing keys in state_dict: {missing}')
+                warnings.warn(f'Missing keys in state_dict: {missing}')
             if len(unexpected) > 1:
-                raise Warning(f'Unexpected keys in state_dict: {unexpected}')
+                warnings.warn(f'Unexpected keys in state_dict: {unexpected}')
         self.return_rouge_score = return_rouge_score
         self.decoder = CountDecoder(
             pretrained_model=self.pretrained_model,
@@ -698,9 +708,9 @@ class CountDecoderTrainer(LightningModule):
                 state_dict_, strict=False
             )
             if len(missing) > 1:
-                raise Warning(f'Missing keys in state_dict: {missing}')
+                warnings.warn(f'Missing keys in state_dict: {missing}')
             if len(unexpected) > 1:
-                raise Warning(f'Unexpected keys in state_dict: {unexpected}')
+                warnings.warn(f'Unexpected keys in state_dict: {unexpected}')
         self.weight_decay = weight_decay
         self.lr = lr
         self.loss_mode = loss_mode
@@ -1283,4 +1293,10 @@ class CountDecoderTrainer(LightningModule):
         return {
             'optimizer': optimizer,
             'monitor': 'train/loss',
+        }
+
+    def on_save_checkpoint(self, checkpoint):
+        checkpoint['state_dict'] = {
+            k.replace('._orig_mod.', '.'): v
+            for k, v in checkpoint['state_dict'].items()
         }

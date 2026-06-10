@@ -1380,9 +1380,10 @@ class PerturbGen(nn.Module):
             # views — none modified in-place before reassignment; tests confirm equivalence
             tmp_ids_ = tmp_ids[:, cond_length:]
             ids_to_keep_ = ids_to_keep[:, cond_length:]
-            # Create a mask of already predicted tokens
-            indices = ids_to_keep_.unsqueeze(1).expand(-1, seq_len - cond_length, -1)
-            logits.scatter_(2, indices, max_neg_value)
+            # Suppress already-predicted vocab entries across all positions
+            suppress = torch.zeros(batch_size, logits.shape[-1], dtype=torch.bool, device=logits.device)
+            suppress.scatter_(1, ids_to_keep_, True)
+            logits.masked_fill_(suppress.unsqueeze(1), max_neg_value)
             filtered_logits = top_k(logits, topk_filter_thres)
             temperature = starting_temperature * (
                 steps_until_x0 / iterations

@@ -624,14 +624,16 @@ def main(argv=None) -> None:
     if torch.cuda.device_count() > 1:
         # multi gpu training with group logging
         wandb_logger = WandbLogger(
-            project='ttransformer',
+            entity='lotfollahi',
+            project='perturbgen_revision',
             name=f'{run_id}_{str(uuid.uuid4())[:6]}',
             save_dir='./T_perturb/perturbgen/wandb/wandb',
             log_model=True,
         )  # noqa
     else:
         wandb_logger = WandbLogger(
-            project='ttransformer',
+            entity='lotfollahi',
+            project='perturbgen_revision',
             name=f'{run_id}',
             save_dir='./T_perturb/perturbgen/wandb/wandb',
             log_model=True,

@@ -1,8 +1,8 @@
 #!/bin/bash
-#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -q inference # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
 #BSUB -gpu 'mode=exclusive_process:num=1' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
 #BSUB -n 4 # number of cores
-#BSUB -G team361 # groupname for billing
+#BSUB -G s10396 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen # working directory
 #BSUB -o logs/cyto_generate_s0_%J.out # output file
 #BSUB -e logs/cyto_generate_s0_%J.err # error file
@@ -38,7 +38,7 @@ python3 $cwd/val.py \
 --split False \
 --splitting_mode stratified \
 --generate True \
---ckpt_count_path 'T_perturb/res/cytoimmgen/interpolation/checkpoints/20250829_2116_cellgen_train_count_lr_0.001_wd_0.001_batch_64_drop_0.1_zinb_tp_1-3_s_42_pos_time_pos_sin_m_pow-epoch=01.ckpt' \
+--ckpt_count_path 'T_perturb/res/cytoimmgen/interpolation/checkpoints/20260610_1135_cellgen_train_count_lr_0.001_wd_0.001_batch_64_drop_0.1_zinb_tp_1-3_s_42_pos_time_pos_sin_m_pow-epoch=04.ckpt' \
 --output_dir $RES_DIR/$RES_NAME \
 --src_dataset "T_perturb/tokenized_data/cytoimmgen_100M_cellpopulation/dataset_2000_hvg_src/0h.dataset" \
 --tgt_dataset_folder "T_perturb/tokenized_data/cytoimmgen_100M_cellpopulation/dataset_2000_hvg_tgt" \
