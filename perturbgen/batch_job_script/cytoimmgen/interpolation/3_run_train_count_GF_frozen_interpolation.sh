@@ -1,7 +1,7 @@
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=4' # request for exclusive access to gpu (:gmodel=NVIDIAA100_SXM4_80GB if you want to specify the gpu model)
-#BSUB -n 4 # number of cores
+#BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu (:gmodel=NVIDIAA100_SXM4_80GB if you want to specify the gpu model)
+#BSUB -n 2 # number of cores
 #BSUB -G team361 # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen # working directory
 #BSUB -o logs/count_inter_s0_%J.out # output file
@@ -38,7 +38,7 @@ python3 $cwd/train.py \
 --split False \
 --splitting_mode stratified \
 --output_dir $RES_DIR/$RES_NAME \
---ckpt_masking_path "T_perturb/res/cytoimmgen/interpolation/checkpoints/20250828_1633_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1-3_s_42-epoch=19.ckpt" \
+--ckpt_masking_path "T_perturb/res/cytoimmgen/interpolation/checkpoints/20260609_1446_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1-3_s_42-epoch=19.ckpt" \
 --src_dataset "T_perturb/tokenized_data/cytoimmgen_100M_cellpopulation/dataset_2000_hvg_src/0h.dataset" \
 --tgt_dataset_folder "T_perturb/tokenized_data/cytoimmgen_100M_cellpopulation/dataset_2000_hvg_tgt" \
 --src_adata "T_perturb/tokenized_data/cytoimmgen_100M_cellpopulation/h5ad_pairing_2000_hvg_src/0h.h5ad" \
@@ -58,7 +58,6 @@ python3 $cwd/train.py \
 --var_list Cell_population Cell_type Time_point Donor \
 --encoder scmaskgit \
 --encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt" \
---add_cell_time False \
 --use_positional_encoding False \
 --pos_encoding_mode time_pos_sin \
 --context_mode True \

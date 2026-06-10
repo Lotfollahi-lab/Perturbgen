@@ -11,7 +11,6 @@ from torch import nn
 
 from perturbgen.Modules.transformer import CountDecoder, PerturbGen
 from perturbgen.src.utils import (
-    generate_pad,
     gumbel_sample,
     mean_nonpadding_embs,
     noise_schedule,
@@ -189,6 +188,7 @@ class PerturberMasking(PerturbGen):
         scores[:, :cond_length] = max_neg_value
         tmp_ids = generate_id_dict[f'tgt_input_ids_t{tgt_time_step}'].clone()
         batch_size, seq_len = tmp_ids.shape
+        zero_scalar = torch.zeros((), dtype=tmp_ids.dtype, device=tmp_ids.device)
         # find total_tokens by find the numbers of 1s in the mask
         total_tokens = torch.sum(tmp_ids == 1, dim=1)
         ids_to_keep = torch.zeros_like(tmp_ids, dtype=torch.long)
@@ -211,17 +211,17 @@ class PerturberMasking(PerturbGen):
             unmasked = (scores != max_neg_value).sum(dim=1)
             num_tokens_to_mask = (unmasked.float() * rand_mask_prob).long()
             mask = torch.zeros_like(scores, dtype=torch.bool)
-            _, indices_to_mask = torch.topk(scores, num_tokens_to_mask.max(), dim=-1)
-            # Mask the top `num_tokens_to_mask` positions for each sample
-            for i in range(batch_size):
-                mask[i, indices_to_mask[i, : num_tokens_to_mask[i]]] = True
+            k = int(num_tokens_to_mask.max())
+            if k > 0:
+                _, indices_to_mask = torch.topk(scores, k, dim=-1)
+                keep = (
+                    torch.arange(k, device=scores.device).unsqueeze(0)
+                    < num_tokens_to_mask.unsqueeze(1)
+                )
+                mask.scatter_(1, indices_to_mask, keep)
             tmp_ids.masked_fill_(mask, self.mask_token)
             # keep indices which are not masked except for the CLS token
-            ids_to_keep = torch.where(
-                mask,
-                torch.tensor(0, dtype=tmp_ids.dtype, device=tmp_ids.device),
-                tmp_ids,
-            )
+            ids_to_keep = torch.where(mask, zero_scalar, tmp_ids)
             generate_id_dict[f'tgt_input_ids_t{tgt_time_step}'] = tmp_ids
             outputs = demask_fn.forward(
                 src_input_id=src_input_id,  # target
@@ -236,16 +236,16 @@ class PerturberMasking(PerturbGen):
                 # exclude genes_to_perturb from the option to be selected
                 logits[:, :, genes_to_perturb] = max_neg_value
             # exclude cls token
-            tmp_ids_ = tmp_ids[:, cond_length:].clone()
-            scores_ = scores[:, cond_length:].clone()
-            ids_to_keep_ = ids_to_keep[:, cond_length:].clone()
-            # Create a mask of already predicted tokens
-            indices = ids_to_keep_.unsqueeze(1).expand(-1, seq_len - cond_length, -1)
-            logits.scatter_(2, indices, max_neg_value)
+            tmp_ids_ = tmp_ids[:, cond_length:]
+            ids_to_keep_ = ids_to_keep[:, cond_length:]
+            # Suppress already-predicted vocab entries across all positions
+            suppress = torch.zeros(batch_size, logits.shape[-1], dtype=torch.bool, device=logits.device)
+            suppress.scatter_(1, ids_to_keep_, True)
+            logits.masked_fill_(suppress.unsqueeze(1), max_neg_value)
 
-            filtered_logits = top_k(logits.clone(), topk_filter_thres)
+            filtered_logits = top_k(logits, topk_filter_thres)
             temperature = starting_temperature * (
-                steps_until_x0 / iteration
+                steps_until_x0 / iterations
             )  # temperature is annealed
             pred_ids = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
 
@@ -272,11 +272,15 @@ class PerturberMasking(PerturbGen):
         labels=None,
         tgt_input_id=None,
         tgt_pert_tokens=None,
+        decoder_blocks=None,
+        compute_logits=True,
     ):
+        if decoder_blocks is None:
+            decoder_blocks = self.decoder_block
         self_attn_list = []
         cross_attn_list = []
         current_dec_l = 1
-        for dec_layer in self.decoder_block:
+        for dec_layer in decoder_blocks:
             # see if concatenation of cls embedding
             dec_embedding, self_attn_weights, cross_attn_weights = dec_layer(
                 x=dec_embedding,
@@ -290,12 +294,12 @@ class PerturberMasking(PerturbGen):
                 cross_attn_list.append(cross_attn_weights)
             if current_dec_l == 1:
                 dec_embedding_l1 = dec_embedding
-            if len(self.decoder_block) == 1:
+            if len(decoder_blocks) == 1:
                 # check if you can return the middle layer embedding and also if there is only one layer return the embedding of that layer as the middle layer embedding
-                if len(self.decoder_block) % 2 == 1:
-                    if current_dec_l == (len(self.decoder_block) + 1) // 2:
+                if len(decoder_blocks) % 2 == 1:
+                    if current_dec_l == (len(decoder_blocks) + 1) // 2:
                         dec_embedding_lmid = dec_embedding
-                elif current_dec_l == len(self.decoder_block) // 2:
+                elif current_dec_l == len(decoder_blocks) // 2:
                     dec_embedding_lmid = dec_embedding
                 current_dec_l += 1
             else:
@@ -309,8 +313,7 @@ class PerturberMasking(PerturbGen):
             cross_attn_weights = (
                 torch.stack(cross_attn_list).mean(dim=0).to(torch.float16)
             )
-        # :TODO rewrite this part logits not needed for running the other timepoints
-        decoder_logits = self.decoder_fc(dec_embedding)
+        decoder_logits = self.decoder_fc(dec_embedding) if compute_logits else None
         if tgt_input_id is not None:
             mean_embedding = mean_nonpadding_embs(
                 embs=dec_embedding,
@@ -398,8 +401,7 @@ class PerturberMasking(PerturbGen):
             )
         else:
             tgt_pad_dict = generate_pad_dict
-        src_attention_mask = generate_pad(src_input_id)
-        enc_output = self.call_encoder(src_input_id, src_attention_mask)
+        enc_output, src_attention_mask = self._encode_with_cache(src_input_id)
         if (not_masked) and (tgt_input_id_dict is not None):
             # not masked for count prediction and predicted embeddings
             sorted_time_steps = sorted(self.pred_tps)

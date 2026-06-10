@@ -1,5 +1,6 @@
 import os
 import pickle
+import warnings
 from datetime import datetime
 from typing import (
     Any,
@@ -94,7 +95,7 @@ class PerturbGenTrainer(LightningModule):
         ] = 'time_pos_sin',
         precision: Literal['high', 'medium'] = 'medium',
         tokenid_to_rowid_path: str = (
-            'T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf/tokenid_to_rowid_5000_hvg.pkl'
+            'T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf_100M/tokenid_to_rowid_5000_hvg.pkl'
         ),
         encoder_path: str | None = None,
         deg_pkl_path: str | None = None,
@@ -152,6 +153,7 @@ class PerturbGenTrainer(LightningModule):
             condition_dict=condition_dict,
             gene_to_rowid=self.gene_to_rowid,
             seed=seed,
+            compile_model=True,
         )
         self.masking_loss = nn.CrossEntropyLoss()
         self.weight_decay = weight_decay
@@ -284,7 +286,14 @@ class PerturbGenTrainer(LightningModule):
 
     def configure_optimizers(self):
         parameters = [{'params': self.transformer.parameters(), 'lr': self.initial_lr}]
-        optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
+        try:
+            optimizer = optim.Adam(
+                parameters,
+                weight_decay=self.weight_decay,
+                fused=torch.cuda.is_available(),
+            )
+        except (RuntimeError, ValueError, TypeError):
+            optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
 
         return {
             'optimizer': optimizer,
@@ -319,11 +328,11 @@ class PerturbGenTrainer(LightningModule):
                     logger=True,
                     batch_size=batch['tgt_input_ids_t1'].shape[0],
                     rank_zero_only=True,
-                    sync_dist=True,
+                    sync_dist=False,
                 )
-            dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
+            dec_logits = dec_logits.reshape(-1, dec_logits.size(-1))
 
-            labels = labels.contiguous().view(-1)
+            labels = labels.reshape(-1)
 
             masking_loss = self.masking_loss(dec_logits, labels)
             self.log(
@@ -335,7 +344,7 @@ class PerturbGenTrainer(LightningModule):
                 logger=True,
                 batch_size=batch['tgt_input_ids_t1'].shape[0],
                 rank_zero_only=True,
-                sync_dist=True,
+                sync_dist=False,
             )
             return masking_loss
 
@@ -348,8 +357,8 @@ class PerturbGenTrainer(LightningModule):
             dec_logits = outputs[t]['dec_logits']
             labels = outputs[t]['labels']
             perp = self.perplexity(dec_logits, labels)
-            dec_logits = dec_logits.contiguous().view(-1, dec_logits.size(-1))
-            labels = labels.contiguous().view(-1)
+            dec_logits = dec_logits.reshape(-1, dec_logits.size(-1))
+            labels = labels.reshape(-1)
             masking_loss = self.masking_loss(dec_logits, labels)
 
             self.log(
@@ -361,7 +370,7 @@ class PerturbGenTrainer(LightningModule):
                 logger=True,
                 batch_size=batch['tgt_input_ids_t1'].shape[0],
                 rank_zero_only=True,
-                sync_dist=True,
+                sync_dist=False,
             )
             self.log(
                 'val/perplexity',
@@ -372,7 +381,7 @@ class PerturbGenTrainer(LightningModule):
                 logger=True,
                 batch_size=batch['tgt_input_ids_t1'].shape[0],
                 rank_zero_only=True,
-                sync_dist=True,
+                sync_dist=False,
             )
             return masking_loss
 
@@ -560,6 +569,14 @@ class PerturbGenTrainer(LightningModule):
                 )
                 print('---Rouge score saved')
 
+    def on_save_checkpoint(self, checkpoint):
+        # torch.compile wraps modules under _orig_mod — strip it so checkpoints
+        # are loadable regardless of whether the model was compiled.
+        checkpoint['state_dict'] = {
+            k.replace('._orig_mod.', '.'): v
+            for k, v in checkpoint['state_dict'].items()
+        }
+
 
 class CountDecoderTrainer(LightningModule):
     def __init__(
@@ -608,6 +625,7 @@ class CountDecoderTrainer(LightningModule):
         shared_gene_list: Dict[Any, Any] | None = None,
         context_tps: List[int] | None = None,
         mapping_dict_path: str | None = None,
+        tokenid_to_rowid_path: str | None = None,
         use_size_factor: bool = True,
         use_observed_size_factor: bool = True,
         *args,
@@ -660,9 +678,9 @@ class CountDecoderTrainer(LightningModule):
             for param in self.pretrained_model.parameters():
                 param.requires_grad = False
             if len(missing) > 1:
-                raise Warning(f'Missing keys in state_dict: {missing}')
+                warnings.warn(f'Missing keys in state_dict: {missing}')
             if len(unexpected) > 1:
-                raise Warning(f'Unexpected keys in state_dict: {unexpected}')
+                warnings.warn(f'Unexpected keys in state_dict: {unexpected}')
         self.return_rouge_score = return_rouge_score
         self.decoder = CountDecoder(
             pretrained_model=self.pretrained_model,
@@ -690,9 +708,9 @@ class CountDecoderTrainer(LightningModule):
                 state_dict_, strict=False
             )
             if len(missing) > 1:
-                raise Warning(f'Missing keys in state_dict: {missing}')
+                warnings.warn(f'Missing keys in state_dict: {missing}')
             if len(unexpected) > 1:
-                raise Warning(f'Unexpected keys in state_dict: {unexpected}')
+                warnings.warn(f'Unexpected keys in state_dict: {unexpected}')
         self.weight_decay = weight_decay
         self.lr = lr
         self.loss_mode = loss_mode
@@ -947,7 +965,7 @@ class CountDecoderTrainer(LightningModule):
             prog_bar=True,
             logger=True,
             batch_size=batch['tgt_input_ids_t1'].shape[0],
-            sync_dist=True,
+            sync_dist=False,
         )
         with torch.no_grad():
             mean_mse, res_dict = self.compute_mse_metric(
@@ -961,7 +979,7 @@ class CountDecoderTrainer(LightningModule):
                 on_epoch=True,
                 prog_bar=True,
                 logger=True,
-                sync_dist=True,
+                sync_dist=False,
             )
 
         return count_loss
@@ -1013,7 +1031,7 @@ class CountDecoderTrainer(LightningModule):
             prog_bar=True,
             logger=True,
             batch_size=batch['tgt_input_ids_t1'].shape[0],
-            sync_dist=True,
+            sync_dist=False,
         )
         mean_mse, res_dict = self.compute_mse_metric(
             pred_counts_dict,
@@ -1030,7 +1048,7 @@ class CountDecoderTrainer(LightningModule):
             on_step=True,
             prog_bar=True,
             logger=True,
-            sync_dist=True,
+            sync_dist=False,
         )
 
     def on_validation_epoch_end(self):
@@ -1264,8 +1282,21 @@ class CountDecoderTrainer(LightningModule):
 
     def configure_optimizers(self):
         parameters = [{'params': self.decoder.parameters(), 'lr': self.lr}]
-        optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
+        try:
+            optimizer = optim.Adam(
+                parameters,
+                weight_decay=self.weight_decay,
+                fused=torch.cuda.is_available(),
+            )
+        except (RuntimeError, ValueError, TypeError):
+            optimizer = optim.Adam(parameters, weight_decay=self.weight_decay)
         return {
             'optimizer': optimizer,
             'monitor': 'train/loss',
+        }
+
+    def on_save_checkpoint(self, checkpoint):
+        checkpoint['state_dict'] = {
+            k.replace('._orig_mod.', '.'): v
+            for k, v in checkpoint['state_dict'].items()
         }

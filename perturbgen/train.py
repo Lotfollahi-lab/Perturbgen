@@ -409,6 +409,9 @@ def main(argv=None) -> None:
         'temperature': args.temperature,
         'iterations': args.iterations,
         'mapping_dict_path': args.mapping_dict_path,
+        'tokenid_to_rowid_path': args.mapping_dict_path.replace(
+            'token_id_to_genename', 'tokenid_to_rowid'
+        ),
         'seed': args.seed,
     }
     if args.train_mode == 'masking':
@@ -535,7 +538,7 @@ def main(argv=None) -> None:
         f'{run_id}_{str(uuid.uuid4())[:6]}' if torch.cuda.device_count() > 1 else run_id
     )
     wandb_logger = WandbLogger(
-        project='ttransformer', name=run_name, save_dir=args.log_dir, log_model=False
+        entity='lotfollahi', project='perturbgen_revision', name=run_name, save_dir=args.log_dir, log_model=False
     )
 
     # In this simple example we just check if a GPU is available.

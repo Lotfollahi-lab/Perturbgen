@@ -135,8 +135,7 @@ class PositionalEncoding(nn.Module):
             # adjust for src embedding starting at 0
             tgt_time_step_ = tgt_time_step + 1
         if self.mode == 'time_pos_sin':
-            time_pe = self.time_pe[:, tgt_time_step_]
-            time_pe = time_pe.unsqueeze(0).expand(x.size(0), x.size(1), -1)
+            time_pe = self.time_pe[:, tgt_time_step_].unsqueeze(0)  # (1, seq, d_model)
             pos_pe = self.pos_pe[:, : x.size(1)]
             return x + time_pe + pos_pe
         elif self.mode == 'comb_sin':
@@ -145,8 +144,7 @@ class PositionalEncoding(nn.Module):
             pe = self.pe[:, start_pos:end_pos]
             return x + pe
         elif self.mode == 'sin_learnt':
-            time_pe = self.time_pe[:, tgt_time_step_]
-            time_pe = time_pe.unsqueeze(0).expand(x.size(0), x.size(1), -1)
+            time_pe = self.time_pe[:, tgt_time_step_].unsqueeze(0)  # (1, seq, d_model)
             pos_ids = self.pos_ids[:, : x.size(1)]
             pos_ids = pos_ids.expand(x.size(0), -1)
             pos_pe = self.pos_encoding(pos_ids)
@@ -257,11 +255,8 @@ class CrossAttention(nn.Module):
         _, seq_len_k, _ = k.shape
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=h), (q, k, v))
         if mask is not None:
-            # Expand the mask to match the target shape:
-            mask = mask.unsqueeze(1).unsqueeze(2)
-            mask = mask.expand(-1, h, seq_len_q, seq_len_k)
-            # negate mask so that padding tokens=False
-            mask = ~mask
+            # (B, seq_k) -> (B, 1, 1, seq_k); SDPA broadcasts over heads and query dim
+            mask = (~mask).unsqueeze(1).unsqueeze(2)
         if return_attn & (identity is not None):
             identity = identity.expand(q.size(0), self.num_heads, -1, -1)
 
@@ -437,9 +432,20 @@ class scmaskgitwrapper(nn.Module):
         pretrained_dict = torch.load(model_path, map_location='cpu', weights_only=True)
         if 'state_dict' in pretrained_dict:
             pretrained_dict = pretrained_dict['state_dict']
-        corrected_dict = {
-            k.replace('transformer.', ''): v for k, v in pretrained_dict.items()
-        }
+        # Checkpoints saved from a PerturbGenTrainer nest scmaskgit weights under
+        # 'transformer.encoder_layers.model.*'; standalone scmaskgit checkpoints
+        # use 'transformer.*' directly. Strip the appropriate prefix.
+        nested_prefix = 'transformer.encoder_layers.model.'
+        if any(k.startswith(nested_prefix) for k in pretrained_dict):
+            corrected_dict = {
+                k[len(nested_prefix):]: v
+                for k, v in pretrained_dict.items()
+                if k.startswith(nested_prefix)
+            }
+        else:
+            corrected_dict = {
+                k.replace('transformer.', ''): v for k, v in pretrained_dict.items()
+            }
         self.model.load_state_dict(corrected_dict)
         for param in self.model.parameters():
             param.requires_grad = False
@@ -589,6 +595,7 @@ class PerturbGen(nn.Module):
         encoder_path: str | None = None,
         condition_dict: Dict[str, Dict] | None = None,
         gene_to_rowid: Dict[str, int] | None = None,
+        compile_model: bool = False,
     ):
         '''
         Description:
@@ -707,10 +714,28 @@ class PerturbGen(nn.Module):
         self.gene_to_rowid = gene_to_rowid
         self.condition_dict = condition_dict
 
+        if compile_model:
+            self.encoder_layers = torch.compile(
+                self.encoder_layers, mode='default', fullgraph=False
+            )
+            self._decoder_block_compiled = [
+                torch.compile(block, mode='default', fullgraph=False)
+                for block in self.decoder_block
+            ]
+        else:
+            self._decoder_block_compiled = list(self.decoder_block)
+
         # caching variables for encoder outputs
         self._enc_cache_key = None
         self._enc_cache_output = None
         self._enc_cache_mask = None
+
+        # caching variables for generate_context outputs across MaskGIT iterations
+        # context embeddings are invariant across the 18 demask iterations for a fixed
+        # tgt_time_step, so they are computed once per pred_tp and reused.
+        self._ctx_cache_key = None
+        self._ctx_cache_output = None
+        self._ctx_cache_mask = None
 
     def set_seed(self, seed: Optional[int]):
         if seed is not None:
@@ -841,30 +866,24 @@ class PerturbGen(nn.Module):
         tgt_pad,
         labels=None,
         tgt_input_id=None,
+        decoder_blocks=None,
+        compute_logits=True,
     ):
+        if decoder_blocks is None:
+            decoder_blocks = self._decoder_block_compiled
         self_attn_list = []
         cross_attn_list = []
-        decoder_embedding_l1 = []
-        decoder_embedding_lmid = []
-        decoder_l = 1
-        for dec_layer in self.decoder_block:
-            # see if concatenation of cls embedding
+        for dec_layer in decoder_blocks:
             dec_embedding, self_attn_weights, cross_attn_weights = dec_layer(
                 x=dec_embedding,
                 src_mask=src_attention_mask,
                 tgt_mask=tgt_pad,
                 enc_output=enc_output,
             )
-            if decoder_l == 1:
-                decoder_embedding_l1.append(dec_embedding)
-            elif decoder_l == self.num_layers // 2:
-                decoder_embedding_lmid.append(dec_embedding)
-
             if self_attn_weights is not None:
                 self_attn_list.append(self_attn_weights)
             if cross_attn_weights is not None:
                 cross_attn_list.append(cross_attn_weights)
-            decoder_l += 1
         if len(self_attn_list) > 0:
             self_attn_weights = (
                 torch.stack(self_attn_list).mean(dim=0).to(torch.float16)
@@ -873,8 +892,7 @@ class PerturbGen(nn.Module):
             cross_attn_weights = (
                 torch.stack(cross_attn_list).mean(dim=0).to(torch.float16)
             )
-        # :TODO rewrite this part logits not needed for running the other timepoints
-        decoder_logits = self.decoder_fc(dec_embedding)
+        decoder_logits = self.decoder_fc(dec_embedding) if compute_logits else None
         if tgt_input_id is not None:
             mean_embedding = mean_nonpadding_embs(
                 embs=dec_embedding,
@@ -935,6 +953,8 @@ class PerturbGen(nn.Module):
                         tgt_pad=tgt_pad,
                         labels=None,
                         tgt_input_id=None,
+                        decoder_blocks=self.decoder_block,
+                        compute_logits=False,
                     )
                     if agg_mode == 'concat':
                         context_embs_list.append(dec_outputs['dec_embedding'])
@@ -1010,9 +1030,8 @@ class PerturbGen(nn.Module):
         if generate_id_dict is not None:
             # MASKGIT generation: src_input_id is reused across iterations
             enc_output, src_attention_mask = self._encode_with_cache(src_input_id)
-            
+
         else:
-        # training / normal inference
             src_attention_mask = generate_pad(src_input_id)
             enc_output = self.call_encoder(src_input_id, src_attention_mask)
         
@@ -1044,16 +1063,43 @@ class PerturbGen(nn.Module):
                     'tgt_input_id_dict or generate_id_dict must be provided'
                 )
             if self.context_mode:
-                # distinction between selected time step and rest time steps
-                context_output, context_mask = self.generate_context(
-                    enc_output=enc_output,
-                    src_attention_mask=src_attention_mask,
-                    tgt_time_step=tgt_time_step,
-                    all_time_steps=context_time_steps,
-                    tgt_input_id_dict=tgt_input_id_dict,
-                    tgt_pad_dict=tgt_pad_dict,
-                    cond_dict=cond_dict,
-                )
+                if generate_id_dict is not None:
+                    # MaskGIT generation: context embeddings (for tps != tgt_time_step)
+                    # are invariant across the 18 demask iterations because only the target
+                    # tp's tokens change. Compute once per (src, tgt_time_step) and reuse.
+                    ctx_key = (
+                        src_input_id.data_ptr(),
+                        tuple(src_input_id.shape),
+                        int(tgt_time_step),
+                        tuple(sorted(context_time_steps)),
+                    )
+                    if ctx_key == self._ctx_cache_key:
+                        context_output = self._ctx_cache_output
+                        context_mask = self._ctx_cache_mask
+                    else:
+                        context_output, context_mask = self.generate_context(
+                            enc_output=enc_output,
+                            src_attention_mask=src_attention_mask,
+                            tgt_time_step=tgt_time_step,
+                            all_time_steps=context_time_steps,
+                            tgt_input_id_dict=tgt_input_id_dict,
+                            tgt_pad_dict=tgt_pad_dict,
+                            cond_dict=cond_dict,
+                        )
+                        self._ctx_cache_key = ctx_key
+                        self._ctx_cache_output = context_output
+                        self._ctx_cache_mask = context_mask
+                else:
+                    # training / normal inference: never cache
+                    context_output, context_mask = self.generate_context(
+                        enc_output=enc_output,
+                        src_attention_mask=src_attention_mask,
+                        tgt_time_step=tgt_time_step,
+                        all_time_steps=context_time_steps,
+                        tgt_input_id_dict=tgt_input_id_dict,
+                        tgt_pad_dict=tgt_pad_dict,
+                        cond_dict=cond_dict,
+                    )
             if (not_masked is False) and (generate_id_dict is None):
                 # apply masking during first stage of MLM training
                 tgt_input_id, labels = self.generate_mask(
@@ -1083,27 +1129,22 @@ class PerturbGen(nn.Module):
         return all_outputs
 
     def _encode_with_cache(self, src_input_id: torch.Tensor):
-        # caching only works when encoder is frozen
-        # and input is the same across calls as during generation
-        # build a key from src_input_id
-        key = src_input_id.detach().cpu().numpy().tobytes()
-
+        # O(1) key: data_ptr + shape + stride avoids the O(batch*seq) tobytes() copy
+        key = (
+            src_input_id.data_ptr(),
+            tuple(src_input_id.shape),
+            tuple(src_input_id.stride()),
+        )
         if key == self._enc_cache_key:
-            # reuse cached CPU tensors
-            enc_cpu = self._enc_cache_output
-            mask_cpu = self._enc_cache_mask
-            device = src_input_id.device
-            return enc_cpu.to(device), mask_cpu.to(device)
-        # first time for this src_input_id
+            return self._enc_cache_output, self._enc_cache_mask
+
         src_attention_mask = generate_pad(src_input_id)
         with torch.no_grad():
             enc_output = self.call_encoder(src_input_id, src_attention_mask)
 
-        # store CPU copies
         self._enc_cache_key = key
-        self._enc_cache_output = enc_output.detach().cpu()
-        self._enc_cache_mask = src_attention_mask.detach().cpu()
-
+        self._enc_cache_output = enc_output.detach()
+        self._enc_cache_mask = src_attention_mask.detach()
         return enc_output, src_attention_mask
 
 
@@ -1158,6 +1199,10 @@ class PerturbGen(nn.Module):
                 - 'cls_embedding_t{t}': CLS token embeddings for time step t.
             - 'generate_id_dict': Dictionary of generated token ids.
         '''
+        # Reset caches so stale entries from a previous generate() call don't persist
+        self._enc_cache_key = None
+        self._ctx_cache_key = None
+
         generate_id_dict: Dict[str, torch.Tensor] = {}
         all_outputs: Dict[int, torch.Tensor] = {}
         if self.context_tps is not None:
@@ -1202,8 +1247,6 @@ class PerturbGen(nn.Module):
             tgt_input_id_dict_[tgt_input_id_key] = ids
             # pad ids
             scores = torch.zeros_like(tgt_input_id, dtype=torch.float)
-            import time
-            start_time = time.time()
             outputs, generated_ids = self.generate_sequence(
                 generate_id_dict=tgt_input_id_dict_,
                 generate_pad_dict=tgt_pad_dict_,
@@ -1218,8 +1261,6 @@ class PerturbGen(nn.Module):
                 tgt_time_step=time_step,
                 cond_length=cond_length,
             )
-            end_time = time.time()
-            print(f'-- Time taken for generating time step {time_step}: {end_time - start_time:.2f} seconds')
             generate_id_dict[f'tgt_input_ids_t{time_step}'] = generated_ids
             all_outputs[time_step] = outputs
         return all_outputs, generate_id_dict
@@ -1288,6 +1329,7 @@ class PerturbGen(nn.Module):
         scores[:, :cond_length] = max_neg_value
         tmp_ids = generate_id_dict[f'tgt_input_ids_t{tgt_time_step}'].clone()
         batch_size, seq_len = tmp_ids.shape
+        zero_scalar = torch.zeros((), dtype=tmp_ids.dtype, device=tmp_ids.device)
         # find total_tokens by find the numbers of 1s in the mask
         total_tokens = torch.sum(tmp_ids == 1, dim=1)
         ids_to_keep = torch.zeros_like(tmp_ids, dtype=torch.long)
@@ -1312,19 +1354,18 @@ class PerturbGen(nn.Module):
             unmasked = (scores != max_neg_value).sum(dim=1)
             num_tokens_to_mask = (unmasked.float() * rand_mask_prob).long()
             mask = torch.zeros_like(scores, dtype=torch.bool)
-            indices_to_mask = torch.topk(
-                scores, num_tokens_to_mask.max(), dim=-1
-            ).indices
-            # Mask the top `num_tokens_to_mask` positions for each sample
-            for i in range(batch_size):
-                mask[i, indices_to_mask[i, : num_tokens_to_mask[i]]] = True
+            k = int(num_tokens_to_mask.max())
+            if k > 0:
+                topk_idx = torch.topk(scores, k, dim=-1).indices  # [B, k]
+                # keep only the first num_tokens_to_mask[i] entries per row
+                keep = (
+                    torch.arange(k, device=scores.device).unsqueeze(0)
+                    < num_tokens_to_mask.unsqueeze(1)
+                )  # [B, k]
+                mask.scatter_(1, topk_idx, keep)
             tmp_ids.masked_fill_(mask, self.mask_token)
             # # keep indices which are not masked except for the CLS token
-            ids_to_keep = torch.where(
-                mask,
-                torch.tensor(0, dtype=tmp_ids.dtype, device=tmp_ids.device),
-                tmp_ids,
-            )
+            ids_to_keep = torch.where(mask, zero_scalar, tmp_ids)
             generate_id_dict[f'tgt_input_ids_t{tgt_time_step}'] = tmp_ids
             outputs = demask_fn.forward(
                 src_input_id=src_input_id,  # target
@@ -1336,13 +1377,14 @@ class PerturbGen(nn.Module):
             logits = outputs[tgt_time_step]['dec_logits'][:, cond_length:, :]
 
             # exclude cls token
-            tmp_ids_ = tmp_ids[:, cond_length:].clone()
-            scores_ = scores[:, cond_length:].clone()
-            ids_to_keep_ = ids_to_keep[:, cond_length:].clone()
-            # Create a mask of already predicted tokens
-            indices = ids_to_keep_.unsqueeze(1).expand(-1, seq_len - cond_length, -1)
-            logits.scatter_(2, indices, max_neg_value)
-            filtered_logits = top_k(logits.clone(), topk_filter_thres)
+            # views — none modified in-place before reassignment; tests confirm equivalence
+            tmp_ids_ = tmp_ids[:, cond_length:]
+            ids_to_keep_ = ids_to_keep[:, cond_length:]
+            # Suppress already-predicted vocab entries across all positions
+            suppress = torch.zeros(batch_size, logits.shape[-1], dtype=torch.bool, device=logits.device)
+            suppress.scatter_(1, ids_to_keep_, True)
+            logits.masked_fill_(suppress.unsqueeze(1), max_neg_value)
+            filtered_logits = top_k(logits, topk_filter_thres)
             temperature = starting_temperature * (
                 steps_until_x0 / iterations
             )  # temperature is annealed
@@ -1491,6 +1533,7 @@ class CountDecoder(nn.Module):
         use_positional_encoding: bool = False,
         use_size_factor: bool = True,
         use_observed_size_factor: bool = True,
+        compile_model: bool = False,
     ):
         '''
         Description:
@@ -1540,6 +1583,11 @@ class CountDecoder(nn.Module):
             dropout,
             use_size_factor=use_size_factor,
             use_observed_size_factor=use_observed_size_factor,
+            )
+
+        if compile_model:
+            self.count_decoder = torch.compile(
+                self.count_decoder, mode='default', fullgraph=False
             )
 
         self.pred_tps = pred_tps
