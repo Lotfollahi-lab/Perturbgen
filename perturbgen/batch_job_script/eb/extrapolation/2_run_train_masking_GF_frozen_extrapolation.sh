@@ -69,5 +69,5 @@ echo '--- Finished computing model'
 
 # 20k GF median
 # --encoder_path '/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/scmaskgit/output2/checkpoints/20250110_2325_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt' \
-# --tgt_vocab_size 1730 \
-# --max_len 270 \
+# \
+# \

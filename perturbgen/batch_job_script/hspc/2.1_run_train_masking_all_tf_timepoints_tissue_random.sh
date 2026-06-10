@@ -1,14 +1,14 @@
 #!/bin/bash
 #BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=4:block=yes' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
+#BSUB -gpu 'mode=exclusive_process:num=4' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
 #BSUB -n 4 # number of cores
-#BSUB -G cellulargenetics-priority # groupname for billing
+#BSUB -G cellulargenetics-priority  # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen # working directory
-#BSUB -o logs/hspc_counts_%J.out # output file
-#BSUB -e logs/hspc_counts_%J.err # error file
+#BSUB -o logs/hspc_masking_%J.out # output file
+#BSUB -e logs/hspc_masking_%J.err # error file
 #BSUB -M 40000  # RAM memory part 2. Default: 100MB
 #BSUB -R 'select[mem>40000] rusage[mem=40000]' # RAM memory part 1. Default: 100MB
-#BSUB -J hspc_counts # job name
+#BSUB -J hspc_masking # job name
 
 # load cuda
 module load cuda-12.1.1
@@ -37,33 +37,29 @@ mkdir -p $RES_DIR/$RES_NAME
 # ----------------- all_timepoints -----------------
 # python3 $cwd/train.py \
 python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen/train.py \
---train_mode count \
+--train_mode masking \
 --split False \
 --splitting_mode stratified \
 --split_obs celltype_v2 \
 --output_dir $RES_DIR/$RES_NAME/ \
---src_dataset "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf_100M/dataset_5000_hvg_src/intermediate.dataset" \
---tgt_dataset_folder "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf_100M/dataset_5000_hvg_tgt" \
---src_adata "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf_100M/h5ad_pairing_5000_hvg_src/intermediate.h5ad" \
---tgt_adata_folder "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf_100M/h5ad_pairing_5000_hvg_tgt" \
---mapping_dict_path  "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf_100M/token_id_to_genename_5000_hvg.pkl" \
+--src_dataset "T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf_100M/dataset_5000_hvg_src/stem.dataset" \
+--tgt_dataset_folder "T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf_100M/dataset_5000_hvg_tgt" \
+--src_adata "T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf_100M/h5ad_pairing_5000_hvg_src/stem.h5ad" \
+--tgt_adata_folder "T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf_100M/h5ad_pairing_5000_hvg_tgt" \
+--mapping_dict_path  "T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf_100M/token_id_to_genename_5000_hvg.pkl" \
 --batch_size 64 \
---epochs 15 \
+--epochs 25 \
 --cellgen_lr 0.00001 \
 --cellgen_wd 0.00001 \
---count_lr 0.005 \
---count_wd 0.001  \
 --mlm_prob 0.15 \
 --n_workers 4 \
 --d_ff 64 \
 --num_layers 6 \
---loss_mode zinb \
---pred_tps 1 \
+--pred_tps 1 2 \
 --var_list sex phase tissue celltype_v2 diff_state \
 --encoder scmaskgit \
---encoder_path "/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt" \
---ckpt_masking_path "T_perturb/res/hspc/fine_tuning/checkpoints/20250716_0138_cellgen_train_masking_lr_1e-05_wd_1e-05_batch_64_ptime_pos_sin_m_pow_tp_1_s_42-epoch=19.ckpt" \
---context_mode False \
+--encoder_path '/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/foundation_107m/checkpoints/20250709_1223_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=00.ckpt' \
+--context_mode True \
 --mask_scheduler 'pow' \
 --pos_encoding_mode 'time_pos_sin' \
 --d_model 768 \

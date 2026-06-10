@@ -48,9 +48,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen/train.py
 --tgt_adata_folder "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf_100M/h5ad_pairing_5000_hvg_tgt" \
 --mapping_dict_path  "T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf_100M/token_id_to_genename_5000_hvg.pkl" \
 --batch_size 64 \
---max_len 2248 \
 --epochs 25 \
---tgt_vocab_size 5700 \
 --cellgen_lr 0.00001 \
 --cellgen_wd 0.00001 \
 --mlm_prob 0.15 \

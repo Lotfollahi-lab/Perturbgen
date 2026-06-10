@@ -1,8 +1,8 @@
 #!/bin/bash
-#BSUB -q gpu-lotfollahi # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
-#BSUB -gpu 'mode=exclusive_process:num=4' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
+#BSUB -q training-parallel # name of the partition to run job on (options: gpu-normal, gpu-huge, gpu-lotfollahi)
+#BSUB -gpu 'mode=exclusive_process:num=2' # request for exclusive access to gpu :gmodel=NVIDIAA100_SXM4_80GB
 #BSUB -n 4 # number of cores
-#BSUB -G cellulargenetics-priority  # groupname for billing
+#BSUB -G s10396  # groupname for billing
 #BSUB -cwd /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen # working directory
 #BSUB -o logs/hspc_masking_%J.out # output file
 #BSUB -e logs/hspc_masking_%J.err # error file
@@ -48,9 +48,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen/train.py
 --tgt_adata_folder "T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf_100M/h5ad_pairing_5000_hvg_tgt" \
 --mapping_dict_path  "T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf_100M/token_id_to_genename_5000_hvg.pkl" \
 --batch_size 64 \
---max_len 2248 \
 --epochs 25 \
---tgt_vocab_size 5700 \
 --cellgen_lr 0.00001 \
 --cellgen_wd 0.00001 \
 --mlm_prob 0.15 \
@@ -76,13 +74,13 @@ echo "--- Finished computing model"
 # --tgt_adata_folder "./T_perturb/tokenized_data/hspc/h5ad_pairing_hvg_tgt" \
 # --mapping_dict_path  "./T_perturb/tokenized_data/hspc/token_id_to_genename_hvg.pkl" \
 
-# --max_len 450 \
-# --tgt_vocab_size 1187 \
+# \
+# \
 
 # 5k hvgs
-# --max_len 1040 \
-# --tgt_vocab_size 3015 \
+# \
+# \
 
 # 10k hvgs
-# --max_len 2200 \
-# --tgt_vocab_size 22044 \
+# \
+# \

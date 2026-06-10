@@ -49,8 +49,6 @@ python3 /lustre/scratch126/cellgen/lotfollahi/dv8/trace/T_perturb/T_perturb/val.
 --tgt_adata_folder "/lustre/scratch126/cellgen/lotfollahi/dv8/trace/T_perturb/T_perturb/pp/res/OURmed100m_sko_all_tps_2k_genesIncluded_hvg_100Med_new/h5ad_pairing_2000_hvg_tgt" \
 --mapping_dict_path "/lustre/scratch126/cellgen/lotfollahi/dv8/trace/T_perturb/T_perturb/pp/res/OURmed100m_sko_all_tps_2k_genesIncluded_hvg_100Med_new/token_id_to_genename_2000_hvg.pkl" \
 --batch_size 64 \
---max_len 836 \
---tgt_vocab_size 2106 \
 --cellgen_lr 0.0001 \
 --cellgen_wd 0.0001 \
 --count_lr 0.00005 \
@@ -88,12 +86,12 @@ echo "--- Finished computing model"
 # --tgt_adata_folder "./T_perturb/T_perturb/pp/res/hspc/h5ad_pairing_hvg_tgt" \
 # --mapping_dict_path  "./T_perturb/T_perturb/pp/res/hspc/token_id_to_genename_hvg.pkl" \
 
-# --max_len 450 \
-# --tgt_vocab_size 1187 \
+# \
+# \
 
 # 5k hvgs
-# --max_len 1040 \
-# --tgt_vocab_size 3015 \
+# \
+# \
 
 #--cond_list cell_type_cellgen_harm \
 #--gene_embs_condition 'cell_type_cellgen_harm' \

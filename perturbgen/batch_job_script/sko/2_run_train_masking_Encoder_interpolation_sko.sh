@@ -42,9 +42,7 @@ python3 /lustre/scratch126/cellgen/lotfollahi/dv8/trace/T_perturb/T_perturb/trai
 --tgt_adata_folder "/lustre/scratch126/cellgen/lotfollahi/dv8/trace/T_perturb/T_perturb/pp/res/OURmed100m_sko_all_tps_2k_genesIncluded_hvg_100Med_new/h5ad_pairing_2000_hvg_tgt" \
 --mapping_dict_path "/lustre/scratch126/cellgen/lotfollahi/dv8/trace/T_perturb/T_perturb/pp/res/OURmed100m_sko_all_tps_2k_genesIncluded_hvg_100Med_new/token_id_to_genename_2000_hvg.pkl" \
 --batch_size 64 \
---max_len 836 \
 --epochs 20 \
---tgt_vocab_size 2106 \
 --cellgen_lr 0.0001 \
 --cellgen_wd 0.0001 \
 --n_workers 4 \

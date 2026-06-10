@@ -49,8 +49,6 @@ python3 /lustre/scratch126/cellgen/lotfollahi/kl11/T_perturb/perturbgen/val.py \
 --tgt_adata_folder "T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf_100M/h5ad_pairing_5000_hvg_tgt" \
 --mapping_dict_path "T_perturb/tokenized_data/hspc_pbmc_median_all_tissue_all_tf_100M/token_id_to_genename_5000_hvg.pkl" \
 --batch_size 32 \
---max_len 2248 \
---tgt_vocab_size 5700 \
 --cellgen_lr 0.00001 \
 --cellgen_wd 0.00001 \
 --count_lr 0.00005 \
@@ -86,9 +84,9 @@ echo "--- Finished computing model"
 # --tgt_adata_folder "./T_perturb/tokenized_data/hspc/h5ad_pairing_hvg_tgt" \
 # --mapping_dict_path  "./T_perturb/tokenized_data/hspc/token_id_to_genename_hvg.pkl" \
 
-# --max_len 450 \
-# --tgt_vocab_size 1187 \
+# \
+# \
 
 # 5k hvgs
-# --max_len 1040 \
-# --tgt_vocab_size 3015 \
+# \
+# \
