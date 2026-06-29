@@ -235,6 +235,32 @@ def get_args(argv):
         help='seed for reproducibility',
     )
     parser.add_argument(
+        '--wandb_mode',
+        type=str,
+        default=os.environ.get('WANDB_MODE', 'online'),
+        choices=['online', 'offline', 'disabled'],
+        help=(
+            'Weights & Biases logging mode. Use "offline" or "disabled" on '
+            'machines without internet access to avoid hanging on wandb '
+            'authentication. Defaults to the WANDB_MODE env var, or "online".'
+        ),
+    )
+    parser.add_argument(
+        '--wandb_entity',
+        type=str,
+        default=os.environ.get('WANDB_ENTITY', None),
+        help=(
+            'Weights & Biases entity (team/user). Defaults to the WANDB_ENTITY '
+            'env var, or your default wandb entity if unset.'
+        ),
+    )
+    parser.add_argument(
+        '--wandb_project',
+        type=str,
+        default=os.environ.get('WANDB_PROJECT', 'perturbgen'),
+        help='Weights & Biases project name.',
+    )
+    parser.add_argument(
         '--context_mode',
         type=str2bool,
         default=False,
@@ -624,19 +650,21 @@ def main(argv=None) -> None:
     if torch.cuda.device_count() > 1:
         # multi gpu training with group logging
         wandb_logger = WandbLogger(
-            entity='lotfollahi',
-            project='perturbgen_revision',
+            entity=args.wandb_entity,
+            project=args.wandb_project,
             name=f'{run_id}_{str(uuid.uuid4())[:6]}',
             save_dir='./T_perturb/perturbgen/wandb/wandb',
             log_model=True,
+            mode=args.wandb_mode,
         )  # noqa
     else:
         wandb_logger = WandbLogger(
-            entity='lotfollahi',
-            project='perturbgen_revision',
+            entity=args.wandb_entity,
+            project=args.wandb_project,
             name=f'{run_id}',
             save_dir='./T_perturb/perturbgen/wandb/wandb',
             log_model=True,
+            mode=args.wandb_mode,
         )
 
     # In this simple example we just check if a GPU is available.

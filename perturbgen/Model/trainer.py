@@ -94,9 +94,7 @@ class PerturbGenTrainer(LightningModule):
             'time_pos_sin', 'comb_sin', 'sin_learnt'
         ] = 'time_pos_sin',
         precision: Literal['high', 'medium'] = 'medium',
-        tokenid_to_rowid_path: str = (
-            'T_perturb/tokenized_data/hspc_pbmc_median_inter_tissue_all_tf_100M/tokenid_to_rowid_5000_hvg.pkl'
-        ),
+        tokenid_to_rowid_path: str | None = None,
         encoder_path: str | None = None,
         deg_pkl_path: str | None = None,
         var_list: List[str] | None = None,
@@ -164,12 +162,15 @@ class PerturbGenTrainer(LightningModule):
         self.perplexity = Perplexity(ignore_index=-100)
         self.mse = MeanSquaredError()
 
-        with open(
-            tokenid_to_rowid_path,
-            'rb',
-        ) as f:
-            tokenid_to_rowid = pickle.load(f)
-        self.tokenid_to_rowid = tokenid_to_rowid
+        if tokenid_to_rowid_path is not None:
+            with open(
+                tokenid_to_rowid_path,
+                'rb',
+            ) as f:
+                tokenid_to_rowid = pickle.load(f)
+            self.tokenid_to_rowid = tokenid_to_rowid
+        else:
+            self.tokenid_to_rowid = None
         self.return_embeddings = return_embeddings
         self.return_gene_embs = return_gene_embs
         self.gene_embs_list = gene_embs_list
