@@ -39,6 +39,47 @@ Activate the enviroment
 source "$(poetry env info -p)/bin/activate"
 ```
 
+## Hardware requirements
+
+Preprocessing, tokenization, and inference notebooks run on CPU (a machine with
+≥32 GB RAM is recommended for the larger datasets).
+
+**Training requires a CUDA GPU.** The training tutorials use `BATCH_SIZE = 64`,
+which needs a high-memory GPU (**≥ 40 GB**, e.g. NVIDIA A100). On smaller GPUs this
+value will cause out-of-memory (OOM) errors — for example, **24 GB cards
+(e.g. RTX 3090/4090) cannot fit `BATCH_SIZE = 64`**.
+
+If you hit an OOM error, lower the batch size via the `--batch_size` flag (or the
+`BATCH_SIZE` variable in the training notebook). As a rough guide:
+
+| GPU memory | Suggested `BATCH_SIZE` |
+|------------|------------------------|
+| ≥ 40 GB    | 64 (tutorial default)  |
+| 24 GB      | 16                     |
+| 16 GB      | 8                      |
+
+Note that changing the batch size can affect training dynamics; to reproduce the
+paper results exactly, use `BATCH_SIZE = 64` on a ≥ 40 GB GPU. The training code
+automatically uses all visible GPUs (`devices=-1`); multi-GPU runs use
+DDP by default and DeepSpeed (ZeRO stage 2) is available via
+`--parallel_distribution deepspeed`, which also reduces per-GPU memory.
+
+### Experiment logging (Weights & Biases)
+
+Training/inference log to [Weights & Biases](https://wandb.ai). On machines
+**without internet access** the default online mode can hang on wandb
+authentication. To avoid this, run offline (or disable logging) via either:
+
+```shell
+export WANDB_MODE=offline        # affects all runs in the shell
+# or pass the flag per run:
+python -m perturbgen train-mask ... --wandb_mode offline
+```
+
+Use `--wandb_mode disabled` to turn logging off entirely. Set
+`--wandb_entity <your-team>` (or `WANDB_ENTITY`) to log to your own wandb
+account rather than the default.
+
 The project contains some jupyter notebooks, which were converted to python files
 due to better handling in the repository.
 These files end with `_nb.py` and can be converted back to a `.ipynb` file with

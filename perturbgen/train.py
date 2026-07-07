@@ -26,6 +26,36 @@ from perturbgen.src.utils import (
 os.chdir(ROOT)
 print(f'Current working directory: {os.getcwd()}')
 
+
+def _resolve_tokenid_to_rowid_path(args):
+    """Resolve the tokenid->rowid mapping path.
+
+    Prefer an explicit ``--tokenid_to_rowid_path``. Otherwise fall back to the
+    historical heuristic of deriving it from ``--mapping_dict_path`` by replacing
+    ``token_id_to_genename`` with ``tokenid_to_rowid``. The heuristic only works
+    when the mapping file follows that naming convention, so fail loudly with an
+    actionable message instead of silently passing a non-existent path.
+    """
+    if getattr(args, 'tokenid_to_rowid_path', None):
+        return args.tokenid_to_rowid_path
+    if not args.mapping_dict_path:
+        raise ValueError(
+            'Either --tokenid_to_rowid_path or --mapping_dict_path must be '
+            'provided.'
+        )
+    derived = args.mapping_dict_path.replace(
+        'token_id_to_genename', 'tokenid_to_rowid'
+    )
+    if derived == args.mapping_dict_path:
+        raise ValueError(
+            'Could not derive the tokenid_to_rowid path from '
+            f'--mapping_dict_path ({args.mapping_dict_path!r}): it does not '
+            "contain 'token_id_to_genename'. Pass --tokenid_to_rowid_path "
+            'explicitly.'
+        )
+    return derived
+
+
 def get_args(args=None):
     """Get command line arguments."""
     parser = argparse.ArgumentParser()
@@ -99,10 +129,17 @@ def get_args(args=None):
     parser.add_argument(
         '--mapping_dict_path',
         type=str,
-        default=(
-            '/lustre/scratch126/cellgen/team298/dv8/trace_paper/'
-            'trace_final/T_perturb/tokenized_data/'
-            '2k_hvg_ourMED_all_tps/token_id_to_genename_2000_hvg.pkl'
+        default=None,
+        help='path to the token_id->genename mapping pickle (required)',
+    )
+    parser.add_argument(
+        '--tokenid_to_rowid_path',
+        type=str,
+        default=None,
+        help=(
+            'path to the tokenid->rowid mapping pickle. If omitted, it is '
+            'derived from --mapping_dict_path by replacing '
+            '"token_id_to_genename" with "tokenid_to_rowid".'
         ),
     )
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
@@ -115,6 +152,32 @@ def get_args(args=None):
     )
     parser.add_argument(
         '--log_dir', type=str, default='logs', help='path to data directory'
+    )
+    parser.add_argument(
+        '--wandb_mode',
+        type=str,
+        default=os.environ.get('WANDB_MODE', 'online'),
+        choices=['online', 'offline', 'disabled'],
+        help=(
+            'Weights & Biases logging mode. Use "offline" or "disabled" on '
+            'machines without internet access to avoid hanging on wandb '
+            'authentication. Defaults to the WANDB_MODE env var, or "online".'
+        ),
+    )
+    parser.add_argument(
+        '--wandb_entity',
+        type=str,
+        default=os.environ.get('WANDB_ENTITY', None),
+        help=(
+            'Weights & Biases entity (team/user). Defaults to the WANDB_ENTITY '
+            'env var, or your default wandb entity if unset.'
+        ),
+    )
+    parser.add_argument(
+        '--wandb_project',
+        type=str,
+        default=os.environ.get('WANDB_PROJECT', 'perturbgen'),
+        help='Weights & Biases project name.',
     )
     parser.add_argument(
         '--cellgen_lr', type=float, default=0.0001, help='learning rate'
@@ -409,9 +472,7 @@ def main(argv=None) -> None:
         'temperature': args.temperature,
         'iterations': args.iterations,
         'mapping_dict_path': args.mapping_dict_path,
-        'tokenid_to_rowid_path': args.mapping_dict_path.replace(
-            'token_id_to_genename', 'tokenid_to_rowid'
-        ),
+        'tokenid_to_rowid_path': _resolve_tokenid_to_rowid_path(args),
         'seed': args.seed,
     }
     if args.train_mode == 'masking':
@@ -538,7 +599,12 @@ def main(argv=None) -> None:
         f'{run_id}_{str(uuid.uuid4())[:6]}' if torch.cuda.device_count() > 1 else run_id
     )
     wandb_logger = WandbLogger(
-        entity='lotfollahi', project='perturbgen_revision', name=run_name, save_dir=args.log_dir, log_model=False
+        entity=args.wandb_entity,
+        project=args.wandb_project,
+        name=run_name,
+        save_dir=args.log_dir,
+        log_model=False,
+        mode=args.wandb_mode,
     )
 
     # In this simple example we just check if a GPU is available.
