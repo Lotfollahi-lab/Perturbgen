@@ -572,11 +572,7 @@ class PerturberTrainer(CountDecoderTrainer):
                 perturbed_ids = perturbed_ids_dict[f'tgt_input_ids_t{t}']
 
                 true_mean_embs = true_outputs[t]['mean_embedding']
-                true_mean_embs_l1 = true_outputs[t]['mean_embedding_l1']
-                true_mean_embs_lmid = true_outputs[t]['mean_embedding_lmid']
                 perturbed_mean_embs = perturbed_outputs[t]['mean_embedding']
-                perturbed_mean_embs_l1 = perturbed_outputs[t]['mean_embedding_l1']
-                perturbed_mean_embs_lmid = perturbed_outputs[t]['mean_embedding_lmid']
 
                 if self.condition_dict is not None:
                     cond_len = len(self.condition_dict)
@@ -635,20 +631,10 @@ class PerturberTrainer(CountDecoderTrainer):
                     perturbed_mean_embs,
                     true_mean_embs,
                 )
-                mean_cos_sim_l1 = cosine_similarity(
-                    perturbed_mean_embs_l1,
-                    true_mean_embs_l1,
-                )
-                mean_cos_sim_lmid = cosine_similarity(
-                    perturbed_mean_embs_lmid,
-                    true_mean_embs_lmid,
-                )
 
                 cell_idx = np.array(filtered_batch[f'tgt_cell_idx_t{t}'])
 
                 mean_cos_sim = mean_cos_sim.detach().cpu().to(torch.float16)
-                mean_cos_sim_l1 = mean_cos_sim_l1.detach().cpu().to(torch.float16)
-                mean_cos_sim_lmid = mean_cos_sim_lmid.detach().cpu().to(torch.float16)
                 gene_cos_sim = gene_cos_sim.detach().cpu().to(torch.float16)
                 true_mean_embs = true_mean_embs.detach().cpu().to(torch.float16)
                 perturbed_mean_embs = (
