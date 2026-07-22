@@ -113,11 +113,10 @@ def main() -> None:
         unique_genes = []
         for gene in genes_to_perturb:
             pattern = re.compile(r'adata_g' + re.escape(gene) + r'_ssrc', re.IGNORECASE)
-
-        if any(pattern.search(fname) for fname in files_in_output_dir):
-            print(f"Skipping {gene} as output file already exists.")
-        else:
-            unique_genes.append(gene)
+            if any(pattern.search(fname) for fname in files_in_output_dir):
+                print(f"Skipping {gene} as output file already exists.")
+            else:
+                unique_genes.append(gene)
         config['trainer']['genes_to_perturb'] = unique_genes
     else:
         raise ValueError('output_dir must be provided in trainer in the config file')

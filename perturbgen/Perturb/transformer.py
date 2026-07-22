@@ -315,6 +315,10 @@ class PerturberMasking(PerturbGen):
             )
         decoder_logits = self.decoder_fc(dec_embedding) if compute_logits else None
         if tgt_input_id is not None:
+            # default so they are always bound even when the l1/lmid embeddings
+            # are absent (avoids UnboundLocalError in the output dict below)
+            mean_embedding_l1 = None
+            mean_embedding_lmid = None
             mean_embedding = mean_nonpadding_embs(
                 embs=dec_embedding,
                 input_ids=tgt_input_id,
