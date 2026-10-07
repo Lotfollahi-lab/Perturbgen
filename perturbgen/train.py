@@ -12,7 +12,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy, DeepSpeedStrategy
 
-from perturbgen.configs import ROOT
+from perturbgen.configs import ENCODER_CKPT_PATH, ROOT
 from perturbgen.Dataloaders.datamodule import PerturbGenDataModule
 from perturbgen.Model.trainer import CountDecoderTrainer, PerturbGenTrainer
 from perturbgen.src.utils import (
@@ -167,12 +167,13 @@ def get_args(args=None):
     parser.add_argument(
         '--wandb_mode',
         type=str,
-        default=os.environ.get('WANDB_MODE', 'online'),
+        default=os.environ.get('WANDB_MODE', 'offline'),
         choices=['online', 'offline', 'disabled'],
         help=(
-            'Weights & Biases logging mode. Use "offline" or "disabled" on '
-            'machines without internet access to avoid hanging on wandb '
-            'authentication. Defaults to the WANDB_MODE env var, or "online".'
+            'Weights & Biases logging mode. Defaults to the WANDB_MODE env var, or '
+            '"offline": runs are saved locally (upload later with `wandb sync`) and '
+            'never hang on authentication. Use "online" to log live, or "disabled" '
+            'to turn logging off.'
         ),
     )
     parser.add_argument(
@@ -278,12 +279,7 @@ def get_args(args=None):
     )
     parser.add_argument(
         '--encoder_path',
-        default=(
-            '/lustre/scratch126/cellgen/lotfollahi/av13/'
-            'scmaskgit/scmaskgit/output3/checkpoints/'
-            '20250113_1104_cellgen_train_masking_lr_5e-05_wd_1e-06_batch_64_'
-            'ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=06.ckpt'
-        ),
+        default=str(ENCODER_CKPT_PATH),
         type=str,
         help='mode of encoder',
     )
