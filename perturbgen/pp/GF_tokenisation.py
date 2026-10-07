@@ -20,7 +20,13 @@ from perturbgen.src.utils import (  # tokenid_mapping,;
     subset_adata,
     tokenid_mapping,
 )
-from perturbgen.configs.paths import ROOT, TOKENIZED_DIR
+from perturbgen.configs.paths import (
+    GENE_MAPPING_PATH,
+    GENE_MEDIAN_PATH,
+    ROOT,
+    TOKEN_DICT_PATH,
+    TOKENIZED_DIR,
+)
 
 seed_no = 42
 np.random.seed(seed_no)
@@ -169,23 +175,20 @@ def get_args(args=None):
     parser.add_argument(
         '--gene_median_path',
         type=str,
-        default='/nfs/team361/am74/Cytomeister/outputs/median/'
-        'aggregate/scenario_3/median_trace_scenario3.pkl',
-        help='Path to gene median file',
+        default=str(GENE_MEDIAN_PATH),
+        help='Path to gene median file (default: the one shipped in perturbgen/pp/)',
     )
     parser.add_argument(
         '--token_dict_path',
         type=str,
-        default='/nfs/team361/am74/Cytomeister/outputs/'
-        'median/aggregate/scenario_3/tokenid_trace_scenario3.pkl',
-        help='Path to token dictionary file',
+        default=str(TOKEN_DICT_PATH),
+        help='Path to token dictionary file (default: the one shipped in perturbgen/pp/)',
     )
     parser.add_argument(
         '--gene_mapping_path',
         type=str,
-        default='/nfs/team361/am74/Cytomeister/outputs/'
-        'median/aggregate/scenario_3/ensembl_mapping_dict_gc95M.pkl',
-        help='Path to gene mapping file',
+        default=str(GENE_MAPPING_PATH),
+        help='Path to gene mapping file (default: the one shipped in perturbgen/pp/)',
     )
     parser.add_argument(
         '--genes_to_include',

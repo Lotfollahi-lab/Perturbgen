@@ -66,14 +66,15 @@ DDP by default and DeepSpeed (ZeRO stage 2) is available via
 
 ### Experiment logging (Weights & Biases)
 
-Training/inference log to [Weights & Biases](https://wandb.ai). On machines
-**without internet access** the default online mode can hang on wandb
-authentication. To avoid this, run offline (or disable logging) via either:
+Training/inference log to [Weights & Biases](https://wandb.ai). Logging is
+**offline by default**, so runs never hang on wandb authentication on machines
+without internet access; offline runs can be uploaded later with `wandb sync`.
+To log online instead, use either:
 
 ```shell
-export WANDB_MODE=offline        # affects all runs in the shell
+export WANDB_MODE=online         # affects all runs in the shell
 # or pass the flag per run:
-python -m perturbgen train-mask ... --wandb_mode offline
+python -m perturbgen train-mask ... --wandb_mode online
 ```
 
 Use `--wandb_mode disabled` to turn logging off entirely. Set
@@ -112,7 +113,7 @@ The pretrained model checkpoint is available via Hugging Face:
 👉 https://huggingface.co/lotfollahi-lab/PerturbGen/tree/main
 
 ⚠️ Note: The checkpoint in `pretraining_cohort/` is stored using Git LFS, and due to bandwidth limits, `git lfs pull` may fail with a 403 error.  
-Please use the Hugging Face link above instead.
+Please use the Hugging Face link above instead, and save the downloaded `.ckpt` file in `pretraining_cohort/` (keeping its file name): that is where training looks for the encoder by default, so no `--encoder_path` is needed.
 
 ## Citation
 
