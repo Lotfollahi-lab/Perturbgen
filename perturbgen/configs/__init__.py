@@ -3,5 +3,11 @@ from .paths import (
     DATA_DIR, 
     RESULTS_DIR, 
     TOKENIZED_DIR, 
-    PROJECT_DIR
+    PROJECT_DIR,
+    REPO_DIR,
+    PP_DIR,
+    GENE_MEDIAN_PATH,
+    TOKEN_DICT_PATH,
+    GENE_MAPPING_PATH,
+    ENCODER_CKPT_PATH,
 )

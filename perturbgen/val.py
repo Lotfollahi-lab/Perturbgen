@@ -241,12 +241,13 @@ def get_args(argv):
     parser.add_argument(
         '--wandb_mode',
         type=str,
-        default=os.environ.get('WANDB_MODE', 'online'),
+        default=os.environ.get('WANDB_MODE', 'offline'),
         choices=['online', 'offline', 'disabled'],
         help=(
-            'Weights & Biases logging mode. Use "offline" or "disabled" on '
-            'machines without internet access to avoid hanging on wandb '
-            'authentication. Defaults to the WANDB_MODE env var, or "online".'
+            'Weights & Biases logging mode. Defaults to the WANDB_MODE env var, or '
+            '"offline": runs are saved locally (upload later with `wandb sync`) and '
+            'never hang on authentication. Use "online" to log live, or "disabled" '
+            'to turn logging off.'
         ),
     )
     parser.add_argument(

@@ -3,6 +3,7 @@ Adopted from timm library.
 https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
 '''
 import math
+import os
 import random
 from typing import (
     Dict,
@@ -20,6 +21,7 @@ from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from torch.nn.attention import SDPBackend, sdpa_kernel
 from torch.nn.functional import scaled_dot_product_attention
 
+from perturbgen.configs.paths import ENCODER_CKPT_PATH
 from perturbgen.src.utils import (
     generate_pad,
     gumbel_sample,
@@ -399,11 +401,7 @@ class Block(nn.Module):
 class scmaskgitwrapper(nn.Module):
     def __init__(
         self,
-        model_path=(
-            '/lustre/scratch126/cellgen/lotfollahi/av13/scmaskgit/scmaskgit/'
-            'output2/checkpoints/20250110_2325_cellgen_train_masking_lr_5e'
-            '-05_wd_1e-06_batch_64_ptime_pos_sin_m_pow_tp_1-2-3_s_42-epoch=01.ckpt'
-        ),
+        model_path=str(ENCODER_CKPT_PATH),
     ):
         '''
         Description:
@@ -413,12 +411,28 @@ class scmaskgitwrapper(nn.Module):
         Parameters:
         -----------
         model_path: `str`
-            Path to the scMaskGit model.
+            Path to the scMaskGit model. Defaults to the encoder checkpoint
+            shipped in `pretraining_cohort/`.
 
         '''
         super(scmaskgitwrapper, self).__init__()
         if model_path is None:
-            raise ValueError('Model path is required for scmaskgit encoder')
+            # e.g. val.py, perturb() or the Python API called without --encoder_path
+            model_path = str(ENCODER_CKPT_PATH)
+        download_hint = (
+            'Download it from https://huggingface.co/lotfollahi-lab/PerturbGen/tree/main '
+            'and save it at this path, or pass --encoder_path.'
+        )
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f'Encoder checkpoint not found: {model_path}. {download_hint}')
+        # A clone without `git lfs pull` holds a small text pointer, not the checkpoint.
+        if os.path.getsize(model_path) < 1024:
+            with open(model_path, 'rb') as f:
+                if f.read(64).startswith(b'version https://git-lfs'):
+                    raise RuntimeError(
+                        f'{model_path} is a Git LFS pointer, not the encoder checkpoint '
+                        f'(the file was not downloaded). {download_hint}'
+                    )
 
         self.model = scmoscf(
             tgt_vocab_size=19000,  # PBMC median
