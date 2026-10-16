@@ -1,0 +1,57 @@
+name: Docs
+
+# Builds the Sphinx docs on every PR and push to main, and on pushes to main deploys them to
+# https://perturbgen.cog.sanger.ac.uk/docs/ (s3://perturbgen/docs/ on cog.sanger.ac.uk).
+# Replaces the GitLab CI job `deploy-docs-to-s3` (.gitlab-ci.yml), which ran on a personal GitLab
+# mirror that no longer receives pushes.
+#
+# Required repository secret:
+#   S3CMD_CONFIG  - the full contents of an s3cmd config file with write access to the
+#                   `perturbgen` bucket (the same file the GitLab job used as $S3CMD_FILE).
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**', 'perturbgen/**', 'pyproject.toml', '.github/workflows/docs.yml']
+  pull_request:
+    branches: [main]
+    paths: ['docs/**', 'perturbgen/**', 'pyproject.toml', '.github/workflows/docs.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}  # never interrupt a deploy on main
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install system packages
+        run: sudo apt-get update && sudo apt-get install -y libopenmpi-dev s3cmd
+
+      - name: Install perturbgen and the docs toolchain
+        run: |
+          pip install -U pip
+          pip install -e .
+          pip install sphinx==8.2.3 sphinx-rtd-theme==3.0.2 myst-nb==1.3.0
+
+      - name: Build HTML
+        run: make -C docs html
+
+      - name: Deploy to s3://perturbgen/docs/
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          S3CMD_CONFIG: ${{ secrets.S3CMD_CONFIG }}
+        run: |
+          test -n "$S3CMD_CONFIG" || { echo "::error::Repository secret S3CMD_CONFIG is not set"; exit 1; }
+          printf '%s\n' "$S3CMD_CONFIG" > "$RUNNER_TEMP/s3cfg"
+          # --no-mime-magic: python's mimetypes guesses text/css and text/javascript better than libmagic
+          s3cmd -c "$RUNNER_TEMP/s3cfg" sync --delete-removed --no-mime-magic docs/_build/html/ s3://perturbgen/docs/
+          rm -f "$RUNNER_TEMP/s3cfg"
