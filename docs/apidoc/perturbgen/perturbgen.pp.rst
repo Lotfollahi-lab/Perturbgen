@@ -12,14 +12,6 @@ perturbgen.pp.GF\_tokenisation module
    :show-inheritance:
    :undoc-members:
 
-perturbgen.pp.plt\_tokenisation module
---------------------------------------
-
-.. automodule:: perturbgen.pp.plt_tokenisation
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
 perturbgen.pp.tokenizer module
 ------------------------------
 

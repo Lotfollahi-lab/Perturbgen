@@ -38,7 +38,6 @@ See Also
 
 
 .. toctree::
-      
    :maxdepth: 2
 
    installation
@@ -46,3 +45,4 @@ See Also
    tutorial
 
    API <apidoc/perturbgen/modules>
+   docs-development

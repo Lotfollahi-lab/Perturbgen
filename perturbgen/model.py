@@ -1,7 +1,7 @@
 """Clean, scvi-tools-style Python API for PerturbGen.
 
 This wraps the existing training / perturbation entry points so a notebook can
-do:
+do::
 
     import perturbgen as pg
 
@@ -501,11 +501,11 @@ class PerturbGen:
     ) -> str:
         """Run in-silico perturbation of `genes` and return the output directory.
 
-        mode : "knockout" (mask) | "overexpress" | "delete" | "pad"
-        where: "source" (edit the source state, propagate downstream) | "target"
-        pert_tps: with where="target", the predicted time points (values from
-            `pred_tps`) whose target state is perturbed, e.g. [1]. Required for a
-            target "knockout"/"delete"/"pad"; only used with where="target".
+        - ``mode``: ``"knockout"`` (mask) | ``"overexpress"`` | ``"delete"`` | ``"pad"``.
+        - ``where``: ``"source"`` (edit the source state, propagate downstream) | ``"target"``.
+        - ``pert_tps``: with ``where="target"``, the predicted time points (values from
+          ``pred_tps``) whose target state is perturbed, e.g. ``[1]``. Required for a
+          target ``"knockout"``/``"delete"``/``"pad"``; only used with ``where="target"``.
 
         `temperature`/`iterations` control the MaskGIT iterative decoding used to
         generate the perturbed state (inference-only; they do not affect training).

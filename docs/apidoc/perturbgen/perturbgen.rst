@@ -12,6 +12,14 @@ Subpackages
 Submodules
 ----------
 
+perturbgen.model module
+-----------------------
+
+.. automodule:: perturbgen.model
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 perturbgen.train module
 -----------------------
 
