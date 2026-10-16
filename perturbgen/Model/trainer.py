@@ -57,6 +57,21 @@ def set_matmul_precision_for_device(precision: Literal['high', 'medium'] = 'medi
     else:
         print('CUDA is not available, using CPU for training.')
 
+
+def _restore_compiled_keys(module, checkpoint):
+    """Checkpoints are saved with torch.compile's '._orig_mod.' prefix stripped
+    (on_save_checkpoint). Re-insert it where `module` is compiled, so a strict load
+    (resume via trainer.fit(ckpt_path=...), load_from_checkpoint) finds every key."""
+    own = module.state_dict().keys()
+    if not any('._orig_mod.' in k for k in own):
+        return
+    sd = checkpoint['state_dict']
+    if any('._orig_mod.' in k for k in sd):
+        return
+    to_compiled = {k.replace('._orig_mod.', '.'): k for k in own}
+    checkpoint['state_dict'] = {to_compiled.get(k, k): v for k, v in sd.items()}
+
+
 class PerturbGenTrainer(LightningModule):
     def __init__(
         self,
@@ -523,21 +538,22 @@ class PerturbGenTrainer(LightningModule):
             # create folder to save gene embeddings
             condition_dir = f'{self.output_dir}/conditions'
             os.makedirs(condition_dir, exist_ok=True)
-            # compute mean gene embeddings
-            for condition in self.gene_embs_list:
-                self.sum_gene_embs[condition] = np.where(
-                    self.count_gene_embs[condition] != 0,
-                    self.sum_gene_embs[condition] / self.count_gene_embs[condition],
-                    0,
-                )
+            # compute mean gene embeddings (accumulators only exist with return_gene_embs)
+            if self.return_gene_embs:
+                for condition in self.gene_embs_list:
+                    self.sum_gene_embs[condition] = np.where(
+                        self.count_gene_embs[condition] != 0,
+                        self.sum_gene_embs[condition] / self.count_gene_embs[condition],
+                        0,
+                    )
 
             return_prediction_adata(
                 test_dict=self.test_dict,
                 obs_key=obs_key,
-                marker_genes=self.marker_genes_dict,
+                marker_genes=self.marker_genes_dict if self.return_gene_embs else None,
                 gene_names=self.gene_names,
                 output_dir=self.output_dir,
-                sum_gene_embs=self.sum_gene_embs,
+                sum_gene_embs=self.sum_gene_embs if self.return_gene_embs else None,
                 file_name=f'{self.date}_inference_embs_'
                 f't{self.pred_tps}_{self.encoder}_'
                 f'm{self.mask_scheduler}',
@@ -578,6 +594,9 @@ class PerturbGenTrainer(LightningModule):
             k.replace('._orig_mod.', '.'): v
             for k, v in checkpoint['state_dict'].items()
         }
+
+    def on_load_checkpoint(self, checkpoint):
+        _restore_compiled_keys(self, checkpoint)
 
 
 class CountDecoderTrainer(LightningModule):

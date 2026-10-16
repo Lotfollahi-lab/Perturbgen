@@ -1,3 +1,4 @@
+import glob
 import os
 import unittest
 import tempfile
@@ -291,6 +292,36 @@ class TestEmbedding(MaskCheckpointFixture, unittest.TestCase):
             outputs[t]['dec_embedding'].shape,
             (self.batch_size, self.max_seq_length, self.d_model),
         )
+
+    def test_cell_embeddings_only(self):
+        # return_embeddings=True with return_gene_embs=False must still write the
+        # cell-embedding AnnData (on_test_epoch_end used to iterate gene_embs_list=None)
+        out_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, out_dir, True)
+        embedding_config = self.masking_config.copy()
+        embedding_config.update({
+            "return_embeddings": True,
+            "return_gene_embs": False,
+            "output_dir": out_dir,
+        })
+        model = PerturbGenTrainer.load_from_checkpoint(self.ckpt_path, **embedding_config)
+        dm = self.build_count_datamodule()
+        trainer = pl.Trainer(
+            limit_test_batches=2,
+            logger=False,
+            enable_progress_bar=False,
+            enable_model_summary=False,
+        )
+        trainer.test(model, dataloaders=dm.test_dataloader())
+
+        files = glob.glob(os.path.join(out_dir, '**', '*inference_embs*.h5ad'), recursive=True)
+        self.assertEqual(len(files), 1)
+        adata = sc.read_h5ad(files[0])
+        self.assertIn('cls_embeddings', adata.obsm)
+        self.assertEqual(adata.obsm['cls_embeddings'].shape[1], self.d_model)
+        self.assertEqual(len(adata.varm), 0)   # no gene embeddings requested
+
+
 class TestCountDecoder(MaskCheckpointFixture, unittest.TestCase):
     _shared_count_ckpt = None
     @classmethod

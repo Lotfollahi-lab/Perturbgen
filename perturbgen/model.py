@@ -19,7 +19,7 @@ do:
     pred = model.perturb(genes=["ENSG00000125538"],   # IL1B
                          mode="knockout", where="source")
 
-Tokenization is a separate step (see the tokenization tutorial); this API starts
+Tokenization is a separate step (:func:`tokenize`, used in the train_and_perturb tutorial); this API starts
 from the tokenized-data directory it produces. Everything runs **in process** —
 no shelling out to CLI scripts.
 
@@ -170,11 +170,13 @@ class PerturbGen:
         pos_encoding_mode: str = "time_pos_sin",
         loss_mode: str = "zinb",
         seed: int = 42,
+        max_len: Optional[int] = None,
+        tgt_vocab_size: Optional[int] = None,
     ) -> None:
         """Build a model over a tokenized dataset.
 
-        `tokenized_dir` is the output of :func:`tokenize` (or the tokenization
-        notebook); `source` is the reference/source time point (e.g. "90m_LPS",
+        `tokenized_dir` is the output of :func:`tokenize` (or a released tokenized
+        dataset); `source` is the reference/source time point (e.g. "90m_LPS",
         "normal"). File paths are inferred from the standard tokenizer layout::
 
             <tokenized_dir>/dataset_<n_hvg>_hvg_src/<source>.dataset
@@ -187,7 +189,15 @@ class PerturbGen:
         `n_hvg` is only the ``<n_hvg>_hvg`` filename key; leave it ``None`` (default)
         to auto-detect it from the tokenized dir, or pass it to disambiguate when
         several variants live side by side.
+
+        `max_len` / `tgt_vocab_size` fix the model's sequence length and target
+        vocabulary size (base values, before the model's offsets). Leave both
+        ``None`` (default) to auto-detect them from the data; set both to match a
+        model trained with explicit values (the released LPS models: 797 / 2002).
+        They are used for training, embedding extraction and perturbation alike.
         """
+        if (max_len is None) != (tgt_vocab_size is None):
+            raise ValueError("Set both max_len and tgt_vocab_size, or neither (auto-detect).")
         self.tokenized_dir = os.path.abspath(tokenized_dir)
         self.source = source
         # n_hvg is only a filename key (dataset_<n_hvg>_hvg_*); auto-detect it from
@@ -220,6 +230,7 @@ class PerturbGen:
             cond_list=list(cond_list) if cond_list else None,
             mask_scheduler=mask_scheduler, pos_encoding_mode=pos_encoding_mode,
             loss_mode=loss_mode, seed=seed,
+            max_len=max_len, tgt_vocab_size=tgt_vocab_size,
         )
         # populated by train()/load()
         self.masking_ckpt: Optional[str] = None
@@ -260,7 +271,14 @@ class PerturbGen:
             argv += ["--cond_list", *h["cond_list"]]
         if h["encoder_path"]:
             argv += ["--encoder_path", h["encoder_path"]]
+        argv += self._dims_argv()
         return argv
+
+    def _dims_argv(self) -> List[str]:
+        h = self.hparams
+        if h.get("max_len") is None:
+            return []
+        return ["--max_len", str(h["max_len"]), "--tgt_vocab_size", str(h["tgt_vocab_size"])]
 
     def train_masking(
         self,
@@ -428,6 +446,7 @@ class PerturbGen:
         ]
         if h["encoder_path"]:
             argv += ["--encoder_path", h["encoder_path"]]
+        argv += self._dims_argv()
         if gene_embs_condition:
             argv += ["--gene_embs_condition", gene_embs_condition]
 
@@ -470,6 +489,7 @@ class PerturbGen:
         mode: str = "knockout",
         where: str = "source",
         pred_tps: Optional[Sequence[int]] = None,
+        pert_tps: Optional[Sequence[int]] = None,
         n_samples: int = 3,
         output_dir: str = "perturbation_out",
         count_ckpt: Optional[str] = None,
@@ -483,6 +503,9 @@ class PerturbGen:
 
         mode : "knockout" (mask) | "overexpress" | "delete" | "pad"
         where: "source" (edit the source state, propagate downstream) | "target"
+        pert_tps: with where="target", the predicted time points (values from
+            `pred_tps`) whose target state is perturbed, e.g. [1]. Required for a
+            target "knockout"/"delete"/"pad"; only used with where="target".
 
         `temperature`/`iterations` control the MaskGIT iterative decoding used to
         generate the perturbed state (inference-only; they do not affect training).
@@ -496,8 +519,6 @@ class PerturbGen:
         state, otherwise every cell is filtered out. Predicted h5ads are written
         under `output_dir`.
         """
-        from perturbgen.Perturb import val as _perturb_val  # in-process
-
         ckpt = count_ckpt or self.count_ckpt
         if ckpt is None:
             raise ValueError("perturb() needs a trained count decoder; run train_count() first or pass count_ckpt=.")
@@ -505,6 +526,11 @@ class PerturbGen:
             raise ValueError(f"mode must be one of {list(_MODE_ALIASES)}")
         if where not in _WHERE_ALIASES:
             raise ValueError(f"where must be one of {list(_WHERE_ALIASES)}")
+        if _WHERE_ALIASES[where] == "tgt" and _MODE_ALIASES[mode] != "overexpress" and pert_tps is None:
+            raise ValueError(
+                f"where='target' with mode='{mode}' needs pert_tps=<time points to perturb>, "
+                "e.g. pert_tps=[1]."
+            )
 
         h, p = self.hparams, self.paths
         tps = list(pred_tps or h["pred_tps"])
@@ -542,8 +568,12 @@ class PerturbGen:
                 "genes_to_perturb": list(genes),
                 "validation_mode": "inference",
                 "perturbation_sequence": [_WHERE_ALIASES[where]],
+                **({"pert_tps": [int(t) for t in pert_tps]} if pert_tps is not None else {}),
                 "var_list": h["var_list"],
                 "pred_tps": tps,
+                # Perturb/val.py uses these base values (instead of auto-detecting) when both are set
+                **({"tgt_vocab_size": h["tgt_vocab_size"], "max_seq_length": h["max_len"]}
+                   if h.get("max_len") is not None else {}),
             },
             "datamodule": {
                 "batch_size": batch_size, "num_workers": 4,
@@ -562,6 +592,9 @@ class PerturbGen:
         try:
             sys.argv = ["perturbgen-perturb", "--config", cfg_path]
             with _preserve_cwd():
+                # imported here (in-process): Perturb/val.py calls os.chdir(ROOT) at
+                # import, which must not happen before output_dir is made absolute
+                from perturbgen.Perturb import val as _perturb_val
                 _perturb_val.main()
         finally:
             sys.argv = old_argv
