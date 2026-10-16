@@ -16,6 +16,7 @@ from perturbgen.configs import ENCODER_CKPT_PATH, ROOT
 from perturbgen.Dataloaders.datamodule import PerturbGenDataModule
 from perturbgen.Model.trainer import CountDecoderTrainer, PerturbGenTrainer
 from perturbgen.src.utils import (
+    apply_dim_overrides,
     condition_for_count_loss,
     randomised_split,
     read_dataset_files,
@@ -201,6 +202,16 @@ def get_args(args=None):
         '--num_layers', type=int, default=6, help='number of decoder layers'
     )
     parser.add_argument('--d_ff', type=int, default=64, help='feed forward dimension')
+    parser.add_argument(
+        '--max_len', type=int, default=None,
+        help='override max sequence length (before the +100 model offset); '
+             'if omitted, auto-detected from the data',
+    )
+    parser.add_argument(
+        '--tgt_vocab_size', type=int, default=None,
+        help='override target vocab size (before the +conditions/+50 model offset); '
+             'if omitted, auto-detected from the data',
+    )
     parser.add_argument('--mlm_prob', type=float, default=0.15, help='mlm probability')
     parser.add_argument(
         '--n_workers', type=int, default=4, help='number of workers'
@@ -354,6 +365,11 @@ def main(argv=None) -> None:
         max_len = max(max_len, max([len(x) for x in input_id]))
     max_tgt_input_id = max_tgt_input_id + 1 # add 1 for padding
     max_len = max(max_len, max([len(x) for x in src_dataset['input_ids']]))
+    # Manual overrides: base values BEFORE the +conditions/+50 and +100 model offsets
+    # (the released LPS models used --max_len 797 --tgt_vocab_size 2002).
+    max_tgt_input_id, max_len = apply_dim_overrides(
+        max_tgt_input_id, max_len, args.tgt_vocab_size, args.max_len
+    )
     print(
         f'---PerturbGen training --- \n'
         f'Target vocab size: {max_tgt_input_id}, max sequence length: {max_len}'

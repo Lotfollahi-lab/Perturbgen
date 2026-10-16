@@ -8,10 +8,9 @@ They are intended as practical example references, and assume familiarity with P
 
 .. toctree::
 
-   examples/01_preprocessing_curation
-   examples/02_tokenization_pairing
-   examples/03_train_perturbgen
-   examples/04_GeneEmbedding_Extraction
-   examples/05_GeneProgram_Discovery
-   examples/06_perturbation
-   examples/07_PostPerturbation_Analyses
+   examples/preprocessing_curation
+   examples/cell_gene_embeddings
+   examples/gene_program_discovery
+   examples/train_and_perturb
+   examples/perturbation
+   examples/post_perturbation_analyses

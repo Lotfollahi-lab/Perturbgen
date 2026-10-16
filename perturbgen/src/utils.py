@@ -3,6 +3,7 @@ import math
 import os
 import pickle
 import re
+import warnings
 from pathlib import Path
 from typing import (
     Dict,
@@ -53,6 +54,33 @@ class WarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
         else:
             # After warmup, maintain the end_lr (constant LR)
             return [self.end_lr for _ in self.base_lrs]
+
+
+def apply_dim_overrides(detected_vocab, detected_max_len, tgt_vocab_size=None, max_len=None):
+    """Apply manual --tgt_vocab_size / --max_len overrides to the values detected from the data.
+
+    Both are base values (before the model's +conditions/+50 and +100 offsets). They exist so
+    checkpoints trained with fixed dimensions can be loaded; values smaller than the data's are
+    allowed (the released LPS models use tgt_vocab_size=2002, whose condition tokens share IDs with
+    two gene tokens) but warned about, because they change how the data is represented.
+    """
+    if tgt_vocab_size is not None:
+        if tgt_vocab_size < detected_vocab:
+            warnings.warn(
+                f'--tgt_vocab_size {tgt_vocab_size} is smaller than the data needs ({detected_vocab}): '
+                'condition tokens are numbered from this value and will share IDs with gene tokens.',
+                stacklevel=2,
+            )
+        detected_vocab = tgt_vocab_size
+    if max_len is not None:
+        if max_len < detected_max_len:
+            warnings.warn(
+                f'--max_len {max_len} is shorter than the longest tokenized cell ({detected_max_len}): '
+                'longer cells are truncated (their lowest-ranked genes are dropped).',
+                stacklevel=2,
+            )
+        detected_max_len = max_len
+    return detected_vocab, detected_max_len
 
 
 def read_dataset_files(directory, file_type):
@@ -732,12 +760,18 @@ def return_prediction_adata(
     obs_dict = {obs: np.concatenate(test_dict[obs]) for obs in obs_key}
     test_obs = pd.DataFrame(obs_dict)
     # # adata.var
+    test_var = None
     if marker_genes is not None:
         test_var = pd.DataFrame(marker_genes, index=[0]).T
         # create binary column for marker genes if in gene_names to filter true_counts
         gene_marker_bool = [g in test_var[0].index for g in gene_names.keys()]
         true_counts = true_counts[:, gene_marker_bool]
         test_var.columns = ['token_id']
+    elif gene_names is not None and len(gene_names) == true_counts.shape[1]:
+        # cell embeddings only (no gene embeddings / marker genes): keep the gene IDs
+        # (val.py passes tgt var['gene_name'] as a Series indexed by the var_names)
+        genes = gene_names.index if isinstance(gene_names, pd.Series) else list(gene_names)
+        test_var = pd.DataFrame(index=[str(g) for g in genes])
 
     if (aggregate is True) and ('cell_idx' in test_obs.columns):
         true_counts = mean_duplicates(test_obs, true_counts)
@@ -747,7 +781,7 @@ def return_prediction_adata(
     adata = ad.AnnData(
         X=true_counts,
         obs=test_obs,
-        var=test_var if marker_genes is not None else None,
+        var=test_var,
         obsm={
             'cls_embeddings': cls_embeddings,
         },

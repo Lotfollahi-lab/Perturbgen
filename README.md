@@ -44,22 +44,20 @@ source "$(poetry env info -p)/bin/activate"
 Preprocessing, tokenization, and inference notebooks run on CPU (a machine with
 ≥32 GB RAM is recommended for the larger datasets).
 
-**Training requires a CUDA GPU.** The training tutorials use `BATCH_SIZE = 64`,
-which needs a high-memory GPU (**≥ 40 GB**, e.g. NVIDIA A100). On smaller GPUs this
-value will cause out-of-memory (OOM) errors — for example, **24 GB cards
-(e.g. RTX 3090/4090) cannot fit `BATCH_SIZE = 64`**.
+**Training requires a CUDA GPU.** With the tutorial default batch size of 64, the
+peak GPU memory measured over a full training epoch on the LPS tutorial data is:
 
-If you hit an OOM error, lower the batch size via the `--batch_size` flag (or the
-`BATCH_SIZE` variable in the training notebook). As a rough guide:
+| Training stage | Peak GPU memory (batch size 64) |
+|----------------|---------------------------------|
+| Masking model  | 13.8 GB                         |
+| Count decoder  | 15.8 GB                         |
 
-| GPU memory | Suggested `BATCH_SIZE` |
-|------------|------------------------|
-| ≥ 40 GB    | 64 (tutorial default)  |
-| 24 GB      | 16                     |
-| 16 GB      | 8                      |
+Training at the default batch size therefore runs on **24 GB GPUs** (e.g. RTX
+3090/4090) and larger. On 16 GB GPUs the count-decoder stage is close to the memory
+limit; if you hit an out-of-memory (OOM) error, lower the batch size via the
+`--batch_size` flag (or `batch_size=` in the Python API).
 
-Note that changing the batch size can affect training dynamics; to reproduce the
-paper results exactly, use `BATCH_SIZE = 64` on a ≥ 40 GB GPU. The training code
+To reproduce the paper results exactly, keep the default batch size of 64. The training code
 automatically uses all visible GPUs (`devices=-1`); multi-GPU runs use
 DDP by default and DeepSpeed (ZeRO stage 2) is available via
 `--parallel_distribution deepspeed`, which also reduces per-GPU memory.
@@ -91,20 +89,19 @@ jupytext --to ipynb --execute <your_file>_nb.py
 ```
 ## Examples
 
-For usage, see the [documentation](https://perturbgen.cog.sanger.ac.uk/docs/examples/01_preprocessing_curation.html) or the local notebooks:
-- [Preprocessing and data curation](docs/examples/01_preprocessing_curation.ipynb)
-- [Tokenization and pairing](docs/examples/02_tokenization_pairing.ipynb)
-- [Train PerturbGen](docs/examples/03_train_perturbgen.ipynb)
-- [Gene Embedding Extraction](docs/examples/04_GeneEmbedding_Extraction.ipynb)
-- [Gene Program Discovery](docs/examples/05_GeneProgram_Discovery.ipynb)
-- [Perturbation](docs/examples/06_perturbation.ipynb)
-- [Post Perturbation Analyses](docs/examples/07_PostPerturbation_Analyses.ipynb)
+For usage, see the [documentation](https://perturbgen.cog.sanger.ac.uk/docs/examples/preprocessing_curation.html) or the local notebooks:
+- [Preprocessing and data curation](docs/examples/preprocessing_curation.ipynb)
+- [Cell and gene embeddings (released checkpoint)](docs/examples/cell_gene_embeddings.ipynb)
+- [Gene program discovery](docs/examples/gene_program_discovery.ipynb)
+- [Train and perturb (Python API, end to end: perturb at 6 h, predict 10 h)](docs/examples/train_and_perturb.ipynb)
+- [Perturbation (released IL1B model)](docs/examples/perturbation.ipynb)
+- [Post-perturbation analyses](docs/examples/post_perturbation_analyses.ipynb)
 
-See Perturbation notebook for more explaination about how to perturb a gene or list of genes
+See the Perturbation notebook for more explanation about how to perturb a gene or list of genes
 
 ## Documentation
 
-Full documentation and tutorials are available at: [perturbgen.cog.sanger.ac.uk](https://perturbgen.cog.sanger.ac.uk/docs/examples/01_preprocessing_curation.html)
+Full documentation and tutorials are available at: [perturbgen.cog.sanger.ac.uk](https://perturbgen.cog.sanger.ac.uk/docs/examples/preprocessing_curation.html)
 
 ## Pretrained Checkpoints
 

@@ -17,6 +17,7 @@ from perturbgen.configs import ROOT
 from perturbgen.Dataloaders.datamodule import PerturbGenDataModule
 from perturbgen.Model.trainer import CountDecoderTrainer, PerturbGenTrainer
 from perturbgen.src.utils import (
+    apply_dim_overrides,
     condition_for_count_loss,
     get_idx_for_filtering,
     randomised_split,
@@ -155,6 +156,16 @@ def get_args(argv):
     parser.add_argument('--cellgen_wd', type=float, default=0.0001, help='weight decay')
     parser.add_argument('--count_wd', type=float, default=0.01, help='weight decay')
     parser.add_argument('--n_workers', type=int, default=32, help='number of workers')
+    parser.add_argument(
+        '--max_len', type=int, default=None,
+        help='override max sequence length (before the +100 model offset); '
+             'must match the value the checkpoint was trained with',
+    )
+    parser.add_argument(
+        '--tgt_vocab_size', type=int, default=None,
+        help='override target vocab size (before the +conditions/+50 model offset); '
+             'must match the value the checkpoint was trained with',
+    )
     parser.add_argument(
         '--num_layers', type=int, default=6, help='number of decoder layers'
     )
@@ -354,6 +365,10 @@ def main(argv=None) -> None:
         max_len = max(max_len, max([len(x) for x in input_id]))
     max_tgt_input_id = max_tgt_input_id + 1 # add 1 for padding
     max_len = max(max_len, max([len(x) for x in src_dataset['input_ids']]))
+    # Manual overrides, same semantics as train.py (base values before model offsets).
+    max_tgt_input_id, max_len = apply_dim_overrides(
+        max_tgt_input_id, max_len, args.tgt_vocab_size, args.max_len
+    )
     print(
         f'---PerturbGen training --- \n'
         f'Target vocab size: {max_tgt_input_id}, max sequence length: {max_len}'
