@@ -198,6 +198,11 @@ def main() -> None:
                     config['data']['filter_var'],
                 )
                 filter_idx.extend(idx_)
+            if len(filter_idx) == 0:
+                raise ValueError(
+                    f"filter_cond {config['data']['filter_cond']} matches no cells in "
+                    f"'{config['data']['filter_var']}'"
+                )
         if len(filter_idx) > 0:
             # apply condition filter to all datasets
             filter_idx = list(set(filter_idx))

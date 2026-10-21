@@ -33,6 +33,7 @@ import json
 import os
 import sys
 import tempfile
+import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -498,6 +499,7 @@ class PerturbGen:
         precision: int = 16,
         temperature: float = 1.5,
         iterations: int = 19,
+        extra_config: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> str:
         """Run in-silico perturbation of `genes` and return the output directory.
 
@@ -506,19 +508,59 @@ class PerturbGen:
         - ``pert_tps``: with ``where="target"``, the predicted time points (values from
           ``pred_tps``) whose target state is perturbed, e.g. ``[1]``. Required for a
           target ``"knockout"``/``"delete"``/``"pad"``; only used with ``where="target"``.
+        - ``n_samples``: number of count draws from the count decoder per cell,
+          averaged into the predicted counts (1 = use the predicted mean).
 
-        `temperature`/`iterations` control the MaskGIT iterative decoding used to
-        generate the perturbed state (inference-only; they do not affect training).
-        Defaults match the released LPS config (1.5 / 19); the underlying code
-        defaults are 2.0 / 18.
+        `temperature`/`iterations` have no effect here. They configure MaskGIT
+        generation (``validation_mode="generate"``), but perturb() runs
+        ``validation_mode="inference"``, which decodes the observed target cells,
+        as in the released LPS and HSPC perturbation configs. They are kept so
+        existing calls keep working.
 
-        `context_mode` defaults to False for perturbation prediction (training and
-        embeddings use the model's context_mode, typically True).
+        `context_mode` defaults to False for perturbation prediction: with True the
+        decoder also attends to the observed (unperturbed) cells of the other time
+        points. Training and embeddings use the model's context_mode, typically True.
+
+        `extra_config` adds options of the perturbation config
+        (``perturbgen/Perturb/val.py``) that perturb() does not set, as
+        ``{section: {key: value}}`` with section ``"data"``, ``"trainer"``,
+        ``"datamodule"`` or ``"model"``. Options that perturb() already sets (from
+        its arguments or the ``PerturbGen(...)`` settings) are rejected. For
+        example, to keep only the cell pairs whose ``drug`` is ``"Drug10"``::
+
+            extra_config={"data": {"filter_var": "drug", "filter_cond": ["Drug10"]}}
+
+        Other ``"data"`` keys: ``perturb_genes_file`` (CSV with the genes in its
+        first column) together with ``perturb_colname`` and ``perturb_cluster``
+        (integer cluster ids) perturbs the genes whose ``perturb_colname`` is in
+        ``perturb_cluster``; pass ``genes=[]`` with it. ``"trainer"`` keys include
+        ``exclude_src``; ``"datamodule"`` keys include ``num_workers``.
 
         NOTE: for a source knockout the gene must be expressed in the source
         state, otherwise every cell is filtered out. Predicted h5ads are written
         under `output_dir`.
         """
+        extra_config = dict(extra_config or {})
+        for section, values in extra_config.items():
+            if section not in ("data", "trainer", "datamodule", "model"):
+                raise ValueError(
+                    f"extra_config sections must be 'data', 'trainer', 'datamodule' or "
+                    f"'model', got '{section}'"
+                )
+            if not isinstance(values, dict):
+                raise TypeError(f"extra_config['{section}'] must be a dict, got {type(values).__name__}")
+        if "perturb_genes_file" in extra_config.get("data", {}):
+            # Perturb/val.py changes the working directory to the repository root
+            extra_config["data"] = {
+                **extra_config["data"],
+                "perturb_genes_file": os.path.abspath(extra_config["data"]["perturb_genes_file"]),
+            }
+        if (temperature, iterations) != (1.5, 19):
+            warnings.warn(
+                "perturb(): temperature and iterations have no effect (perturbation runs "
+                "validation_mode='inference', without MaskGIT generation).",
+                stacklevel=2,
+            )
         ckpt = count_ckpt or self.count_ckpt
         if ckpt is None:
             raise ValueError("perturb() needs a trained count decoder; run train_count() first or pass count_ckpt=.")
@@ -582,6 +624,19 @@ class PerturbGen:
             },
             "model": {"precision": precision, "ckpt_masking_path": ckpt},
         }
+        # keys perturb() sets, plus those Perturb/val.py recomputes from the data
+        owned = {s: set(v) for s, v in config.items()}
+        owned["trainer"] |= {"n_genes", "max_seq_length", "tgt_vocab_size"}
+        owned["datamodule"] |= {"max_len"}
+        owned["datamodule"].discard("num_workers")   # a default, safe to change
+        for section, values in extra_config.items():
+            clash = sorted(set(values) & owned[section])
+            if clash:
+                raise ValueError(
+                    f"extra_config['{section}'] cannot set {clash}: perturb() sets these "
+                    "from its arguments or the PerturbGen(...) settings."
+                )
+            config[section].update(values)
 
         with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as tf:
             yaml.safe_dump(config, tf)
