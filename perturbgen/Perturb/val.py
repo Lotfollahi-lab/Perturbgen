@@ -91,8 +91,18 @@ def main() -> None:
         with open(config['trainer']['mapping_dict_path'], 'rb') as f:
             mapping_dict = pickle.load(f)
         # filter genes for the ones that are in the mapping_dict.keys()
+        known_genes = set(mapping_dict.values())
+        missing_genes = [gene for gene in genes_to_perturb if gene not in known_genes]
+        if missing_genes:
+            warnings.warn(
+                f'Genes not in the tokenized gene list '
+                f"({config['trainer']['mapping_dict_path']}): {missing_genes}. "
+                f'Gene names must use the same naming as the tokenized data '
+                f'(gene symbols, e.g. "MITF", or Ensembl IDs, e.g. "ENSG00000187098"). '
+                f'Skipping these genes.'
+            )
         config['trainer']['genes_to_perturb'] = [
-            gene for gene in genes_to_perturb if gene in mapping_dict.values()
+            gene for gene in genes_to_perturb if gene in known_genes
         ]
     else:
         raise ValueError(
@@ -283,8 +293,9 @@ def main() -> None:
     else:
         # Warn if no genes to perturb are provided
         warnings.warn(
-            f'This gene is missing in the target datasets.'
-            f' --> Skipping perturbation.',
+            'No genes left to perturb: they are not in the tokenized gene list (see the '
+            'warning above) or their output already exists in output_dir. '
+            '--> Skipping perturbation.',
         )
 
 if __name__ == '__main__':
