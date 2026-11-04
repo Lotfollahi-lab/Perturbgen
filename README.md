@@ -22,7 +22,7 @@ Install Poetry (one-time):
 ```shell
 curl -sSL https://install.python-poetry.org | python3 -
 ```
-Optional: alternative way to install poetry using pipx (https://pipx.pypa.io/stable/installation/)
+Optional: alternative way to install poetry using pipx (https://pipx.pypa.io/stable/how-to/install-pipx.html)
 ```shell
 pip install poetry
 ```
@@ -89,7 +89,7 @@ jupytext --to ipynb --execute <your_file>_nb.py
 ```
 ## Examples
 
-For usage, see the [documentation](https://perturbgen.readthedocs.io/en/latest/examples/preprocessing_curation.html) or the local notebooks:
+For usage, see the [documentation](https://perturbgen.readthedocs.io/en/latest/tutorial.html) or the local notebooks:
 - [Preprocessing and data curation](docs/examples/preprocessing_curation.ipynb)
 - [Cell and gene embeddings (released checkpoint)](docs/examples/cell_gene_embeddings.ipynb)
 - [Gene program discovery](docs/examples/gene_program_discovery.ipynb)
