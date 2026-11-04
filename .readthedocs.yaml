@@ -19,7 +19,7 @@ build:
       - python docs/rtd_requirements.py > "${READTHEDOCS_VIRTUALENV_PATH}/rtd-requirements.txt"
       - pip install --no-deps --index-url https://download.pytorch.org/whl/cpu -r "${READTHEDOCS_VIRTUALENV_PATH}/rtd-torch.txt"
       - pip install -r "${READTHEDOCS_VIRTUALENV_PATH}/rtd-requirements.txt" -r docs/requirements.txt
-      - python -c 'import torch; assert torch.version.cuda is None, f"CUDA torch {torch.__version__} was installed"'
+      - python -c "import torch; assert torch.version.cuda is None, torch.__version__"  # fails on a CUDA build of torch (no single quotes: RTD wraps each command in them)
 
 sphinx:
   configuration: docs/conf.py
