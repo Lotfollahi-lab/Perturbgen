@@ -89,7 +89,7 @@ jupytext --to ipynb --execute <your_file>_nb.py
 ```
 ## Examples
 
-For usage, see the [documentation](https://perturbgen.cog.sanger.ac.uk/docs/examples/preprocessing_curation.html) or the local notebooks:
+For usage, see the [documentation](https://perturbgen.readthedocs.io/en/latest/examples/preprocessing_curation.html) or the local notebooks:
 - [Preprocessing and data curation](docs/examples/preprocessing_curation.ipynb)
 - [Cell and gene embeddings (released checkpoint)](docs/examples/cell_gene_embeddings.ipynb)
 - [Gene program discovery](docs/examples/gene_program_discovery.ipynb)
@@ -101,7 +101,7 @@ See the Perturbation notebook for more explanation about how to perturb a gene o
 
 ## Documentation
 
-Full documentation and tutorials are available at: [perturbgen.cog.sanger.ac.uk](https://perturbgen.cog.sanger.ac.uk/docs/examples/preprocessing_curation.html)
+Full documentation and tutorials are available at: [perturbgen.readthedocs.io](https://perturbgen.readthedocs.io/)
 
 ## Pretrained Checkpoints
 

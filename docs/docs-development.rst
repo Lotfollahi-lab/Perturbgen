@@ -46,3 +46,18 @@ If you need to configure the host/port (e.g. if your browser is not on the machi
 .. code:: shell-session
 
    $ make livehtml O='--host=my-hostname --port=1234'
+
+Hosting
+-------
+
+The docs are built and served by `Read the Docs`_ at https://perturbgen.readthedocs.io/, configured by
+``.readthedocs.yaml`` at the root of the repository. Every push to ``main`` rebuilds the ``latest`` version. The
+``Docs`` GitHub Actions workflow builds the same way on every pull request, so a failing build shows up there before
+it is merged.
+
+Read the Docs builds on a CPU machine with a time limit, so it installs the package's pinned dependencies without the
+CUDA wheels and with the CPU build of torch (``docs/rtd_requirements.py`` writes that list from ``pyproject.toml``).
+The notebooks in ``docs/examples`` are not executed during the build (``nb_execution_mode = "off"``); they are shown
+with the outputs saved in them.
+
+.. _Read the Docs: https://about.readthedocs.com/
