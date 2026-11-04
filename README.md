@@ -22,7 +22,7 @@ Install Poetry (one-time):
 ```shell
 curl -sSL https://install.python-poetry.org | python3 -
 ```
-Optional: alternative way to install poetry using pipx (https://pipx.pypa.io/stable/installation/)
+Optional: alternative way to install poetry using pipx (https://pipx.pypa.io/stable/how-to/install-pipx.html)
 ```shell
 pip install poetry
 ```
