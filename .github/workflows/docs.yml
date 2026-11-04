@@ -41,7 +41,7 @@ jobs:
           python docs/rtd_requirements.py > "$RUNNER_TEMP/rtd-requirements.txt"
           pip install --no-deps --index-url https://download.pytorch.org/whl/cpu -r "$RUNNER_TEMP/rtd-torch.txt"
           pip install -r "$RUNNER_TEMP/rtd-requirements.txt" -r docs/requirements.txt
-          python -c 'import torch; assert torch.version.cuda is None, f"CUDA torch {torch.__version__} was installed"'
+          python -c "import torch; assert torch.version.cuda is None, torch.__version__"  # fails on a CUDA build of torch
 
       - name: Build HTML
         run: make -C docs html
