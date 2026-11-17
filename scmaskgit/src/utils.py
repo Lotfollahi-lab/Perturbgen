@@ -58,18 +58,16 @@ class WarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
 
 def read_dataset_files(directory, file_type):
     dataset_dict = {}
-    for filename in os.listdir(directory):
+    files = [f for f in os.listdir(directory) if f.endswith(f'.{file_type}')]
+    files.sort(key=lambda f: int(f.split('_')[0]))
+    for filename in files:
         print(f'Loading {filename}...')
-        if filename.endswith(f'.{file_type}'):
-            filename_ = os.path.join(directory, filename)
-            if file_type == 'dataset':
-                dataset_dict[f'tgt_{file_type}_t{filename[0]}'] = load_from_disk(
-                    filename_
-                )  # Removing the '.dataset' extension from the key
-            elif file_type == 'h5ad':
-                dataset_dict[f'tgt_{file_type}_t{filename[0]}'] = sc.read_h5ad(
-                    filename_
-                )
+        prefix = filename.split('_')[0]
+        filename_ = os.path.join(directory, filename)
+        if file_type == 'dataset':
+            dataset_dict[f'tgt_{file_type}_t{prefix}'] = load_from_disk(filename_)
+        elif file_type == 'h5ad':
+            dataset_dict[f'tgt_{file_type}_t{prefix}'] = sc.read_h5ad(filename_)
     return dataset_dict
 
 
