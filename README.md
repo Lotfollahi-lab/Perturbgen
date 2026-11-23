@@ -41,7 +41,7 @@ source "$(poetry env info -p)/bin/activate"
 
 ## Hardware requirements
 
-Preprocessing, tokenization, and inference notebooks run on CPU (a machine with
+Tokenization runs on CPU (a machine with
 ≥32 GB RAM is recommended for the larger datasets).
 
 **Training requires a CUDA GPU.** With the tutorial default batch size of 64, the
