@@ -41,7 +41,7 @@ source "$(poetry env info -p)/bin/activate"
 
 ## Hardware requirements
 
-Preprocessing, tokenization, and inference notebooks run on CPU (a machine with
+Tokenization runs on CPU (a machine with
 ≥32 GB RAM is recommended for the larger datasets).
 
 **Training requires a CUDA GPU.** With the tutorial default batch size of 64, the
@@ -90,14 +90,10 @@ jupytext --to ipynb --execute <your_file>_nb.py
 ## Examples
 
 For usage, see the [documentation](https://perturbgen.readthedocs.io/en/latest/tutorial.html) or the local notebooks:
-- [Preprocessing and data curation](docs/examples/preprocessing_curation.ipynb)
-- [Cell and gene embeddings (released checkpoint)](docs/examples/cell_gene_embeddings.ipynb)
-- [Gene program discovery](docs/examples/gene_program_discovery.ipynb)
-- [Train and perturb (Python API, end to end: perturb at 6 h, predict 10 h)](docs/examples/train_and_perturb.ipynb)
-- [Perturbation (released IL1B model)](docs/examples/perturbation.ipynb)
-- [Post-perturbation analyses](docs/examples/post_perturbation_analyses.ipynb)
+- [Example 1: the full PerturbGen pipeline (perturb at 6 h, predict 10 h)](docs/examples/train_and_perturb.ipynb)
+- [Example 2: perturbation options with the released IL1B model](docs/examples/perturbation.ipynb)
 
-See the Perturbation notebook for more explanation about how to perturb a gene or list of genes
+See the Perturbation notebook for more explanation about how to perturb a gene or list of genes.
 
 ## Documentation
 
